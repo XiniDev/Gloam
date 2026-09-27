@@ -14,6 +14,8 @@ export interface DeviceSettings {
   shareRulers: boolean | null;
   diceAnimation: boolean;
   units: "campaign" | "ft" | "m";
+  /** With a token you control selected, hovering the floor previews a move and a click commits it (SPEC §8.6). */
+  clickToMove: boolean;
 }
 
 const KEY = "gloam.settings.v1";
@@ -31,6 +33,7 @@ export const DEFAULT_SETTINGS: DeviceSettings = {
   shareRulers: null,
   diceAnimation: true,
   units: "campaign",
+  clickToMove: true,
 };
 
 function load(): DeviceSettings {

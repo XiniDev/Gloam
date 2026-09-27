@@ -84,6 +84,18 @@ export const moveCommit: CommandDef<z.infer<typeof MoveCommit>, MoveResult> = {
       p.elevations && !bumped ? (p.elevations[p.elevations.length - 1] as number) : t.elevation;
     const patch: Partial<TokenEntity> = {};
     if (dist(end, t.pos) > 1e-6) patch.pos = end;
+    // A 3D mini ends facing the way it walked (campaign setting Auto-facing, §16.7): its last real heading.
+    if (patch.pos && t.appearance.mode === "model" && ctx.model.campaign.settings.autoFacing) {
+      for (let i = path.length - 1; i > 0; i--) {
+        const a = path[i - 1] as P;
+        const b = path[i] as P;
+        if (dist(a, b) < 0.05) continue;
+        const heading = Math.atan2(b.x - a.x, b.y - a.y);
+        const deg = Math.round(((((-heading * 180) / Math.PI) % 360) + 360) % 360);
+        if (deg !== t.rotationDeg) patch.rotationDeg = deg;
+        break;
+      }
+    }
     if (elevation !== t.elevation) patch.elevation = Math.max(-1000, Math.round(elevation / 5) * 5);
     const ops: Op[] = setOps("token", t, patch);
     const light = t.lightId ? ctx.model.get("light", t.lightId) : undefined;

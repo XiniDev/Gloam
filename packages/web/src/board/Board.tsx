@@ -29,9 +29,12 @@ import {
   wantsNextFrame,
 } from "./frames.ts";
 import { Lighting } from "./Lighting.tsx";
+import { DoorsLayer } from "./map/DoorsLayer.tsx";
 import { MapAlignGizmo } from "./map/MapAlignGizmo.tsx";
 import { MapLayer } from "./map/MapLayer.tsx";
 import { WallsLayer } from "./map/WallsLayer.tsx";
+import { clickFloor, hoverBoard, leaveBoard, moveKey } from "./move/input.ts";
+import { MoveLayer } from "./move/MoveLayer.tsx";
 import { PostFX } from "./PostFX.tsx";
 import { setMaxAnisotropy } from "./resources.ts";
 import { boundsFromJson } from "./scene.ts";
@@ -157,6 +160,11 @@ export default function Board() {
       const el = e.target as HTMLElement | null;
       if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return;
       const ui = useUi.getState();
+      // Planning a move: Enter goes, Esc drops the waypoints and then the plan (before deselecting).
+      if (moveKey(e)) {
+        e.preventDefault();
+        return;
+      }
       if (e.key === "Escape") {
         ui.set({ radial: null });
         if (ui.selection.length) ui.select([]);
@@ -297,6 +305,8 @@ export default function Board() {
     boardApi.cursor = boardApi.groundAt(e.clientX, e.clientY);
     const p = press.current;
     if (p?.box) setBox({ x0: p.x, y0: p.y, x1: e.clientX, y1: e.clientY });
+    // Hovering (nothing held): click-to-move previews a move for the selected token.
+    if (!p && !drag && e.buttons === 0) hoverBoard(e.clientX, e.clientY, useUi.getState().hover !== null);
   };
   const onPointerUp = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (pan.current?.pointerId === e.pointerId) pan.current = null;
@@ -318,9 +328,12 @@ export default function Board() {
       useUi.getState().select([...new Set([...useUi.getState().selection, ...inside])]);
       return;
     }
-    // A click (not a pan) on empty table clears the selection.
-    if (p.empty && Math.hypot(e.clientX - p.x, e.clientY - p.y) < 4 && !e.shiftKey)
+    // A click (not a pan) on empty table: with click-to-move, the selected token goes there (Ctrl/Cmd+click adds
+    // a waypoint); otherwise it clears the selection.
+    if (p.empty && Math.hypot(e.clientX - p.x, e.clientY - p.y) < 4 && !e.shiftKey) {
+      if (clickFloor(e.clientX, e.clientY, e.ctrlKey || e.metaKey)) return;
       useUi.getState().select([]);
+    }
   };
 
   return (
@@ -330,6 +343,7 @@ export default function Board() {
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
+      onPointerLeave={leaveBoard}
       onContextMenu={(e) => e.preventDefault()}
       onDragOver={onDragOver}
       onWheel={() => wake()}
@@ -358,7 +372,9 @@ export default function Board() {
         <DustMotes bounds={bounds} count={tier.dust} />
         {scene ? <MapLayer scene={scene} bounds={bounds} /> : null}
         <TokensLayer />
+        <MoveLayer />
         <WallsLayer />
+        <DoorsLayer />
         <MapAlignGizmo />
         <ShadowSync enabled={tier.shadowMap > 0} soft={tier.softShadows} />
         <PostFX tier={tier} />

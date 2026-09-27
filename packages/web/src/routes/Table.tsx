@@ -7,6 +7,7 @@ import { Intro, useIntro } from "../hud/Intro.tsx";
 import { dismissKnockCard, showKnockCard } from "../hud/KnockCards.tsx";
 import { LeftToolbar } from "../hud/LeftToolbar.tsx";
 import { LoadingBar } from "../hud/LoadingBar.tsx";
+import { MoveLabel } from "../hud/MoveLabel.tsx";
 import { PrepBanner } from "../hud/PrepBanner.tsx";
 import { QuickUnitDialog } from "../hud/QuickUnitDialog.tsx";
 import { RadialMenu } from "../hud/RadialMenu.tsx";
@@ -110,6 +111,7 @@ export default function TableRoute() {
       <MapToolsPanel />
       <LoadingBar />
       <RadialMenu />
+      <MoveLabel />
       <QuickUnitDialog />
       <SceneWizardHost />
       <ConnectionBanner connection={connection} />

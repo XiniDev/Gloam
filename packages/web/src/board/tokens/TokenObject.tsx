@@ -16,6 +16,8 @@ import {
   type Texture,
   Vector3,
 } from "three";
+import { audio } from "../../audio/engine.ts";
+import { useTable } from "../../net/table.ts";
 import { useSettings } from "../../state/settings.ts";
 import { useUi } from "../../state/ui.ts";
 import { boardApi } from "../boardApi.ts";
@@ -25,6 +27,8 @@ import { boardDiag } from "../diag.ts";
 import { disposeLater } from "../dispose.ts";
 import { CAPS_FONT, NUMBER_FONT } from "../fonts.ts";
 import { again, frameDelta, setAnimating } from "../frames.ts";
+import { moveAnimAt } from "../move/anims.ts";
+import { pressToken } from "../move/input.ts";
 import { TIERS, useTier } from "../tiers.ts";
 import { AUTO_COIN_PITCH, approach, crossfadeStep } from "./crossfade.ts";
 import { overlayClear, PRIORITY, registerOverlay } from "./declutter.ts";
@@ -62,6 +66,16 @@ export interface Viewer {
 }
 
 /** Live HP-bar values per token, read by the test hooks (AC-TOK-05). */
+/** Footsteps sound for moves within this distance of the camera's target (SPEC §16.7). */
+const FOOTSTEP_RANGE_FT = 60;
+const camTarget = new Vector3();
+function nearCameraTarget(p: Vector3, ft: number): boolean {
+  const c = cameraRig.controls;
+  if (!c) return false;
+  c.getTarget(camTarget);
+  return Math.hypot(p.x - camTarget.x, p.z - camTarget.z) <= ft;
+}
+
 /** Tokens move (glide, facing, billboards) before their overlays place themselves (default priority 0). */
 const TOKEN_FRAME_PRIORITY = -0.5;
 
@@ -310,13 +324,31 @@ export const TokenObject = memo(function TokenObject({
     const g = root.current;
     if (!g) return;
     const target = tmp.set(token.pos.x, token.elevation, token.pos.y);
-    if (first.current) {
+    // A committed move glides along the path the server accepted (never straight through a wall).
+    const anim = moveAnimAt(token.id);
+    if (anim) {
+      g.position.set(
+        anim.pos.x,
+        g.position.y + (token.elevation - g.position.y) * (1 - Math.exp(-dt * 12)),
+        anim.pos.y,
+      );
+      if (anim.step && nearCameraTarget(g.position, FOOTSTEP_RANGE_FT)) audio.play("footstep");
+    } else if (first.current) {
       g.position.copy(target);
-      first.current = false;
     } else g.position.lerp(target, 1 - Math.exp(-dt * 12));
     if (body.current) {
-      body.current.rotation.y = (-(token.rotation + token.rotOffset) * Math.PI) / 180;
+      // Facing turns smoothly (150 ms); while a mini walks it faces where it's going (setting Auto-facing, §16.7).
+      const walking =
+        anim && anim.heading !== null && mode === "model" && useTable.getState().campaignSettings.autoFacing;
+      const want = walking
+        ? (anim.heading as number) - (token.rotOffset * Math.PI) / 180
+        : (-(token.rotation + token.rotOffset) * Math.PI) / 180;
+      const cur = body.current.rotation.y;
+      const delta = Math.atan2(Math.sin(want - cur), Math.cos(want - cur));
+      body.current.rotation.y = first.current ? want : cur + delta * (1 - Math.exp(-dt / 0.05));
+      if (Math.abs(delta) > 1e-3) again();
     }
+    first.current = false;
     // Auto mode: coin above 70° pitch, standee below, crossfading over 200 ms (AC-TOK-11).
     const wantCoin =
       mode === "coin" ? 1 : mode === "auto" ? (cameraRig.pitchDeg() > AUTO_COIN_PITCH ? 1 : 0) : 0;
@@ -377,6 +409,8 @@ export const TokenObject = memo(function TokenObject({
     down.current = { x: n.clientX, y: n.clientY, button: n.button, timer: null };
     if (n.button === 0) {
       useUi.getState().select([token.id], n.shiftKey ? "toggle" : "replace");
+      // Held and dragged, it moves (SPEC §8.6; move/input.ts decides whether this viewer may).
+      if (!n.shiftKey && useUi.getState().tool === "select") pressToken(token.id, n);
       // A press on a token isn't a pan.
       const c = cameraRig.controls;
       if (c) {

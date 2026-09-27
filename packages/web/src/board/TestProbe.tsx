@@ -20,6 +20,9 @@ import { boardApi } from "./boardApi.ts";
 import { cameraRig } from "./CameraRig.tsx";
 import { boardDiag, useLoading } from "./diag.ts";
 import { setAnimating, wake } from "./frames.ts";
+import { animatingTokens } from "./move/anims.ts";
+import { useMove } from "./move/drag.ts";
+import { remoteLog, useRemoteMoves } from "./move/remote.ts";
 import { resourceStats } from "./resources.ts";
 import { TIERS, TierGovernor, useTier } from "./tiers.ts";
 import { overlayDiagnostics } from "./tokens/declutter.ts";
@@ -153,6 +156,7 @@ export function TestProbe() {
       return { selection: u.selection, hover: u.hover, tool: u.tool, radial: u.radial };
     });
     provideTestHook("walls", () => [...boardData(useEntities.getState()).walls.values()]);
+    provideTestHook("wall", (id: string) => boardData(useEntities.getState()).walls.get(id) ?? null);
     /** The token as this viewer holds it (its view shape, tags included), or null. */
     provideTestHook("token", (id: string) => boardData(useEntities.getState()).tokens.get(id) ?? null);
     provideTestHook("visibleTokenIds", () => [...boardData(useEntities.getState()).tokens.keys()].sort());
@@ -220,6 +224,28 @@ export function TestProbe() {
       mat.dispose();
       return Array.from({ length: width }, (_, i) => [buf[i * 4], buf[i * 4 + 1], buf[i * 4 + 2]]);
     });
+    // Movement (P3): the viewer's planned move, others' drags, and tokens gliding along committed paths.
+    provideTestHook("move", () => {
+      const m = useMove.getState();
+      return {
+        tokenId: m.tokenId,
+        dragging: m.dragging,
+        mode: m.mode,
+        waypoints: m.waypoints,
+        preview: m.preview,
+        sending: m.sending,
+      };
+    });
+    provideTestHook("remoteMoves", () =>
+      [...useRemoteMoves.getState().byToken].map(([id, r]) => ({
+        tokenId: id,
+        points: r.points,
+        cost: r.cost,
+        by: r.by,
+      })),
+    );
+    provideTestHook("moveAnims", () => animatingTokens());
+    provideTestHook("remoteMoveLog", () => [...remoteLog]);
     /** Keeps the board drawing for `ms` (a burst of ordinary redraws, as camera or store changes cause). */
     provideTestHook("redraw", (ms: number) => {
       const before = boardApi.frames;

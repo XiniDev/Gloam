@@ -1,9 +1,11 @@
 import { Callbacks, type Room } from "@colyseus/sdk";
 import type { KnockCard } from "@gloam/shared/protocol";
-import { DEFAULT_HOUSE_RULES, HouseRules } from "@gloam/shared/schemas";
+import { CampaignSettings, DEFAULT_HOUSE_RULES, HouseRules } from "@gloam/shared/schemas";
 import type { PrepPatch, PrepSnapshot } from "@gloam/shared/state";
 import { Table, type TableState } from "@gloam/shared/state";
 import { create } from "zustand";
+import { startMoveAnim } from "../board/move/anims.ts";
+import { clearRemotePreview, onRemotePreview } from "../board/move/remote.ts";
 import { useEntities } from "../state/entities.ts";
 import { type AssetItem, type AssetRender, type SceneListItem, useLibrary } from "../state/library.ts";
 import { useUi } from "../state/ui.ts";
@@ -34,6 +36,8 @@ interface TableStore {
   units: "ft" | "m";
   /** The campaign's house rules (SPEC §19.6) — the movement preview needs the squeeze factor, for one. */
   houseRules: HouseRules;
+  /** Campaign settings that aren't rules (auto-facing, idle animations…). */
+  campaignSettings: CampaignSettings;
   sessionNo: number;
   presence: PresenceView[];
   knocks: KnockCard[];
@@ -49,6 +53,7 @@ export const useTable = create<TableStore>((set) => ({
   campaignName: "",
   units: "ft",
   houseRules: DEFAULT_HOUSE_RULES,
+  campaignSettings: CampaignSettings.parse({}),
   sessionNo: 0,
   presence: [],
   knocks: [],
@@ -62,6 +67,15 @@ function parseHouseRules(json: string): HouseRules {
     return r.success ? r.data : DEFAULT_HOUSE_RULES;
   } catch {
     return DEFAULT_HOUSE_RULES;
+  }
+}
+
+function parseCampaignSettings(json: string): CampaignSettings {
+  try {
+    const r = CampaignSettings.safeParse(JSON.parse(json || "{}"));
+    return r.success ? r.data : CampaignSettings.parse({});
+  } catch {
+    return CampaignSettings.parse({});
   }
 }
 
@@ -209,11 +223,13 @@ async function join(campaignId: string): Promise<Room<unknown, TableState>> {
       campaignName: room.state.campaignName,
       units: (room.state.units as "ft" | "m") || "ft",
       houseRules: parseHouseRules(room.state.houseRulesJson),
+      campaignSettings: parseCampaignSettings(room.state.settingsJson),
       sessionNo: room.state.sessionNo,
     });
   cb.listen("campaignName", syncCampaign);
   cb.listen("units", syncCampaign);
   cb.listen("houseRulesJson", syncCampaign);
+  cb.listen("settingsJson", syncCampaign);
   cb.listen("sessionNo", syncCampaign);
 
   room.onMessage(
@@ -240,6 +256,16 @@ async function join(campaignId: string): Promise<Room<unknown, TableState>> {
   room.onMessage("banned", (m: { message: string }) => tableEvents.emit("banned", m));
   room.onMessage("table.closing", () => tableEvents.emit("closing", {}));
   room.onMessage("toast", (t: { kind: string; message: string }) => tableEvents.emit("toast", t));
+  // Movement (SPEC §8.6): committed moves glide along their path; others' drags show as ghosts.
+  room.onMessage("token.moved", (m: { id: string; path: { x: number; y: number }[]; durationMs: number }) => {
+    clearRemotePreview(m.id);
+    startMoveAnim(m.id, m.path, m.durationMs);
+  });
+  room.onMessage(
+    "move.preview",
+    (m: { tokenId: string; points: { x: number; y: number }[]; cost: number; color: string; by: string }) =>
+      onRemotePreview(m),
+  );
   room.onMessage("hand.raised", (p: { userId: string; name: string }) => tableEvents.emit("hand.raised", p));
   room.onMessage("*", (type, payload) => tableEvents.emit("message", { type: String(type), payload }));
   room.onDrop(() => useTable.getState().set({ connection: "dropped" }));

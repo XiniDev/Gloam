@@ -101,3 +101,61 @@ export function hiddenBadgeTexture(): CanvasTexture {
     g.stroke();
   });
 }
+
+/** Door handle icons (SPEC §8.7 Doors): shut (a ring pull), open (an open doorway), locked (a padlock). */
+export function doorIconTexture(state: "closed" | "open" | "locked"): CanvasTexture {
+  return texture(`door-${state}`, 128, (g) => {
+    g.fillStyle = C.ink950;
+    g.globalAlpha = 0.88;
+    g.beginPath();
+    g.arc(64, 64, 58, 0, Math.PI * 2);
+    g.fill();
+    g.globalAlpha = 1;
+    g.strokeStyle = state === "locked" ? C.ember400 : C.brass300;
+    g.lineWidth = 6;
+    g.beginPath();
+    g.arc(64, 64, 54, 0, Math.PI * 2);
+    g.stroke();
+    g.lineWidth = 8;
+    g.lineCap = "round";
+    g.lineJoin = "round";
+    if (state === "closed") {
+      // A ring pull on its plate.
+      g.beginPath();
+      g.moveTo(64, 30);
+      g.lineTo(64, 46);
+      g.stroke();
+      g.beginPath();
+      g.arc(64, 70, 22, 0, Math.PI * 2);
+      g.stroke();
+    } else if (state === "open") {
+      // A doorway with its leaf swung open.
+      g.beginPath();
+      g.moveTo(40, 96);
+      g.lineTo(40, 32);
+      g.lineTo(88, 32);
+      g.lineTo(88, 96);
+      g.stroke();
+      g.beginPath();
+      g.moveTo(40, 32);
+      g.lineTo(62, 44);
+      g.lineTo(62, 104);
+      g.lineTo(40, 96);
+      g.closePath();
+      g.stroke();
+    } else {
+      // A padlock.
+      g.beginPath();
+      g.arc(64, 54, 16, Math.PI, 0);
+      g.stroke();
+      g.fillStyle = C.ember400;
+      g.beginPath();
+      g.roundRect(40, 54, 48, 38, 6);
+      g.fill();
+      g.fillStyle = C.ink950;
+      g.beginPath();
+      g.arc(64, 70, 5, 0, Math.PI * 2);
+      g.fill();
+    }
+  });
+}
