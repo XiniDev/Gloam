@@ -1,0 +1,8 @@
+packages:
+  - "packages/*"
+
+# pnpm 12 blocks dependency build scripts until each flagged package is allowed or denied (SPEC §9.4 G1).
+allowBuilds:
+  better-sqlite3: false # prebuilt binaries are bundled; building needs a C++ toolchain
+  msgpackr-extract: false # the prebuilt platform package is used anyway
+  esbuild: true # only if something still pulls esbuild in

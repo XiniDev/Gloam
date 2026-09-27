@@ -1,0 +1,36 @@
+{
+  "name": "gloam",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Gloam — a self-hosted, account-free 3D virtual tabletop for one private group.",
+  "type": "module",
+  "packageManager": "pnpm@12.6.0",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "dev": "node --watch --disable-warning=ExperimentalWarning packages/server/src/main.ts --dev",
+    "build": "pnpm --filter @gloam/web build",
+    "start": "node --disable-warning=ExperimentalWarning packages/server/src/main.ts --production",
+    "typecheck": "tsc -b",
+    "lint": "biome ci . && node tools/check-tokens.mjs",
+    "test": "vitest run",
+    "test:e2e": "node tools/e2e.mjs",
+    "shots": "node tools/shots.mjs",
+    "bench": "node tools/bench.mjs",
+    "check": "pnpm typecheck && pnpm lint && pnpm test",
+    "check:fast": "pnpm typecheck && pnpm lint",
+    "content:build": "pnpm --filter @gloam/content build",
+    "features:extract": "node tools/extract-features.mjs",
+    "features:status": "node tools/features-status.mjs",
+    "db:generate": "drizzle-kit generate --config packages/server/drizzle.config.ts"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
+    "@biomejs/biome": "2.5.14",
+    "@playwright/test": "1.63.0",
+    "@types/node": "^22.18.0",
+    "typescript": "7.0.2",
+    "vitest": "5.0.2"
+  }
+}

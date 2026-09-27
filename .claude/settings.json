@@ -1,0 +1,60 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm *)",
+      "Bash(node *)",
+      "Bash(npx playwright *)",
+      "Bash(git *)",
+      "Bash(corepack *)",
+      "Bash(cloudflared --version)",
+      "WebSearch",
+      "WebFetch(domain:media.dndbeyond.com)",
+      "WebFetch(domain:www.dndbeyond.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:api.open5e.com)",
+      "WebFetch(domain:open5e.com)",
+      "WebFetch(domain:docs.colyseus.io)",
+      "WebFetch(domain:www.npmjs.com)",
+      "WebFetch(domain:registry.npmjs.org)",
+      "WebFetch(domain:threejs.org)",
+      "WebFetch(domain:r3f.docs.pmnd.rs)",
+      "WebFetch(domain:drei.docs.pmnd.rs)",
+      "WebFetch(domain:orm.drizzle.team)",
+      "WebFetch(domain:zod.dev)",
+      "WebFetch(domain:vite.dev)",
+      "WebFetch(domain:developers.cloudflare.com)",
+      "WebFetch(domain:modelcontextprotocol.io)",
+      "WebFetch(domain:www.redblobgames.com)",
+      "WebFetch(domain:gltf-transform.dev)",
+      "WebFetch(domain:rapier.rs)",
+      "WebFetch(domain:sharp.pixelplumbing.com)"
+    ],
+    "deny": ["Bash(git push *)", "Read(./data/secret.key)"]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/post-edit.mjs\"",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/stop-check.mjs\"",
+            "timeout": 300
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "name": "@gloam/content",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "SRD content pipeline (build-time only) and the generated, committed content packs.",
+  "exports": {
+    "./packs/*": "./packs/*"
+  },
+  "scripts": {
+    "build": "node --disable-warning=ExperimentalWarning scripts/build.ts"
+  },
+  "dependencies": {
+    "@gloam/shared": "workspace:*",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "pdfjs-dist": "6.3.289",
+    "yaml": "2.9.1"
+  }
+}

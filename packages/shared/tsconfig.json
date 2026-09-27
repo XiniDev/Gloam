@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "noEmit": false,
+    "emitDeclarationOnly": true,
+    "declaration": true,
+    "outDir": "../../node_modules/.cache/tsc/shared",
+    "tsBuildInfoFile": "../../node_modules/.cache/tsc/shared.tsbuildinfo",
+    "types": []
+  },
+  "include": ["src/**/*.ts"]
+}

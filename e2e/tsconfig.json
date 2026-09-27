@@ -1,0 +1,15 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "noEmit": false,
+    "emitDeclarationOnly": true,
+    "declaration": true,
+    "outDir": "../node_modules/.cache/tsc/e2e",
+    "tsBuildInfoFile": "../node_modules/.cache/tsc/e2e.tsbuildinfo",
+    "lib": ["es2023", "dom"],
+    "types": ["node"]
+  },
+  "include": ["**/*.ts"],
+  "references": [{ "path": "../packages/shared" }]
+}

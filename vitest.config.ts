@@ -1,0 +1,53 @@
+import { defineConfig } from "vitest/config";
+
+export default defineConfig({
+  test: {
+    projects: [
+      {
+        test: {
+          name: "shared",
+          root: "packages/shared",
+          include: ["src/**/*.test.ts"],
+          environment: "node",
+        },
+      },
+      {
+        test: {
+          name: "server",
+          root: "packages/server",
+          include: ["src/**/*.test.ts"],
+          environment: "node",
+          pool: "forks",
+          testTimeout: 30_000,
+          hookTimeout: 60_000,
+        },
+      },
+      {
+        test: {
+          name: "content",
+          root: "packages/content",
+          include: ["scripts/**/*.test.ts"],
+          environment: "node",
+        },
+      },
+      {
+        test: {
+          name: "mcp",
+          root: "packages/mcp",
+          include: ["src/**/*.test.ts"],
+          environment: "node",
+          pool: "forks",
+          testTimeout: 60_000,
+        },
+      },
+      {
+        test: {
+          name: "tools",
+          root: "tools",
+          include: ["**/*.test.mjs"],
+          environment: "node",
+        },
+      },
+    ],
+  },
+});

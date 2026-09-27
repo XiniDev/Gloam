@@ -1,0 +1,11 @@
+{
+  "files": [],
+  "references": [
+    { "path": "packages/shared" },
+    { "path": "packages/server" },
+    { "path": "packages/web" },
+    { "path": "packages/content" },
+    { "path": "packages/mcp" },
+    { "path": "e2e" }
+  ]
+}

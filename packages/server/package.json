@@ -1,0 +1,45 @@
+{
+  "name": "@gloam/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Gloam game server: one Node.js process (Express 5 + Colyseus 0.18 + SQLite).",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@colyseus/core": "0.18.17",
+    "@colyseus/schema": "5.0.34",
+    "@colyseus/tools": "0.18.4",
+    "@colyseus/ws-transport": "0.18.4",
+    "@gloam/shared": "workspace:*",
+    "@gltf-transform/core": "4.5.0",
+    "@gltf-transform/extensions": "4.5.0",
+    "@gltf-transform/functions": "4.5.0",
+    "@node-rs/argon2": "2.2.1",
+    "better-sqlite3": "13.0.3",
+    "busboy": "1.6.0",
+    "draco3dgltf": "1.5.7",
+    "drizzle-orm": "0.45.3",
+    "express": "5.2.1",
+    "fflate": "0.8.3",
+    "file-type": "22.1.1",
+    "gltf-validator": "2.0.0-dev.3.10",
+    "helmet": "8.3.0",
+    "meshoptimizer": "1.3.0",
+    "nanoid": "6.0.1",
+    "p-limit": "7.3.3",
+    "pino": "10.3.1",
+    "sharp": "0.35.4",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@colyseus/sdk": "0.18.4",
+    "@types/better-sqlite3": "9.6.0",
+    "@types/busboy": "1.5.4",
+    "@types/express": "5.0.6",
+    "drizzle-kit": "0.31.11",
+    "pino-pretty": "13.1.3",
+    "vite": "8.3.1"
+  }
+}

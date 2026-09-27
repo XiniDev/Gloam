@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "noEmit": false,
+    "emitDeclarationOnly": true,
+    "declaration": true,
+    "outDir": "../../node_modules/.cache/tsc/mcp",
+    "tsBuildInfoFile": "../../node_modules/.cache/tsc/mcp.tsbuildinfo",
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts", "scripts/**/*.ts", "*.config.ts"],
+  "references": [{ "path": "../shared" }]
+}

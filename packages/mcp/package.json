@@ -1,0 +1,17 @@
+{
+  "name": "@gloam/mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Local stdio MCP server that talks to the Gloam REST API with an API token.",
+  "bin": {
+    "gloam-mcp": "./src/index.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server": "2.1.0",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/client": "2.1.0"
+  }
+}

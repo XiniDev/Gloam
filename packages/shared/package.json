@@ -1,0 +1,25 @@
+{
+  "name": "@gloam/shared",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Isomorphic code shared by the Gloam server and web client (no Node or DOM APIs).",
+  "exports": {
+    ".": "./src/index.ts",
+    "./constants": "./src/constants.ts",
+    "./units": "./src/units.ts",
+    "./schemas": "./src/schemas/index.ts",
+    "./state": "./src/state/index.ts",
+    "./protocol": "./src/protocol/index.ts",
+    "./geometry": "./src/geometry/index.ts",
+    "./vision": "./src/vision/index.ts",
+    "./movement": "./src/movement/index.ts",
+    "./aoe": "./src/aoe/index.ts",
+    "./dice": "./src/dice/index.ts",
+    "./rules": "./src/rules/index.ts"
+  },
+  "dependencies": {
+    "@colyseus/schema": "5.0.34",
+    "zod": "4.6.5"
+  }
+}

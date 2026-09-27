@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "noEmit": false,
+    "emitDeclarationOnly": true,
+    "declaration": true,
+    "outDir": "../../node_modules/.cache/tsc/web",
+    "tsBuildInfoFile": "../../node_modules/.cache/tsc/web.tsbuildinfo",
+    "lib": ["es2023", "dom", "dom.iterable", "webworker.importscripts"],
+    "jsx": "react-jsx",
+    "types": ["vite/client"]
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx", "vite.config.ts"],
+  "references": [{ "path": "../shared" }]
+}

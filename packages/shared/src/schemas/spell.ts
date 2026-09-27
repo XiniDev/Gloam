@@ -1,0 +1,254 @@
+import { z } from "zod";
+import {
+  Ability,
+  ConditionId,
+  DamageType,
+  Formula,
+  Ft,
+  LongText,
+  ShortText,
+  Slug,
+  SpellSchool,
+  VfxPreset,
+} from "./common.ts";
+
+/**
+ * Normalised spell record (SPEC §33.3, Appendix F.2). Strict: unknown fields are rejected so imports
+ * fail loudly instead of silently dropping data.
+ */
+
+/** Growth of the area's primary dimension per slot level above the spell's level (e.g. Fog Cloud +20 ft). */
+export const AreaScaling = z
+  .object({
+    perSlot: Ft.describe(
+      "Feet added to the primary dimension (radius, length, size, distance) per slot level above the spell's level",
+    ),
+  })
+  .strict();
+
+export const SpellArea = z.discriminatedUnion("shape", [
+  z.object({ shape: z.literal("sphere"), radius: Ft, scaling: AreaScaling.optional() }).strict(),
+  z
+    .object({ shape: z.literal("cylinder"), radius: Ft, height: Ft, scaling: AreaScaling.optional() })
+    .strict(),
+  z.object({ shape: z.literal("cone"), length: Ft, scaling: AreaScaling.optional() }).strict(),
+  z.object({ shape: z.literal("cube"), size: Ft, scaling: AreaScaling.optional() }).strict(),
+  z
+    .object({
+      shape: z.literal("line"),
+      length: Ft,
+      width: Ft.default(5),
+      scaling: AreaScaling.optional(),
+    })
+    .strict(),
+  z.object({ shape: z.literal("emanation"), distance: Ft, scaling: AreaScaling.optional() }).strict(),
+  z
+    .object({
+      shape: z.literal("wall"),
+      length: Ft,
+      height: Ft,
+      thickness: Ft,
+      ring: Ft.optional().describe("Diameter in feet when the wall can be shaped as a ring"),
+      opaque: z.boolean().default(false),
+      blocksMove: z.boolean().default(false),
+      damagingSide: z.enum(["left", "right", "both"]).optional(),
+      scaling: AreaScaling.optional(),
+    })
+    .strict(),
+]);
+export type SpellArea = z.infer<typeof SpellArea>;
+
+export const DamageScaling = z.discriminatedUnion("mode", [
+  z.object({ mode: z.literal("slot"), perLevel: Formula }).strict(),
+  z
+    .object({
+      mode: z.literal("cantrip"),
+      atLevels: z.record(z.enum(["5", "11", "17"]), Formula),
+    })
+    .strict(),
+]);
+export type DamageScaling = z.infer<typeof DamageScaling>;
+
+export const SpellDamage = z
+  .object({ formula: Formula, type: DamageType, scaling: DamageScaling.optional() })
+  .strict();
+
+export const SpellHealing = z.object({ formula: Formula, scaling: DamageScaling.optional() }).strict();
+
+export const SpellSave = z
+  .object({ ability: Ability, onSuccess: z.enum(["half", "none", "special"]) })
+  .strict();
+
+export const SpellConditionApplied = z
+  .object({
+    id: ConditionId,
+    onFailedSave: z.boolean().default(true),
+    duration: z
+      .object({
+        rounds: z.number().int().min(1).max(100_000).optional(),
+        untilSaveEnds: z.boolean().optional(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+
+export const LightSpec = z
+  .object({
+    bright: Ft,
+    dim: Ft,
+    color: z
+      .string()
+      .regex(/^#[0-9a-fA-F]{6}$/)
+      .optional(),
+    magical: z.boolean().default(true),
+    pierceDarkness: z.boolean().default(false),
+    cone: z.number().min(1).max(360).optional().describe("Cone angle in degrees for directional light"),
+  })
+  .strict();
+export type LightSpec = z.infer<typeof LightSpec>;
+
+export const Obscurement = z.enum(["light", "heavy", "magicalDarkness"]);
+
+/** Trigger templates on a persistent effect (SPEC §12.3). The DC comes from the caster at cast time. */
+export const EffectTriggerTemplate = z
+  .object({
+    when: z.enum(["enter", "startTurn", "endTurn", "per5ft"]),
+    save: z
+      .object({
+        ability: Ability,
+        dc: z.number().int().min(1).max(40).optional(),
+        onSuccess: z.enum(["half", "none", "special"]),
+      })
+      .strict()
+      .optional(),
+    damage: z.object({ formula: Formula, type: DamageType }).strict().optional(),
+    condition: ConditionId.optional(),
+    note: ShortText.optional(),
+  })
+  .strict();
+
+export const EffectPropsTemplate = z
+  .object({
+    difficult: z.boolean().optional(),
+    obscurement: z.enum(["light", "heavy"]).optional(),
+    magicalDarkness: z.boolean().optional(),
+    opaque: z.boolean().optional(),
+    light: z
+      .object({
+        bright: Ft,
+        dim: Ft,
+        color: z
+          .string()
+          .regex(/^#[0-9a-fA-F]{6}$/)
+          .optional(),
+        magical: z.boolean().default(true),
+        pierceDarkness: z.boolean().default(false),
+      })
+      .strict()
+      .optional(),
+    silence: z.boolean().optional(),
+    outline: z
+      .boolean()
+      .optional()
+      .describe("Creatures inside are outlined (Faerie Fire): can't benefit from Invisible"),
+  })
+  .strict();
+
+export const EffectTemplate = z
+  .object({
+    props: EffectPropsTemplate.default({}),
+    triggers: z.array(EffectTriggerTemplate).max(8).default([]),
+    attach: z.enum(["caster", "object", "point", "target"]).default("point"),
+    movement: z
+      .object({
+        by: z.enum(["caster", "dm"]),
+        maxFt: Ft.optional(),
+        action: z.enum(["action", "bonus", "free", "move"]).optional(),
+        drift: z
+          .object({ ft: Ft, direction: z.enum(["awayFromCaster", "chosen"]) })
+          .strict()
+          .optional(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+export type EffectTemplate = z.infer<typeof EffectTemplate>;
+
+export const SpellSchema = z
+  .object({
+    id: Slug,
+    name: z.string().trim().min(1).max(80),
+    level: z.number().int().min(0).max(9),
+    school: SpellSchool,
+    classes: z.array(z.string().trim().min(1).max(40)).max(20).default([]),
+    castingTime: z
+      .object({
+        amount: z.number().int().min(1).max(1000),
+        unit: z.enum(["action", "bonus", "reaction", "minute", "hour"]),
+        reactionTrigger: ShortText.optional(),
+      })
+      .strict(),
+    ritual: z.boolean().default(false),
+    range: z
+      .object({
+        kind: z.enum(["self", "touch", "ranged", "sight", "unlimited", "special"]),
+        ft: Ft.optional(),
+      })
+      .strict(),
+    components: z
+      .object({
+        v: z.boolean(),
+        s: z.boolean(),
+        m: z.boolean(),
+        material: z.string().max(400).optional(),
+        costGp: z.number().min(0).max(1_000_000).optional(),
+        consumed: z.boolean().optional(),
+      })
+      .strict(),
+    duration: z
+      .object({
+        kind: z.enum(["instantaneous", "timed", "until-dispelled", "special"]),
+        amount: z.number().int().min(1).max(100_000).optional(),
+        unit: z.enum(["round", "minute", "hour", "day"]).optional(),
+        concentration: z.boolean().default(false),
+      })
+      .strict(),
+    text: LongText,
+    higherLevels: LongText.optional(),
+    cantripUpgrade: LongText.optional(),
+    targeting: z
+      .object({
+        kind: z.enum(["area", "creatures", "self", "point", "object"]),
+        count: z.number().int().min(1).max(100).optional(),
+        countPerSlot: z.number().int().min(0).max(100).optional(),
+      })
+      .strict()
+      .optional(),
+    area: SpellArea.nullable().optional(),
+    attack: z
+      .object({ kind: z.enum(["melee", "ranged"]) })
+      .strict()
+      .nullable()
+      .optional(),
+    save: SpellSave.nullable().optional(),
+    damage: z.array(SpellDamage).max(8).optional(),
+    healing: SpellHealing.nullable().optional(),
+    conditions: z.array(SpellConditionApplied).max(8).optional(),
+    effect: EffectTemplate.nullable().optional(),
+    light: LightSpec.nullable().optional(),
+    obscurement: Obscurement.nullable().optional(),
+    vfx: VfxPreset,
+    source: z
+      .object({
+        pack: z.string().min(1).max(40),
+        page: z.number().int().min(1).max(10_000).optional(),
+      })
+      .strict(),
+    provenance: z.record(z.string().max(60), z.string().max(200)).optional(),
+  })
+  .strict();
+
+export type Spell = z.infer<typeof SpellSchema>;
+export type SpellInput = z.input<typeof SpellSchema>;
