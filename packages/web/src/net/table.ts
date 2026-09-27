@@ -4,7 +4,7 @@ import type { PrepPatch, PrepSnapshot } from "@gloam/shared/state";
 import { Table, type TableState } from "@gloam/shared/state";
 import { create } from "zustand";
 import { useEntities } from "../state/entities.ts";
-import { type AssetItem, type SceneListItem, useLibrary } from "../state/library.ts";
+import { type AssetItem, type AssetRender, type SceneListItem, useLibrary } from "../state/library.ts";
 import { useUi } from "../state/ui.ts";
 import { provideTestHook } from "../test/hooks.ts";
 import { preloadAssets } from "./assets.ts";
@@ -152,6 +152,10 @@ async function join(campaignId: string): Promise<Room<unknown, TableState>> {
   room.onMessage("prep.patch", (p: PrepPatch) => useEntities.getState().applyPrepPatch(p));
   room.onMessage("scene.list", (list: SceneListItem[]) => useLibrary.getState().setScenes(list));
   room.onMessage("asset.changed", (m: { asset: AssetItem }) => useLibrary.getState().upsert([m.asset]));
+  // Players: an approved asset's render view changed (e.g. a mini's overrides) — every board redraws it.
+  room.onMessage("asset.render", (m: { asset: AssetRender }) =>
+    useLibrary.getState().upsertRenders([m.asset]),
+  );
   room.onMessage("asset.pending", (m: { asset: AssetItem }) => {
     useLibrary.getState().upsert([m.asset]);
     tableEvents.emit("asset.pending", m.asset);
@@ -232,6 +236,7 @@ async function join(campaignId: string): Promise<Room<unknown, TableState>> {
   useTable.getState().set({ room });
   // Test builds only (SPEC §23.7): journeys drive commands through the same room and permissions as the UI.
   provideTestHook("request", (type: string, payload: unknown) => request(type, payload));
+  provideTestHook("me", () => useTable.getState().me);
   // Uploads through the real client path (CSRF, progress, server pipeline) with bytes handed in by the test.
   provideTestHook("upload", async (b64: string, name: string, purpose: UploadPurpose) => {
     const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));

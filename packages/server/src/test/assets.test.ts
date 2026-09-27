@@ -21,6 +21,7 @@ import {
 interface AssetDto {
   id: string;
   name: string;
+  uploaderId: string;
   status: string;
   cls: string;
   variants: { name: string; width?: number; height?: number; mime: string; bytes: number }[];
@@ -69,7 +70,10 @@ describe("P2 — assets and uploads (AST)", () => {
   let campaignId: string;
   let code: string;
   let dave: Agent;
+  let daveId: string;
   let daveRoom: Room;
+  /** What Dave's connection receives about assets (asset.render / asset.changed), in order. */
+  const daveAssetMsgs: { type: string; asset: Record<string, unknown> }[] = [];
   let erin: Agent;
   let dm: Room;
   let realUploadLimit: BucketMap;
@@ -94,11 +98,19 @@ describe("P2 — assets and uploads (AST)", () => {
       await waitFor(() => p.messages.find((m) => m.type === "admitted"));
       await p.agent.post("/api/join/enter");
       const room = await p.agent.colyseus().joinById(campaignId);
-      room.onMessage("*", () => {});
-      return { agent: p.agent, room };
+      return { agent: p.agent, room, userId: p.userId };
     };
-    ({ agent: dave, room: daveRoom } = await admit("Dave"));
-    ({ agent: erin } = await admit("Erin"));
+    ({ agent: dave, room: daveRoom, userId: daveId } = await admit("Dave"));
+    daveRoom.onMessage("*", (type, payload) => {
+      if (type === "asset.render" || type === "asset.changed")
+        daveAssetMsgs.push({
+          type: String(type),
+          asset: (payload as { asset: Record<string, unknown> }).asset,
+        });
+    });
+    const e = await admit("Erin");
+    erin = e.agent;
+    e.room.onMessage("*", () => {});
   }, 120_000);
   afterAll(async () => {
     await t?.stop();
@@ -453,11 +465,10 @@ describe("P2 — assets and uploads (AST)", () => {
     expect(search.map((a) => a.id)).toContain(tokenAsset.id);
     const minis = (await rq(dm, "asset.list", { tab: "minis" })) as AssetDto[];
     expect(minis.every((a) => a.cls === "model")).toBe(true);
-    const erinView = (await daveRoom.request("asset.list", { tab: "all" })) as {
-      status: string;
-      id: string;
-    }[];
-    expect(erinView.every((a) => a.status === "approved" || a.id)).toBe(true);
+    // A player's Library is their own uploads: never the DM's items, names or tags.
+    const daveView = (await daveRoom.request("asset.list", { tab: "all" })) as AssetDto[];
+    expect(daveView.every((a) => a.uploaderId === daveId)).toBe(true);
+    expect(daveView.map((a) => a.id)).not.toContain(tokenAsset.id);
     await rq(dm, "asset.delete", { assetIds: [tokenAsset.id] });
     expect(((await rq(dm, "asset.list", {})) as AssetDto[]).map((a) => a.id)).not.toContain(tokenAsset.id);
     expect(((await rq(dm, "asset.list", { trash: true })) as AssetDto[]).map((a) => a.id)).toContain(
@@ -489,6 +500,33 @@ describe("P2 — assets and uploads (AST)", () => {
     await expect(
       daveRoom.request("asset.update", { assetId: miniAsset.id, overrides: { scale: 3 } }),
     ).rejects.toBeTruthy();
+  });
+
+  it("asset privacy: players get only what drawing needs, and override changes reach them live", async () => {
+    // The DM's mini, as a player's client would fetch it for a token: no name, tags or uploader.
+    const asPlayer = (await (await get(dave, `/api/assets/${miniAsset.id}`)).json()) as {
+      data: Record<string, unknown>;
+    };
+    expect(Object.keys(asPlayer.data).sort()).toEqual(
+      ["cls", "glb", "height", "id", "overrides", "purpose", "variants", "width"]
+        .filter((k) => k in asPlayer.data)
+        .sort(),
+    );
+    for (const k of ["name", "tags", "uploaderId", "uploaderName", "status", "createdAt", "usage"])
+      expect(asPlayer.data, k).not.toHaveProperty(k);
+    expect(Object.keys(asPlayer.data.glb as object).sort()).toEqual(["animations", "bounds"]);
+    // The DM gets the whole record.
+    const asDm = (await (await get(admin, `/api/assets/${miniAsset.id}`)).json()) as { data: AssetDto };
+    expect(asDm.data.name).toBeTruthy();
+    // A rename is the DM's business; an override change re-scales the mini on every board at once.
+    daveAssetMsgs.length = 0;
+    await rq(dm, "asset.update", { assetId: miniAsset.id, name: "Boss form (act 3)", tags: ["secret"] });
+    await rq(dm, "asset.update", { assetId: miniAsset.id, overrides: { scale: 1.4, offsetY: 0.1 } });
+    await waitFor(() => daveAssetMsgs.find((m) => m.type === "asset.render"));
+    expect(daveAssetMsgs).toHaveLength(1);
+    const msg = daveAssetMsgs[0] as { type: string; asset: Record<string, unknown> };
+    expect(msg.asset).toMatchObject({ id: miniAsset.id, overrides: { scale: 1.4, offsetY: 0.1 } });
+    expect(JSON.stringify(msg)).not.toMatch(/Boss form|secret/);
   });
 
   it("AC-BRD-06 (server) a 16 384 × 16 384 map is accepted and gets variants for every texture limit", async () => {

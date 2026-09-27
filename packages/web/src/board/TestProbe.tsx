@@ -1,7 +1,19 @@
 import { useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useMemo } from "react";
-import { Vector3 } from "three";
+import {
+  Box3,
+  Color,
+  Mesh,
+  type MeshStandardMaterial,
+  OrthographicCamera,
+  PlaneGeometry,
+  Scene,
+  SRGBColorSpace,
+  Vector3,
+  WebGLRenderTarget,
+} from "three";
 import { boardData, useEntities } from "../state/entities.ts";
+import { useSettings } from "../state/settings.ts";
 import { provideTestHook } from "../test/hooks.ts";
 import { boardApi } from "./boardApi.ts";
 import { cameraRig } from "./CameraRig.tsx";
@@ -9,6 +21,7 @@ import { boardDiag, useLoading } from "./diag.ts";
 import { setAnimating, wake } from "./frames.ts";
 import { resourceStats } from "./resources.ts";
 import { TIERS, TierGovernor, useTier } from "./tiers.ts";
+import { createHpBarMaterial, setHpBar } from "./tokens/hpBar.ts";
 import { hpBarState } from "./tokens/TokenObject.tsx";
 
 /**
@@ -97,16 +110,72 @@ export function TestProbe() {
         loading: useLoading.getState().pending,
       };
     });
+    /** The token as this viewer holds it (its view shape, tags included), or null. */
+    provideTestHook("token", (id: string) => boardData(useEntities.getState()).tokens.get(id) ?? null);
     provideTestHook("visibleTokenIds", () => [...boardData(useEntities.getState()).tokens.keys()].sort());
     provideTestHook("tokenState", (id: string) => {
       const obj = scene.getObjectByName(`token:${id}`);
       if (!obj) return null;
-      const parts: Record<string, { diameter?: number; visible: boolean }> = {};
+      obj.updateWorldMatrix(true, true);
+      const parts: Record<
+        string,
+        { diameter?: number; visible: boolean; bounds?: { min: number[]; max: number[] } }
+      > = {};
+      let ring: string | null = null;
+      let opacity: number | null = null;
       obj.traverse((o) => {
         const part = o.userData.part as string | undefined;
-        if (part) parts[part] = { diameter: o.userData.diameter as number | undefined, visible: o.visible };
+        if (part) {
+          let visible = o.visible;
+          for (let p = o.parent; p && visible; p = p.parent) visible = p.visible;
+          parts[part] = { diameter: o.userData.diameter as number | undefined, visible };
+          if (part === "mini") {
+            const b = new Box3().setFromObject(o);
+            parts[part].bounds = { min: b.min.toArray(), max: b.max.toArray() };
+          }
+        }
+        if (o.userData.rim && ring === null) {
+          const m = (o as Mesh).material as MeshStandardMaterial;
+          ring = `#${m.color.getHexString()}`;
+          opacity = m.opacity;
+        }
       });
-      return { modes: boardDiag.tokenModes.get(id) ?? null, hp: hpBarState.get(id) ?? null, parts };
+      return {
+        modes: boardDiag.tokenModes.get(id) ?? null,
+        hp: hpBarState.get(id) ?? null,
+        parts,
+        ring,
+        opacity,
+        position: obj.position.toArray(),
+      };
+    });
+    /** Renders the real HP bar shader into a strip and reads its middle row back (AC-TOK-05). */
+    provideTestHook("renderHpBar", (v: { frac: number; temp: number; ghost: number }, w?: number) => {
+      const width = w ?? 400;
+      const mat = createHpBarMaterial();
+      setHpBar(mat, { ...v, opacity: 1 }, useSettings.getState().colorBlind);
+      const strip = new Scene();
+      const geo = new PlaneGeometry(2, 1);
+      strip.add(new Mesh(geo, mat));
+      const cam = new OrthographicCamera(-1, 1, 0.5, -0.5, 0.1, 10);
+      cam.position.z = 1;
+      const rt = new WebGLRenderTarget(width, 10);
+      rt.texture.colorSpace = SRGBColorSpace;
+      const prev = gl.getRenderTarget();
+      const clear = gl.getClearColor(new Color());
+      const alpha = gl.getClearAlpha();
+      gl.setRenderTarget(rt);
+      gl.setClearColor(0x000000, 0);
+      gl.clear();
+      gl.render(strip, cam);
+      const buf = new Uint8Array(width * 4);
+      gl.readRenderTargetPixels(rt, 0, 5, width, 1, buf);
+      gl.setRenderTarget(prev);
+      gl.setClearColor(clear, alpha);
+      rt.dispose();
+      geo.dispose();
+      mat.dispose();
+      return Array.from({ length: width }, (_, i) => [buf[i * 4], buf[i * 4 + 1], buf[i * 4 + 2]]);
     });
     provideTestHook("forceFrameMs", (ms: number | null) => {
       TierGovernor.forcedMs = ms;

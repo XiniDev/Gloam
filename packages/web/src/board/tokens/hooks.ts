@@ -4,13 +4,13 @@ import { Box3, type Group, type Mesh, type Texture, Vector3 } from "three";
 import type { GLTF } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js";
 import { assetMeta, pickImageVariant } from "../../net/assets.ts";
-import { type AssetItem, useLibrary } from "../../state/library.ts";
+import { type AssetRender, useLibrary } from "../../state/library.ts";
 import { acquireGlb, acquireTexture } from "../resources.ts";
 
-/** An asset's description, kept current when the Library changes it (e.g. mini overrides). */
-export function useAssetMeta(id: string | undefined): AssetItem | null {
-  const live = useLibrary((s) => (id ? s.assets.get(id) : undefined));
-  const [meta, setMeta] = useState<AssetItem | null>(null);
+/** An asset's render view, kept current when it changes (e.g. a mini's overrides, pushed to every client). */
+export function useAssetMeta(id: string | undefined): AssetRender | null {
+  const live = useLibrary((s) => (id ? s.renders.get(id) : undefined));
+  const [meta, setMeta] = useState<AssetRender | null>(null);
   useEffect(() => {
     if (!id) {
       setMeta(null);
@@ -28,7 +28,7 @@ export function useAssetMeta(id: string | undefined): AssetItem | null {
 }
 
 /** A shared texture for a token image (one per asset + variant; refcounted). */
-export function useAssetTexture(meta: AssetItem | null, maxSize: number): Texture | null {
+export function useAssetTexture(meta: AssetRender | null, maxSize: number): Texture | null {
   const [tex, setTex] = useState<Texture | null>(null);
   const variant = meta && meta.cls === "image" ? pickImageVariant(meta, maxSize)?.name : undefined;
   const id = meta?.id;
@@ -68,7 +68,7 @@ export interface MiniInstance {
  * asset, AC-TOK-10), normalised at display time — grounded, centred on its base, facing +Z, scaled to the size
  * category's height — using the processor's bounds when present (AC-TOK-03).
  */
-export function useMini(meta: AssetItem | null, size: Size): MiniInstance | null {
+export function useMini(meta: AssetRender | null, size: Size): MiniInstance | null {
   const [inst, setInst] = useState<MiniInstance | null>(null);
   const id = meta && meta.cls === "model" ? meta.id : undefined;
   // Keyed by value: Library updates replace the object even when the bounds are unchanged.

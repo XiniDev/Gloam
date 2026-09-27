@@ -6,6 +6,7 @@ import {
   type Object3D,
   SRGBColorSpace,
   Texture,
+  TextureLoader,
 } from "three";
 import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
 import { type GLTF, GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
@@ -112,6 +113,12 @@ async function gltfLoader(): Promise<GLTFLoader> {
   if (!loader) {
     await MeshoptDecoder.ready;
     loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
+    // Embedded GLB textures: three.js would fetch() the blob: URL it makes for each image (ImageBitmapLoader),
+    // which our CSP forbids (connect-src 'self', SPEC §22.4); an image element loads it under img-src blob:.
+    loader.register((parser) => {
+      parser.textureLoader = new TextureLoader(parser.options.manager);
+      return { name: "gloam_image_element_textures" };
+    });
   }
   return loader;
 }

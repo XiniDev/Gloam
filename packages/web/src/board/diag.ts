@@ -12,7 +12,7 @@ export const boardDiag: {
   } | null;
   postfx: { bloom: boolean; ao: boolean; smaa: boolean; composer: boolean };
   firstFrameAt: number | null;
-  tokenModes: Map<string, { mode: string; coin: number; standee: number }>;
+  tokenModes: Map<string, { at: number; mode: string; coin: number; standee: number }>;
   /** The image map's plane on the table in feet (1 unit = 1 ft, AC-BRD-01), once its texture is shown. */
   mapWorld: { w: number; h: number } | null;
   /** Dust motes on the board (tier count; 0 on Low). */

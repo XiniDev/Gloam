@@ -29,6 +29,11 @@ export class HpGhost {
     return this.value(now);
   }
 
+  /** When the current drain began (performance.now()), or 0 when none is running. */
+  get startedAt(): number {
+    return this.start;
+  }
+
   value(now: number): number {
     if (!this.start) return this.frac;
     const t = now - this.start;

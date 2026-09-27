@@ -14,6 +14,7 @@ import {
 } from "@gloam/shared/protocol";
 import { type PrepSnapshot, Presence, Table, type TableState } from "@gloam/shared/state";
 import { z } from "zod";
+import { renderDto } from "../assets/service.ts";
 import { LibraryQuery } from "../assets/types.ts";
 import { type CommandActor, CommandBus, type CommitInfo } from "../engine/commandBus.ts";
 import { CampaignModel } from "../engine/model.ts";
@@ -300,7 +301,11 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
     if (assetIds.size) this.notifyAssets([...assetIds], info.type);
   }
 
-  /** Library updates: DMs see every change; an uploader sees changes to their own uploads (e.g. approval). */
+  /**
+   * Library updates: DMs see every change; an uploader sees changes to their own uploads (e.g. approval). Everyone
+   * else gets only the render view of approved assets (`asset.render`), and only when it changed — a new override on
+   * a mini re-scales it on every board at once, while renames and tags stay the DM's business.
+   */
   private notifyAssets(ids: string[], type: string): void {
     const svc = roomCtx().assets;
     for (const id of ids) {
@@ -312,8 +317,19 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
         const role = (c.auth as ClientAuth).role;
         if (role !== "admin" && role !== "dm") c.send("asset.changed", { asset: dto });
       }
+      const view = dto.status === "approved" && !dto.deleted ? renderDto(dto) : null;
+      const json = view ? JSON.stringify(view) : "";
+      if (!view || this.renderSent.get(id) === json) continue;
+      this.renderSent.set(id, json);
+      for (const c of this.clients) {
+        const auth = c.auth as ClientAuth | undefined;
+        if (!auth || auth.role === "admin" || auth.role === "dm" || auth.userId === dto.uploaderId) continue;
+        c.send("asset.render", { asset: view });
+      }
     }
   }
+  /** The last render view sent to players per asset (only real changes go out). */
+  private readonly renderSent = new Map<string, string>();
 
   /** How many tokens and scenes use each asset (Library "usage count", SPEC §8.16). */
   assetUsage(): Map<string, number> {

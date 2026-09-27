@@ -37,6 +37,15 @@ export interface AssetItem {
   usage?: number;
 }
 
+/**
+ * What drawing an asset needs (the server's render view): players only ever get this — no name, tags or uploader.
+ * A full AssetItem (DMs, and a player's own uploads) is a superset.
+ */
+export type AssetRender = Pick<
+  AssetItem,
+  "id" | "purpose" | "cls" | "width" | "height" | "dominant" | "overrides" | "variants"
+> & { glb?: { bounds: NonNullable<AssetItem["glb"]>["bounds"]; animations: string[] } };
+
 export interface SceneListItem {
   id: string;
   name: string;
@@ -57,18 +66,31 @@ interface LibraryStore {
   /** Everything this client has seen, keyed by id (lists, notifications, uploads). */
   assets: Map<string, AssetItem>;
   scenes: SceneListItem[];
+  /** Render views of every asset this client has seen (kept current by asset.changed / asset.render). */
+  renders: Map<string, AssetRender>;
   upsert(items: AssetItem[]): void;
+  upsertRenders(items: AssetRender[]): void;
   remove(ids: string[]): void;
   setScenes(s: SceneListItem[]): void;
 }
 
 export const useLibrary = create<LibraryStore>((set, get) => ({
   assets: new Map(),
+  renders: new Map(),
   scenes: [],
   upsert(items) {
     const m = new Map(get().assets);
-    for (const a of items) m.set(a.id, a);
-    set({ assets: m });
+    const r = new Map(get().renders);
+    for (const a of items) {
+      m.set(a.id, a);
+      r.set(a.id, a);
+    }
+    set({ assets: m, renders: r });
+  },
+  upsertRenders(items) {
+    const r = new Map(get().renders);
+    for (const a of items) r.set(a.id, a);
+    set({ renders: r });
   },
   remove(ids) {
     const m = new Map(get().assets);

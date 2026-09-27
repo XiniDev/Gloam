@@ -61,6 +61,29 @@ export interface AssetDto {
   usage?: number;
 }
 
+/**
+ * What a player's client needs to draw an asset — nothing about who uploaded it, what it's called or how it's
+ * tagged (a DM's "Lich reveal — act 3" must not spoil itself through a token's asset id).
+ */
+export type AssetRenderDto = Pick<
+  AssetDto,
+  "id" | "purpose" | "cls" | "width" | "height" | "dominant" | "overrides" | "variants"
+> & { glb?: { bounds: NonNullable<ProcessMeta["glb"]>["bounds"]; animations: string[] } };
+
+export function renderDto(d: AssetDto): AssetRenderDto {
+  return {
+    id: d.id,
+    purpose: d.purpose,
+    cls: d.cls,
+    width: d.width,
+    height: d.height,
+    dominant: d.dominant,
+    overrides: d.overrides,
+    variants: d.variants,
+    ...(d.glb ? { glb: { bounds: d.glb.bounds, animations: d.glb.animations } } : {}),
+  };
+}
+
 export interface LibraryFilter {
   tab?: "minis" | "tokens" | "maps" | "audio" | "handouts" | "all";
   q?: string;
@@ -355,7 +378,10 @@ export class AssetService {
     return a && f ? this.dto(a, f) : null;
   }
 
-  /** The Library listing (SPEC §8.16): DMs see everything; others see approved items plus their own uploads. */
+  /**
+   * The Library listing (SPEC §8.16): DMs see everything; everyone else sees only their own uploads (the Library is
+   * the DM's tool — players pick from what they brought, and never browse the DM's names and tags).
+   */
   list(campaignId: string, viewer: { userId: string; role: Role }, f: LibraryFilter = {}): AssetDto[] {
     const rows = this.ctx.db
       .select()
@@ -370,7 +396,7 @@ export class AssetService {
     for (const r of rows) {
       const a = CODECS.asset.fromRow(r.assets);
       if (f.trash ? a.deletedAt === null : a.deletedAt !== null) continue;
-      if (!dm && a.uploaderId !== viewer.userId && a.status !== "approved") continue;
+      if (!dm && a.uploaderId !== viewer.userId) continue;
       if (purposes && !purposes.includes(a.purpose)) continue;
       if (f.status && a.status !== f.status) continue;
       if (f.uploaderId && a.uploaderId !== f.uploaderId) continue;

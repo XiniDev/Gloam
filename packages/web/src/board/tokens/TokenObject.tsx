@@ -10,6 +10,7 @@ import {
   type Material,
   type Mesh,
   MeshStandardMaterial,
+  PlaneGeometry,
   type ShaderMaterial,
   type Texture,
   Vector3,
@@ -21,16 +22,16 @@ import { C, col, ringColorOf } from "../colors.ts";
 import { boardDiag } from "../diag.ts";
 import { disposeLater } from "../dispose.ts";
 import { CAPS_FONT } from "../fonts.ts";
-import { setAnimating } from "../frames.ts";
+import { frameDelta, setAnimating } from "../frames.ts";
 import { TIERS, useTier } from "../tiers.ts";
+import { AUTO_COIN_PITCH, crossfadeStep } from "./crossfade.ts";
 import { cylinder, plane, torus } from "./geometries.ts";
 import { hiddenBadgeTexture, initialsTexture } from "./glyphs.ts";
 import { type MiniInstance, useAssetMeta, useAssetTexture, useMini } from "./hooks.ts";
 import { createHpBarMaterial, HpGhost, setHpBar } from "./hpBar.ts";
 
 /** Pitch above which Auto mode shows the coin (SPEC §8.5, AC-TOK-11) and the crossfade time. */
-export const AUTO_COIN_PITCH = 70;
-const CROSSFADE_S = 0.2;
+
 const BASE_H = 0.14;
 const COIN_H = 0.2;
 const tmp = new Vector3();
@@ -42,7 +43,13 @@ export interface Viewer {
 }
 
 /** Live HP-bar values per token, read by the test hooks (AC-TOK-05). */
-export const hpBarState = new Map<string, { frac: number; temp: number; ghost: number }>();
+/** One plane for every token's HP bar (they differ only in their material's uniforms). */
+const HP_BAR_GEOMETRY = new PlaneGeometry(3.2, 0.32);
+
+export const hpBarState = new Map<
+  string,
+  { frac: number; temp: number; ghost: number; at: number; ghostStart: number }
+>();
 
 type ResolvedMode = "model" | "standee" | "coin" | "auto";
 
@@ -85,6 +92,10 @@ export const TokenObject = memo(function TokenObject({
   const faceTex = useAssetTexture(faceMeta, TIERS[tier].textureCap >= 8192 ? 1024 : 512);
   const size = (token.size || "medium") as Size;
   const mini = useMini(mode === "model" ? meta : null, size);
+  // Per-asset overrides (SPEC §8.5): every token using this mini gets them, on top of its own appearance tweaks.
+  const ov = meta?.cls === "model" ? meta.overrides : {};
+  const miniScale = (mini?.scale ?? 1) * token.scale * (ov.scale ?? 1);
+  const miniLift = token.offsetY + (ov.offsetY ?? 0);
 
   const root = useRef<Group>(null);
   const body = useRef<Group>(null);
@@ -157,10 +168,15 @@ export const TokenObject = memo(function TokenObject({
   useEffect(() => () => void mixer?.stopAllAction(), [mixer]);
 
   const topY =
-    mode === "model" && mini ? mini.height * token.scale : mode === "coin" ? COIN_H : standeeH + BASE_H;
+    mode === "model" && mini
+      ? mini.height * token.scale * (ov.scale ?? 1) + miniLift
+      : mode === "coin"
+        ? COIN_H
+        : standeeH + BASE_H;
 
   // ── per frame: glide to position, facing, auto crossfade, billboarding, pulse ─────────────────────────
-  useFrame((state, dt) => {
+  useFrame((state) => {
+    const dt = frameDelta();
     const g = root.current;
     if (!g) return;
     const target = tmp.set(token.pos.x, token.elevation, token.pos.y);
@@ -174,9 +190,7 @@ export const TokenObject = memo(function TokenObject({
     // Auto mode: coin above 70° pitch, standee below, crossfading over 200 ms (AC-TOK-11).
     const wantCoin =
       mode === "coin" ? 1 : mode === "auto" ? (cameraRig.pitchDeg() > AUTO_COIN_PITCH ? 1 : 0) : 0;
-    const step = dt / CROSSFADE_S;
-    coinW.current =
-      wantCoin > coinW.current ? Math.min(1, coinW.current + step) : Math.max(0, coinW.current - step);
+    coinW.current = crossfadeStep(coinW.current, wantCoin, dt);
     const cw = mode === "auto" ? coinW.current : wantCoin;
     if (coinGroup.current) coinGroup.current.visible = mode !== "model" && cw > 0.001;
     if (standeeGroup.current) {
@@ -192,6 +206,7 @@ export const TokenObject = memo(function TokenObject({
     setOpacity(baseMat, baseOpacity);
     setOpacity(rimMat, baseOpacity);
     boardDiag.tokenModes.set(token.id, {
+      at: performance.now(),
       mode,
       coin: mode === "model" ? 0 : cw,
       standee: mode === "model" ? 0 : 1 - cw,
@@ -300,6 +315,7 @@ export const TokenObject = memo(function TokenObject({
               rotation-x={Math.PI / 2}
               material={rimMat}
               geometry={torus(R * 0.97, Math.max(0.05, R * 0.045))}
+              userData={{ rim: true }}
               dispose={null}
             />
           </group>
@@ -307,9 +323,10 @@ export const TokenObject = memo(function TokenObject({
         {mode === "model" && mini ? (
           <group
             userData={{ part: "mini" }}
-            position-y={BASE_H + token.offsetY}
+            position-y={BASE_H + miniLift}
+            rotation-y={((ov.rotationYDeg ?? 0) * Math.PI) / 180}
             rotation-z={lying ? (80 * Math.PI) / 180 : 0}
-            scale={mini.scale * token.scale}
+            scale={miniScale}
           >
             <primitive object={mini.root} position={mini.offset} dispose={null} />
           </group>
@@ -332,6 +349,7 @@ export const TokenObject = memo(function TokenObject({
                 rotation-x={Math.PI / 2}
                 material={rimMat}
                 geometry={torus(R * 0.96, Math.max(0.05, R * 0.05))}
+                userData={{ rim: true }}
                 dispose={null}
               />
             </group>
@@ -533,7 +551,13 @@ function Overlay({
         { frac: Math.max(0, frac), temp: Math.max(0, temp), ghost: gv, opacity: fade * opacity },
         colorBlind,
       );
-      hpBarState.set(token.id, { frac: Math.max(0, frac), temp: Math.max(0, temp), ghost: gv });
+      hpBarState.set(token.id, {
+        frac: Math.max(0, frac),
+        temp: Math.max(0, temp),
+        ghost: gv,
+        at: now,
+        ghostStart: ghost.current.startedAt,
+      });
     } else hpBarState.delete(token.id);
     // The damage ghost holds and drains over ~1 s: keep drawing until it has caught up.
     if (showBar && Math.abs(gv - Math.max(0, frac)) > 1e-4) state.invalidate();
@@ -559,14 +583,23 @@ function Overlay({
             {token.name}
           </Text>
           {hidden ? (
-            <sprite position={[0, 1.25, 0]} scale={[0.62, 0.62, 0.62]} raycast={() => null}>
+            <sprite
+              position={[0, 1.25, 0]}
+              scale={[0.62, 0.62, 0.62]}
+              raycast={() => null}
+              userData={{ part: "hiddenBadge" }}
+            >
               <spriteMaterial map={hiddenBadgeTexture()} depthTest={false} transparent />
             </sprite>
           ) : null}
           {showBar ? (
-            <mesh material={bar as ShaderMaterial} renderOrder={20} raycast={() => null}>
-              <planeGeometry args={[3.2, 0.32]} />
-            </mesh>
+            <mesh
+              material={bar as ShaderMaterial}
+              geometry={HP_BAR_GEOMETRY}
+              renderOrder={20}
+              raycast={() => null}
+              dispose={null}
+            />
           ) : null}
           {showNumbers && nums ? (
             <Text

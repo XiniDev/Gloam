@@ -7,7 +7,7 @@ import { GloamError } from "@gloam/shared/protocol";
 import busboy from "busboy";
 import type { Express, Request, Response } from "express";
 import { z } from "zod";
-import { cleanName, type Uploader } from "../../assets/service.ts";
+import { cleanName, renderDto, type Uploader } from "../../assets/service.ts";
 import { PROFILE_CAP, PURPOSE_PROFILES, PURPOSES, type Purpose, streamCap } from "../../assets/types.ts";
 import type { ServerContext } from "../../context.ts";
 import type { Role } from "../../services/campaigns.ts";
@@ -255,7 +255,12 @@ export function assetRoutes(app: Express, ctx: ServerContext): void {
         });
       const dto = readable ? ctx.assets.dtoById(id) : null;
       if (!dto) throw new GloamError("NOT_FOUND");
-      ok(res, dto);
+      // The full record for the Admin, the campaign's DMs and the uploader; everyone else gets what drawing needs.
+      const full =
+        a.session.kind === "admin" ||
+        dto.uploaderId === a.user.id ||
+        ctx.campaigns.membership((asset as { campaignId: string }).campaignId, a.user.id) === "dm";
+      ok(res, full ? dto : renderDto(dto));
     }),
   );
 

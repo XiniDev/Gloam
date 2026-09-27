@@ -98,7 +98,9 @@ export function Dialog({
             aria-modal="true"
             aria-labelledby={titleId}
             aria-describedby={description ? descId : undefined}
-            className={`relative w-full max-w-[calc(100vw-32px)] overflow-hidden ${parchment ? "parchment" : "panel"}`}
+            // Never taller than the screen: the title and the buttons stay put and the body scrolls (short
+            // laptop screens, phones in landscape).
+            className={`relative flex max-h-[calc(100dvh-32px)] w-full max-w-[calc(100vw-32px)] flex-col overflow-hidden ${parchment ? "parchment" : "panel"}`}
             style={{ width }}
             initial={{ y: 14, scale: 0.98, opacity: 0 }}
             animate={{ y: 0, scale: 1, opacity: 1 }}
@@ -106,7 +108,7 @@ export function Dialog({
             transition={{ type: "spring", stiffness: 380, damping: 34 }}
           >
             <Filigree tone={parchment ? "ink" : "brass"} />
-            <div className="flex items-start justify-between gap-4 px-6 pt-6">
+            <div className="flex shrink-0 items-start justify-between gap-4 px-6 pt-6">
               <div className="min-w-0">
                 <h2 id={titleId} className={`text-22 ${parchment ? "text-paper-ink" : "text-bone"}`}>
                   {title}
@@ -126,9 +128,13 @@ export function Dialog({
                 </IconButton>
               ) : null}
             </div>
-            {children ? <div className="px-6 pb-2 pt-4">{children}</div> : null}
+            {children ? (
+              <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-2 pt-4">{children}</div>
+            ) : null}
             {footer ? (
-              <div className="flex flex-wrap items-center justify-end gap-2 px-6 pb-6 pt-4">{footer}</div>
+              <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 px-6 pb-6 pt-4">
+                {footer}
+              </div>
             ) : null}
           </motion.div>
         </motion.div>

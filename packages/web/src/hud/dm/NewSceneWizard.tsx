@@ -2,7 +2,7 @@ import { Box, Image as ImageIcon, Layers, Library, Square } from "lucide-react";
 import { type ReactElement, useEffect, useState } from "react";
 import { FLOOR_LABELS } from "../../board/floors.ts";
 import type { FloorStyle } from "../../board/scene.ts";
-import { assetMeta } from "../../net/assets.ts";
+import { assetDetails } from "../../net/assets.ts";
 import { openPrep, request } from "../../net/table.ts";
 import type { AssetItem } from "../../state/library.ts";
 import { Button } from "../../ui/Button.tsx";
@@ -121,7 +121,7 @@ export function NewSceneWizard({
     setFtPerPx(5 / 70);
     if (initialAssetId) {
       setSource("library");
-      void assetMeta(initialAssetId).then((a) => {
+      void assetDetails(initialAssetId).then((a) => {
         if (a) picked(a);
       });
     }

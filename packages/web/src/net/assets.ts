@@ -1,4 +1,4 @@
-import type { AssetItem } from "../state/library.ts";
+import type { AssetItem, AssetRender } from "../state/library.ts";
 import { useLibrary } from "../state/library.ts";
 
 /**
@@ -32,31 +32,43 @@ export function fetchAsset(url: string, signal?: AbortSignal): Promise<Response>
   });
 }
 
-const metaCache = new Map<string, Promise<AssetItem | null>>();
+const metaCache = new Map<string, Promise<AssetRender | null>>();
 
-/** The asset's description (variants, sizes, mini bounds); null if it's gone or not readable. */
-export function assetMeta(id: string): Promise<AssetItem | null> {
-  const known = useLibrary.getState().assets.get(id);
+/**
+ * The asset's render view (variants, sizes, mini bounds, overrides); null if it's gone or not readable. DMs and a
+ * player's own uploads come back as the full record, which also lands in the Library.
+ */
+export function assetMeta(id: string): Promise<AssetRender | null> {
+  const known = useLibrary.getState().renders.get(id);
   if (known) return Promise.resolve(known);
   let p = metaCache.get(id);
   if (!p) {
     p = fetch(`/api/assets/${id}`, { credentials: "same-origin" })
-      .then(async (r) => (r.ok ? ((await r.json()) as { data: AssetItem }).data : null))
+      .then(async (r) => (r.ok ? ((await r.json()) as { data: AssetRender | AssetItem }).data : null))
       .catch(() => null);
     metaCache.set(id, p);
     void p.then((a) => {
-      if (a) useLibrary.getState().upsert([a]);
-      else metaCache.delete(id);
+      if (!a) metaCache.delete(id);
+      else if ("name" in a) useLibrary.getState().upsert([a as AssetItem]);
+      else useLibrary.getState().upsertRenders([a]);
     });
   }
   return p;
+}
+
+/** The full record (DM tools): the Library's copy, or a fresh fetch. */
+export async function assetDetails(id: string): Promise<AssetItem | null> {
+  const known = useLibrary.getState().assets.get(id);
+  if (known) return known;
+  const a = await assetMeta(id);
+  return a && "name" in a ? (a as AssetItem) : null;
 }
 
 /**
  * The largest image variant that fits `maxSize` on its long edge (the device's MAX_TEXTURE_SIZE and the tier's
  * cap, AC-BRD-06); the smallest one if none fits.
  */
-export function pickImageVariant(asset: Pick<AssetItem, "variants">, maxSize: number) {
+export function pickImageVariant(asset: Pick<AssetRender, "variants">, maxSize: number) {
   const sized = asset.variants
     .filter((v) => v.width && v.height)
     .sort((a, b) => Math.max(b.width ?? 0, b.height ?? 0) - Math.max(a.width ?? 0, a.height ?? 0));

@@ -5,7 +5,7 @@ import { prefersReducedMotion, useSettings } from "../state/settings.ts";
 import { C, col } from "./colors.ts";
 import { boardDiag } from "./diag.ts";
 import { disposeLater } from "./dispose.ts";
-import { setAmbient } from "./frames.ts";
+import { frameDelta, setAmbient } from "./frames.ts";
 import { keyLightDirection } from "./Lighting.tsx";
 import { type Bounds, boundsCenter, boundsSize } from "./scene.ts";
 
@@ -112,11 +112,11 @@ export function DustMotes({ bounds, count }: { bounds: Bounds; count: number }) 
     return () => setAmbient("dust", false);
   }, [points, still]);
 
-  useFrame((_s, dt) => {
+  useFrame(() => {
     if (!points || still) return;
-    // Rendered time, clamped: an idle pause (on-demand rendering) doesn't make the motes jump.
+    // Rendered time: an idle pause (on-demand rendering) doesn't make the motes jump.
     const u = (points.material as ShaderMaterial).uniforms.uTime as { value: number };
-    u.value += Math.min(dt, 0.05);
+    u.value += frameDelta();
   });
 
   return points ? <primitive object={points} /> : null;

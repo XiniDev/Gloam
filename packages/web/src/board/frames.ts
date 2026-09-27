@@ -66,3 +66,14 @@ export function takePacedFrame(): boolean {
   pacedFrame = false;
   return p;
 }
+
+/**
+ * The animation step for this frame. With on-demand rendering the first frame after an idle pause would carry the
+ * whole pause as its delta, and every dt-driven animation (token glides, the auto crossfade, idle minis) would jump
+ * to its end; that frame gets a nominal 1/60 s instead. Continuous frames use their real time (capped at 250 ms).
+ */
+let delta = 1 / 60;
+export const frameDelta = (): number => delta;
+export function setFrameDelta(dt: number, continuous: boolean): void {
+  delta = continuous ? Math.min(dt, 0.25) : 1 / 60;
+}

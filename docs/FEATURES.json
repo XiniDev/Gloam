@@ -371,10 +371,10 @@
       "code": "TOK",
       "phase": "P2",
       "text": "Tokens support 3D model, standee, coin and auto modes; switching is immediate and persisted.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p2-tokens.spec.ts › AC-TOK-01: through the radial Look ring an image token switches coin → standee → auto and a GLB token coin ↔ 3D model, each showing within 2 s (parts visible per mode); after a reload the modes are as left",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T17:02:27.644Z"
     },
     {
       "id": "AC-TOK-02",
@@ -382,10 +382,10 @@
       "code": "TOK",
       "phase": "P2",
       "text": "Base diameters follow size (2.5 / 5 / 5 / 10 / 15 / 20 ft) or a custom value; the base ring shows the owner colour or the disposition colour.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p2-tokens.spec.ts › AC-TOK-02: base/coin diameters tiny 2.5, small 5, medium 5, large 10, huge 15, gargantuan 20 and a custom 7.5 ft; rims read hostile/neutral/friendly disposition colours and the owner's player colour for a party token",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T17:02:27.715Z"
     },
     {
       "id": "AC-TOK-03",
@@ -393,10 +393,10 @@
       "code": "TOK",
       "phase": "P2",
       "text": "Uploaded GLB minis are automatically grounded, centred, oriented and scaled to their size category, with per-asset overrides that persist.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p2-tokens.spec.ts › AC-TOK-03: a 2-unit GLB floating from y −1 stands 5.5 ft tall on its base, centred on the token; asset overrides (scale 1.5, lift 0.5) re-scale it live and persist across a reload · server: assets.test.ts AC-TOK-03 (server), asset privacy test (override changes pushed to players as render views)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T17:02:27.784Z"
     },
     {
       "id": "AC-TOK-04",
@@ -415,10 +415,10 @@
       "code": "TOK",
       "phase": "P2",
       "text": "Damage animates a trailing ghost segment (400 ms hold, 600 ms drain); temp HP is a separate segment; a tick marks 50% HP.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p2-tokens.spec.ts › AC-TOK-05: after damage every rendered frame's ghost matches a 400 ms hold then a linear 600 ms drain from the drain's start; the real bar shader rendered offscreen shows the verdigris fill, the ice temp-HP segment after it, a dark tick at 50 % of max HP, the brass fill + ghost segment + empty track",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T17:02:27.855Z"
     },
     {
       "id": "AC-TOK-06",
@@ -426,10 +426,10 @@
       "code": "TOK",
       "phase": "P2",
       "text": "Right-click or long-press opens a radial menu containing only actions the viewer is permitted to perform.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p2-tokens.spec.ts › AC-TOK-06: right-click radial: DM gets Elevation/Facing/Look/Hide/Lock/Duplicate/Delete (Reveal on hidden); the owner Elevation/Facing/Look; a locked token leaves its owner only Look; another player's token opens nothing; number keys pick slices (Up 5 ft raised it); a touch long-press opens it",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T17:02:27.922Z"
     },
     {
       "id": "AC-TOK-07",
@@ -448,10 +448,10 @@
       "code": "TOK",
       "phase": "P2",
       "text": "DM-hidden tokens render at 40% opacity with an eye-slash badge for DMs and are never present in any player's state.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p2-tokens.spec.ts › AC-TOK-08: the DM's hidden token renders at 40 % opacity with the eye-slash badge; the player's board and state never hold it · server: board.test.ts AC-TOK-08 (state and raw WebSocket frames)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T17:02:27.991Z"
     },
     {
       "id": "AC-TOK-09",
@@ -459,10 +459,10 @@
       "code": "TOK",
       "phase": "P2",
       "text": "The Quick Unit dialog creates a sheetless unit with arbitrary values in one submit.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p2-tokens.spec.ts › AC-TOK-09: Quick unit (toolbar) with name, neutral, huge, HP 123/150, AC 17, walk 25, fly 60 + hover, darkvision 120, tremorsense 30 → one Place unit creates a sheetless unit with exactly those values",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T17:02:28.059Z"
     },
     {
       "id": "AC-TOK-10",
@@ -470,10 +470,10 @@
       "code": "TOK",
       "phase": "P2",
       "text": "Twenty tokens using the same GLB share geometry and materials (renderer memory info shows one geometry set, not twenty).",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p2-tokens.spec.ts › AC-TOK-10: 20 tokens of one GLB use 1 geometry and 1 material between them; the renderer's geometry count grows by the same 38 for 19 more minis as for 19 more plain coins (overlays only)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T17:02:28.128Z"
     },
     {
       "id": "AC-TOK-11",
@@ -481,10 +481,10 @@
       "code": "TOK",
       "phase": "P2",
       "text": "Auto mode crossfades between coin and standee at a camera pitch of 70°.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p2-tokens.spec.ts › AC-TOK-11: auto token is a standee at 69° and a coin at 71°; rendered frames of the fade rise at 5/s (1 per 200 ms) · packages/web/src/board/tokens/crossfade.test.ts (200 ms at any frame rate; first frame after idle steps 1/60 s)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T17:02:28.198Z"
     },
     {
       "id": "AC-TOK-12",

@@ -20,7 +20,7 @@ import { C } from "./colors.ts";
 import { DustMotes } from "./DustMotes.tsx";
 import { boardDiag } from "./diag.ts";
 import { setupText } from "./fonts.ts";
-import { scheduleAmbientFrame, takePacedFrame, wake, wantsNextFrame } from "./frames.ts";
+import { scheduleAmbientFrame, setFrameDelta, takePacedFrame, wake, wantsNextFrame } from "./frames.ts";
 import { Lighting } from "./Lighting.tsx";
 import { MapAlignGizmo } from "./map/MapAlignGizmo.tsx";
 import { MapLayer } from "./map/MapLayer.tsx";
@@ -83,6 +83,7 @@ function TierSetup() {
     // On-demand frames: a frame measures rendering cost only if the previous one asked for it straight away (a
     // continuous run) — however long it took. A frame after an idle pause, or one paced for ambient motion, doesn't.
     const paced = takePacedFrame();
+    setFrameDelta(dt, continuing.current || paced);
     if (!paced && continuing.current) governor.tick(dt);
     continuing.current = wantsNextFrame(now);
     if (continuing.current) state.invalidate();
