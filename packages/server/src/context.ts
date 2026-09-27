@@ -1,4 +1,5 @@
 import type { Server as HttpServer } from "node:http";
+import type { AssetService } from "./assets/service.ts";
 import type { AdminAuth } from "./auth/admin.ts";
 import type { SecretBox } from "./auth/crypto.ts";
 import type { InviteService } from "./auth/invites.ts";
@@ -53,6 +54,8 @@ export interface ServerContext {
   tunnel: TunnelManager;
   table: TableService;
   people: PeopleService;
+  /** Uploads, the processor child process, serving and purges (SPEC §21). */
+  assets: AssetService;
   rooms: RoomRegistry;
   limits: Limits;
   http: HttpControl;

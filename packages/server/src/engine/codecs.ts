@@ -75,6 +75,24 @@ export interface ContentEntity {
   updatedAt: number;
 }
 
+/** A campaign's reference to a stored file (the Library item). Files themselves live in asset_files (§21). */
+export interface AssetEntity {
+  id: string;
+  campaignId: string;
+  fileId: string;
+  name: string;
+  purpose: string;
+  tags: string[];
+  uploaderId: string;
+  status: "pending" | "approved" | "rejected";
+  createdAt: number;
+  reviewedBy: string | null;
+  reviewedAt: number | null;
+  deletedAt: number | null;
+  /** Minis: display overrides that persist per asset (AC-TOK-03). */
+  overrides: { scale?: number; rotationYDeg?: number; offsetY?: number };
+}
+
 export interface EntityMap {
   campaign: CampaignEntity;
   scene: SceneEntity;
@@ -88,6 +106,7 @@ export interface EntityMap {
   handout: HandoutEntity;
   template: TemplateEntity;
   content: ContentEntity;
+  asset: AssetEntity;
 }
 
 type Row = Record<string, unknown>;
@@ -502,6 +521,39 @@ export const CODECS: { [K in EntityKind]: Codec<K> } = {
       createdBy: r.createdBy as string,
       createdAt: r.createdAt as number,
       updatedAt: r.updatedAt as number,
+    }),
+  },
+  asset: {
+    table: t.assets,
+    toRow: (e) => ({
+      id: e.id,
+      campaignId: e.campaignId,
+      fileId: e.fileId,
+      name: e.name,
+      purpose: e.purpose,
+      tagsJson: j(e.tags),
+      uploaderId: e.uploaderId,
+      status: e.status,
+      createdAt: e.createdAt,
+      reviewedBy: e.reviewedBy,
+      reviewedAt: e.reviewedAt,
+      deletedAt: e.deletedAt,
+      overridesJson: j(e.overrides),
+    }),
+    fromRow: (r) => ({
+      id: r.id as string,
+      campaignId: r.campaignId as string,
+      fileId: r.fileId as string,
+      name: r.name as string,
+      purpose: r.purpose as string,
+      tags: p(r.tagsJson, [] as string[]),
+      uploaderId: r.uploaderId as string,
+      status: r.status as AssetEntity["status"],
+      createdAt: r.createdAt as number,
+      reviewedBy: (r.reviewedBy as string | null) ?? null,
+      reviewedAt: (r.reviewedAt as number | null) ?? null,
+      deletedAt: (r.deletedAt as number | null) ?? null,
+      overrides: p(r.overridesJson, {}),
     }),
   },
 };

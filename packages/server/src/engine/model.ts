@@ -33,6 +33,7 @@ export class CampaignModel {
       handout: new Map(),
       template: new Map(),
       content: new Map(),
+      asset: new Map(),
     };
     this.sceneIndex = {
       wall: new Map(),
@@ -77,6 +78,8 @@ export class CampaignModel {
       m.put("template", CODECS.template.fromRow(r));
     for (const r of db.select().from(t.content).where(eq(t.content.campaignId, campaignId)).all())
       m.put("content", CODECS.content.fromRow(r));
+    for (const r of db.select().from(t.assets).where(eq(t.assets.campaignId, campaignId)).all())
+      m.put("asset", CODECS.asset.fromRow(r));
     void isNull;
     return m;
   }

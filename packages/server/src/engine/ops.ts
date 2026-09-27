@@ -13,7 +13,8 @@ export type EntityKind =
   | "combat"
   | "handout"
   | "template"
-  | "content";
+  | "content"
+  | "asset";
 
 export interface Rect {
   x: number;

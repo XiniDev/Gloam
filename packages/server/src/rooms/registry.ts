@@ -1,4 +1,6 @@
 import type { KnockCard } from "@gloam/shared/protocol";
+import type { CommandBus } from "../engine/commandBus.ts";
+import type { CampaignModel } from "../engine/model.ts";
 
 /** What services need from the lobby room (kept narrow to avoid import cycles). */
 export interface LobbyRoomApi {
@@ -16,6 +18,9 @@ export interface LobbyRoomApi {
 /** What services need from a table room. */
 export interface TableRoomApi {
   campaignId: string;
+  /** The campaign's in-memory model and command bus (type-only here: no runtime import cycle). */
+  model: CampaignModel;
+  bus: CommandBus;
   /** Sends to every connected client whose role is admin/dm (knock cards, approvals). */
   toDms(type: string, payload: unknown): void;
   broadcastAll(type: string, payload: unknown): void;

@@ -55,6 +55,8 @@ export interface Config {
   };
   /** Interval between automatic snapshots while the table is open (SPEC §20.3: 10 minutes). */
   autoSnapshotMs: number;
+  /** Asset processor limits; tests shorten them to exercise the kill paths quickly (SPEC §21.1 step 5). */
+  processor: { timeoutMs?: Partial<Record<"image" | "model" | "audio", number>>; rssLimit?: number };
 }
 
 export class ConfigError extends Error {}
@@ -89,6 +91,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, overrides: Part
     consoleLog: e.NODE_ENV !== "test",
     tunnel: {},
     autoSnapshotMs: 10 * 60_000,
+    processor: {},
     ...overrides,
   };
 }

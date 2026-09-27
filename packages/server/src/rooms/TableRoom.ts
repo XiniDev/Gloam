@@ -13,6 +13,7 @@ import {
 } from "@gloam/shared/protocol";
 import { type PrepSnapshot, Presence, Table, type TableState } from "@gloam/shared/state";
 import { z } from "zod";
+import { LibraryQuery } from "../assets/types.ts";
 import { type CommandActor, CommandBus, type CommitInfo } from "../engine/commandBus.ts";
 import { CampaignModel } from "../engine/model.ts";
 import { ALL_COMMANDS, COMMAND_RATES, registerCommands } from "../engine/registry.ts";
@@ -135,6 +136,12 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
       "prep.close": def(z.strictObject({}), MESSAGE_RATES["prep.close"], ({ client, auth }) => {
         this.requireDm(auth);
         this.prepSubs.delete(client);
+      }),
+      "asset.list": def(LibraryQuery, MESSAGE_RATES["asset.list"], ({ auth }, p) => {
+        const usage = this.assetUsage();
+        return roomCtx()
+          .assets.list(this.campaignId, { userId: auth.userId, role: auth.role }, p)
+          .map((a) => ({ ...a, usage: usage.get(a.id) ?? 0 }));
       }),
       "scene.list": def(z.strictObject({}), MESSAGE_RATES["scene.list"], ({ auth }) => {
         this.requireDm(auth);
@@ -277,6 +284,38 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
     }
     if (info.ops.some((o) => o.k !== "fog" && o.k !== "sheet" && o.e === "scene"))
       this.toDms("scene.list", this.sceneList());
+    const assetIds = new Set<string>();
+    for (const o of info.ops) if (o.k !== "fog" && o.k !== "sheet" && o.e === "asset") assetIds.add(o.id);
+    if (assetIds.size) this.notifyAssets([...assetIds], info.type);
+  }
+
+  /** Library updates: DMs see every change; an uploader sees changes to their own uploads (e.g. approval). */
+  private notifyAssets(ids: string[], type: string): void {
+    const svc = roomCtx().assets;
+    for (const id of ids) {
+      const dto = svc.dtoById(id);
+      if (!dto) continue;
+      this.toDms("asset.changed", { asset: dto });
+      if (type === "asset.register" && dto.status === "pending") this.toDms("asset.pending", { asset: dto });
+      for (const c of this.clientsByUser.get(dto.uploaderId) ?? []) {
+        const role = (c.auth as ClientAuth).role;
+        if (role !== "admin" && role !== "dm") c.send("asset.changed", { asset: dto });
+      }
+    }
+  }
+
+  /** How many tokens and scenes use each asset (Library "usage count", SPEC §8.16). */
+  assetUsage(): Map<string, number> {
+    const n = new Map<string, number>();
+    const bump = (id: string | null | undefined) => {
+      if (id) n.set(id, (n.get(id) ?? 0) + 1);
+    };
+    for (const t of this.model.all("token")) {
+      bump(t.appearance.assetId);
+      if (t.appearance.portraitAssetId !== t.appearance.assetId) bump(t.appearance.portraitAssetId);
+    }
+    for (const s of this.model.all("scene")) if (!s.deletedAt) bump(s.mapAssetId);
+    return n;
   }
 
   actorFor(auth: ClientAuth): CommandActor {
@@ -287,6 +326,7 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
   private commandHandlers(): Record<string, MessageDef<z.ZodType>> {
     const out: Record<string, MessageDef<z.ZodType>> = {};
     for (const d of ALL_COMMANDS) {
+      if (d.internal) continue;
       out[d.type] = def(
         z.unknown(),
         COMMAND_RATES[d.type] ?? { capacity: 10, perSecond: 10 },

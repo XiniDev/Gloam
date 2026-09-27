@@ -49,6 +49,8 @@ export interface CommandDef<P = unknown, R = unknown> {
   type: string;
   schema: z.ZodType<P>;
   undoable: boolean;
+  /** Executed only by the server itself (e.g. the upload route); never exposed as a room message. */
+  internal?: boolean;
   authorize(ctx: CommandCtx, p: P): void;
   plan(ctx: CommandCtx, p: P): Plan<R>;
 }

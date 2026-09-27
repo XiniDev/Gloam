@@ -1735,10 +1735,10 @@
       "code": "AST",
       "phase": "P2",
       "text": "Only the listed formats are accepted, detected by content; everything else is rejected with a readable reason.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/assets.test.ts › AC-AST-01: PNG/JPEG/WebP/GIF/AVIF, GLB and WAV accepted by content under wrong extensions; SVG, archives, OBJ/FBX/STL, purpose mismatches and unknown bytes refused with readable reasons; sniffing unit tests in src/assets/sniff.test.ts",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T13:37:28.886Z"
     },
     {
       "id": "AC-AST-02",
@@ -1746,10 +1746,10 @@
       "code": "AST",
       "phase": "P2",
       "text": "Size caps and player quotas are enforced while streaming (the upload is aborted as soon as a cap is exceeded).",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/assets.test.ts › AC-AST-02: a 40 MB token upload is answered 413 at ~25 MB while still streaming (class cap chosen from the first bytes), temp file removed; lobby quota (20 MB) aborts the second 16 MB drawing mid-stream; + §22.5 10 uploads/min test",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T13:37:28.960Z"
     },
     {
       "id": "AC-AST-03",
@@ -1757,10 +1757,10 @@
       "code": "AST",
       "phase": "P2",
       "text": "Images are re-encoded with metadata stripped into variants; GLBs are validated (0 errors, no external URIs), stripped, optimised and re-validated; processing runs in a separate child process (not a worker thread) with memory and time limits, so a crash or runaway native allocation can't take the server down.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/assets.test.ts › AC-AST-03 ×3: EXIF-bearing JPEG → WebP variants 1024/512/128 with no metadata; maps 8192/4096/1024/256 never enlarged; GLB validated, cameras/lights/extras stripped, WebP textures + meshopt, re-validated 0 errors, dense mesh simplified under 100k, 16k-part kitbash refused; processing in a forked child (separate pid) — a hang (timeout), runaway native allocation (RSS watchdog) and a crash each fail one job with a reason while /api/health stays 200 and the next job runs on a fresh process",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T13:37:29.035Z"
     },
     {
       "id": "AC-AST-04",
@@ -1768,10 +1768,10 @@
       "code": "AST",
       "phase": "P2",
       "text": "Player uploads enter the approval queue; DM/Admin uploads are auto-approved; auto-approve player images works when enabled.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/assets.test.ts › AC-AST-04: player uploads pending (DMs get asset.pending), DM uploads approved, autoApproveImages approves player images only, review approve/reject (not undoable) reaches the uploader, rejected purged after 24 h",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T13:37:29.110Z"
     },
     {
       "id": "AC-AST-05",
@@ -1779,10 +1779,10 @@
       "code": "AST",
       "phase": "P2",
       "text": "Assets are served only to admitted table members, with immutable caching, fixed Content-Type, `nosniff` and a sandbox CSP.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/assets.test.ts › AC-AST-05: admitted member 200 with Content-Type from DB, Cache-Control private max-age=31536000 immutable, nosniff, CSP default-src 'none'; sandbox, CORP same-origin, ETag/304; 401 signed-out, 404 for lobby users, other players' pending uploads and path tricks; Range 206 for audio",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T13:37:29.184Z"
     },
     {
       "id": "AC-AST-06",
@@ -1801,10 +1801,10 @@
       "code": "AST",
       "phase": "P2",
       "text": "A fuzz suite of malformed files (truncated PNG, zip renamed to .glb, polyglot image, decompression bomb, GLB with an external URI, GLB with an embedded script-like extension) is rejected without crashing or hanging the server.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/assets.test.ts › AC-AST-07: truncated PNG, zip renamed .glb, PNG+ZIP and JPEG+HTML polyglots, 60 000² decompression bomb, GLB with external URI, GLB requiring an unknown script-like extension, GLB with script in JSON, random bytes, empty GLB header — each refused with a reason, server healthy after each, all within 60 s, no temp files left",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T13:37:29.258Z"
     },
     {
       "id": "AC-AUD-01",

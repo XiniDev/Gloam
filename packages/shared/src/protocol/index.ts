@@ -125,6 +125,7 @@ export const MESSAGE_RATES = {
   "prep.close": rate(2),
   "scene.list": rate(5),
   "scene.preload": rate(1),
+  "asset.list": rate(5, 15), // Library filters and search-as-you-type come in bursts
 } as const satisfies Record<string, RateSpec>;
 
 export * from "./commands.ts";

@@ -3,6 +3,7 @@ import { defineRoom, defineServer, matchMaker } from "@colyseus/core";
 import { WebSocketTransport } from "@colyseus/ws-transport";
 import { APP_NAME, APP_VERSION, LIMITS } from "@gloam/shared";
 import type express from "express";
+import { AssetService } from "./assets/service.ts";
 import { AdminAuth } from "./auth/admin.ts";
 import { SecretBox } from "./auth/crypto.ts";
 import { InviteService } from "./auth/invites.ts";
@@ -150,6 +151,7 @@ export async function startServer(opts: StartOptions = {}): Promise<GloamServer>
   });
   ctx.table = new TableService(ctx);
   ctx.people = new PeopleService(ctx);
+  ctx.assets = new AssetService(ctx);
   setRoomContext(ctx);
 
   // 4. Express + Colyseus on one origin. CORS reflection off and matchmaking restricted BEFORE listen().
@@ -190,6 +192,7 @@ export async function startServer(opts: StartOptions = {}): Promise<GloamServer>
 
   // 6. Schedulers: autosnapshots every 10 min while open, daily backup after 04:00, limiter sweeps.
   let lastAutoSnapshot = Date.now();
+  let lastPurge = 0;
   const tick = setInterval(
     async () => {
       try {
@@ -206,6 +209,11 @@ export async function startServer(opts: StartOptions = {}): Promise<GloamServer>
         ctx.limits.uploads.sweep(10 * 60_000);
         ctx.limits.matchmake.sweep(60_000);
         ctx.profiles.pinLimiter.sweep();
+        if (now - lastPurge >= 60 * 60_000) {
+          lastPurge = now;
+          const purged = ctx.assets.purge(now);
+          if (purged.references || purged.files) log.info(purged, "purged rejected uploads");
+        }
       } catch (err) {
         log.error({ err }, "scheduler tick failed");
       }
@@ -265,6 +273,7 @@ export async function startServer(opts: StartOptions = {}): Promise<GloamServer>
         }
       }
       await ctx.tunnel.stop().catch(() => {});
+      await ctx.assets.processor.stop().catch(() => {});
       try {
         await server.gracefullyShutdown(false);
       } catch (err) {

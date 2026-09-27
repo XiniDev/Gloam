@@ -502,8 +502,14 @@ export const assets = sqliteTable(
     reviewedBy: text("reviewed_by"),
     reviewedAt: integer("reviewed_at"),
     deletedAt: integer("deleted_at"),
+    /** Per-asset display overrides (minis: scale, rotation about Y, vertical offset; SPEC §8.5, AC-TOK-03). */
+    overridesJson: json("overrides_json").notNull().default("{}"),
   },
-  (t) => [index("assets_campaign_idx").on(t.campaignId), index("assets_file_idx").on(t.fileId)],
+  (t) => [
+    index("assets_campaign_idx").on(t.campaignId),
+    index("assets_file_idx").on(t.fileId),
+    index("assets_uploader_idx").on(t.uploaderId),
+  ],
 );
 
 export const handouts = sqliteTable(

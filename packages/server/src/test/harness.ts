@@ -218,3 +218,15 @@ export async function waitFor<T>(
 }
 
 export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** `room.request` that rethrows rejections with the server's code and message (the SDK's error hides them). */
+export async function rq<T = unknown>(room: Room, type: string, payload: unknown = {}): Promise<T> {
+  try {
+    return (await room.request(type, payload)) as T;
+  } catch (err) {
+    const r = (err as { reason?: { code?: string; message?: string } }).reason;
+    throw Object.assign(new Error(`${type} rejected: ${r?.code ?? "?"} ${r?.message ?? String(err)}`), {
+      reason: r,
+    });
+  }
+}
