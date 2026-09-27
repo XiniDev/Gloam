@@ -61,7 +61,7 @@ function Pending({ a, open, onOpen }: { a: AssetItem; open: boolean; onOpen: () 
           <img
             src={img}
             alt={`Upload preview: ${a.name}`}
-            className="max-h-56 w-full rounded-[4px] bg-ink-950 object-contain"
+            className="max-h-56 w-full rounded-chip bg-ink-950 object-contain"
           />
         ) : null
       ) : a.cls === "model" ? (

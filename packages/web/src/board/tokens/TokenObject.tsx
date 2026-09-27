@@ -12,11 +12,13 @@ import {
   MeshStandardMaterial,
   PlaneGeometry,
   type ShaderMaterial,
+  type SpriteMaterial,
   type Texture,
   Vector3,
 } from "three";
 import { useSettings } from "../../state/settings.ts";
 import { useUi } from "../../state/ui.ts";
+import { boardApi } from "../boardApi.ts";
 import { cameraRig } from "../CameraRig.tsx";
 import { C, col, ringColorOf } from "../colors.ts";
 import { boardDiag } from "../diag.ts";
@@ -25,6 +27,7 @@ import { CAPS_FONT } from "../fonts.ts";
 import { frameDelta, setAnimating } from "../frames.ts";
 import { TIERS, useTier } from "../tiers.ts";
 import { AUTO_COIN_PITCH, crossfadeStep } from "./crossfade.ts";
+import { overlayClear, PRIORITY, registerOverlay } from "./declutter.ts";
 import { cylinder, plane, torus } from "./geometries.ts";
 import { hiddenBadgeTexture, initialsTexture } from "./glyphs.ts";
 import { type MiniInstance, useAssetMeta, useAssetTexture, useMini } from "./hooks.ts";
@@ -34,6 +37,9 @@ import { createHpBarMaterial, HpGhost, setHpBar } from "./hpBar.ts";
 
 const BASE_H = 0.14;
 const COIN_H = 0.2;
+/** A troika text mesh (drei's <Text>): its opacities apply at render, no re-layout. */
+type TroikaText = Mesh & { fillOpacity: number; outlineOpacity: number };
+
 const tmp = new Vector3();
 const screenUp = new Vector3();
 
@@ -44,7 +50,9 @@ export interface Viewer {
 
 /** Live HP-bar values per token, read by the test hooks (AC-TOK-05). */
 /** One plane for every token's HP bar (they differ only in their material's uniforms). */
-const HP_BAR_GEOMETRY = new PlaneGeometry(3.2, 0.32);
+/** The bar is tall enough to carry its numbers (Exact mode) inside it. */
+const HP_BAR_H = 0.46;
+const HP_BAR_GEOMETRY = new PlaneGeometry(3.2, HP_BAR_H);
 
 export const hpBarState = new Map<
   string,
@@ -238,6 +246,7 @@ export const TokenObject = memo(function TokenObject({
     // The Pan tool (H): a left press anywhere, tokens included, drags the view.
     if (n.button === 0 && (useUi.getState().tool === "pan" || cameraRig.spaceHeld)) return;
     e.stopPropagation();
+    boardApi.claimedPointer = n.pointerId;
     down.current = { x: n.clientX, y: n.clientY, button: n.button, timer: null };
     if (n.button === 0) {
       useUi.getState().select([token.id], n.shiftKey ? "toggle" : "replace");
@@ -508,6 +517,10 @@ function Overlay({
   const colorBlind = useSettings((s) => s.colorBlind);
   const group = useRef<Group>(null);
   const anchor = useRef<Group>(null);
+  const nameText = useRef<TroikaText>(null);
+  const numText = useRef<TroikaText>(null);
+  const wordText = useRef<TroikaText>(null);
+  const badge = useRef<SpriteMaterial>(null);
   const bar = useMemo(() => createHpBarMaterial(), []);
   useEffect(() => () => disposeLater(bar), [bar]);
   const ghost = useRef(new HpGhost());
@@ -522,6 +535,23 @@ function Overlay({
     !showBar && token.hpDisplay === "descriptor" && token.hpBand !== HP_BAND_HIDDEN
       ? (HP_BAND_LABELS[token.hpBand as 0 | 1 | 2 | 3 | 4] ?? null)
       : null;
+
+  // Decluttering: this overlay competes for its spot on screen with its neighbours' (declutter.ts).
+  const latest = useRef({ token, viewer });
+  latest.current = { token, viewer };
+  const clear = useRef(1);
+  useEffect(() => {
+    const g = group.current;
+    if (!g) return;
+    return registerOverlay(token.id, g, () => {
+      const { token: t, viewer: v } = latest.current;
+      const ui = useUi.getState();
+      if (ui.hover === t.id) return PRIORITY.hovered;
+      if (ui.selection.includes(t.id)) return PRIORITY.selected;
+      if (t.ownerIds.includes(v.userId)) return PRIORITY.own;
+      return t.disposition === "party" ? PRIORITY.party : PRIORITY.other;
+    });
+  }, [token.id]);
 
   useFrame((state) => {
     const g = group.current;
@@ -541,16 +571,26 @@ function Overlay({
     });
     const d = state.camera.position.distanceTo(g.getWorldPosition(tmp));
     g.scale.setScalar(Math.min(3.2, Math.max(0.55, d / 42)));
-    const fade = 1 - Math.min(1, Math.max(0, (d - 260) / 80));
+    const far = 1 - Math.min(1, Math.max(0, (d - 260) / 80));
+    // Clutter fade (150 ms) toward the layout's verdict.
+    const target = overlayClear(token.id);
+    const step = frameDelta() / 0.15;
+    clear.current =
+      target > clear.current ? Math.min(1, clear.current + step) : Math.max(0, clear.current - step);
+    if (clear.current !== target) state.invalidate();
+    const fade = far * clear.current;
     g.visible = fade > 0.02;
+    const a = fade * opacity;
+    for (const t of [nameText.current, numText.current, wordText.current])
+      if (t && (t.fillOpacity !== a || t.outlineOpacity !== a)) {
+        t.fillOpacity = a;
+        t.outlineOpacity = a;
+      }
+    if (badge.current) badge.current.opacity = fade;
     const now = performance.now();
     const gv = showBar ? ghost.current.update(Math.max(0, frac), now) : 0;
     if (showBar) {
-      setHpBar(
-        bar,
-        { frac: Math.max(0, frac), temp: Math.max(0, temp), ghost: gv, opacity: fade * opacity },
-        colorBlind,
-      );
+      setHpBar(bar, { frac: Math.max(0, frac), temp: Math.max(0, temp), ghost: gv, opacity: a }, colorBlind);
       hpBarState.set(token.id, {
         frac: Math.max(0, frac),
         temp: Math.max(0, temp),
@@ -567,8 +607,9 @@ function Overlay({
   return (
     <group ref={anchor}>
       <Billboard>
-        <group ref={group}>
+        <group ref={group} userData={{ part: "overlay" }}>
           <Text
+            ref={nameText}
             font={CAPS_FONT}
             fontSize={0.52}
             letterSpacing={0.08}
@@ -576,20 +617,19 @@ function Overlay({
             outlineWidth={0.045}
             outlineColor={C.ink950}
             anchorY="bottom"
-            position={[0, 0.28, 0]}
-            fillOpacity={opacity}
+            position={[0, HP_BAR_H / 2 + 0.1, 0]}
             raycast={() => null}
           >
             {token.name}
           </Text>
           {hidden ? (
             <sprite
-              position={[0, 1.25, 0]}
+              position={[0, HP_BAR_H / 2 + 1.1, 0]}
               scale={[0.62, 0.62, 0.62]}
               raycast={() => null}
               userData={{ part: "hiddenBadge" }}
             >
-              <spriteMaterial map={hiddenBadgeTexture()} depthTest={false} transparent />
+              <spriteMaterial ref={badge} map={hiddenBadgeTexture()} depthTest={false} transparent />
             </sprite>
           ) : null}
           {showBar ? (
@@ -602,15 +642,17 @@ function Overlay({
             />
           ) : null}
           {showNumbers && nums ? (
+            // On the bar, never beside it: an overlay is never wider than its name or its bar.
             <Text
+              ref={numText}
               font={CAPS_FONT}
-              fontSize={0.36}
+              fontSize={0.3}
               color={C.bone100}
-              outlineWidth={0.04}
+              outlineWidth={0.05}
               outlineColor={C.ink950}
-              anchorX="left"
+              anchorX="center"
               anchorY="middle"
-              position={[1.75, 0, 0]}
+              position={[0, 0.005, 0.01]}
               raycast={() => null}
             >
               {`${nums.hp} / ${nums.hpMax}${nums.hpTemp ? `  +${nums.hpTemp}` : ""}`}
@@ -618,6 +660,7 @@ function Overlay({
           ) : null}
           {descriptor ? (
             <Text
+              ref={wordText}
               font={CAPS_FONT}
               fontSize={0.4}
               color={C.brass300}

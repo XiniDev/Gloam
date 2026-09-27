@@ -52,6 +52,17 @@ if (process.env.NODE_ENV === "test" && typeof process.send === "function") {
 if (process.env.NODE_ENV === "test" && typeof process.send === "function") {
   process.on("message", (m) => {
     if (m === "SIGINT" || m === "SIGTERM") process.emit(m, m);
+    // A dropped connection (AC-AUTH-07): cut a user's sockets without a close handshake, as a network loss would.
+    if (typeof m === "object" && m && (m as { type?: string }).type === "gloam:drop") {
+      const userId = (m as { userId?: string }).userId;
+      for (const room of gloam.ctx.rooms.tables.values())
+        for (const c of (
+          room as unknown as {
+            clients: Iterable<{ auth?: { userId?: string }; ref?: { terminate?(): void } }>;
+          }
+        ).clients)
+          if (c.auth?.userId === userId) c.ref?.terminate?.();
+    }
   });
 }
 process.on("uncaughtException", (err) => {

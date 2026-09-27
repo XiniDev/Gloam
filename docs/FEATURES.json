@@ -173,10 +173,10 @@
       "code": "AUTH",
       "phase": "P2",
       "text": "A dropped connection reconnects automatically within 60 s without re-approval, restoring the camera position and selection.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p2-reconnect.spec.ts › AC-AUTH-07: the server cuts Dave's socket without a close handshake; the banner shows and the client is back in ~0.5 s (< 60 s) with no knock card, still at /table; camera target/pitch/distance and the selected token unchanged; a command round-trips; after a reload the camera and selection are restored from the session",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T17:49:10.515Z"
     },
     {
       "id": "AC-AUTH-08",
@@ -217,10 +217,10 @@
       "code": "SCN",
       "phase": "P2",
       "text": "Creating a scene from an uploaded image opens calibration with the three methods; after calibration a 5-ft reference feature measures 5 ft ± 0.1 ft with the ruler.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p2-dm-tools.spec.ts › AC-SCN-01: New scene → Upload a map image opens Calibrate the map with Presets / Known distance / Map width (each sets the scale: 100 px, 40 ft→125 px, 50 ft→100 px); dragging a known line over one printed 100-px square as 5 ft calibrates to ~100 px/5 ft, and the ruler over another printed square reads 5 ft ± 0.1; the scene is built 50 ft wide",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T17:49:10.308Z"
     },
     {
       "id": "AC-SCN-02",
@@ -250,10 +250,10 @@
       "code": "SCN",
       "phase": "P2",
       "text": "A GLB map can be positioned, rotated and scaled; **Generate walls** produces editable, merged, simplified wall segments from the mesh slice.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p2-dm-tools.spec.ts › AC-SCN-04: Align 3D map (W/E/R gizmo modes, X/Z/Turn/Scale fields → scene.calibrate transform); Generate walls on a four-box room GLB yields 8 merged walls (inner 20/30 + outer 22/32 rings) turned 90° and moved (+10, +5); they are ordinary walls (delete one), Ctrl+Z restores it, the next Ctrl+Z removes all 8, Ctrl+Shift+Z brings them back; at scale 2 Replace makes 40/44/60/64 · packages/web/src/board/map/wallGen.test.ts (13) · server/test/board.test.ts grouped undo",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T17:49:10.377Z"
     },
     {
       "id": "AC-SCN-05",
@@ -1790,10 +1790,10 @@
       "code": "AST",
       "phase": "P2",
       "text": "The Library supports search, filters, tags, drag-to-board and soft delete.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p2-dm-tools.spec.ts › AC-AST-06: the DM's Library lists uploads; search 'shaman'; add tag 'boss' and filter by it; filter by uploader (Dave) and status (pending); rename; drag Owlbear onto the board → a token at the drop point; drag a map → New scene at calibration; delete → Undo toast restores; delete → Show deleted items → Restore · server: assets.test.ts AC-AST-06 (server), asset privacy test",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T17:49:10.448Z"
     },
     {
       "id": "AC-AST-07",
@@ -2406,10 +2406,10 @@
       "code": "DS",
       "phase": "P2",
       "text": "All UI colours, type sizes, spacing, radii and motion come from the tokens in §27 (no stray hex values outside the token file, enforced by a lint script).",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "tools/tokens-lib.mjs + tools/check-tokens.mjs (run by pnpm lint): no raw colours or inline font-family outside tokens.css and the 3D board, radii only rounded-chip/-control/-panel/-full or var(--radius-*), no raw type sizes, no raw durations, spacing on the 4-px grid; tools/tokens-lib.test.mjs proves each rule catches a violation and accepts token usage; the tree passes",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T17:49:10.581Z"
     },
     {
       "id": "AC-DS-02",

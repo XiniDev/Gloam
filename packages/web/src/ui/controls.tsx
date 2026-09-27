@@ -33,7 +33,7 @@ export function Toggle({
         className={`hit relative mt-0.5 inline-flex shrink-0 items-center justify-center disabled:opacity-45`}
       >
         <span
-          className={`relative block h-6 w-11 rounded-[12px] border transition-colors duration-[var(--dur-base)] ${
+          className={`relative block h-6 w-11 rounded-full border transition-colors duration-[var(--dur-base)] ${
             checked ? "border-brass-deep bg-brass-dark" : "border-line bg-ink-900"
           }`}
         >
@@ -88,7 +88,7 @@ export function Segmented<T extends string>({
             disabled={o.disabled}
             title={o.hint}
             onClick={() => onChange(o.value)}
-            className={`relative rounded-[4px] px-3 font-bold transition-colors duration-[var(--dur-fast)] disabled:opacity-40 ${
+            className={`relative rounded-chip px-3 font-bold transition-colors duration-[var(--dur-fast)] disabled:opacity-40 ${
               size === "S" ? "h-8 text-13" : "h-9 text-14"
             } ${active ? "bg-raised text-brass-bright shadow-[inset_0_-2px_0_var(--brass-400)]" : "text-muted hover:text-bone"}`}
           >
@@ -192,7 +192,7 @@ export function Slider({
       {active ? (
         <span
           aria-hidden
-          className="mono pointer-events-none absolute -top-6 -translate-x-1/2 rounded-[4px] border border-line bg-ink-950 px-1.5 text-12 text-brass-bright"
+          className="mono pointer-events-none absolute -top-6 -translate-x-1/2 rounded-chip border border-line bg-ink-950 px-1.5 text-12 text-brass-bright"
           style={{ left: `calc(8px + ${f} * (100% - 16px))` }}
         >
           {format(value)}

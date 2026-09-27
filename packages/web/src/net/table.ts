@@ -237,6 +237,7 @@ async function join(campaignId: string): Promise<Room<unknown, TableState>> {
   // Test builds only (SPEC §23.7): journeys drive commands through the same room and permissions as the UI.
   provideTestHook("request", (type: string, payload: unknown) => request(type, payload));
   provideTestHook("me", () => useTable.getState().me);
+  provideTestHook("connection", () => useTable.getState().connection);
   // Uploads through the real client path (CSRF, progress, server pipeline) with bytes handed in by the test.
   provideTestHook("upload", async (b64: string, name: string, purpose: UploadPurpose) => {
     const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));

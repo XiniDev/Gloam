@@ -224,7 +224,7 @@ function IdentityStep({
               setTab(t);
               setError(null);
             }}
-            className={`h-10 rounded-[4px] text-14 font-bold transition-colors ${tab === t ? "bg-raised text-brass-bright shadow-[inset_0_-2px_0_var(--brass-400)]" : "text-muted hover:text-bone"}`}
+            className={`h-10 rounded-chip text-14 font-bold transition-colors ${tab === t ? "bg-raised text-brass-bright shadow-[inset_0_-2px_0_var(--brass-400)]" : "text-muted hover:text-bone"}`}
           >
             {t === "new" ? "New here" : "I've played before"}
           </button>

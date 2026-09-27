@@ -5,7 +5,7 @@ import { NavLink, Route, Routes, useNavigate, useSearchParams } from "react-rout
 import { leaveRoom } from "../net/colyseus.ts";
 import { ApiError, post } from "../net/http.ts";
 import { useSession } from "../state/session.ts";
-import { Button } from "../ui/Button.tsx";
+import { Button, IconButton } from "../ui/Button.tsx";
 import { TextInput } from "../ui/Field.tsx";
 import { FullScreenLoader } from "../ui/FullScreenLoader.tsx";
 import { Filigree, Sparkle } from "../ui/ornaments.tsx";
@@ -132,12 +132,20 @@ function Console() {
   }
   return (
     <div className="flex min-h-[100dvh] flex-col bg-bg md:flex-row">
-      <aside className="flex shrink-0 flex-col gap-1 border-b border-line bg-surface p-3 md:w-[232px] md:border-b-0 md:border-r">
+      {/* On wide screens the sidebar is exactly the screen's height and stays put while the page scrolls, so its
+          bottom actions are always reachable; on phones it's a header row. */}
+      <aside className="flex shrink-0 flex-col gap-1 border-b border-line bg-surface p-3 md:sticky md:top-0 md:h-[100dvh] md:w-[232px] md:overflow-y-auto md:border-b-0 md:border-r">
         <div className="mb-3 flex items-center gap-2 px-2 pt-1">
           <Sparkle size={18} />
           <span className="display text-18 font-semibold tracking-[0.04em] text-bone">GLOAM</span>
           <span className="caps text-12 text-brass">Admin</span>
-          <span className="ml-auto md:hidden">
+          <span className="ml-auto flex items-center gap-1 md:hidden">
+            <IconButton label="Go to the table" onClick={() => navigate("/table")}>
+              <Swords size={17} />
+            </IconButton>
+            <IconButton label="Sign out" onClick={() => void logout()}>
+              <LogOut size={17} />
+            </IconButton>
             <SoundChip />
           </span>
         </div>

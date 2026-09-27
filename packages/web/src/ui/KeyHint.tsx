@@ -7,7 +7,7 @@ export function KeyHint({ keys }: { keys: string }) {
       {parts.map((p, i) => (
         <kbd
           key={`${p}-${i}`}
-          className="min-w-[18px] rounded-[3px] border border-ink-600 border-b-2 bg-ink-850 px-1 text-center font-caps text-12 leading-4 tracking-[0.06em] text-fog"
+          className="min-w-[18px] rounded-chip border border-ink-600 border-b-2 bg-ink-850 px-1 text-center font-caps text-12 leading-4 tracking-[0.06em] text-fog"
         >
           {p}
         </kbd>

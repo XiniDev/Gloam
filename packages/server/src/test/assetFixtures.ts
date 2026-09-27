@@ -188,6 +188,62 @@ export async function glb(
   return new NodeIO().registerExtensions([KHRLightsPunctual]).writeBinary(doc);
 }
 
+/**
+ * A small 3D map (SPEC §8.3 3D maps; AC-SCN-04): a floor slab and four 1-ft-thick, 8-ft-high walls (overlapping at
+ * the corners, like modular kit pieces) around a 20 × 30 ft room whose inner corner is at the origin.
+ */
+export async function roomGlb(): Promise<Uint8Array> {
+  const doc = new Document();
+  const buffer = doc.createBuffer();
+  const texture = doc
+    .createTexture("stone")
+    .setImage(new Uint8Array(await noisePng(128, 128)))
+    .setMimeType("image/png");
+  const material = doc.createMaterial("stone").setBaseColorTexture(texture);
+  const scene = doc.createScene("crypt");
+  const box = (name: string, min: [number, number, number], max: [number, number, number]) => {
+    const p: number[] = [];
+    const uv: number[] = [];
+    for (const [dx, dy, dz] of [
+      [0, 0, 0],
+      [1, 0, 0],
+      [1, 1, 0],
+      [0, 1, 0],
+      [0, 0, 1],
+      [1, 0, 1],
+      [1, 1, 1],
+      [0, 1, 1],
+    ] as const) {
+      p.push(dx ? max[0] : min[0], dy ? max[1] : min[1], dz ? max[2] : min[2]);
+      uv.push(dx, dz);
+    }
+    // Outward-facing (counter-clockwise) triangles, as glTF expects.
+    const idx = [
+      0, 3, 2, 0, 2, 1, 4, 5, 6, 4, 6, 7, 0, 1, 5, 0, 5, 4, 3, 7, 6, 3, 6, 2, 1, 2, 6, 1, 6, 5, 0, 4, 7, 0, 7,
+      3,
+    ];
+    const prim = doc
+      .createPrimitive()
+      .setAttribute(
+        "POSITION",
+        doc.createAccessor().setType("VEC3").setArray(new Float32Array(p)).setBuffer(buffer),
+      )
+      .setAttribute(
+        "TEXCOORD_0",
+        doc.createAccessor().setType("VEC2").setArray(new Float32Array(uv)).setBuffer(buffer),
+      )
+      .setIndices(doc.createAccessor().setType("SCALAR").setArray(new Uint16Array(idx)).setBuffer(buffer))
+      .setMaterial(material);
+    scene.addChild(doc.createNode(name).setMesh(doc.createMesh(name).addPrimitive(prim)));
+  };
+  box("floor", [-1, -0.2, -1], [21, 0, 31]);
+  box("north", [-1, 0, -1], [21, 8, 0]);
+  box("south", [-1, 0, 30], [21, 8, 31]);
+  box("west", [-1, 0, -1], [0, 8, 31]);
+  box("east", [20, 0, -1], [21, 8, 31]);
+  return new NodeIO().writeBinary(doc);
+}
+
 /** One wavy grid mesh of `2·n²` triangles (a dense, simplifiable sculpt). */
 export async function denseGlb(n: number): Promise<Uint8Array> {
   const doc = new Document();

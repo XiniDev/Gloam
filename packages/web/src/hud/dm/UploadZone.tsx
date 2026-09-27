@@ -97,7 +97,7 @@ export function UploadZone({
               {progress.f >= 1 ? "Processing…" : `${Math.round(progress.f * 100)}%`}
             </span>
           </div>
-          <div className="h-2 overflow-hidden rounded-[2px] bg-[var(--parchment-400)]/25">
+          <div className="h-2 overflow-hidden rounded-full bg-[var(--parchment-400)]/25">
             <div
               className="h-full bg-[var(--parchment-200)] transition-[width] duration-[var(--dur-fast)]"
               style={{ width: `${progress.f * 100}%` }}

@@ -338,7 +338,9 @@ export function QuickUnitDialog() {
             ]}
           />
         </div>
-        <div className="grid grid-cols-[1fr_auto] items-end gap-3">
+        <div
+          className={`grid items-end gap-3 ${f.size === "custom" ? "grid-cols-[1fr_auto]" : "grid-cols-1"}`}
+        >
           <Select<Size>
             label="Size"
             value={f.size}
@@ -361,9 +363,7 @@ export function QuickUnitDialog() {
                 onChange={(customFt) => up({ customFt })}
               />
             </div>
-          ) : (
-            <span className="w-28" />
-          )}
+          ) : null}
         </div>
         <div className="grid grid-cols-3 gap-3">
           <Num label="HP" value={f.hp} error={tried && errors.hp} onChange={(v) => up({ hp: v })} />

@@ -14,6 +14,7 @@ import {
 } from "three";
 import { boardData, useEntities } from "../state/entities.ts";
 import { useSettings } from "../state/settings.ts";
+import { useUi } from "../state/ui.ts";
 import { provideTestHook } from "../test/hooks.ts";
 import { boardApi } from "./boardApi.ts";
 import { cameraRig } from "./CameraRig.tsx";
@@ -110,6 +111,12 @@ export function TestProbe() {
         loading: useLoading.getState().pending,
       };
     });
+    provideTestHook("scene", () => boardData(useEntities.getState()).scene);
+    provideTestHook("ui", () => {
+      const u = useUi.getState();
+      return { selection: u.selection, hover: u.hover, tool: u.tool, radial: u.radial };
+    });
+    provideTestHook("walls", () => [...boardData(useEntities.getState()).walls.values()]);
     /** The token as this viewer holds it (its view shape, tags included), or null. */
     provideTestHook("token", (id: string) => boardData(useEntities.getState()).tokens.get(id) ?? null);
     provideTestHook("visibleTokenIds", () => [...boardData(useEntities.getState()).tokens.keys()].sort());

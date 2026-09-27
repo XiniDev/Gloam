@@ -19,10 +19,12 @@ export const BOARD_FADE_MS = 900;
 export const HUD_STAGGER_MS = 60;
 /** HUD groups that stagger in — top bar, toolbar, dock, board hint; the last starts at (n − 1) × 60 ms. */
 export const HUD_GROUPS = 4;
-const HUD_RISE_MS = 240;
+const HUD_RISE_MS = 220; // --dur-base (the rise-in animation, globals.css)
 /** The board fades up once its first frame is drawn and its assets are in, or after this long regardless. */
 const BOARD_WAIT_MAX_MS = 6000;
-const SKIP_FADE_MS = 150;
+/** Skip and reduced-motion fades use the motion tokens (--dur-fast / --dur-base). */
+const SKIP_FADE_MS = 140;
+const REDUCED_FADE_MS = 220;
 /** "Runs smoothly": SMOOTH_WINDOW_MS of frames each under SMOOTH_FRAME_MS (a warm-up stall can come a moment
  * after the first frame, so a couple of quick frames aren't proof). */
 const SMOOTH_WINDOW_MS = 300;
@@ -105,7 +107,7 @@ export function Intro() {
         now - smoothSince >= SMOOTH_WINDOW_MS;
       if ((ready && elapsed >= (r ? 0 : IGNITE_MS)) || elapsed >= BOARD_WAIT_MAX_MS) {
         useIntro.getState().go("board");
-        const fade = r ? 200 : BOARD_FADE_MS;
+        const fade = r ? REDUCED_FADE_MS : BOARD_FADE_MS;
         after(fade, () => {
           useIntro.getState().go("hud");
           after(r ? 120 : (HUD_GROUPS - 1) * HUD_STAGGER_MS + HUD_RISE_MS, () =>
@@ -152,7 +154,7 @@ export function Intro() {
       className="fixed inset-0 z-[800] grid cursor-pointer place-items-center bg-ink-950"
       style={{
         opacity: fading ? 0 : COVER_OPACITY,
-        transition: `opacity ${skipped ? SKIP_FADE_MS : reduced ? 200 : BOARD_FADE_MS}ms var(--ease-in-out)`,
+        transition: `opacity ${skipped ? SKIP_FADE_MS : reduced ? REDUCED_FADE_MS : BOARD_FADE_MS}ms var(--ease-in-out)`,
       }}
     >
       <div

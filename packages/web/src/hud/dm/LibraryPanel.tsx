@@ -46,7 +46,7 @@ async function act(what: string, fn: () => Promise<unknown>) {
 function Thumbnail({ a }: { a: AssetItem }) {
   const src = useAssetImage(a.cls === "image" ? a.id : null, 256);
   return (
-    <span className="grid aspect-square w-full place-items-center overflow-hidden rounded-[4px] bg-ink-900 text-brass">
+    <span className="grid aspect-square w-full place-items-center overflow-hidden rounded-chip bg-ink-900 text-brass">
       {src ? (
         <img src={src} alt="" className="h-full w-full object-contain" draggable={false} />
       ) : a.cls === "model" ? (
@@ -63,11 +63,11 @@ function Card({ a }: { a: AssetItem }) {
   const [tagging, setTagging] = useState(false);
   const statusChip =
     a.status === "pending" ? (
-      <span className="caps rounded-[4px] border border-[var(--brass-600)] px-1 text-12 text-accent">
+      <span className="caps rounded-chip border border-[var(--brass-600)] px-1 text-12 text-accent">
         pending
       </span>
     ) : a.status === "rejected" ? (
-      <span className="caps rounded-[4px] border border-[var(--blood-500)] px-1 text-12 text-[var(--blood-500)]">
+      <span className="caps rounded-chip border border-[var(--blood-500)] px-1 text-12 text-[var(--blood-500)]">
         rejected
       </span>
     ) : null;
@@ -99,7 +99,7 @@ function Card({ a }: { a: AssetItem }) {
               aria-label="Name"
               defaultValue={a.name}
               maxLength={80}
-              className="h-7 w-full rounded-[4px] border border-brass bg-ink-900 px-1.5 text-13 text-bone"
+              className="h-7 w-full rounded-chip border border-brass bg-ink-900 px-1.5 text-13 text-bone"
               onKeyDown={(e) => {
                 if (e.key === "Escape") setRenaming(false);
                 if (e.key === "Enter") (e.target as HTMLInputElement).blur();
@@ -155,7 +155,7 @@ function Card({ a }: { a: AssetItem }) {
         {a.tags.map((t) => (
           <span
             key={t}
-            className="inline-flex items-center gap-0.5 rounded-[4px] bg-raised px-1.5 text-12 text-muted"
+            className="inline-flex items-center gap-0.5 rounded-chip bg-raised px-1.5 text-12 text-muted"
           >
             {t}
             {!a.deleted ? (
@@ -181,7 +181,7 @@ function Card({ a }: { a: AssetItem }) {
             aria-label="New tag"
             maxLength={32}
             placeholder="tag"
-            className="h-6 w-20 rounded-[4px] border border-brass bg-ink-900 px-1 text-12 text-bone"
+            className="h-6 w-20 rounded-chip border border-brass bg-ink-900 px-1 text-12 text-bone"
             onKeyDown={(e) => {
               if (e.key === "Escape") setTagging(false);
               if (e.key === "Enter") (e.target as HTMLInputElement).blur();

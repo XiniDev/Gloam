@@ -45,11 +45,13 @@ function load(): Partial<Persisted> {
 }
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
-function persist(s: UiStore): void {
+/** Saves (debounced 250 ms) whatever the store holds when the timer fires — not the state of the first call. */
+function persist(): void {
   if (saveTimer) return;
   saveTimer = setTimeout(() => {
     saveTimer = null;
     try {
+      const s = useUi.getState();
       const p: Persisted = { selection: s.selection, cameras: s.cameras, dock: s.dock };
       globalThis.sessionStorage?.setItem(KEY, JSON.stringify(p));
     } catch {
@@ -74,7 +76,7 @@ export const useUi = create<UiStore>((set, get) => ({
   cameras: initial.cameras ?? {},
   set(p) {
     set(p);
-    persist(get());
+    persist();
   },
   select(ids, mode = "replace") {
     if (mode === "replace") set({ selection: [...new Set(ids)] });
@@ -86,10 +88,10 @@ export const useUi = create<UiStore>((set, get) => ({
       }
       set({ selection: [...cur] });
     }
-    persist(get());
+    persist();
   },
   rememberCamera(sceneId, cam) {
     set({ cameras: { ...get().cameras, [sceneId]: cam } });
-    persist(get());
+    persist();
   },
 }));

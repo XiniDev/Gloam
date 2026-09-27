@@ -26,6 +26,8 @@ export interface GloamProcess {
   /** CSP reports the server received from any page (forwarded over IPC in test mode). */
   cspReports: string[];
   stop(): Promise<void>;
+  /** Cuts a user's table connections abruptly, like a lost network (test builds only). */
+  dropClient(userId: string): void;
 }
 
 /** Spawns a real Gloam server process for one test (SPEC §36.2: deterministic, fake cloudflared, seeded dice). */
@@ -97,6 +99,9 @@ export async function spawnServer(
             .filter(Boolean)
             .map((l) => JSON.parse(l) as { argv: string[]; pid: number })
         : [],
+    dropClient(userId: string) {
+      child.send({ type: "gloam:drop", userId });
+    },
     async stop() {
       if (child.exitCode === null) {
         const exited = new Promise((r) => child.once("exit", r));

@@ -224,7 +224,8 @@ export function RadialMenu() {
     close();
   }
 
-  const R = 86;
+  // Slices are 74 × 62 px: the ring grows with their number so neighbours never touch (chord 2R·sin(π/n) ≥ 84 px).
+  const R = Math.max(86, 42 / Math.sin(Math.PI / Math.max(3, shown.length)));
   return (
     <AnimatePresence>
       {radial && token && shown.length ? (

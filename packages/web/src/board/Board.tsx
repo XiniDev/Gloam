@@ -191,7 +191,10 @@ export default function Board() {
     // Tokens set `hover` on pointer-over, so a press with a hovered token is a token press, not the table.
     wake();
     const panTool = useUi.getState().tool === "pan";
-    const onToken = !panTool && !cameraRig.spaceHeld && useUi.getState().hover !== null;
+    // Did a token take this press? (Its handler runs first; see boardApi.claimedPointer.)
+    const claimed = boardApi.claimedPointer === e.pointerId;
+    boardApi.claimedPointer = null; // valid for this press only (a mouse's pointer id never changes)
+    const onToken = !panTool && !cameraRig.spaceHeld && claimed;
     // Pan: middle-drag, Space+drag with any tool, the Pan tool, or a left-drag on empty table (mouse and pen;
     // one-finger touch pans through the camera controls with the other gestures).
     const panStart =

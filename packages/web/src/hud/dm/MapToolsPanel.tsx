@@ -1,5 +1,5 @@
 import { Move3d, Rotate3d, Scale3d, X } from "lucide-react";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { type MapTransform, useMapAlign } from "../../board/map/mapAlign.ts";
 import { sceneCalibration } from "../../board/scene.ts";
 import { request, useTable } from "../../net/table.ts";
@@ -10,6 +10,13 @@ import { Segmented } from "../../ui/controls.tsx";
 import { toast } from "../../ui/Toast.tsx";
 
 const BATCH = 500;
+
+const sameTransform = (a: MapTransform, b: MapTransform) =>
+  Math.abs(a.position.x - b.position.x) < 1e-6 &&
+  Math.abs(a.position.y - b.position.y) < 1e-6 &&
+  Math.abs(a.position.z - b.position.z) < 1e-6 &&
+  Math.abs(a.rotationYDeg - b.rotationYDeg) < 1e-6 &&
+  Math.abs(a.scale - b.scale) < 1e-9;
 
 function NumField({
   label,
@@ -85,6 +92,12 @@ export function MapToolsPanel() {
   const [slice, setSlice] = useState(5);
   const [asking, setAsking] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
+  /**
+   * Edits sent but not yet echoed back: quick successive field commits (X, then Z, then Turn) each build on the
+   * previous one instead of on the last confirmed transform, which would undo them.
+   */
+  const draft = useRef<MapTransform | null>(null);
+  const [, redraw] = useState(0);
 
   const open = dm && !!scene && scene.mapKind === "model" && mapTool === scene.id;
   const calib = sceneCalibration(scene);
@@ -108,17 +121,29 @@ export function MapToolsPanel() {
   }, [open]);
 
   if (!open || !scene) return null;
-  const t: MapTransform = live ?? {
+  const confirmed: MapTransform = {
     position: calib.position ?? { x: 0, y: 0, z: 0 },
     rotationYDeg: calib.rotationYDeg ?? 0,
     scale: calib.scale ?? 1,
   };
-  const save = (next: Partial<MapTransform>, sliceFt?: number) =>
-    request("scene.calibrate", {
+  // The server has caught up (or the gizmo took over): the draft is done.
+  if (draft.current && (live || sameTransform(draft.current, confirmed))) draft.current = null;
+  const t: MapTransform = live ?? draft.current ?? confirmed;
+  const save = (next: Partial<MapTransform>, sliceFt?: number) => {
+    const base = draft.current ?? t;
+    const transform = { ...base, ...next, position: { ...base.position, ...next.position } };
+    draft.current = transform;
+    redraw((n) => n + 1);
+    return request("scene.calibrate", {
       sceneId: scene.id,
-      transform: { ...t, ...next, position: { ...t.position, ...next.position } },
+      transform,
       ...(sliceFt !== undefined ? { sliceFt } : {}),
-    }).catch((e) => toast.danger("Couldn't move the map", (e as Error).message));
+    }).catch((e) => {
+      draft.current = null;
+      redraw((n) => n + 1);
+      toast.danger("Couldn't move the map", (e as Error).message);
+    });
+  };
 
   const generate = async (replace: boolean) => {
     setAsking(false);
@@ -186,10 +211,14 @@ export function MapToolsPanel() {
           { value: "translate", label: <Move3d size={16} aria-label="Move (W)" />, hint: "Move (W)" },
           {
             value: "rotate",
-            label: <Rotate3d size={16} aria-label="Rotate (E)" />,
+            label: <Rotate3d size={16} aria-label="Rotate about Y (E)" />,
             hint: "Rotate about Y (E)",
           },
-          { value: "scale", label: <Scale3d size={16} aria-label="Scale (R)" />, hint: "Uniform scale (R)" },
+          {
+            value: "scale",
+            label: <Scale3d size={16} aria-label="Uniform scale (R)" />,
+            hint: "Uniform scale (R)",
+          },
         ]}
       />
       <div className="grid grid-cols-3 gap-2">

@@ -40,10 +40,10 @@ function Thumb({ s }: { s: SceneListItem }) {
   const src = useAssetImage(s.mapKind === "image" ? s.mapAssetId : null, 256);
   if (src)
     return (
-      <img src={src} alt="" className="h-11 w-16 shrink-0 rounded-[4px] border border-line object-cover" />
+      <img src={src} alt="" className="h-11 w-16 shrink-0 rounded-chip border border-line object-cover" />
     );
   return (
-    <span className="grid h-11 w-16 shrink-0 place-items-center rounded-[4px] border border-line bg-ink-900 text-brass">
+    <span className="grid h-11 w-16 shrink-0 place-items-center rounded-chip border border-line bg-ink-900 text-brass">
       {s.mapKind === "model" ? <Box size={18} /> : <MapIcon size={18} />}
     </span>
   );
@@ -153,7 +153,7 @@ export function ScenesPanel() {
                       aria-label="Scene name"
                       defaultValue={s.name}
                       maxLength={80}
-                      className="h-8 w-full rounded-[4px] border border-brass bg-ink-900 px-2 text-14 text-bone"
+                      className="h-8 w-full rounded-chip border border-brass bg-ink-900 px-2 text-14 text-bone"
                       onKeyDown={(e) => {
                         if (e.key === "Escape") setRenaming(null);
                         if (e.key === "Enter") (e.target as HTMLInputElement).blur();
@@ -183,11 +183,9 @@ export function ScenesPanel() {
                   </p>
                 </div>
                 {s.active ? (
-                  <span className="caps rounded-[4px] bg-accent px-1.5 py-0.5 text-12 text-ink-950">
-                    Live
-                  </span>
+                  <span className="caps rounded-chip bg-accent px-1.5 py-0.5 text-12 text-ink-950">Live</span>
                 ) : prepId === s.id ? (
-                  <span className="caps rounded-[4px] border border-[var(--brass-600)] px-1.5 py-0.5 text-12 text-accent">
+                  <span className="caps rounded-chip border border-[var(--brass-600)] px-1.5 py-0.5 text-12 text-accent">
                     Prep
                   </span>
                 ) : null}
@@ -256,7 +254,7 @@ export function ScenesPanel() {
                   ]}
                 />
               </div>
-              <div className="mt-2 flex flex-wrap gap-2 pl-[26px]">
+              <div className="mt-2 flex flex-wrap gap-2 pl-7">
                 {!s.active ? (
                   <>
                     <Button

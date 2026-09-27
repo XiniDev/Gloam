@@ -94,20 +94,29 @@ export function SegmentedCodeInput({
       onKeyDown={(e) => onKey(i, e)}
       onPaste={onPaste}
       onFocus={(e) => e.currentTarget.select()}
-      className={`mono h-12 w-9 rounded-[var(--radius-control)] border bg-ink-900 text-center text-22 font-semibold text-bone shadow-[var(--shadow-inset)] transition-[border-color,box-shadow] duration-[var(--dur-fast)] focus:border-brass focus:shadow-[var(--ring-focus)] sm:w-10 ${
+      className={`mono h-12 w-full min-w-0 rounded-[var(--radius-control)] border bg-ink-900 px-0 text-center text-22 font-semibold text-bone shadow-[var(--shadow-inset)] transition-[border-color,box-shadow] duration-[var(--dur-fast)] focus:border-brass focus:shadow-[var(--ring-focus)] ${
         invalid ? "border-danger" : chars[i] ? "border-brass-deep" : "border-line"
       }`}
     />
   );
 
   return (
-    <fieldset className="border-0 p-0" aria-label={label}>
+    <fieldset className="min-w-0 border-0 p-0" aria-label={label}>
       <legend className="sr-only">{label}</legend>
-      <div className="flex items-center justify-center gap-1.5 sm:gap-2">
+      {/* Cells share the width they're given (never wider than 2.5 rem), so the code always fits its card. */}
+      <div
+        className="grid items-center justify-center gap-1.5"
+        style={{
+          gridTemplateColumns:
+            kind === "invite"
+              ? "repeat(5, minmax(0, 2.5rem)) 0.75rem repeat(5, minmax(0, 2.5rem))"
+              : `repeat(${length}, minmax(0, 2.5rem))`,
+        }}
+      >
         {kind === "invite" ? (
           <>
             {Array.from({ length: 5 }, (_, i) => box(i))}
-            <span aria-hidden className="mx-0.5 h-[2px] w-3 bg-brass-deep" />
+            <span aria-hidden className="h-[2px] w-full bg-brass-deep" />
             {Array.from({ length: 5 }, (_, i) => box(i + 5))}
           </>
         ) : (

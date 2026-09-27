@@ -45,7 +45,7 @@ test.describe("P2 — first load, fonts and the table at 1 unit = 1 ft (DS-04, B
     expect(board).toBeGreaterThanOrEqual(400);
     expect(fade).toBeGreaterThanOrEqual(900);
     expect(fade).toBeLessThan(900 + 400);
-    expect(stagger).toBeGreaterThanOrEqual(3 * 60 + 240);
+    expect(stagger).toBeGreaterThanOrEqual(3 * 60 + 220);
     const rec = await readRec(admin);
     expect(rec.hud?.map((h) => [h.i, h.name, h.delay]).sort()).toEqual([
       ["0", "rise-in", "0s"],
@@ -87,7 +87,7 @@ test.describe("P2 — first load, fonts and the table at 1 unit = 1 ft (DS-04, B
     const r = await intro(admin);
     expect(r?.reduced).toBe(true);
     const rm = r?.marks ?? {};
-    expect((rm.hud as number) - (rm.board as number)).toBeLessThan(200 + 300);
+    expect((rm.hud as number) - (rm.board as number)).toBeLessThan(220 + 300);
     expect((rm.done as number) - (rm.hud as number)).toBeLessThan(120 + 300);
     const rrec = await readRec(admin);
     expect(new Set(rrec.hud?.map((h) => h.delay))).toEqual(new Set(["0s"]));

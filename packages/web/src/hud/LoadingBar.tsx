@@ -42,7 +42,7 @@ export function LoadingBar() {
       className="pointer-events-none absolute bottom-[calc(24px+env(safe-area-inset-bottom))] left-1/2 z-30 w-[min(320px,calc(100vw-32px))] -translate-x-1/2"
       style={{ opacity: shown ? 1 : 0, transition: "opacity var(--dur-base) var(--ease-out)" }}
     >
-      <div className="rounded-[3px] bg-[var(--parchment-200)] px-3 pb-2 pt-1.5 shadow-[var(--shadow-paper)]">
+      <div className="rounded-chip bg-[var(--parchment-200)] px-3 pb-2 pt-1.5 shadow-[var(--shadow-paper)]">
         <p className="caps mb-1 text-center text-12 text-[var(--parchment-ink-muted)]">
           Unrolling the map · {Math.min(done + 1, total)} of {total}
         </p>

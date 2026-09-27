@@ -85,3 +85,16 @@ PASSING 28/224 · DISPUTED 0 · FAILING 196
   first-load intro (36 composited frames, no flash, zero layout shift, exact stagger, once per load, reduced
   motion), 1 unit = 1 ft, self-hosted fonts. Found and fixed two multi-second software-GL stalls (context release;
   first composite under an opaque overlay). Marked SCN-03, SCN-08, DS-04, BRD-01, DS-06 → 40/224.
+
+## 2026-09-27 — P2 complete: 32/32
+
+- All P2 criteria pass with evidence (61/224 overall). 27 E2E journeys (22 parallel + 5 timing-isolated), 115 unit/
+  integration tests. P2 journeys: first load, camera/Spotlight, tiers/huge maps, scene travel/floors, tokens,
+  DM tools (calibration, 3D map alignment + Generate walls, Library), reconnection.
+- Bugs the journeys and screenshot review found and fixed along the way: software-GL stalls (context release,
+  opaque-overlay first composite), idle boards redrawing (now on demand), shader programs recompiled per scene
+  travel, slow-device frames not measured by the tier governor, GLB textures blocked by CSP, mini overrides never
+  applied, asset names leaking to players, dialogs taller than the screen, pan drifting from the pointer,
+  selection lost on a quick click, lost sessionStorage saves, map-tool edit race, invite code overflowing the Join
+  card, unreachable admin actions on phones, overlapping token overlays.
+- Next: `pnpm shots` review round + visual-critic (≤ 2 rounds), then P3 (walls and movement).

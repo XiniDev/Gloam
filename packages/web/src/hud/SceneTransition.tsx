@@ -16,9 +16,11 @@ import { Divider } from "../ui/ornaments.tsx";
  */
 type Phase = "idle" | "out" | "title" | "in";
 
-const OUT_MS = 400;
+/** Motion tokens (SPEC §27.5): out over --dur-panel, in over --dur-scene; reduced motion uses --dur-fast. */
+const OUT_MS = 320;
 const TITLE_MIN_MS = 550;
-const IN_MS = 500;
+const IN_MS = 600;
+const REDUCED_MS = 140;
 /** The new scene must have drawn this many frames before it's revealed. */
 const WARM_FRAMES = 2;
 /** Never keep the table dark longer than this waiting for assets; they finish loading in view. */
@@ -36,8 +38,8 @@ export function SceneTransition() {
   /** Board frame count when the switch happened (the new scene's frames come after it). */
   const switchedAt = useRef(0);
   const reduced = prefersReducedMotion();
-  const out = reduced ? 150 : OUT_MS;
-  const fadeIn = reduced ? 150 : IN_MS;
+  const out = reduced ? REDUCED_MS : OUT_MS;
+  const fadeIn = reduced ? REDUCED_MS : IN_MS;
 
   useEffect(() => {
     provideTestHook("travel", () => ({ phase: phaseRef.current, log: [...log] }));
@@ -105,7 +107,7 @@ export function SceneTransition() {
   }, [travel, out, fadeIn, reduced]);
 
   const dark = phase === "out" || phase === "title";
-  const duration = phase === "out" ? out : fadeIn;
+  const duration = reduced ? "var(--dur-fast)" : phase === "out" ? "var(--dur-panel)" : "var(--dur-scene)";
   return (
     <>
       {/* The old scene's still, shown only while the screen fades out. */}
@@ -118,7 +120,7 @@ export function SceneTransition() {
         style={{
           opacity: dark ? 1 : 0,
           pointerEvents: phase === "idle" ? "none" : "auto",
-          transition: `opacity ${duration}ms var(--ease-in-out)`,
+          transition: `opacity ${duration} var(--ease-in-out)`,
         }}
       >
         <div
@@ -127,7 +129,9 @@ export function SceneTransition() {
           style={{
             opacity: phase === "title" ? 1 : 0,
             transform: phase === "title" || reduced ? "none" : "translateY(6px)",
-            transition: `opacity ${reduced ? 120 : 360}ms var(--ease-out), transform ${reduced ? 0 : 480}ms var(--ease-out)`,
+            transition: reduced
+              ? "opacity var(--dur-fast) var(--ease-out)"
+              : "opacity var(--dur-panel) var(--ease-out), transform var(--dur-panel) var(--ease-out)",
           }}
         >
           <p className="caps text-12 text-fog">The party travels to</p>

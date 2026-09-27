@@ -70,7 +70,8 @@ export function SettingsPopover() {
 
   useEffect(() => {
     if (!open) return;
-    panel.current?.querySelector<HTMLElement>("button, input")?.focus();
+    // Focus the panel itself (Tab reaches every control; focusing a slider would pop its value bubble).
+    panel.current?.focus();
     const onDown = (e: PointerEvent) => {
       if (!panel.current?.contains(e.target as Node) && !button.current?.contains(e.target as Node))
         setOpen(false);
@@ -108,7 +109,9 @@ export function SettingsPopover() {
           id={id}
           role="dialog"
           aria-label="Settings"
-          className="panel absolute right-0 top-full z-50 mt-2 flex max-h-[calc(100dvh-80px)] w-[min(340px,calc(100vw-24px))] flex-col overflow-y-auto"
+          tabIndex={-1}
+          // Aligned with the screen's edge like the dock beneath it, so it covers the dock cleanly.
+          className="panel fixed right-3 top-[64px] z-50 flex max-h-[calc(100dvh-80px)] w-[min(340px,calc(100vw-24px))] flex-col overflow-y-auto outline-none"
         >
           <Section title="Sound">
             {(["master", "dice", "effects", "ui", "music", "ambience"] as const).map((c) => (

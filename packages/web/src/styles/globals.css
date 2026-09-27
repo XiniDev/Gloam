@@ -315,7 +315,7 @@
   opacity: 0;
 }
 [data-intro="hud"] [data-hud-order] {
-  animation: rise-in 240ms var(--ease-out) both;
+  animation: rise-in var(--dur-base) var(--ease-out) both;
   animation-delay: calc(var(--hud-i, 0) * 60ms);
 }
 [data-intro="hud"][data-intro-reduced] [data-hud-order] {

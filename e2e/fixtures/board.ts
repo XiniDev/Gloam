@@ -167,6 +167,7 @@ export async function uploadVia(
 export interface AssetFixtures {
   image(format: "png" | "jpeg" | "webp", width: number, height: number): Promise<Buffer>;
   glb(opts?: Record<string, unknown>): Promise<Uint8Array>;
+  roomGlb(): Promise<Uint8Array>;
 }
 export function assetFixtures(): Promise<AssetFixtures> {
   const path = ["..", "..", "packages", "server", "src", "test", "assetFixtures.ts"].join("/");

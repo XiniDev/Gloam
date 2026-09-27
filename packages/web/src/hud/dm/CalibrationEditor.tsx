@@ -33,16 +33,19 @@ export function CalibrationEditor({
   const [known, setKnown] = useState<{ a: Pt; b: Pt } | null>(null);
   const [knownFt, setKnownFt] = useState("5");
   const [widthFt, setWidthFt] = useState(() => String(Math.round(imageW * ftPerPx)));
-  const [ruler, setRuler] = useState<{ a: Pt; b: Pt }>(() => ({
-    a: { x: imageW * 0.3, y: imageH * 0.5 },
-    b: { x: imageW * 0.3 + 5 / ftPerPx, y: imageH * 0.5 },
-  }));
+  // A ruler long enough to see and grab: about a quarter of the map, in whole 5-ft steps.
+  const [ruler, setRuler] = useState<{ a: Pt; b: Pt }>(() => {
+    const ft = Math.max(5, Math.round((imageW * ftPerPx * 0.25) / 5) * 5);
+    const len = Math.min(imageW * 0.8, ft / ftPerPx);
+    return { a: { x: (imageW - len) / 2, y: imageH * 0.5 }, b: { x: (imageW + len) / 2, y: imageH * 0.5 } };
+  });
   const [grid, setGrid] = useState(true);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState<Pt>({ x: 0, y: 0 });
   const viewport = useRef<HTMLDivElement>(null);
   const layer = useRef<HTMLDivElement>(null);
   const [fit, setFit] = useState(1);
+  const [vp, setVp] = useState({ w: 0, h: 0 });
   const drag = useRef<
     | { kind: "pan"; x: number; y: number; pan: Pt }
     | { kind: "known" }
@@ -57,12 +60,15 @@ export function CalibrationEditor({
     const ro = new ResizeObserver(() => {
       const r = el.getBoundingClientRect();
       setFit(Math.min(r.width / imageW, r.height / imageH));
+      setVp({ w: r.width, h: r.height });
     });
     ro.observe(el);
     return () => ro.disconnect();
   }, [imageW, imageH]);
 
   const scale = fit * zoom;
+  // Centred in the viewport (and zooming about the centre); panning moves it from there.
+  const offset = { x: (vp.w - imageW * scale) / 2 + pan.x, y: (vp.h - imageH * scale) / 2 + pan.y };
   const toImage = (clientX: number, clientY: number): Pt => {
     const r = layer.current?.getBoundingClientRect();
     if (!r) return { x: 0, y: 0 };
@@ -197,7 +203,7 @@ export function CalibrationEditor({
           style={{
             width: imageW,
             height: imageH,
-            transform: `translate(${pan.x}px, ${pan.y}px) scale(${scale})`,
+            transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`,
           }}
         >
           {src ? (
@@ -282,7 +288,7 @@ export function CalibrationEditor({
             ))}
           </svg>
         </div>
-        <div className="pointer-events-none absolute left-3 top-3 rounded-[4px] bg-[var(--scrim)] px-2 py-1">
+        <div className="pointer-events-none absolute left-3 top-3 rounded-chip bg-[var(--scrim)] px-2 py-1">
           <span className="caps text-12 text-fog">Ruler </span>
           <span data-testid="ruler-length" className="tabular text-14 font-bold text-bone">
             {rulerFt.toFixed(1)} ft

@@ -20,7 +20,13 @@ export const boardApi: {
   snapshot(): HTMLCanvasElement | null;
   /** Frames the board has rendered (on-demand rendering: it stops counting while idle). */
   frames: number;
+  /**
+   * The pointer a token just took (its press handler runs before the board's): the board then knows the press was
+   * on a token, whatever the hover state says (a quick move-and-click can beat the hover update).
+   */
+  claimedPointer: number | null;
 } = {
+  claimedPointer: null,
   snapshot: () => null,
   frames: 0,
   camera: null,

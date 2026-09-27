@@ -1,5 +1,6 @@
 import type { AssetItem } from "../state/library.ts";
 import { useLibrary } from "../state/library.ts";
+import { toast } from "../ui/Toast.tsx";
 
 export type UploadPurpose = AssetItem["purpose"];
 
@@ -56,9 +57,18 @@ export function uploadAsset(
       if (e.lengthComputable) opts.onProgress?.(e.loaded / e.total);
     };
     xhr.onload = () => {
-      const body = xhr.response as { data?: { asset: AssetItem }; error?: { message: string } } | null;
+      const body = xhr.response as {
+        data?: { asset: AssetItem; deduped?: boolean };
+        error?: { message: string };
+      } | null;
       if (xhr.status >= 200 && xhr.status < 300 && body?.data) {
         useLibrary.getState().upsert([body.data.asset]);
+        // The same file again: the Library keeps it once — say where it is rather than seem to ignore the upload.
+        if (body.data.deduped)
+          toast.info(
+            `Already in the Library as “${body.data.asset.name}”`,
+            "It's the same file, so it's kept once.",
+          );
         resolve(body.data.asset);
       } else reject(new UploadError(body?.error?.message ?? `The upload failed (${xhr.status}).`));
     };

@@ -103,7 +103,7 @@ export default function Setup() {
                 {[1, 2, 3, 4].map((i) => (
                   <span
                     key={i}
-                    className="h-1.5 flex-1 rounded-[2px] transition-colors duration-[var(--dur-base)]"
+                    className="h-1.5 flex-1 rounded-full transition-colors duration-[var(--dur-base)]"
                     style={{ background: pw && score >= i ? TONES[score] : "var(--ink-700)" }}
                   />
                 ))}

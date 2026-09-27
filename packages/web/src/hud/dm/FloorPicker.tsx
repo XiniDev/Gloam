@@ -44,7 +44,7 @@ export function FloorPicker({ value, onChange }: { value: FloorStyle; onChange: 
                   : "hover:shadow-[inset_0_0_0_1px_var(--brass-600)]"
               }`}
             >
-              <span className="caps rounded-[4px] bg-[var(--scrim)] px-1.5 py-0.5 text-12 text-bone">
+              <span className="caps rounded-chip bg-[var(--scrim)] px-1.5 py-0.5 text-12 text-bone">
                 {FLOOR_LABELS[s]}
               </span>
             </button>
