@@ -1,16 +1,17 @@
-import { lazy, Suspense } from "react";
+import { Suspense } from "react";
 import { BrowserRouter, Route, Routes } from "react-router";
 import { ErrorBoundary } from "./ui/ErrorBoundary.tsx";
 import { FullScreenLoader } from "./ui/FullScreenLoader.tsx";
+import { lazyPage } from "./ui/lazyPage.ts";
 import { Toaster } from "./ui/Toast.tsx";
 
-const Root = lazy(() => import("./routes/Root.tsx"));
-const Join = lazy(() => import("./routes/Join.tsx"));
-const Wait = lazy(() => import("./routes/Wait.tsx"));
-const TableRoute = lazy(() => import("./routes/Table.tsx"));
-const Closed = lazy(() => import("./routes/Closed.tsx"));
-const Setup = lazy(() => import("./routes/Setup.tsx"));
-const Admin = lazy(() => import("./admin/AdminApp.tsx"));
+const Root = lazyPage(() => import("./routes/Root.tsx"));
+const Join = lazyPage(() => import("./routes/Join.tsx"));
+const Wait = lazyPage(() => import("./routes/Wait.tsx"));
+const TableRoute = lazyPage(() => import("./routes/Table.tsx"));
+const Closed = lazyPage(() => import("./routes/Closed.tsx"));
+const Setup = lazyPage(() => import("./routes/Setup.tsx"));
+const Admin = lazyPage(() => import("./admin/AdminApp.tsx"));
 
 /** Routes (SPEC §23.1): `/`, `/join`, `/wait`, `/table`, `/admin/*` (lazy), `/setup`, `/closed`. */
 export function App() {

@@ -40,6 +40,27 @@ function TierSetup() {
   const gl = useThree((s) => s.gl);
   const camera = useThree((s) => s.camera);
   const governor = useMemo(() => new TierGovernor(), []);
+  const advance = useThree((s) => s.advance);
+  // The travel freeze-frame: render one frame now (the full pipeline, post-processing included) and copy it in the
+  // same task, while the drawing buffer still holds it.
+  useEffect(() => {
+    boardApi.snapshot = () => {
+      try {
+        advance(performance.now(), true);
+        const src = gl.domElement;
+        const c = document.createElement("canvas");
+        c.width = src.width;
+        c.height = src.height;
+        c.getContext("2d")?.drawImage(src, 0, 0);
+        return c;
+      } catch {
+        return null;
+      }
+    };
+    return () => {
+      boardApi.snapshot = () => null;
+    };
+  }, [gl, advance]);
   const pin = useSettings((s) => s.tier);
   useEffect(() => {
     setMaxAnisotropy(gl.capabilities.getMaxAnisotropy());
@@ -56,6 +77,7 @@ function TierSetup() {
   const continuing = useRef(false);
   useFrame((state, dt) => {
     const now = performance.now();
+    boardApi.frames++;
     // The first-load intro waits for this before fading the board up (SPEC §27.7).
     if (boardDiag.firstFrameAt === null) boardDiag.firstFrameAt = now;
     // On-demand frames: a frame measures rendering cost only if the previous one asked for it straight away (a

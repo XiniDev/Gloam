@@ -228,10 +228,10 @@
       "code": "SCN",
       "phase": "P2",
       "text": "Activating a scene moves every player within 2 s with a transition, and players receive only the new scene's entities.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p2-scenes.spec.ts › AC-SCN-02: the DM clicks Activate for players; both players' boards switch under a freeze-frame within ~0.1 s and the fade-through-black transition (out → title with the scene name → in → idle) completes within 2 s of the click (1.5–1.9 s measured in-page); afterwards each player holds only the new scene's token · server: packages/server/src/test/board.test.ts › AC-SCN-02 (entities per scene)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T16:30:19.570Z"
     },
     {
       "id": "AC-SCN-03",
@@ -261,10 +261,10 @@
       "code": "SCN",
       "phase": "P2",
       "text": "Procedural floors (stone, wood, grass, sand, parchment, cavern) render with no image asset and tile without visible seams.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p2-scenes.spec.ts › AC-SCN-05: stone, wood, grass, sand, parchment and cavern floors each render (stats.map procedural + style) with zero /assets requests and no textures created — each floor is a continuous function of world position, so there is no tile and no seam; top-down screenshots in artifacts/screens/p2-floor-*.png",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T16:30:19.638Z"
     },
     {
       "id": "AC-SCN-06",
@@ -349,10 +349,10 @@
       "code": "BRD",
       "phase": "P2",
       "text": "The first-load intro and scene transitions show no white flash and no layout jump.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p2-first-load.spec.ts › intro: 31–36 composited frames (Chrome screencast) all dark, zero layout-shift, HUD boxes identical before/after · e2e/journeys/p2-scenes.spec.ts › travel: every composited frame dark, no light background under the pointer probes on any animation frame, zero layout-shift, HUD boxes unchanged; the old scene is frozen before the switch so the new one never pops in",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T16:30:19.704Z"
     },
     {
       "id": "AC-BRD-06",

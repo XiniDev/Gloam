@@ -8,12 +8,9 @@ import {
 } from "../fixtures/test.ts";
 
 test.describe("P1 — joining, the waiting room and admission (AUTH)", () => {
-  test("AC-AUTH-02 / AC-AUTH-03: knock → knock card with sound → admit → table without a reload (≤ 1 s)", async ({
-    admin,
-    browser,
-    gloam,
-    guardLog,
-  }) => {
+  test("AC-AUTH-02 / AC-AUTH-03: knock → knock card with sound → admit → table without a reload (≤ 1 s)", {
+    tag: "@timing",
+  }, async ({ admin, browser, gloam, guardLog }) => {
     const code = await openTableAs(admin, "Local only");
     const { page: dave } = await newPlayerContext(browser, gloam.url, guardLog);
     const toWaitingRoom = await knockAsNew(dave, gloam.url, code, "Dave");

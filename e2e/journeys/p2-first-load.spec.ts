@@ -6,120 +6,22 @@ import {
   brightness,
   createScene,
   hook,
+  hudBoxes,
+  installRecorder,
   intro,
   introDone,
+  readRec,
+  recordFrames,
   req,
   stats,
   uploadVia,
 } from "../fixtures/board.ts";
 import { expect, openTableAs, test } from "../fixtures/test.ts";
 
-/** Loaded into the page before the table mounts: layout shifts, the HUD's boxes and styles at each intro phase,
- * and the background colour of what's on screen every animation frame (a white flash would show here). */
-function installRecorder() {
-  type Rec = {
-    shifts: number[];
-    boxesStart: { i: string; x: number; y: number; w: number; h: number }[] | null;
-    hud: { i: string; name: string; delay: string }[] | null;
-    lightFrames: string[];
-    frames: number;
-    running: boolean;
-  };
-  const rec: Rec = { shifts: [], boxesStart: null, hud: null, lightFrames: [], frames: 0, running: true };
-  (window as unknown as { __rec: Rec }).__rec = rec;
-  new PerformanceObserver((list) => {
-    for (const e of list.getEntries() as (PerformanceEntry & { value: number; hadRecentInput: boolean })[])
-      if (!e.hadRecentInput) rec.shifts.push(e.value);
-  }).observe({ type: "layout-shift", buffered: false });
-  const boxes = () =>
-    [...document.querySelectorAll<HTMLElement>("[data-hud-order]")].map((el) => ({
-      i: el.dataset.hudOrder ?? "",
-      x: el.offsetLeft,
-      y: el.offsetTop,
-      w: el.offsetWidth,
-      h: el.offsetHeight,
-    }));
-  new MutationObserver(() => {
-    const phase = document.querySelector("[data-intro]")?.getAttribute("data-intro");
-    if (phase && !rec.boxesStart && document.querySelector("[data-hud-order]")) rec.boxesStart = boxes();
-    if (phase === "hud" && !rec.hud)
-      rec.hud = [...document.querySelectorAll<HTMLElement>("[data-hud-order]")].map((el) => {
-        const cs = getComputedStyle(el);
-        return { i: el.dataset.hudOrder ?? "", name: cs.animationName, delay: cs.animationDelay };
-      });
-  }).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ["data-intro"] });
-  const lum = (c: string) => {
-    const m = c.match(/rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)(?:,\s*([\d.]+))?/);
-    if (!m) return null;
-    if (m[4] !== undefined && Number(m[4]) < 0.5) return null; // (mostly) transparent: shows what's behind
-    return (0.2126 * Number(m[1]) + 0.7152 * Number(m[2]) + 0.0722 * Number(m[3])) / 255;
-  };
-  const tick = () => {
-    if (!rec.running) return;
-    rec.frames++;
-    const probes: Element[] = [document.documentElement, document.body];
-    for (const [fx, fy] of [
-      [0.5, 0.5],
-      [0.1, 0.1],
-      [0.9, 0.9],
-      [0.25, 0.75],
-    ] as const) {
-      const el = document.elementFromPoint(innerWidth * fx, innerHeight * fy);
-      if (el && el.tagName !== "CANVAS") probes.push(el);
-    }
-    for (const el of probes) {
-      const l = lum(getComputedStyle(el).backgroundColor);
-      if (l !== null && l > 0.6) rec.lightFrames.push(`${el.tagName}.${el.className}`.slice(0, 80));
-    }
-    requestAnimationFrame(tick);
-  };
-  requestAnimationFrame(tick);
-}
-
-type Rec = {
-  shifts: number[];
-  boxesStart: { i: string; x: number; y: number; w: number; h: number }[] | null;
-  hud: { i: string; name: string; delay: string }[] | null;
-  lightFrames: string[];
-  frames: number;
-};
-const readRec = (page: Page) => page.evaluate(() => (window as unknown as { __rec: Rec }).__rec);
-const hudBoxes = (page: Page) =>
-  page.evaluate(() =>
-    [...document.querySelectorAll<HTMLElement>("[data-hud-order]")].map((el) => ({
-      i: el.dataset.hudOrder ?? "",
-      x: el.offsetLeft,
-      y: el.offsetTop,
-      w: el.offsetWidth,
-      h: el.offsetHeight,
-    })),
-  );
-
-/**
- * Every composited frame (Chrome's screencast, small JPEGs) from now until `stop()`: none may be bright (a white
- * flash). Screenshots are too slow under software GL to catch a flash; the screencast sees each painted frame.
- */
-async function recordFrames(page: Page): Promise<{ stop(): Promise<{ mean: number; white: number }[]> }> {
-  const cdp = await page.context().newCDPSession(page);
-  const raw: Buffer[] = [];
-  cdp.on("Page.screencastFrame", (f: { data: string; sessionId: number }) => {
-    raw.push(Buffer.from(f.data, "base64"));
-    void cdp.send("Page.screencastFrameAck", { sessionId: f.sessionId }).catch(() => {});
-  });
-  await cdp.send("Page.startScreencast", { format: "jpeg", quality: 60, maxWidth: 480, maxHeight: 300 });
-  return {
-    async stop() {
-      await cdp.send("Page.stopScreencast").catch(() => {});
-      await cdp.detach().catch(() => {});
-      return Promise.all(raw.map((b) => brightness(b)));
-    },
-  };
-}
-
 test.describe("P2 — first load, fonts and the table at 1 unit = 1 ft (DS-04, BRD-05, BRD-01, DS-06)", () => {
-  test("AC-DS-04 / AC-BRD-05: candle → board fade-up → staggered HUD, once per load, no flash, no layout jump; reduced motion", async ({
-    admin,
-  }) => {
+  test("AC-DS-04 / AC-BRD-05: candle → board fade-up → staggered HUD, once per load, no flash, no layout jump; reduced motion", {
+    tag: "@timing",
+  }, async ({ admin }) => {
     await openTableAs(admin, "Local only");
     await admin.evaluate(installRecorder);
     const rec0 = await recordFrames(admin);

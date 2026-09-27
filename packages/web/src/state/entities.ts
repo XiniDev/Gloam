@@ -32,15 +32,14 @@ interface EntitiesStore {
   /** Bumps on every applied change (cheap subscription key). */
   version: number;
   /**
-   * Scene travel (SPEC §8.3 Scene activation): when the live scene changes, the board keeps showing the old one
-   * (`held`) while the screen fades to black, then the transition releases it under the black and fades in.
+   * Scene travel (SPEC §8.3 Scene activation): set when the live scene changes. The board switches at once; the
+   * transition covers it with a freeze-frame of the old scene (captured by `beforeTravel` just before the switch),
+   * fades that to black with the new scene's name, and fades in once the new scene has drawn.
    */
-  held: SceneData | null;
   travel: { sceneId: string; name: string; startedAt: number } | null;
   /** Travel transitions play once the first-load intro is over (the intro covers the first scene). */
   armed: boolean;
   setLive(next: SceneData): void;
-  releaseHeld(): void;
   endTravel(): void;
   arm(): void;
   setPrep(snapshot: PrepSnapshot | null): void;
@@ -61,7 +60,6 @@ export const useEntities = create<EntitiesStore>((set, get) => ({
   live: emptyScene(),
   prep: null,
   version: 0,
-  held: null,
   travel: null,
   armed: false,
   setLive(live) {
@@ -70,9 +68,10 @@ export const useEntities = create<EntitiesStore>((set, get) => ({
     const to = live.scene?.id ?? null;
     // A DM preparing another scene stays there; everyone else travels.
     if (s.armed && to && from !== to && !s.prep) {
+      // Still showing the old scene: let the transition freeze it before the board switches.
+      travelHooks.beforeTravel?.();
       set({
         live,
-        held: s.held ?? s.live,
         travel: { sceneId: to, name: live.scene?.name ?? "", startedAt: performance.now() },
         version: s.version + 1,
       });
@@ -80,8 +79,7 @@ export const useEntities = create<EntitiesStore>((set, get) => ({
     }
     set({ live, version: s.version + 1 });
   },
-  releaseHeld: () => set({ held: null, version: get().version + 1 }),
-  endTravel: () => set({ travel: null, held: null, version: get().version + 1 }),
+  endTravel: () => set({ travel: null, version: get().version + 1 }),
   arm: () => set({ armed: true }),
   setPrep(snapshot) {
     if (!snapshot) {
@@ -120,15 +118,15 @@ export const useEntities = create<EntitiesStore>((set, get) => ({
     }
     set({ prep: next, version: get().version + 1 });
   },
-  reset: () => set({ live: emptyScene(), prep: null, held: null, travel: null, version: get().version + 1 }),
+  reset: () => set({ live: emptyScene(), prep: null, travel: null, version: get().version + 1 }),
 }));
 
-/**
- * Which scene the board shows: the scene being travelled away from while the screen fades out, else a DM's prep
- * scene when one is open, else the live one.
- */
+/** Which scene the board shows: a DM's prep scene when one is open, otherwise the live one. */
 export function boardData(s: EntitiesStore): SceneData {
-  return s.held ?? s.prep ?? s.live;
+  return s.prep ?? s.live;
 }
 
 export const useBoard = <T>(sel: (d: SceneData) => T): T => useEntities((s) => sel(boardData(s)));
+
+/** Called synchronously just before the live scene switches for travel (the board still shows the old scene). */
+export const travelHooks: { beforeTravel: (() => void) | null } = { beforeTravel: null };

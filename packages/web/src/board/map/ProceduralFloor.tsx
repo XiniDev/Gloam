@@ -1,6 +1,7 @@
 import { useEffect, useMemo } from "react";
 import { MeshStandardMaterial } from "three";
 import { col } from "../colors.ts";
+import { disposeLater } from "../dispose.ts";
 import { FLOOR_PATTERN_GLSL, PALETTE, ROUGHNESS, STYLE_INDEX } from "../floors.ts";
 import { NOISE_GLSL } from "../glsl.ts";
 import type { Bounds, FloorStyle } from "../scene.ts";
@@ -63,7 +64,7 @@ export function ProceduralFloor({ bounds, style }: { bounds: Bounds; style: Floo
     u.uJ.value = col(j);
     material.roughness = ROUGHNESS[style];
   }, [style, material]);
-  useEffect(() => () => material.dispose(), [material]);
+  useEffect(() => () => disposeLater(material), [material]);
 
   const w = bounds.maxX - bounds.minX;
   const h = bounds.maxY - bounds.minY;

@@ -1,15 +1,16 @@
 import { Users } from "lucide-react";
-import { lazy, type ReactElement, Suspense, useEffect, useRef, useState } from "react";
+import { type ReactElement, Suspense, useEffect, useRef, useState } from "react";
 import { useTable } from "../net/table.ts";
 import { pendingCount, useLibrary } from "../state/library.ts";
 import { type DockTab, useUi } from "../state/ui.ts";
 import { IconButton } from "../ui/Button.tsx";
 import { ErrorBoundary } from "../ui/ErrorBoundary.tsx";
+import { lazyPage } from "../ui/lazyPage.ts";
 import { Sparkle } from "../ui/ornaments.tsx";
 import { hudOrder } from "./Intro.tsx";
 import { PartyPanel } from "./PartyPanel.tsx";
 
-const DmPanel = lazy(() => import("./dm/DmPanel.tsx"));
+const DmPanel = lazyPage(() => import("./dm/DmPanel.tsx"));
 
 const WIDTH_KEY = "gloam.dock.width";
 const MIN_W = 320;

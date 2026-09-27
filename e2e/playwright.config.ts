@@ -13,7 +13,13 @@ export default defineConfig({
   fullyParallel: false,
   workers: 2,
   retries: 0,
-  reporter: [["list"], ["json", { outputFile: "../artifacts/e2e/report.json" }]],
+  reporter: [
+    ["list"],
+    [
+      "json",
+      { outputFile: `../artifacts/e2e/report${process.env.E2E_PART ? `-${process.env.E2E_PART}` : ""}.json` },
+    ],
+  ],
   use: {
     ...devices["Desktop Chrome"],
     viewport: { width: 1440, height: 900 },
@@ -25,5 +31,11 @@ export default defineConfig({
       args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader"],
     },
   },
-  projects: [{ name: "chromium", use: { browserName: "chromium" } }],
+  projects: [
+    { name: "chromium", grepInvert: /@timing/, use: { browserName: "chromium" } },
+    // Latency and animation-timing journeys (≤ 1 s admissions, 400/600 ms camera tweens, 2 s scene travel) run one
+    // at a time: software GL shares one CPU, and a neighbour decoding a 16 384² map would be measured instead.
+    // `pnpm test:e2e` runs this project after the main one (tools/e2e.mjs).
+    { name: "timing", grep: /@timing/, workers: 1, use: { browserName: "chromium" } },
+  ],
 });

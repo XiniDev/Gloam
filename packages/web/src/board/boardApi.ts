@@ -16,7 +16,13 @@ export const boardApi: {
   cursor: { x: number; y: number } | null;
   groundAt(clientX: number, clientY: number): { x: number; y: number } | null;
   project(x: number, y: number, elevation?: number): { sx: number; sy: number } | null;
+  /** A still of the board as it is now (for the travel freeze-frame), or null without a board. */
+  snapshot(): HTMLCanvasElement | null;
+  /** Frames the board has rendered (on-demand rendering: it stops counting while idle). */
+  frames: number;
 } = {
+  snapshot: () => null,
+  frames: 0,
   camera: null,
   element: null,
   cursor: null,

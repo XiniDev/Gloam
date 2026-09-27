@@ -11,6 +11,7 @@ import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.j
 import { type GLTF, GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { assetUrl, fetchAsset } from "../net/assets.ts";
 import { useLoading } from "./diag.ts";
+import { disposeLater } from "./dispose.ts";
 import { wake } from "./frames.ts";
 
 /**
@@ -122,7 +123,7 @@ function disposeScene(root: Object3D): void {
     const mats = (Array.isArray(m.material) ? m.material : m.material ? [m.material] : []) as Material[];
     for (const mat of mats) {
       for (const v of Object.values(mat)) if (v instanceof Texture) v.dispose();
-      mat.dispose();
+      disposeLater(mat);
     }
   });
 }

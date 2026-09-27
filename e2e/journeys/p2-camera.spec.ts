@@ -62,9 +62,9 @@ const VIEWPORT = { width: 800, height: 500 };
 
 test.describe("P2 — the camera and the DM Spotlight (BRD-02, BRD-04)", () => {
   test.use({ viewport: VIEWPORT });
-  test("AC-BRD-02: zoom toward the cursor, orbit, pan, presets (400 ms), pitch/distance/bounds clamps", async ({
-    admin,
-  }) => {
+  test("AC-BRD-02: zoom toward the cursor, orbit, pan, presets (400 ms), pitch/distance/bounds clamps", {
+    tag: "@timing",
+  }, async ({ admin }) => {
     await adminAtTable(admin);
     await introDone(admin);
     const sceneId = await createScene(admin, {
@@ -222,12 +222,9 @@ test.describe("P2 — the camera and the DM Spotlight (BRD-02, BRD-04)", () => {
     expect(Math.min(Math.abs(t[0] + 12), Math.abs(t[2] + 8))).toBeLessThan(0.5); // pinned at a corner of the limit
   });
 
-  test("AC-BRD-04: the DM Spotlight moves opted-in players' cameras to the spot over 600 ms; opted-out players stay", async ({
-    admin,
-    browser,
-    gloam,
-    guardLog,
-  }) => {
+  test("AC-BRD-04: the DM Spotlight moves opted-in players' cameras to the spot over 600 ms; opted-out players stay", {
+    tag: "@timing",
+  }, async ({ admin, browser, gloam, guardLog }) => {
     const code = await adminAtTable(admin);
     await introDone(admin);
     const sceneId = await createScene(admin, {

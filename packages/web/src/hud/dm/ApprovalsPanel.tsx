@@ -1,13 +1,14 @@
-import { lazy, Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { assetUrl } from "../../net/assets.ts";
 import { request } from "../../net/table.ts";
 import { type AssetItem, useLibrary } from "../../state/library.ts";
 import { Button } from "../../ui/Button.tsx";
 import { EmptyState } from "../../ui/EmptyState.tsx";
+import { lazyPage } from "../../ui/lazyPage.ts";
 import { toast } from "../../ui/Toast.tsx";
 import { useAssetImage } from "../useAssetImage.ts";
 
-const ModelPreview = lazy(() => import("./ModelPreview.tsx"));
+const ModelPreview = lazyPage(() => import("./ModelPreview.tsx"));
 
 const PURPOSE: Record<AssetItem["purpose"], string> = {
   map: "Map",

@@ -1,6 +1,7 @@
 import { useEffect, useMemo } from "react";
 import { MeshStandardMaterial, Vector4 } from "three";
 import { C, col } from "./colors.ts";
+import { disposeLater } from "./dispose.ts";
 import { NOISE_GLSL } from "./glsl.ts";
 import type { Bounds } from "./scene.ts";
 
@@ -78,7 +79,7 @@ gl_FragColor.rgb *= 1.0 - smoothstep(0.0, ${TABLE_FADE_FT.toFixed(1)}, edge);
       bounds.maxY,
     );
   }, [bounds, material]);
-  useEffect(() => () => material.dispose(), [material]);
+  useEffect(() => () => disposeLater(material), [material]);
 
   const cx = (bounds.minX + bounds.maxX) / 2;
   const cz = (bounds.minY + bounds.maxY) / 2;

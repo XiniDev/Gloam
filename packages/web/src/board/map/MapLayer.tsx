@@ -6,6 +6,7 @@ import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js
 import { assetMeta, pickImageVariant } from "../../net/assets.ts";
 import { C, col } from "../colors.ts";
 import { boardDiag, useLoading } from "../diag.ts";
+import { disposeLater } from "../dispose.ts";
 import { acquireGlb, acquireTexture } from "../resources.ts";
 import { type Bounds, type Calibration, calibrationFromJson, sceneFloor } from "../scene.ts";
 import { TIERS, useTier } from "../tiers.ts";
@@ -80,7 +81,7 @@ function ImageMap({ assetId, calib, bounds }: { assetId: string; calib: Calibrat
     else material.color.copy(col(dominant ?? C.ink900));
     material.needsUpdate = true;
   }, [tex, dominant, material]);
-  useEffect(() => () => material.dispose(), [material]);
+  useEffect(() => () => disposeLater(material), [material]);
 
   return (
     <mesh

@@ -19,6 +19,7 @@ import { useUi } from "../../state/ui.ts";
 import { cameraRig } from "../CameraRig.tsx";
 import { C, col, ringColorOf } from "../colors.ts";
 import { boardDiag } from "../diag.ts";
+import { disposeLater } from "../dispose.ts";
 import { CAPS_FONT } from "../fonts.ts";
 import { setAnimating } from "../frames.ts";
 import { TIERS, useTier } from "../tiers.ts";
@@ -55,7 +56,7 @@ function resolveMode(t: TokenView, cls: "image" | "model" | null): ResolvedMode 
 function useTransparentMaterial(make: () => MeshStandardMaterial, deps: unknown[]) {
   // biome-ignore lint/correctness/useExhaustiveDependencies: deps are the material's inputs
   const m = useMemo(make, deps);
-  useEffect(() => () => m.dispose(), [m]);
+  useEffect(() => () => disposeLater(m), [m]);
   return m;
 }
 
@@ -425,7 +426,7 @@ function useMiniMaterials(mini: MiniInstance | null, opacity: number, dead: bool
     });
     return () => {
       for (const [m, mat] of originals) m.material = mat;
-      for (const c of clones) c.dispose();
+      disposeLater(...clones);
     };
   }, [mini, own, opacity, dead]);
 }
@@ -437,7 +438,7 @@ function Elevation({ elevation, radius }: { elevation: number; radius: number })
       new MeshStandardMaterial({ color: C.brass300, transparent: true, opacity: 0.55, depthWrite: false }),
     [],
   );
-  useEffect(() => () => mat.dispose(), [mat]);
+  useEffect(() => () => disposeLater(mat), [mat]);
   if (Math.abs(elevation) < 0.5) return null;
   const up = elevation > 0;
   return (
@@ -490,7 +491,7 @@ function Overlay({
   const group = useRef<Group>(null);
   const anchor = useRef<Group>(null);
   const bar = useMemo(() => createHpBarMaterial(), []);
-  useEffect(() => () => bar.dispose(), [bar]);
+  useEffect(() => () => disposeLater(bar), [bar]);
   const ghost = useRef(new HpGhost());
   const controls = token.ownerIds.includes(viewer.userId) || viewer.dm;
   const nums = token.hp;

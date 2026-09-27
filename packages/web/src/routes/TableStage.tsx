@@ -1,10 +1,11 @@
-import { lazy, Suspense } from "react";
+import { Suspense } from "react";
 import { hudOrder } from "../hud/Intro.tsx";
 import { useTable } from "../net/table.ts";
 import { useBoard } from "../state/entities.ts";
 import { ErrorBoundary } from "../ui/ErrorBoundary.tsx";
+import { lazyPage } from "../ui/lazyPage.ts";
 
-const Board = lazy(() => import("../board/Board.tsx"));
+const Board = lazyPage(() => import("../board/Board.tsx"));
 
 /**
  * The stage behind the HUD: the 3D board, mounted once and kept mounted while panels change (SPEC §23.1), inside

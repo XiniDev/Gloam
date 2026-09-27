@@ -14,4 +14,13 @@ if (!process.argv.includes("--no-build")) {
   if (b !== 0) process.exit(b);
 }
 const extra = process.argv.slice(2).filter((a) => a !== "--no-build");
-process.exit(run(["exec", "playwright", "test", "-c", join("e2e", "playwright.config.ts"), ...extra]));
+const pw = (args, env = {}) => {
+  Object.assign(process.env, env);
+  return run(["exec", "playwright", "test", "-c", join("e2e", "playwright.config.ts"), ...args]);
+};
+if (extra.length) process.exit(pw(extra));
+// The full run: the parallel journeys, then the timing journeys on their own (see playwright.config.ts). Both always
+// run; either failing fails the run.
+const main = pw(["--project=chromium"], { E2E_PART: "main" });
+const timing = pw(["--project=timing"], { E2E_PART: "timing" });
+process.exit(main || timing);

@@ -4,6 +4,7 @@ import { AdditiveBlending, BufferAttribute, BufferGeometry, Points, ShaderMateri
 import { prefersReducedMotion, useSettings } from "../state/settings.ts";
 import { C, col } from "./colors.ts";
 import { boardDiag } from "./diag.ts";
+import { disposeLater } from "./dispose.ts";
 import { setAmbient } from "./frames.ts";
 import { keyLightDirection } from "./Lighting.tsx";
 import { type Bounds, boundsCenter, boundsSize } from "./scene.ts";
@@ -102,7 +103,7 @@ export function DustMotes({ bounds, count }: { bounds: Bounds; count: number }) 
     if (!points) return;
     return () => {
       points.geometry.dispose();
-      (points.material as ShaderMaterial).dispose();
+      disposeLater(points.material as ShaderMaterial);
     };
   }, [points, count]);
 
