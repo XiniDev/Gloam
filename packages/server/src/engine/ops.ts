@@ -49,6 +49,8 @@ export function inverse(ops: Op[]): Op[] {
         return { ...op, before: op.after, after: op.before };
       case "sheet":
         return { ...op, patch: op.inverse, inverse: op.patch };
+      default:
+        throw new Error(`unknown op ${(op as { k: string }).k}`);
     }
   });
 }

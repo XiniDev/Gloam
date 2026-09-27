@@ -10,6 +10,7 @@ import { ProfileService } from "./auth/profiles.ts";
 import { AttemptLimiter, BucketMap } from "./auth/rateLimit.ts";
 import { SessionService } from "./auth/sessions.ts";
 import { type Config, loadConfig } from "./config.ts";
+import { loadSrdPack } from "./content/packs.ts";
 import type { HttpControl, ServerContext } from "./context.ts";
 import { dataPaths, ensureDataDir } from "./dataDir.ts";
 import { openDatabase } from "./db/client.ts";
@@ -19,8 +20,8 @@ import { createLogger } from "./logger.ts";
 import { BackupService } from "./persistence/backups.ts";
 import { SnapshotService } from "./persistence/snapshots.ts";
 import { isSameOrigin } from "./rooms/dispatch.ts";
-import { ensureLobbyRoom, ensureTableRoom } from "./rooms/lifecycle.ts";
 import { LobbyRoom } from "./rooms/LobbyRoom.ts";
+import { ensureLobbyRoom, ensureTableRoom } from "./rooms/lifecycle.ts";
 import { RoomRegistry } from "./rooms/registry.ts";
 import { setRoomContext } from "./rooms/roomContext.ts";
 import { TableRoom } from "./rooms/TableRoom.ts";
@@ -102,6 +103,10 @@ export async function startServer(opts: StartOptions = {}): Promise<GloamServer>
   if (revoked || dangling)
     log.warn({ revoked, dangling }, "crash hygiene: previous run did not close the table");
 
+  // 4. Load content packs and assert their counts (SPEC §11).
+  const content = loadSrdPack();
+  log.info({ spells: content.spells.length }, "SRD 5.2.1 pack loaded");
+
   const httpServer = createServer();
   const cfPath = settings.get().cloudflaredPath;
   const cloudflared = cfPath ? { file: cfPath, args: [] } : config.cloudflared;
@@ -122,6 +127,7 @@ export async function startServer(opts: StartOptions = {}): Promise<GloamServer>
     snapshots: new SnapshotService(sqlite, db, paths.snapshots, log),
     backups: new BackupService(sqlite, paths.backups, log),
     rooms: new RoomRegistry(),
+    content,
     startedAt,
     limits: {
       joinCode: new AttemptLimiter({ max: 10, windowMs: 10 * 60_000, lockMs: 10 * 60_000 }),
@@ -184,25 +190,28 @@ export async function startServer(opts: StartOptions = {}): Promise<GloamServer>
 
   // 6. Schedulers: autosnapshots every 10 min while open, daily backup after 04:00, limiter sweeps.
   let lastAutoSnapshot = Date.now();
-  const tick = setInterval(async () => {
-    try {
-      const now = Date.now();
-      if (ctx.table.isOpen && ctx.table.campaignId && now - lastAutoSnapshot >= config.autoSnapshotMs) {
-        lastAutoSnapshot = now;
-        ctx.snapshots.write(ctx.table.campaignId, "auto");
+  const tick = setInterval(
+    async () => {
+      try {
+        const now = Date.now();
+        if (ctx.table.isOpen && ctx.table.campaignId && now - lastAutoSnapshot >= config.autoSnapshotMs) {
+          lastAutoSnapshot = now;
+          ctx.snapshots.write(ctx.table.campaignId, "auto");
+        }
+        const day = await ctx.backups.maybeDaily(settings.get().lastBackupDay);
+        if (day) settings.update({ lastBackupDay: day });
+        ctx.limits.joinCode.sweep();
+        ctx.limits.adminLogin.sweep();
+        ctx.limits.rest.sweep(60_000);
+        ctx.limits.uploads.sweep(10 * 60_000);
+        ctx.limits.matchmake.sweep(60_000);
+        ctx.profiles.pinLimiter.sweep();
+      } catch (err) {
+        log.error({ err }, "scheduler tick failed");
       }
-      const day = await ctx.backups.maybeDaily(settings.get().lastBackupDay);
-      if (day) settings.update({ lastBackupDay: day });
-      ctx.limits.joinCode.sweep();
-      ctx.limits.adminLogin.sweep();
-      ctx.limits.rest.sweep(60_000);
-      ctx.limits.uploads.sweep(10 * 60_000);
-      ctx.limits.matchmake.sweep(60_000);
-      ctx.profiles.pinLimiter.sweep();
-    } catch (err) {
-      log.error({ err }, "scheduler tick failed");
-    }
-  }, Math.min(30_000, Math.max(250, Math.floor(config.autoSnapshotMs / 4))));
+    },
+    Math.min(30_000, Math.max(250, Math.floor(config.autoSnapshotMs / 4))),
+  );
   tick.unref();
 
   // 7. Banner (SPEC §8.1): one-time setup link on first run, otherwise a one-time admin link.

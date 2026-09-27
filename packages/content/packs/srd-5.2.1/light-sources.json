@@ -1,0 +1,57 @@
+[
+  {
+    "id": "candle",
+    "name": "Candle",
+    "bright": 5,
+    "dim": 5,
+    "durationText": "1 hour",
+    "page": 96,
+    "notes": "Lighting it with a Tinderbox takes a Bonus Action (p. 100)."
+  },
+  {
+    "id": "torch",
+    "name": "Torch",
+    "bright": 20,
+    "dim": 20,
+    "durationText": "1 hour",
+    "page": 100,
+    "notes": "Lighting it with a Tinderbox takes a Bonus Action (p. 100)."
+  },
+  {
+    "id": "lamp",
+    "name": "Lamp",
+    "bright": 15,
+    "dim": 30,
+    "durationText": "6 hours per flask of Oil",
+    "page": 98,
+    "notes": "Burns Oil; a flask of Oil burns for 6 hours in a Lamp or Lantern (p. 99). Lighting it with a Tinderbox takes a Bonus Action (p. 100)."
+  },
+  {
+    "id": "hooded-lantern",
+    "name": "Lantern, Hooded",
+    "bright": 30,
+    "dim": 30,
+    "durationText": "6 hours per flask of Oil",
+    "page": 98,
+    "notes": "As a Bonus Action, lower the hood (see hooded-lantern-lowered) or raise it again. A flask of Oil burns for 6 hours (p. 99)."
+  },
+  {
+    "id": "hooded-lantern-lowered",
+    "name": "Lantern, Hooded (hood lowered)",
+    "bright": 0,
+    "dim": 5,
+    "durationText": "6 hours per flask of Oil",
+    "page": 98,
+    "notes": "The hooded lantern with its hood lowered (a Bonus Action to lower or raise)."
+  },
+  {
+    "id": "bullseye-lantern",
+    "name": "Lantern, Bullseye",
+    "bright": 60,
+    "dim": 60,
+    "cone": 53.13,
+    "durationText": "6 hours per flask of Oil",
+    "page": 98,
+    "notes": "Directional: a 60-foot Cone of Bright Light plus 60 feet of Dim Light. Cone angle 53.13° = 2·atan(1/2), from the Cone definition (width at any point equals its distance from the origin, p. 179). A flask of Oil burns for 6 hours (p. 99)."
+  }
+]

@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
-import { request as httpRequest } from "node:http";
 import { readdirSync, readFileSync, statSync } from "node:fs";
+import { request as httpRequest } from "node:http";
 import { userInfo } from "node:os";
 import { join } from "node:path";
 import { gunzipSync } from "node:zlib";
@@ -206,27 +206,29 @@ describe("cross-cutting security (SEC)", () => {
     }
     // HTTPS via the tunnel: HSTS is added and connect-src uses wss.
     // fetch() can't override Host, so speak raw HTTP like cloudflared does on loopback.
-    const tunnel = await new Promise<{ headers: Record<string, string | string[] | undefined> }>((res, rej) => {
-      const req = httpRequest(
-        {
-          host: "127.0.0.1",
-          port: t.server.port,
-          path: "/api/me",
-          headers: {
-            "cf-ray": "x",
-            "cf-connecting-ip": "203.0.113.1",
-            "x-forwarded-proto": "https",
-            host: "calm-river-1234.trycloudflare.com",
+    const tunnel = await new Promise<{ headers: Record<string, string | string[] | undefined> }>(
+      (res, rej) => {
+        const req = httpRequest(
+          {
+            host: "127.0.0.1",
+            port: t.server.port,
+            path: "/api/me",
+            headers: {
+              "cf-ray": "x",
+              "cf-connecting-ip": "203.0.113.1",
+              "x-forwarded-proto": "https",
+              host: "calm-river-1234.trycloudflare.com",
+            },
           },
-        },
-        (r) => {
-          r.resume();
-          res({ headers: r.headers });
-        },
-      );
-      req.on("error", rej);
-      req.end();
-    });
+          (r) => {
+            r.resume();
+            res({ headers: r.headers });
+          },
+        );
+        req.on("error", rej);
+        req.end();
+      },
+    );
     expect(tunnel.headers["strict-transport-security"]).toBe("max-age=31536000");
     expect(String(tunnel.headers["content-security-policy"])).toContain(
       "connect-src 'self' wss://calm-river-1234.trycloudflare.com",

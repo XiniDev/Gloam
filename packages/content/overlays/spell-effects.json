@@ -1,0 +1,862 @@
+{
+  "$comment": "Persistent-effect templates (SPEC §8.13 F13, §12.3 Effect), hand-authored from the SRD 5.2.1 PDF. The 16 effects F13 requires are first; emanations follow (§33.4: they move with the caster unless the text makes them immobile/stationary), then other persistent areas. `attach`: caster = moves with the caster; object = moves with an object (placed as a token); target = on each affected creature/object; point = fixed where cast. Triggers create DM prompts: `enter` (a creature enters, or the area moves into its space), `startTurn`/`endTurn` (a creature's own turn inside), `per5ft` (each 5 ft moved inside). DCs and slot scaling come from the cast; damage formulas are the base level. `movement.drift` moves the effect at the start of the caster's turns.",
+  "spells": {
+    "fog-cloud": {
+      "page": 133,
+      "source": "\"You create a 20-foot-radius Sphere of fog centered on a point within range. The Sphere is Heavily Obscured. It lasts for the duration or until a strong wind (such as one created by Gust of Wind) disperses it.\"",
+      "set": {
+        "effect": {
+          "props": {
+            "obscurement": "heavy"
+          },
+          "triggers": [],
+          "attach": "point"
+        }
+      }
+    },
+    "darkness": {
+      "page": 122,
+      "source": "Magical Darkness fills a 15-foot-radius Sphere at a point (or a 15-foot Emanation from an object, which moves with it — see areaAlternatives). \"Darkvision can’t see through it, and nonmagical light can’t illuminate it.\" Darkness makes an area Heavily Obscured (SRD p. 11).",
+      "set": {
+        "effect": {
+          "props": {
+            "magicalDarkness": true,
+            "obscurement": "heavy"
+          },
+          "triggers": [],
+          "attach": "point"
+        }
+      }
+    },
+    "daylight": {
+      "page": 122,
+      "source": "\"The sunlight’s area is Bright Light and sheds Dim Light for an additional 60 feet.\" Dispels spell Darkness of level 3 or lower where they overlap. Object form moves with the object (areaAlternatives).",
+      "set": {
+        "effect": {
+          "props": {
+            "light": {
+              "bright": 60,
+              "dim": 60,
+              "magical": true,
+              "pierceDarkness": true
+            }
+          },
+          "triggers": [],
+          "attach": "point"
+        }
+      }
+    },
+    "light": {
+      "page": 144,
+      "source": "\"You touch one Large or smaller object … the object sheds Bright Light in a 20-foot radius and Dim Light for an additional 20 feet.\" The light moves with the object.",
+      "set": {
+        "effect": {
+          "props": {
+            "light": {
+              "bright": 20,
+              "dim": 20,
+              "magical": true,
+              "pierceDarkness": false
+            }
+          },
+          "triggers": [],
+          "attach": "object"
+        }
+      }
+    },
+    "spirit-guardians": {
+      "page": 164,
+      "source": "\"Any other creature’s Speed is halved in the Emanation, and whenever the Emanation enters a creature’s space and whenever a creature enters the Emanation or ends its turn there, the creature must make a Wisdom saving throw. On a failed save, the creature takes 3d8 Radiant damage (if you are good or neutral) or 3d8 Necrotic damage (if you are evil). On a successful save, the creature takes half as much damage. A creature makes this save only once per turn.\"",
+      "set": {
+        "effect": {
+          "props": {
+            "speedHalved": true
+          },
+          "triggers": [
+            {
+              "when": "enter",
+              "save": {
+                "ability": "wis",
+                "onSuccess": "half"
+              },
+              "damage": {
+                "formula": "3d8",
+                "type": "radiant"
+              },
+              "note": "Also when the Emanation enters its space. Necrotic instead if you are evil. Once per turn; designated creatures are unaffected."
+            },
+            {
+              "when": "endTurn",
+              "save": {
+                "ability": "wis",
+                "onSuccess": "half"
+              },
+              "damage": {
+                "formula": "3d8",
+                "type": "radiant"
+              },
+              "note": "Necrotic instead if you are evil. Once per turn; designated creatures are unaffected."
+            }
+          ],
+          "attach": "caster"
+        }
+      }
+    },
+    "moonbeam": {
+      "page": 150,
+      "source": "\"Dim Light fills the Cylinder, and you can take a Magic action on later turns to move the Cylinder up to 60 feet.\" Save \"when the spell’s area moves into its space and when it enters the spell’s area or ends its turn there … only once per turn\": Constitution, 2d10 Radiant, half on success; a shape-shifted creature reverts.",
+      "set": {
+        "effect": {
+          "props": {
+            "light": {
+              "bright": 0,
+              "dim": 5,
+              "magical": true,
+              "pierceDarkness": false
+            }
+          },
+          "triggers": [
+            {
+              "when": "enter",
+              "save": {
+                "ability": "con",
+                "onSuccess": "half"
+              },
+              "damage": {
+                "formula": "2d10",
+                "type": "radiant"
+              },
+              "note": "Also when the Cylinder moves into its space. Once per turn. A shape-shifted creature reverts to its true form."
+            },
+            {
+              "when": "endTurn",
+              "save": {
+                "ability": "con",
+                "onSuccess": "half"
+              },
+              "damage": {
+                "formula": "2d10",
+                "type": "radiant"
+              },
+              "note": "Once per turn."
+            }
+          ],
+          "attach": "point",
+          "movement": {
+            "by": "caster",
+            "maxFt": 60,
+            "action": "action"
+          }
+        }
+      }
+    },
+    "web": {
+      "page": 174,
+      "source": "\"The webs are Difficult Terrain, and the area within them is Lightly Obscured.\" \"The first time a creature enters the webs on a turn or starts its turn there, it must succeed on a Dexterity saving throw or have the Restrained condition while in the webs or until it breaks free.\"",
+      "set": {
+        "effect": {
+          "props": {
+            "difficult": true,
+            "obscurement": "light"
+          },
+          "triggers": [
+            {
+              "when": "enter",
+              "save": {
+                "ability": "dex",
+                "onSuccess": "none"
+              },
+              "condition": "restrained",
+              "note": "First time it enters on a turn. Restrained while in the webs; action: Str (Athletics) vs your DC to break free."
+            },
+            {
+              "when": "startTurn",
+              "save": {
+                "ability": "dex",
+                "onSuccess": "none"
+              },
+              "condition": "restrained",
+              "note": "Webs exposed to fire burn away (5-ft Cube per round), dealing 2d4 Fire to a creature starting its turn in the fire."
+            }
+          ],
+          "attach": "point"
+        }
+      }
+    },
+    "spike-growth": {
+      "page": 164,
+      "source": "\"The area becomes Difficult Terrain for the duration. When a creature moves into or within the area, it takes 2d4 Piercing damage for every 5 feet it travels.\" Camouflaged: a Search action and a Wisdom (Perception or Survival) check against your DC to notice.",
+      "set": {
+        "effect": {
+          "props": {
+            "difficult": true
+          },
+          "triggers": [
+            {
+              "when": "per5ft",
+              "damage": {
+                "formula": "2d4",
+                "type": "piercing"
+              },
+              "note": "For every 5 feet it travels into or within the area (no save)."
+            }
+          ],
+          "attach": "point"
+        }
+      }
+    },
+    "sleet-storm": {
+      "page": 163,
+      "source": "\"The area is Heavily Obscured, and exposed flames in the area are doused. Ground in the Cylinder is Difficult Terrain. When a creature enters the Cylinder for the first time on a turn or starts its turn there, it must succeed on a Dexterity saving throw or have the Prone condition and lose Concentration.\"",
+      "set": {
+        "effect": {
+          "props": {
+            "obscurement": "heavy",
+            "difficult": true
+          },
+          "triggers": [
+            {
+              "when": "enter",
+              "save": {
+                "ability": "dex",
+                "onSuccess": "none"
+              },
+              "condition": "prone",
+              "note": "First time it enters on a turn. On a failure it also loses Concentration."
+            },
+            {
+              "when": "startTurn",
+              "save": {
+                "ability": "dex",
+                "onSuccess": "none"
+              },
+              "condition": "prone",
+              "note": "On a failure it also loses Concentration."
+            }
+          ],
+          "attach": "point"
+        }
+      }
+    },
+    "stinking-cloud": {
+      "page": 165,
+      "source": "\"The cloud is Heavily Obscured … until a strong wind … disperses it. Each creature that starts its turn in the Sphere must succeed on a Constitution saving throw or have the Poisoned condition until the end of the current turn. While Poisoned in this way, the creature can’t take an action or a Bonus Action.\"",
+      "set": {
+        "effect": {
+          "props": {
+            "obscurement": "heavy"
+          },
+          "triggers": [
+            {
+              "when": "startTurn",
+              "save": {
+                "ability": "con",
+                "onSuccess": "none"
+              },
+              "condition": "poisoned",
+              "note": "Poisoned until the end of the current turn; while Poisoned this way it can’t take an action or a Bonus Action."
+            }
+          ],
+          "attach": "point"
+        }
+      }
+    },
+    "cloudkill": {
+      "page": 116,
+      "source": "\"Its area is Heavily Obscured. Each creature in the Sphere makes a Constitution saving throw, taking 5d8 Poison damage on a failed save or half as much damage on a successful one. A creature must also make this save when the Sphere moves into its space and when it enters the Sphere or ends its turn there. A creature makes this save only once per turn. The Sphere moves 10 feet away from you at the start of each of your turns.\"",
+      "set": {
+        "effect": {
+          "props": {
+            "obscurement": "heavy"
+          },
+          "triggers": [
+            {
+              "when": "enter",
+              "save": {
+                "ability": "con",
+                "onSuccess": "half"
+              },
+              "damage": {
+                "formula": "5d8",
+                "type": "poison"
+              },
+              "note": "Also when the Sphere moves into its space. Once per turn."
+            },
+            {
+              "when": "endTurn",
+              "save": {
+                "ability": "con",
+                "onSuccess": "half"
+              },
+              "damage": {
+                "formula": "5d8",
+                "type": "poison"
+              },
+              "note": "Once per turn."
+            }
+          ],
+          "attach": "point",
+          "movement": {
+            "by": "caster",
+            "drift": {
+              "ft": 10,
+              "direction": "awayFromCaster"
+            }
+          }
+        }
+      }
+    },
+    "wall-of-fire": {
+      "page": 172,
+      "source": "\"The wall is opaque … One side of the wall … deals 5d8 Fire damage to each creature that ends its turn within 10 feet of that side or inside the wall. A creature takes the same damage when it enters the wall for the first time on a turn or ends its turn there. The other side of the wall deals no damage.\" (No save for this damage; the Dexterity save is only when the wall appears.)",
+      "set": {
+        "effect": {
+          "props": {
+            "opaque": true
+          },
+          "triggers": [
+            {
+              "when": "enter",
+              "damage": {
+                "formula": "5d8",
+                "type": "fire"
+              },
+              "note": "First time it enters the wall on a turn. No save."
+            },
+            {
+              "when": "endTurn",
+              "damage": {
+                "formula": "5d8",
+                "type": "fire"
+              },
+              "note": "Inside the wall or within 10 feet of its damaging side. No save."
+            }
+          ],
+          "attach": "point"
+        }
+      }
+    },
+    "silence": {
+      "page": 162,
+      "source": "\"no sound can be created within or pass through a 20-foot-radius Sphere … Any creature or object entirely inside the Sphere has Immunity to Thunder damage, and creatures have the Deafened condition while entirely inside it. Casting a spell that includes a Verbal component is impossible there.\"",
+      "set": {
+        "effect": {
+          "props": {
+            "silence": true
+          },
+          "triggers": [],
+          "attach": "point"
+        }
+      }
+    },
+    "faerie-fire": {
+      "page": 129,
+      "source": "\"Objects in a 20-foot Cube within range are outlined … Each creature in the Cube is also outlined if it fails a Dexterity saving throw. For the duration, objects and affected creatures shed Dim Light in a 10-foot radius and can’t benefit from the Invisible condition. Attack rolls against an affected creature or object have Advantage if the attacker can see it.\" The effect stays on each outlined target.",
+      "review": "Effect attached to each outlined target (Dim Light 10 ft, outlined) rather than to the 20-ft Cube.",
+      "set": {
+        "effect": {
+          "props": {
+            "outline": true,
+            "light": {
+              "bright": 0,
+              "dim": 10,
+              "magical": true,
+              "pierceDarkness": false
+            }
+          },
+          "triggers": [],
+          "attach": "target"
+        }
+      }
+    },
+    "flaming-sphere": {
+      "page": 132,
+      "source": "\"Any creature that ends its turn within 5 feet of the sphere makes a Dexterity saving throw, taking 2d6 Fire damage on a failed save or half as much damage on a successful one. As a Bonus Action, you can move the sphere up to 30 feet … If you move the sphere into a creature’s space, that creature makes the save against the sphere, and the sphere stops moving for the turn.\" Sheds Bright Light 20 ft + Dim 20 ft.",
+      "set": {
+        "effect": {
+          "props": {
+            "light": {
+              "bright": 20,
+              "dim": 20,
+              "magical": true,
+              "pierceDarkness": false
+            }
+          },
+          "triggers": [
+            {
+              "when": "endTurn",
+              "save": {
+                "ability": "dex",
+                "onSuccess": "half"
+              },
+              "damage": {
+                "formula": "2d6",
+                "type": "fire"
+              },
+              "note": "Within 5 feet of the sphere."
+            },
+            {
+              "when": "enter",
+              "save": {
+                "ability": "dex",
+                "onSuccess": "half"
+              },
+              "damage": {
+                "formula": "2d6",
+                "type": "fire"
+              },
+              "note": "Only when you move the sphere into its space; the sphere then stops moving for the turn."
+            }
+          ],
+          "attach": "object",
+          "movement": {
+            "by": "caster",
+            "maxFt": 30,
+            "action": "bonus"
+          }
+        }
+      }
+    },
+    "call-lightning": {
+      "page": 114,
+      "source": "\"A storm cloud appears at a point within range that you can see above yourself. It takes the shape of a Cylinder that is 10 feet tall with a 60-foot radius … Until the spell ends, you can take a Magic action to call down lightning in that way again\" — each bolt: creatures within 5 feet of a point under the cloud make a Dexterity save (3d10 Lightning, half on success). The cloud itself has no triggers.",
+      "review": "The storm cloud is the effect; each bolt (Magic action, 5-ft radius under the cloud) is resolved as a new roll by the DM.",
+      "set": {
+        "effect": {
+          "props": {},
+          "triggers": [],
+          "attach": "point"
+        }
+      }
+    },
+    "antilife-shell": {
+      "page": 109,
+      "source": "\"An aura extends from you in a 10-foot Emanation … The aura prevents creatures other than Constructs and Undead from passing or reaching through it.\" Moves with you.",
+      "set": {
+        "effect": {
+          "props": {},
+          "triggers": [],
+          "attach": "caster"
+        }
+      }
+    },
+    "antimagic-field": {
+      "page": 109,
+      "source": "\"An aura of antimagic surrounds you in 10-foot Emanation.\" Moves with you.",
+      "set": {
+        "effect": {
+          "props": {},
+          "triggers": [],
+          "attach": "caster"
+        }
+      }
+    },
+    "conjure-woodland-beings": {
+      "page": 118,
+      "source": "\"Whenever the Emanation enters the space of a creature you can see and whenever a creature you can see enters the Emanation or ends its turn there, you can force that creature to make a Wisdom saving throw. The creature takes 5d8 Force damage on a failed save or half as much damage on a successful one. A creature makes this save only once per turn.\"",
+      "set": {
+        "effect": {
+          "props": {},
+          "triggers": [
+            {
+              "when": "enter",
+              "save": {
+                "ability": "wis",
+                "onSuccess": "half"
+              },
+              "damage": {
+                "formula": "5d8",
+                "type": "force"
+              },
+              "note": "Optional (you choose). Also when the Emanation enters its space. Once per turn."
+            },
+            {
+              "when": "endTurn",
+              "save": {
+                "ability": "wis",
+                "onSuccess": "half"
+              },
+              "damage": {
+                "formula": "5d8",
+                "type": "force"
+              },
+              "note": "Optional (you choose). Once per turn."
+            }
+          ],
+          "attach": "caster"
+        }
+      }
+    },
+    "globe-of-invulnerability": {
+      "page": 136,
+      "source": "\"An immobile, shimmering barrier appears in a 10-foot Emanation around you\" — stays where it was cast.",
+      "set": {
+        "effect": {
+          "props": {},
+          "triggers": [],
+          "attach": "point"
+        }
+      }
+    },
+    "tiny-hut": {
+      "page": 169,
+      "source": "\"A 10-foot Emanation springs into existence around you and remains stationary … The Emanation is opaque from the outside … but it’s transparent from the inside.\" The interior can be Dim Light or Darkness at your command.",
+      "set": {
+        "effect": {
+          "props": {
+            "opaque": true
+          },
+          "triggers": [],
+          "attach": "point"
+        }
+      }
+    },
+    "conjure-minor-elementals": {
+      "page": 118,
+      "source": "\"spirits … flit around you in a 15-foot Emanation … the ground in the Emanation is Difficult Terrain for your enemies.\" Difficult Terrain applies to enemies only, which the props can't express, so it is left to the DM (text).",
+      "review": "Difficult Terrain for enemies only can't be expressed in the effect props, so it is left to the DM.",
+      "set": {
+        "effect": {
+          "props": {},
+          "triggers": [],
+          "attach": "caster"
+        }
+      }
+    },
+    "aura-of-life": {
+      "page": 111,
+      "source": "\"An aura radiates from you in a 30-foot Emanation for the duration.\" Moves with you.",
+      "set": {
+        "effect": {
+          "props": {},
+          "triggers": [],
+          "attach": "caster"
+        }
+      }
+    },
+    "holy-aura": {
+      "page": 141,
+      "source": "\"For the duration, you emit an aura in a 30-foot Emanation.\" Moves with you.",
+      "set": {
+        "effect": {
+          "props": {},
+          "triggers": [],
+          "attach": "caster"
+        }
+      }
+    },
+    "pass-without-trace": {
+      "page": 151,
+      "source": "\"You radiate a concealing aura in a 30-foot Emanation for the duration.\" Moves with you.",
+      "set": {
+        "effect": {
+          "props": {},
+          "triggers": [],
+          "attach": "caster"
+        }
+      }
+    },
+    "speak-with-plants": {
+      "page": 164,
+      "source": "\"You imbue plants in an immobile 30-foot Emanation\" — stays where it was cast.",
+      "set": {
+        "effect": {
+          "props": {},
+          "triggers": [],
+          "attach": "point"
+        }
+      }
+    },
+    "conjure-celestial": {
+      "page": 118,
+      "source": "\"Bright Light fills the Cylinder, and when you move on your turn, you can also move the Cylinder up to 30 feet. Whenever the Cylinder moves into the space of a creature you can see and whenever a creature you can see enters the Cylinder or ends its turn there, you can bathe it in one of the lights. A creature can be affected by this spell only once per turn.\" Healing Light: 4d12 + your modifier; Searing Light: Dex save, 6d12 Radiant, half on success.",
+      "set": {
+        "effect": {
+          "props": {
+            "light": {
+              "bright": 10,
+              "dim": 0,
+              "magical": true,
+              "pierceDarkness": false
+            }
+          },
+          "triggers": [
+            {
+              "when": "enter",
+              "save": {
+                "ability": "dex",
+                "onSuccess": "half"
+              },
+              "damage": {
+                "formula": "6d12",
+                "type": "radiant"
+              },
+              "note": "Searing Light shown; or Healing Light (regains 4d12 + your modifier). Also when the Cylinder moves into its space. Once per turn."
+            },
+            {
+              "when": "endTurn",
+              "save": {
+                "ability": "dex",
+                "onSuccess": "half"
+              },
+              "damage": {
+                "formula": "6d12",
+                "type": "radiant"
+              },
+              "note": "Searing Light shown; or Healing Light (regains 4d12 + your modifier). Once per turn."
+            }
+          ],
+          "attach": "point",
+          "movement": {
+            "by": "caster",
+            "maxFt": 30,
+            "action": "move"
+          }
+        }
+      }
+    },
+    "incendiary-cloud": {
+      "page": 142,
+      "source": "\"The cloud’s area is Heavily Obscured … each creature in it makes a Dexterity saving throw, taking 10d8 Fire damage on a failed save or half as much damage on a successful one. A creature must also make this save when the Sphere moves into its space and when it enters the Sphere or ends its turn there. A creature makes this save only once per turn. The cloud moves 10 feet away from you in a direction you choose at the start of each of your turns.\"",
+      "set": {
+        "effect": {
+          "props": {
+            "obscurement": "heavy"
+          },
+          "triggers": [
+            {
+              "when": "enter",
+              "save": {
+                "ability": "dex",
+                "onSuccess": "half"
+              },
+              "damage": {
+                "formula": "10d8",
+                "type": "fire"
+              },
+              "note": "Also when the Sphere moves into its space. Once per turn."
+            },
+            {
+              "when": "endTurn",
+              "save": {
+                "ability": "dex",
+                "onSuccess": "half"
+              },
+              "damage": {
+                "formula": "10d8",
+                "type": "fire"
+              },
+              "note": "Once per turn."
+            }
+          ],
+          "attach": "point",
+          "movement": {
+            "by": "caster",
+            "drift": {
+              "ft": 10,
+              "direction": "chosen"
+            }
+          }
+        }
+      }
+    },
+    "insect-plague": {
+      "page": 143,
+      "source": "\"its area is Lightly Obscured and Difficult Terrain … A creature also makes this save when it enters the spell’s area for the first time on a turn or ends its turn there. A creature makes this save only once per turn.\" Constitution, 4d10 Piercing, half on success.",
+      "set": {
+        "effect": {
+          "props": {
+            "obscurement": "light",
+            "difficult": true
+          },
+          "triggers": [
+            {
+              "when": "enter",
+              "save": {
+                "ability": "con",
+                "onSuccess": "half"
+              },
+              "damage": {
+                "formula": "4d10",
+                "type": "piercing"
+              },
+              "note": "First time it enters on a turn. Once per turn."
+            },
+            {
+              "when": "endTurn",
+              "save": {
+                "ability": "con",
+                "onSuccess": "half"
+              },
+              "damage": {
+                "formula": "4d10",
+                "type": "piercing"
+              },
+              "note": "Once per turn."
+            }
+          ],
+          "attach": "point"
+        }
+      }
+    },
+    "black-tentacles": {
+      "page": 113,
+      "source": "\"these tentacles turn the ground in that area into Difficult Terrain. Each creature in that area makes a Strength saving throw. On a failed save, it takes 3d6 Bludgeoning damage, and it has the Restrained condition until the spell ends. A creature also makes that save if it enters the area or ends it turn there. A creature makes that save only once per turn.\"",
+      "set": {
+        "effect": {
+          "props": {
+            "difficult": true
+          },
+          "triggers": [
+            {
+              "when": "enter",
+              "save": {
+                "ability": "str",
+                "onSuccess": "none"
+              },
+              "damage": {
+                "formula": "3d6",
+                "type": "bludgeoning"
+              },
+              "condition": "restrained",
+              "note": "Once per turn. A Restrained creature can use an action: Str (Athletics) vs your DC to end it."
+            },
+            {
+              "when": "endTurn",
+              "save": {
+                "ability": "str",
+                "onSuccess": "none"
+              },
+              "damage": {
+                "formula": "3d6",
+                "type": "bludgeoning"
+              },
+              "condition": "restrained",
+              "note": "Once per turn."
+            }
+          ],
+          "attach": "point"
+        }
+      }
+    },
+    "blade-barrier": {
+      "page": 113,
+      "source": "\"The wall provides Three-Quarters Cover, and its space is Difficult Terrain. Any creature in the wall’s space makes a Dexterity saving throw, taking 6d10 Force damage on a failed save or half as much damage on a successful one. A creature also makes that save if it enters the wall’s space or ends it turn there. A creature makes that save only once per turn.\"",
+      "set": {
+        "effect": {
+          "props": {
+            "difficult": true
+          },
+          "triggers": [
+            {
+              "when": "enter",
+              "save": {
+                "ability": "dex",
+                "onSuccess": "half"
+              },
+              "damage": {
+                "formula": "6d10",
+                "type": "force"
+              },
+              "note": "Once per turn. The wall gives Three-Quarters Cover."
+            },
+            {
+              "when": "endTurn",
+              "save": {
+                "ability": "dex",
+                "onSuccess": "half"
+              },
+              "damage": {
+                "formula": "6d10",
+                "type": "force"
+              },
+              "note": "Once per turn."
+            }
+          ],
+          "attach": "point"
+        }
+      }
+    },
+    "wall-of-thorns": {
+      "page": 173,
+      "source": "\"The wall blocks line of sight … For every 1 foot a creature moves through the wall, it must spend 4 feet of movement. Furthermore, the first time a creature enters a space in the wall on a turn or ends its turn there, the creature makes a Dexterity saving throw, taking 7d8 Slashing damage on a failed save or half as much damage on a successful one. A creature makes this save only once per turn.\"",
+      "set": {
+        "effect": {
+          "props": {
+            "opaque": true
+          },
+          "triggers": [
+            {
+              "when": "enter",
+              "save": {
+                "ability": "dex",
+                "onSuccess": "half"
+              },
+              "damage": {
+                "formula": "7d8",
+                "type": "slashing"
+              },
+              "note": "First time it enters on a turn; once per turn. Moving through costs 4 feet per foot."
+            },
+            {
+              "when": "endTurn",
+              "save": {
+                "ability": "dex",
+                "onSuccess": "half"
+              },
+              "damage": {
+                "formula": "7d8",
+                "type": "slashing"
+              },
+              "note": "Once per turn."
+            }
+          ],
+          "attach": "point"
+        }
+      }
+    },
+    "grease": {
+      "page": 137,
+      "source": "\"Nonflammable grease covers the ground in a 10-foot square centered on a point within range and turns it into Difficult Terrain for the duration. When the grease appears, each creature standing in its area must succeed on a Dexterity saving throw or have the Prone condition. A creature that enters the area or ends its turn there must also succeed on that save or fall Prone.\"",
+      "set": {
+        "effect": {
+          "props": {
+            "difficult": true
+          },
+          "triggers": [
+            {
+              "when": "enter",
+              "save": {
+                "ability": "dex",
+                "onSuccess": "none"
+              },
+              "condition": "prone"
+            },
+            {
+              "when": "endTurn",
+              "save": {
+                "ability": "dex",
+                "onSuccess": "none"
+              },
+              "condition": "prone"
+            }
+          ],
+          "attach": "point"
+        }
+      }
+    },
+    "entangle": {
+      "page": 128,
+      "source": "\"Grasping plants sprout from the ground in a 20-foot square … For the duration, these plants turn the ground in the area into Difficult Terrain.\" The Strength save (Restrained) is only for creatures in the area when you cast the spell.",
+      "set": {
+        "effect": {
+          "props": {
+            "difficult": true
+          },
+          "triggers": [],
+          "attach": "point"
+        }
+      }
+    }
+  }
+}

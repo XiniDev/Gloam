@@ -1,9 +1,10 @@
 import { GloamError } from "@gloam/shared/protocol";
-import express, { type Express } from "express";
+import type express from "express";
+import type { Express } from "express";
 import { z } from "zod";
 import type { ServerContext } from "../../context.ts";
 import { dirSize } from "../../dataDir.ts";
-import { LOCAL_ONLY_SETTINGS, type Settings, type SettingKey } from "../../services/settings.ts";
+import { LOCAL_ONLY_SETTINGS, type SettingKey, type Settings } from "../../services/settings.ts";
 import { body, ok, requireAdmin, requireLocal, route } from "../helpers.ts";
 
 const OpenBody = z.strictObject({

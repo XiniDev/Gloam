@@ -44,7 +44,13 @@ export interface Config {
   /** Log to the console as well as the daily file. */
   consoleLog: boolean;
   /** Tunnel supervision timings and child env (tests shorten backoff and pass fixture knobs). */
-  tunnel: { backoffMs?: number[]; extraEnv?: NodeJS.ProcessEnv; stopGraceMs?: number; hostnameTimeoutMs?: number; readyTimeoutMs?: number };
+  tunnel: {
+    backoffMs?: number[];
+    extraEnv?: NodeJS.ProcessEnv;
+    stopGraceMs?: number;
+    hostnameTimeoutMs?: number;
+    readyTimeoutMs?: number;
+  };
   /** Interval between automatic snapshots while the table is open (SPEC §20.3: 10 minutes). */
   autoSnapshotMs: number;
 }

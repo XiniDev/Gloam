@@ -5,6 +5,7 @@
   "type": "module",
   "description": "SRD content pipeline (build-time only) and the generated, committed content packs.",
   "exports": {
+    "./package.json": "./package.json",
     "./packs/*": "./packs/*"
   },
   "scripts": {

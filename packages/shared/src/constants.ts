@@ -93,6 +93,14 @@ export const BOARD_COLORS = {
   keyLight: "#FFD9A8",
   warFog: "#0A0F1A",
   exploredTint: "#6F86A8",
+  oak: "#5A3A22",
+  oakDark: "#2A1A10",
+  mapPaper: "#C9B68B",
+  mapInk: "#3A2A1C",
+  candle: "#FFB35C",
+  flameCore: "#FFF3D0",
+  flameOuter: "#FF9A3C",
+  flameBlue: "#6E8CFF",
 } as const;
 
 export const DAMAGE_TYPES = [

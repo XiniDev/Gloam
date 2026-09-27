@@ -1,0 +1,87 @@
+{
+  "pack": "srd-5.2.1",
+  "pipelineVersion": "1.0.0",
+  "sources": {
+    "srdPdf": {
+      "url": "https://media.dndbeyond.com/compendium-images/srd/5.2/SRD_CC_v5.2.1.pdf",
+      "sha256": "8974902d109d6e63672d7c490bde9ccf052410503d9cfa768237154fbc5e3d87",
+      "bytes": 6031375,
+      "pages": 364
+    },
+    "foundry": {
+      "repo": "https://github.com/foundryvtt/dnd5e.git",
+      "tag": "release-6.0.5",
+      "commit": "3ee48de02f8f6f7b2638c9f6cf3e9540c9c181cc",
+      "path": "packs/_source/spells24",
+      "spellsTree": "d5ae143bc0565951fda466137e07e3019efbdf82",
+      "licence": "MIT (code), CC-BY-4.0 (SRD content)",
+      "droppedNonSrd": [
+        "arcane-vigor"
+      ]
+    },
+    "crossCheck": {
+      "open5e/open5e-api": {
+        "branch": "staging",
+        "commit": "fb8562db9bcbef34e269256e3bbb07d719f422aa",
+        "files": {
+          "spells": {
+            "path": "data/v2/wizards-of-the-coast/srd-2024/Spell.json",
+            "sha256": "ba87b7bd39fb57a2e2121a2d0f88bd23c731df9f90358ac8201f985e1702df4a",
+            "bytes": 576936
+          },
+          "castingOptions": {
+            "path": "data/v2/wizards-of-the-coast/srd-2024/SpellCastingOption.json",
+            "sha256": "3104db8c53c558cb5059caa7eacb4becc8a104b9706f534f5d42271e1b804153",
+            "bytes": 229817
+          }
+        }
+      },
+      "5e-bits/5e-srd-api": {
+        "branch": "main",
+        "commit": "3f8cd5db422d7e7373e441c12761adf63db0d07f",
+        "files": {
+          "spells": {
+            "path": "packages/5e-database/src/2024/en/5e-SRD-Spells.json",
+            "sha256": "16aa8e47a84c6b21ccc101c1ee7ab5b8a026da940985bc826b6b58aa1fe0b6bc",
+            "bytes": 495225
+          }
+        }
+      }
+    }
+  },
+  "counts": {
+    "spells": 339,
+    "perLevel": [
+      27,
+      57,
+      57,
+      42,
+      34,
+      38,
+      31,
+      20,
+      17,
+      16
+    ],
+    "higherLevelParagraphs": 109,
+    "cantripUpgrades": 15,
+    "lightSources": 6,
+    "manualReview": 29
+  },
+  "overlays": {
+    "spell-areas.json": "73bc780f271c5b5b29e40f03ed16ef009307292a61db45f4296b4f0fec9c26f8",
+    "spell-light.json": "578cd8427ebb8929f8a0eff7094a222b32faf08b321dad14e508ea1ce57755cf",
+    "spell-effects.json": "30051e4cdd9a42e96da024d617381f3399aa2d73cea613151d35d6daaa22eb3d",
+    "spell-mechanics.json": "79776d61dcaa1055d6334f5b399649ec879c85e269829d8d2ab0b704ae2ee7ff",
+    "spell-vfx.json": "c991961179ac8c2dde0c7ad3161a4212f894b2e4a89edd7fb422641d7ad07451",
+    "hyphenation.json": "60912c3a92a35a90bf29360b2f4998ad995ed0459eb7532d2843dbc1f2f3555e",
+    "light-sources.json": "5de113cd5a42093d2d8867639d96887e380b4e6070e6955d0b7a2982429da906"
+  },
+  "files": {
+    "spells.json": "241b3e20c7c18de7ab6dc2034498d27cdf98a064e82b429447812c1aa2274327",
+    "light-sources.json": "79db4aff7081d31180decdf8b844c0a72356e9a283d6b7db285cbb83113e86de",
+    "conditions.json": "60fd1f139d491a3cd36a3b75389ecf0c63b629923b8723dea7d41f3a3f440df3",
+    "ATTRIBUTION.md": "954b70ff01688c53fbaf11bca9aaab8e26eaaa2ac23fc80b18c4b7678485098b"
+  },
+  "generatedAt": "2026-09-27T11:47:19.325Z"
+}

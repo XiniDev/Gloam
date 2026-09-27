@@ -1,0 +1,80 @@
+{
+  "$comment": "VFX preset overrides (SPEC §24.5). By default the preset follows the primary damage type (slashing/piercing/bludgeoning → force), healing spells use `healing`, and everything else is `arcane`. These entries override the default where the spell has no damage or healing formula but is plainly light, darkness or restoration magic.",
+  "spells": {
+    "light": {
+      "page": 144,
+      "source": "\"the object sheds Bright Light in a 20-foot radius and Dim Light for an additional 20 feet\" — light magic.",
+      "set": { "vfx": "radiant" }
+    },
+    "daylight": {
+      "page": 122,
+      "source": "\"sunlight spreads from a point within range and fills a 60-foot-radius Sphere\" — sunlight.",
+      "set": { "vfx": "radiant" }
+    },
+    "dancing-lights": {
+      "page": 121,
+      "source": "\"You create up to four torch-size lights within range\" — light magic.",
+      "set": { "vfx": "radiant" }
+    },
+    "faerie-fire": {
+      "page": 129,
+      "source": "\"Objects in a 20-foot Cube within range are outlined in blue, green, or violet light (your choice).\" — light magic.",
+      "set": { "vfx": "radiant" }
+    },
+    "continual-flame": {
+      "page": 119,
+      "source": "\"A flame springs from an object that you touch.\" — a flame that gives no heat.",
+      "set": { "vfx": "fire" }
+    },
+    "darkness": {
+      "page": 122,
+      "source": "\"magical Darkness spreads from a point within range and fills a 15-foot-radius Sphere\" — the black-violet necrotic look fits magical darkness better than the arcane circle.",
+      "set": { "vfx": "necrotic" }
+    },
+    "power-word-heal": {
+      "page": 154,
+      "source": "\"A wave of healing energy washes over one creature you can see within range. The target regains all its Hit Points.\"",
+      "set": { "vfx": "healing" }
+    },
+    "revivify": {
+      "page": 159,
+      "source": "\"You touch a creature that has died within the last minute. That creature revives with 1 Hit Point.\"",
+      "set": { "vfx": "healing" }
+    },
+    "resurrection": {
+      "page": 158,
+      "source": "\"With a touch, you revive a dead creature that has been dead for no more than a century\".",
+      "set": { "vfx": "healing" }
+    },
+    "true-resurrection": {
+      "page": 170,
+      "source": "\"The creature is revived with all its Hit Points.\"",
+      "set": { "vfx": "healing" }
+    },
+    "lesser-restoration": {
+      "page": 144,
+      "source": "\"You touch a creature and end one condition on it: Blinded, Deafened, Paralyzed, or Poisoned.\"",
+      "set": { "vfx": "healing" }
+    },
+    "greater-restoration": {
+      "page": 137,
+      "source": "\"You touch a creature and magically remove one of the following effects from it\".",
+      "set": { "vfx": "healing" }
+    },
+    "spare-the-dying": {
+      "page": 163,
+      "source": "\"Choose a creature within range that has 0 Hit Points and isn’t dead. The creature becomes Stable.\"",
+      "set": { "vfx": "healing" }
+    },
+    "beacon-of-hope": {
+      "page": 112,
+      "source": "\"each target has Advantage on Wisdom saving throws and Death Saving Throws and regains the maximum number of Hit Points possible from any healing.\"",
+      "set": { "vfx": "healing" }
+    },
+    "goodberry": {
+      "page": 137,
+      "source": "\"Eating a berry restores 1 Hit Point\".",
+      "set": { "vfx": "healing" }
+    }
+  }
+}

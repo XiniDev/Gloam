@@ -42,6 +42,14 @@ export default defineConfig({
       },
       {
         test: {
+          name: "web",
+          root: "packages/web",
+          include: ["src/**/*.test.ts"],
+          environment: "node",
+        },
+      },
+      {
+        test: {
           name: "tools",
           root: "tools",
           include: ["**/*.test.mjs"],

@@ -1,0 +1,620 @@
+{
+  "$comment": "Areas of effect (SPEC §17.1, §33.4), hand-verified against the SRD 5.2.1 PDF. `page` is where the quoted text is printed (the build checks the spell is on that page); `source` quotes or paraphrases the PDF and explains any mapping. Flat shapes (a square or circle on the ground) have no §17.1 equivalent, so they map to the Cube / Sphere with the same footprint; `area: null` marks a size limit (an object or illusion), not an area of effect. Walls: `length × height × thickness` in feet, `ring` = diameter of the ring/globe form, `opaque` blocks sight, `blocksMove` = solid barrier.",
+  "spells": {
+    "alarm": {
+      "page": 107,
+      "source": "\"Choose a door, a window, or an area within range that is no larger than a 20-foot Cube.\" The warded area is the spell's area (Foundry agrees).",
+      "set": {
+        "area": {
+          "shape": "cube",
+          "size": 20
+        }
+      }
+    },
+    "detect-evil-and-good": {
+      "page": 123,
+      "source": "\"you sense the location of any Aberration, Celestial, Elemental, Fey, Fiend, or Undead within 30 feet of yourself\" — a 30-ft Emanation that moves with you.",
+      "set": {
+        "area": {
+          "shape": "emanation",
+          "distance": 30
+        }
+      }
+    },
+    "detect-magic": {
+      "page": 123,
+      "source": "\"you sense the presence of magical effects within 30 feet of yourself\" — a 30-ft Emanation that moves with you.",
+      "set": {
+        "area": {
+          "shape": "emanation",
+          "distance": 30
+        }
+      }
+    },
+    "detect-poison-and-disease": {
+      "page": 123,
+      "source": "\"you sense the location of poisons, poisonous or venomous creatures, and magical contagions within 30 feet of yourself\".",
+      "set": {
+        "area": {
+          "shape": "emanation",
+          "distance": 30
+        }
+      }
+    },
+    "detect-thoughts": {
+      "page": 123,
+      "source": "Sense Thoughts: \"You sense the presence of thoughts within 30 feet of yourself\"; Read Thoughts targets one creature within 30 feet.",
+      "set": {
+        "area": {
+          "shape": "emanation",
+          "distance": 30
+        }
+      }
+    },
+    "druidcraft": {
+      "page": 126,
+      "source": "\"The effect must fit in a 5-foot Cube\" is a size limit for a harmless sensory effect, not an area of effect (Foundry's cube template not used).",
+      "set": {
+        "area": null
+      }
+    },
+    "ice-knife": {
+      "page": 141,
+      "source": "\"Make a ranged spell attack against the target … Hit or miss, the shard then explodes. The target and each creature within 5 feet of it must succeed on a Dexterity saving throw or take 2d6 Cold damage.\" The explosion is centred on the target, not on the caster, so it is not an Emanation template; the DM adds the creatures within 5 feet on the resolution card.",
+      "review": "No area template: the 5-ft explosion is centred on the attack's target; the DM adds nearby creatures on the card.",
+      "set": {
+        "area": null
+      }
+    },
+    "phantasmal-force": {
+      "page": 151,
+      "source": "\"a phantasmal object, creature, or other phenomenon that is no larger than a 10-foot Cube\" — a size limit on the phantasm, not an area.",
+      "set": {
+        "area": null
+      }
+    },
+    "creation": {
+      "page": 121,
+      "source": "\"The object must be no larger than a 5-foot Cube\" (+5 ft per slot) — object size, not an area.",
+      "set": {
+        "area": null
+      }
+    },
+    "passwall": {
+      "page": 151,
+      "source": "A passage (5 ft wide, 8 ft tall, 20 ft deep) through a surface — a created opening, not an area of effect.",
+      "set": {
+        "area": null
+      }
+    },
+    "planar-ally": {
+      "page": 152,
+      "source": "Summons an entity's servant; Foundry's 5-ft circle is only a token footprint, not an area of effect.",
+      "set": {
+        "area": null
+      }
+    },
+    "programmed-illusion": {
+      "page": 156,
+      "source": "\"It must be no larger than a 30-foot Cube\" — size limit of the illusion, not an area.",
+      "set": {
+        "area": null
+      }
+    },
+    "heroes-feast": {
+      "page": 140,
+      "source": "\"You conjure a feast that appears on a surface in an unoccupied 10-foot Cube next to you\" — where the food appears; creatures benefit by partaking, not by being in an area.",
+      "set": {
+        "area": null
+      }
+    },
+    "magnificent-mansion": {
+      "page": 147,
+      "source": "Creates a door (5 ft wide, 10 ft tall) to an extradimensional dwelling — a portal, not an area of effect.",
+      "set": {
+        "area": null
+      }
+    },
+    "demiplane": {
+      "page": 122,
+      "source": "Creates a shadowy door to a demiplane — a portal, not an area of effect.",
+      "set": {
+        "area": null
+      }
+    },
+    "gate": {
+      "page": 135,
+      "source": "Opens a portal (5 to 20 feet in diameter) to another plane — a portal, not an area of effect.",
+      "set": {
+        "area": null
+      }
+    },
+    "teleportation-circle": {
+      "page": 168,
+      "source": "\"you draw a 5-foot-radius circle on the ground\"; creatures that enter the portal are teleported. Flat circle → Sphere of the same radius.",
+      "review": "Flat 5-ft-radius circle on the ground represented as a Sphere of the same radius.",
+      "set": {
+        "area": {
+          "shape": "sphere",
+          "radius": 5
+        }
+      }
+    },
+    "hallow": {
+      "page": 138,
+      "source": "\"You touch a point and infuse an area around it … The area can have a radius up to 60 feet\" — centred on the touched point and stationary, so a Sphere (not an Emanation from the caster).",
+      "set": {
+        "area": {
+          "shape": "sphere",
+          "radius": 60
+        }
+      }
+    },
+    "guards-and-wards": {
+      "page": 137,
+      "source": "\"protects up to 2,500 square feet of floor space. The warded area can be up to 20 feet tall, and you shape it as one 50-foot square\" (or smaller contiguous squares). Footprint as a 50-ft Cube; the 20-ft height limit stays in the text.",
+      "review": "50-ft square footprint as a 50-ft Cube; the warded area is at most 20 ft tall and may be split into smaller squares.",
+      "set": {
+        "area": {
+          "shape": "cube",
+          "size": 50
+        }
+      }
+    },
+    "forcecage": {
+      "page": 134,
+      "source": "\"A prison in the shape of a cage can be up to 20 feet on a side … A prison in the shape of a box can be up to 10 feet on a side\".",
+      "set": {
+        "area": {
+          "shape": "cube",
+          "size": 20
+        },
+        "areaAlternatives": [
+          {
+            "label": "Solid box (up to 10 feet on a side)",
+            "area": {
+              "shape": "cube",
+              "size": 10
+            },
+            "attach": "point"
+          }
+        ]
+      }
+    },
+    "earthquake": {
+      "page": 127,
+      "source": "\"an intense tremor rips through the ground in a 100-foot-radius circle centered on that point\"; only creatures on the ground are affected. Flat circle → Sphere of the same radius (the DM removes flying creatures).",
+      "review": "Flat 100-ft-radius circle represented as a Sphere; only creatures on the ground are affected (DM removes flyers).",
+      "set": {
+        "area": {
+          "shape": "sphere",
+          "radius": 100
+        }
+      }
+    },
+    "storm-of-vengeance": {
+      "page": 165,
+      "source": "\"A churning storm cloud forms … centered on a point within range and spreading to a radius of 300 feet. Each creature under the cloud …\" Radius 300 as a Sphere (creatures under the cloud).",
+      "review": "Cloud of radius 300 ft represented as a Sphere centred on the point; the text affects creatures under the cloud.",
+      "set": {
+        "area": {
+          "shape": "sphere",
+          "radius": 300
+        }
+      }
+    },
+    "fire-storm": {
+      "page": 132,
+      "source": "\"The area of the storm consists of up to ten 10-foot Cubes, which you arrange as you like. Each Cube must be contiguous with at least one other Cube.\" One 10-ft Cube per placement; up to ten.",
+      "review": "One 10-ft Cube template per placement; the caster may place up to ten contiguous Cubes.",
+      "set": {
+        "area": {
+          "shape": "cube",
+          "size": 10
+        }
+      }
+    },
+    "flaming-sphere": {
+      "page": 132,
+      "source": "\"You create a 5-foot-diameter sphere of fire … Any creature that ends its turn within 5 feet of the sphere makes a Dexterity saving throw\". The damaging zone is a 5-ft Emanation from the sphere object (§17.1: distance + the source's radius), which moves when you move the sphere.",
+      "review": "The damaging zone is a 5-ft Emanation from the sphere as an object token (5-ft diameter).",
+      "set": {
+        "area": {
+          "shape": "emanation",
+          "distance": 5
+        }
+      }
+    },
+    "call-lightning": {
+      "page": 114,
+      "source": "SPEC §33.4 cylinder: \"It takes the shape of a Cylinder that is 10 feet tall with a 60-foot radius.\" (the storm cloud; each bolt hits creatures within 5 feet of a chosen point).",
+      "set": {
+        "area": {
+          "shape": "cylinder",
+          "radius": 60,
+          "height": 10
+        }
+      }
+    },
+    "conjure-celestial": {
+      "page": 118,
+      "source": "SPEC §33.4 cylinder: \"a pillar of light in a 10-foot-radius, 40-foot-high Cylinder\".",
+      "set": {
+        "area": {
+          "shape": "cylinder",
+          "radius": 10,
+          "height": 40
+        }
+      }
+    },
+    "flame-strike": {
+      "page": 132,
+      "source": "SPEC §33.4 cylinder: \"Each creature in a 10-foot-radius, 40-foot-high Cylinder\".",
+      "set": {
+        "area": {
+          "shape": "cylinder",
+          "radius": 10,
+          "height": 40
+        }
+      }
+    },
+    "ice-storm": {
+      "page": 141,
+      "source": "SPEC §33.4 cylinder: \"Hail falls in a 20-foot-radius, 40-foot-high Cylinder\".",
+      "set": {
+        "area": {
+          "shape": "cylinder",
+          "radius": 20,
+          "height": 40
+        }
+      }
+    },
+    "magic-circle": {
+      "page": 145,
+      "source": "SPEC §33.4 cylinder: \"You create a 10-foot-radius, 20-foot-tall Cylinder of magical energy\".",
+      "set": {
+        "area": {
+          "shape": "cylinder",
+          "radius": 10,
+          "height": 20
+        }
+      }
+    },
+    "moonbeam": {
+      "page": 150,
+      "source": "SPEC §33.4 cylinder: \"A silvery beam of pale light shines down in a 5-foot-radius, 40-foot-high Cylinder\".",
+      "set": {
+        "area": {
+          "shape": "cylinder",
+          "radius": 5,
+          "height": 40
+        }
+      }
+    },
+    "reverse-gravity": {
+      "page": 159,
+      "source": "SPEC §33.4 cylinder: \"This spell reverses gravity in a 50-foot-radius, 100-foot high Cylinder\". The height is split across a line break in the PDF (\"100-\" / \"foot\").",
+      "set": {
+        "area": {
+          "shape": "cylinder",
+          "radius": 50,
+          "height": 100
+        }
+      }
+    },
+    "sleet-storm": {
+      "page": 163,
+      "source": "SPEC §33.4 cylinder: \"sleet falls in a 40-foot-tall, 20-foot-radius Cylinder\".",
+      "set": {
+        "area": {
+          "shape": "cylinder",
+          "radius": 20,
+          "height": 40
+        }
+      }
+    },
+    "antilife-shell": {
+      "page": 109,
+      "source": "SPEC §33.4 emanation: \"An aura extends from you in a 10-foot Emanation for the duration.\" Moves with you.",
+      "set": {
+        "area": {
+          "shape": "emanation",
+          "distance": 10
+        }
+      }
+    },
+    "antimagic-field": {
+      "page": 109,
+      "source": "SPEC §33.4 emanation: \"An aura of antimagic surrounds you in 10-foot Emanation.\" Moves with you.",
+      "set": {
+        "area": {
+          "shape": "emanation",
+          "distance": 10
+        }
+      }
+    },
+    "conjure-woodland-beings": {
+      "page": 118,
+      "source": "SPEC §33.4 emanation: \"nature spirits that flit around you in a 10-foot Emanation for the duration\".",
+      "set": {
+        "area": {
+          "shape": "emanation",
+          "distance": 10
+        }
+      }
+    },
+    "globe-of-invulnerability": {
+      "page": 136,
+      "source": "SPEC §33.4 emanation: \"An immobile, shimmering barrier appears in a 10-foot Emanation around you\". The distance is split across a line break in the PDF (\"10-\" / \"foot\"); immobile.",
+      "set": {
+        "area": {
+          "shape": "emanation",
+          "distance": 10
+        }
+      }
+    },
+    "tiny-hut": {
+      "page": 169,
+      "source": "SPEC §33.4 emanation: \"A 10-foot Emanation springs into existence around you and remains stationary for the duration.\"",
+      "set": {
+        "area": {
+          "shape": "emanation",
+          "distance": 10
+        }
+      }
+    },
+    "conjure-minor-elementals": {
+      "page": 118,
+      "source": "SPEC §33.4 emanation: \"spirits … that flit around you in a 15-foot Emanation for the duration\".",
+      "set": {
+        "area": {
+          "shape": "emanation",
+          "distance": 15
+        }
+      }
+    },
+    "spirit-guardians": {
+      "page": 164,
+      "source": "SPEC §33.4 emanation: \"Protective spirits flit around you in a 15-foot Emanation for the duration.\"",
+      "set": {
+        "area": {
+          "shape": "emanation",
+          "distance": 15
+        }
+      }
+    },
+    "aura-of-life": {
+      "page": 111,
+      "source": "SPEC §33.4 emanation: \"An aura radiates from you in a 30-foot Emanation for the duration.\"",
+      "set": {
+        "area": {
+          "shape": "emanation",
+          "distance": 30
+        }
+      }
+    },
+    "holy-aura": {
+      "page": 141,
+      "source": "SPEC §33.4 emanation: \"For the duration, you emit an aura in a 30-foot Emanation.\"",
+      "set": {
+        "area": {
+          "shape": "emanation",
+          "distance": 30
+        }
+      }
+    },
+    "pass-without-trace": {
+      "page": 151,
+      "source": "SPEC §33.4 emanation: \"You radiate a concealing aura in a 30-foot Emanation for the duration.\"",
+      "set": {
+        "area": {
+          "shape": "emanation",
+          "distance": 30
+        }
+      }
+    },
+    "speak-with-plants": {
+      "page": 164,
+      "source": "SPEC §33.4 emanation: \"You imbue plants in an immobile 30-foot Emanation\".",
+      "set": {
+        "area": {
+          "shape": "emanation",
+          "distance": 30
+        }
+      }
+    },
+    "darkness": {
+      "page": 122,
+      "source": "\"magical Darkness spreads from a point within range and fills a 15-foot-radius Sphere … Alternatively, you cast the spell on an object … causing the Darkness to fill a 15-foot Emanation originating from that object\" (moves with the object).",
+      "set": {
+        "area": {
+          "shape": "sphere",
+          "radius": 15
+        },
+        "areaAlternatives": [
+          {
+            "label": "Cast on an object: 15-foot Emanation that moves with the object",
+            "area": {
+              "shape": "emanation",
+              "distance": 15
+            },
+            "attach": "object"
+          }
+        ]
+      }
+    },
+    "daylight": {
+      "page": 122,
+      "source": "\"sunlight spreads from a point within range and fills a 60-foot-radius Sphere … Alternatively, you cast the spell on an object … causing the sunlight to fill a 60-foot Emanation originating from that object\" (moves with the object).",
+      "set": {
+        "area": {
+          "shape": "sphere",
+          "radius": 60
+        },
+        "areaAlternatives": [
+          {
+            "label": "Cast on an object: 60-foot Emanation that moves with the object",
+            "area": {
+              "shape": "emanation",
+              "distance": 60
+            },
+            "attach": "object"
+          }
+        ]
+      }
+    },
+    "wall-of-fire": {
+      "page": 172,
+      "source": "\"You can make the wall up to 60 feet long, 20 feet high, and 1 foot thick, or a ringed wall up to 20 feet in diameter, 20 feet high, and 1 foot thick. The wall is opaque … One side of the wall, selected by you when you cast this spell, deals 5d8 Fire damage … The other side of the wall deals no damage.\" Creatures can pass through (not a barrier). damagingSide: one side, chosen at casting (`left` of the drawn line; the caster flips it when placing).",
+      "review": "damagingSide defaults to the left of the drawn line; the caster picks the side when casting.",
+      "set": {
+        "area": {
+          "shape": "wall",
+          "length": 60,
+          "height": 20,
+          "thickness": 1,
+          "ring": 20,
+          "opaque": true,
+          "blocksMove": false,
+          "damagingSide": "left"
+        }
+      }
+    },
+    "wall-of-force": {
+      "page": 172,
+      "source": "\"An Invisible wall of force … You can form it into a hemispherical dome or a globe with a radius of up to 10 feet, or you can shape a flat surface made up of ten 10-foot-by-10-foot panels … the wall is 1/4 inch thick … Nothing can physically pass through the wall.\" Ten panels in a row: 100 × 10 ft; thickness 1/48 ft; globe = 20-ft ring; invisible, so not opaque.",
+      "review": "Ten 10×10 panels represented as one straight 100 × 10 ft wall (the panels can be arranged freely).",
+      "set": {
+        "area": {
+          "shape": "wall",
+          "length": 100,
+          "height": 10,
+          "thickness": 0.020833,
+          "ring": 20,
+          "opaque": false,
+          "blocksMove": true
+        }
+      }
+    },
+    "wall-of-ice": {
+      "page": 172,
+      "source": "\"You can form it into a hemispherical dome or a globe with a radius of up to 10 feet, or you can shape a flat surface made up of ten 10-foot-square panels … the wall is 1 foot thick … The wall is an object that can be damaged and thus breached.\" A solid barrier; the PDF does not say whether it blocks sight (left transparent).",
+      "review": "Opacity isn't stated in the SRD (left transparent); ten panels represented as one straight 100 × 10 ft wall.",
+      "set": {
+        "area": {
+          "shape": "wall",
+          "length": 100,
+          "height": 10,
+          "thickness": 1,
+          "ring": 20,
+          "opaque": false,
+          "blocksMove": true
+        }
+      }
+    },
+    "wall-of-stone": {
+      "page": 173,
+      "source": "\"A nonmagical wall of solid stone … The wall is 6 inches thick and is composed of ten 10-foot-by-10-foot panels … Alternatively, you can create 10-foot-by-20-foot panels that are only 3 inches thick.\" Solid stone: opaque and a barrier.",
+      "review": "Ten panels represented as one straight wall; the 10-by-20-ft panel alternative's orientation is the caster's choice.",
+      "set": {
+        "area": {
+          "shape": "wall",
+          "length": 100,
+          "height": 10,
+          "thickness": 0.5,
+          "opaque": true,
+          "blocksMove": true
+        },
+        "areaAlternatives": [
+          {
+            "label": "Ten 10-by-20-foot panels, 3 inches thick (oriented as you choose)",
+            "area": {
+              "shape": "wall",
+              "length": 200,
+              "height": 10,
+              "thickness": 0.25,
+              "opaque": true,
+              "blocksMove": true
+            },
+            "attach": "point"
+          }
+        ]
+      }
+    },
+    "wall-of-thorns": {
+      "page": 173,
+      "source": "\"You choose to make the wall up to 60 feet long, 10 feet high, and 5 feet thick or a circle that has a 20-foot diameter and is up to 20 feet high and 5 feet thick. The wall blocks line of sight.\" Creatures can move through it (4 feet of movement per foot).",
+      "set": {
+        "area": {
+          "shape": "wall",
+          "length": 60,
+          "height": 10,
+          "thickness": 5,
+          "ring": 20,
+          "ringHeight": 20,
+          "opaque": true,
+          "blocksMove": false
+        }
+      }
+    },
+    "wind-wall": {
+      "page": 174,
+      "source": "\"You can make the wall up to 50 feet long, 15 feet high, and 1 foot thick … so long as it makes one continuous path along the ground.\" Only Small or smaller flyers, gases and ordinary projectiles are stopped, so it is not a barrier to creatures; not opaque.",
+      "set": {
+        "area": {
+          "shape": "wall",
+          "length": 50,
+          "height": 15,
+          "thickness": 1,
+          "opaque": false,
+          "blocksMove": false
+        }
+      }
+    },
+    "blade-barrier": {
+      "page": 113,
+      "source": "\"You make a straight wall up to 100 feet long, 20 feet high, and 5 feet thick, or a ringed wall up to 60 feet in diameter, 20 feet high, and 5 feet thick. The wall provides Three-Quarters Cover, and its space is Difficult Terrain.\" Passable, not opaque.",
+      "set": {
+        "area": {
+          "shape": "wall",
+          "length": 100,
+          "height": 20,
+          "thickness": 5,
+          "ring": 60,
+          "opaque": false,
+          "blocksMove": false
+        }
+      }
+    },
+    "prismatic-wall": {
+      "page": 155,
+      "source": "\"a vertical opaque wall—up to 90 feet long, 30 feet high, and 1 inch thick … Alternatively, you shape the wall into a globe up to 30 feet in diameter\". Creatures can pass through (layer by layer), so it is not a movement barrier; thickness 1/12 ft.",
+      "set": {
+        "area": {
+          "shape": "wall",
+          "length": 90,
+          "height": 30,
+          "thickness": 0.083333,
+          "ring": 30,
+          "opaque": true,
+          "blocksMove": false
+        }
+      }
+    },
+    "tsunami": {
+      "page": 171,
+      "source": "\"A wall of water springs into existence … You can make the wall up to 300 feet long, 300 feet high, and 50 feet thick.\" Creatures are carried inside it; opacity not stated.",
+      "review": "Opacity of the wall of water isn't stated in the SRD (left transparent).",
+      "set": {
+        "area": {
+          "shape": "wall",
+          "length": 300,
+          "height": 300,
+          "thickness": 50,
+          "opaque": false,
+          "blocksMove": false
+        }
+      }
+    }
+  }
+}

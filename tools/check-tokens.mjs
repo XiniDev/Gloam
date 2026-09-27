@@ -11,6 +11,7 @@ const WEB_SRC = join(ROOT, "packages", "web", "src");
 const ALLOW = [(rel) => rel === ["styles", "tokens.css"].join(sep), (rel) => rel.startsWith(`board${sep}`)];
 const HEX = /(?<![\w&])#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3,4})\b/g;
 const FONT_FAMILY = /font-family\s*:/g;
+const FUNC_COLOR = /\b(?:rgba?|hsla?|oklch|oklab|lab|lch)\(/g;
 const EXT = /\.(tsx?|css|html)$/;
 
 function* walk(dir) {
@@ -36,6 +37,8 @@ for (const file of walk(WEB_SRC)) {
   lines.forEach((line, i) => {
     // HTML entities like &#x27; are not colours; the lookbehind above skips "&#".
     for (const m of line.matchAll(HEX)) problems.push(`${rel}:${i + 1}: raw colour ${m[0]} (use a token)`);
+    for (const m of line.matchAll(FUNC_COLOR))
+      problems.push(`${rel}:${i + 1}: raw colour ${m[0]}…) (use a token)`);
     if (!rel.endsWith(".css") && FONT_FAMILY.test(line)) {
       problems.push(`${rel}:${i + 1}: inline font-family (use a token)`);
     }

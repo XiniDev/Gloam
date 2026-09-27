@@ -1,0 +1,512 @@
+{
+  "pack": "srd-5.2.1",
+  "attribution": "This work includes material from the System Reference Document 5.2.1 (\"SRD 5.2.1\") by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0 International License, available at https://creativecommons.org/licenses/by/4.0/legalcode.",
+  "conditions": [
+    {
+      "id": "blinded",
+      "name": "Blinded",
+      "category": "senses",
+      "page": 177,
+      "summary": "Can't see and automatically fails ability checks that need sight. Attack rolls against it have Advantage; its own attack rolls have Disadvantage.",
+      "flags": {
+        "speedZero": false,
+        "incapacitated": false,
+        "noSight": true,
+        "autoFailStrDexSaves": false,
+        "attacksAgainst": "advantage",
+        "ownAttacks": "disadvantage",
+        "abilityChecks": null,
+        "dexSaves": null,
+        "critWithin5ft": false,
+        "resistAllDamage": false,
+        "breaksConcentration": false,
+        "alsoProne": false,
+        "initiative": null,
+        "hint": "Checks that rely on sight fail automatically (not merely Disadvantage)."
+      }
+    },
+    {
+      "id": "charmed",
+      "name": "Charmed",
+      "category": "mind",
+      "page": 178,
+      "summary": "Can't attack the charmer or target it with damaging abilities or magical effects. The charmer has Advantage on checks to interact with it socially.",
+      "flags": {
+        "speedZero": false,
+        "incapacitated": false,
+        "noSight": false,
+        "autoFailStrDexSaves": false,
+        "attacksAgainst": null,
+        "ownAttacks": null,
+        "abilityChecks": null,
+        "dexSaves": null,
+        "critWithin5ft": false,
+        "resistAllDamage": false,
+        "breaksConcentration": false,
+        "alsoProne": false,
+        "initiative": null,
+        "hint": "Warn when it attacks or aims a damaging effect at the charmer (the condition's source)."
+      },
+      "srd51": {
+        "summary": "5.1: can't attack the charmer or target it with harmful (not only damaging) abilities or magical effects; the charmer has Advantage on social checks.",
+        "page": 358
+      }
+    },
+    {
+      "id": "deafened",
+      "name": "Deafened",
+      "category": "senses",
+      "page": 181,
+      "summary": "Can't hear and automatically fails any ability check that requires hearing.",
+      "flags": {
+        "speedZero": false,
+        "incapacitated": false,
+        "noSight": false,
+        "autoFailStrDexSaves": false,
+        "attacksAgainst": null,
+        "ownAttacks": null,
+        "abilityChecks": null,
+        "dexSaves": null,
+        "critWithin5ft": false,
+        "resistAllDamage": false,
+        "breaksConcentration": false,
+        "alsoProne": false,
+        "initiative": null,
+        "hint": "Checks that rely on hearing fail automatically."
+      }
+    },
+    {
+      "id": "exhaustion",
+      "name": "Exhaustion",
+      "category": "affliction",
+      "page": 181,
+      "summary": "Cumulative levels: D20 Tests are reduced by 2 × level and Speed by 5 ft × level; level 6 is death. Each Long Rest removes 1 level.",
+      "flags": {
+        "speedZero": false,
+        "incapacitated": false,
+        "noSight": false,
+        "autoFailStrDexSaves": false,
+        "attacksAgainst": null,
+        "ownAttacks": null,
+        "abilityChecks": null,
+        "dexSaves": null,
+        "critWithin5ft": false,
+        "resistAllDamage": false,
+        "breaksConcentration": false,
+        "alsoProne": false,
+        "initiative": null,
+        "hint": "Stacks (the only condition that does). −2 × level to every D20 Test (checks, attacks, saves); −5 ft × level to Speed and every special speed (p. 188); level 6 = death; Long Rest −1 level."
+      },
+      "srd51": {
+        "summary": "5.1: six cumulative steps: 1 Dis. on checks; 2 Speed halved; 3 Dis. on attacks and saves; 4 HP max halved; 5 Speed 0; 6 death. Long Rest −1 with food.",
+        "page": 358
+      }
+    },
+    {
+      "id": "frightened",
+      "name": "Frightened",
+      "category": "mind",
+      "page": 182,
+      "summary": "Disadvantage on ability checks and attack rolls while the source of its fear is within line of sight. Can't willingly move closer to the source.",
+      "flags": {
+        "speedZero": false,
+        "incapacitated": false,
+        "noSight": false,
+        "autoFailStrDexSaves": false,
+        "attacksAgainst": null,
+        "ownAttacks": "disadvantage",
+        "abilityChecks": "disadvantage",
+        "dexSaves": null,
+        "critWithin5ft": false,
+        "resistAllDamage": false,
+        "breaksConcentration": false,
+        "alsoProne": false,
+        "initiative": null,
+        "hint": "Disadvantage applies only while the source is in line of sight. Can't willingly move closer to the source (hint only)."
+      }
+    },
+    {
+      "id": "grappled",
+      "name": "Grappled",
+      "category": "body",
+      "page": 182,
+      "summary": "Speed 0. Disadvantage on attacks against anyone but the grappler, who can drag or carry it. Escape: an action and an Athletics or Acrobatics check.",
+      "flags": {
+        "speedZero": true,
+        "incapacitated": false,
+        "noSight": false,
+        "autoFailStrDexSaves": false,
+        "attacksAgainst": null,
+        "ownAttacks": "disadvantage",
+        "abilityChecks": null,
+        "dexSaves": null,
+        "critWithin5ft": false,
+        "resistAllDamage": false,
+        "breaksConcentration": false,
+        "alsoProne": false,
+        "initiative": null,
+        "hint": "Disadvantage only against targets other than the grappler. Grappler pays +1 ft per ft to move it unless it is Tiny or 2+ sizes smaller. Unarmed Strike escape DC = 8 + Str mod + PB (p. 190); stat blocks give their own DC."
+      },
+      "srd51": {
+        "summary": "5.1: Speed 0; ends if the grappler is Incapacitated or it's moved out of reach. No attack penalty; escape is a contested Athletics/Acrobatics check (p. 95).",
+        "page": 358
+      }
+    },
+    {
+      "id": "incapacitated",
+      "name": "Incapacitated",
+      "category": "incapacity",
+      "page": 184,
+      "summary": "Can't take actions, Bonus Actions or Reactions; its Concentration breaks; can't speak. Disadvantage on Initiative if Incapacitated when rolling it.",
+      "flags": {
+        "speedZero": false,
+        "incapacitated": true,
+        "noSight": false,
+        "autoFailStrDexSaves": false,
+        "attacksAgainst": null,
+        "ownAttacks": null,
+        "abilityChecks": null,
+        "dexSaves": null,
+        "critWithin5ft": false,
+        "resistAllDamage": false,
+        "breaksConcentration": true,
+        "alsoProne": false,
+        "initiative": "disadvantage",
+        "hint": "Can't speak, so no Verbal-component spells. Ends Dodge benefits. Speed is unaffected in 5.2.1."
+      },
+      "srd51": {
+        "summary": "5.1: can't take actions or reactions. No speech or Initiative clause; Concentration still ends when Incapacitated (5.1 p. 102).",
+        "page": 358
+      }
+    },
+    {
+      "id": "invisible",
+      "name": "Invisible",
+      "category": "senses",
+      "page": 184,
+      "summary": "Advantage on Initiative. Unaffected by effects that need to see it; gear hidden too. Attacks vs it have Disadvantage and its attacks Advantage unless seen.",
+      "flags": {
+        "speedZero": false,
+        "incapacitated": false,
+        "noSight": false,
+        "autoFailStrDexSaves": false,
+        "attacksAgainst": "disadvantage",
+        "ownAttacks": "advantage",
+        "abilityChecks": null,
+        "dexSaves": null,
+        "critWithin5ft": false,
+        "resistAllDamage": false,
+        "breaksConcentration": false,
+        "alsoProne": false,
+        "initiative": "advantage",
+        "hint": "Attack modifiers don't apply against a creature that can somehow see it (Blindsight, Truesight, See Invisibility)."
+      },
+      "srd51": {
+        "summary": "5.1: can't be seen without magic or a special sense; heavily obscured for hiding; noise or tracks reveal it. Same attack effects; no Initiative effect.",
+        "page": 358
+      }
+    },
+    {
+      "id": "paralyzed",
+      "name": "Paralyzed",
+      "category": "body",
+      "page": 186,
+      "summary": "Incapacitated; Speed 0. Automatically fails Str and Dex saves. Attacks against it have Advantage, and hits from within 5 ft are Critical Hits.",
+      "flags": {
+        "speedZero": true,
+        "incapacitated": true,
+        "noSight": false,
+        "autoFailStrDexSaves": true,
+        "attacksAgainst": "advantage",
+        "ownAttacks": null,
+        "abilityChecks": null,
+        "dexSaves": null,
+        "critWithin5ft": true,
+        "resistAllDamage": false,
+        "breaksConcentration": true,
+        "alsoProne": false,
+        "initiative": "disadvantage",
+        "hint": "Includes the Incapacitated condition (its concentration, speech and Initiative effects apply)."
+      }
+    },
+    {
+      "id": "petrified",
+      "name": "Petrified",
+      "category": "body",
+      "page": 186,
+      "summary": "Turned to stone (weight ×10, stops aging). Incapacitated; Speed 0; fails Str/Dex saves; attacks vs it have Advantage; Resistance to all damage.",
+      "flags": {
+        "speedZero": true,
+        "incapacitated": true,
+        "noSight": false,
+        "autoFailStrDexSaves": true,
+        "attacksAgainst": "advantage",
+        "ownAttacks": null,
+        "abilityChecks": null,
+        "dexSaves": null,
+        "critWithin5ft": false,
+        "resistAllDamage": true,
+        "breaksConcentration": true,
+        "alsoProne": false,
+        "initiative": "disadvantage",
+        "hint": "Includes Incapacitated. Immune to the Poisoned condition. No automatic Critical Hits."
+      },
+      "srd51": {
+        "summary": "5.1: as 5.2.1, but also unaware of its surroundings and immune to poison and disease (any already in its system is suspended).",
+        "page": 359
+      }
+    },
+    {
+      "id": "poisoned",
+      "name": "Poisoned",
+      "category": "affliction",
+      "page": 186,
+      "summary": "Disadvantage on attack rolls and ability checks.",
+      "flags": {
+        "speedZero": false,
+        "incapacitated": false,
+        "noSight": false,
+        "autoFailStrDexSaves": false,
+        "attacksAgainst": null,
+        "ownAttacks": "disadvantage",
+        "abilityChecks": "disadvantage",
+        "dexSaves": null,
+        "critWithin5ft": false,
+        "resistAllDamage": false,
+        "breaksConcentration": false,
+        "alsoProne": false,
+        "initiative": null
+      }
+    },
+    {
+      "id": "prone",
+      "name": "Prone",
+      "category": "body",
+      "page": 186,
+      "summary": "Can only crawl or spend half its Speed to stand (not at Speed 0). Its attacks have Disadvantage; attacks vs it: Advantage within 5 ft, else Disadvantage.",
+      "flags": {
+        "speedZero": false,
+        "incapacitated": false,
+        "noSight": false,
+        "autoFailStrDexSaves": false,
+        "attacksAgainst": "adv-within-5ft-else-dis",
+        "ownAttacks": "disadvantage",
+        "abilityChecks": null,
+        "dexSaves": null,
+        "critWithin5ft": false,
+        "resistAllDamage": false,
+        "breaksConcentration": false,
+        "alsoProne": false,
+        "initiative": null,
+        "hint": "Crawling costs +1 ft per ft (+2 in Difficult Terrain); standing costs half Speed, rounded down. Dropping Prone is free unless Speed is 0 (p. 14)."
+      }
+    },
+    {
+      "id": "restrained",
+      "name": "Restrained",
+      "category": "body",
+      "page": 187,
+      "summary": "Speed 0. Attack rolls against it have Advantage and its attack rolls have Disadvantage. Disadvantage on Dexterity saving throws.",
+      "flags": {
+        "speedZero": true,
+        "incapacitated": false,
+        "noSight": false,
+        "autoFailStrDexSaves": false,
+        "attacksAgainst": "advantage",
+        "ownAttacks": "disadvantage",
+        "abilityChecks": null,
+        "dexSaves": "disadvantage",
+        "critWithin5ft": false,
+        "resistAllDamage": false,
+        "breaksConcentration": false,
+        "alsoProne": false,
+        "initiative": null
+      }
+    },
+    {
+      "id": "stunned",
+      "name": "Stunned",
+      "category": "incapacity",
+      "page": 189,
+      "summary": "Incapacitated. Automatically fails Strength and Dexterity saving throws. Attack rolls against it have Advantage. It can still move in 5.2.1.",
+      "flags": {
+        "speedZero": false,
+        "incapacitated": true,
+        "noSight": false,
+        "autoFailStrDexSaves": true,
+        "attacksAgainst": "advantage",
+        "ownAttacks": null,
+        "abilityChecks": null,
+        "dexSaves": null,
+        "critWithin5ft": false,
+        "resistAllDamage": false,
+        "breaksConcentration": true,
+        "alsoProne": false,
+        "initiative": "disadvantage",
+        "hint": "Includes Incapacitated. No Speed 0 in 5.2.1 (the 5.1 pack must treat it as Speed 0)."
+      },
+      "srd51": {
+        "summary": "5.1: Incapacitated, can't move, speaks only falteringly; automatically fails Str and Dex saves; attack rolls against it have Advantage.",
+        "page": 359
+      }
+    },
+    {
+      "id": "unconscious",
+      "name": "Unconscious",
+      "category": "incapacity",
+      "page": 191,
+      "summary": "Incapacitated and Prone (stays Prone after); drops what it holds; Speed 0; unaware. Fails Str/Dex saves; attacks vs it have Advantage; hits within 5 ft crit.",
+      "flags": {
+        "speedZero": true,
+        "incapacitated": true,
+        "noSight": true,
+        "autoFailStrDexSaves": true,
+        "attacksAgainst": "advantage",
+        "ownAttacks": null,
+        "abilityChecks": null,
+        "dexSaves": null,
+        "critWithin5ft": true,
+        "resistAllDamage": false,
+        "breaksConcentration": true,
+        "alsoProne": true,
+        "initiative": "disadvantage",
+        "hint": "Also Prone: beyond 5 ft, Prone's Disadvantage cancels this Advantage (a normal roll). noSight derives from 'unaware of its surroundings'."
+      }
+    }
+  ],
+  "markers": [
+    {
+      "id": "bloodied",
+      "name": "Bloodied",
+      "category": "vital",
+      "page": 177,
+      "summary": "Has half its Hit Points or fewer. No effect on its own, but other rules and effects can key off it (p. 16). Not in SRD 5.1."
+    },
+    {
+      "id": "concentrating",
+      "name": "Concentrating",
+      "category": "tactical",
+      "page": 179,
+      "summary": "Ends on starting another Concentration effect, on Incapacitated, or on death. Damage forces a Con save: DC 10 or half the damage if higher, max 30."
+    },
+    {
+      "id": "deathsaves",
+      "name": "Death saves",
+      "category": "vital",
+      "page": 17,
+      "summary": "At 0 HP, roll d20 at turn start: 10+ succeeds. 3 successes: Stable; 3 failures: dies. Nat 1 = 2 failures, nat 20 = 1 HP. Damage = 1 failure (crit 2)."
+    },
+    {
+      "id": "stable",
+      "name": "Stable",
+      "category": "boon",
+      "page": 18,
+      "summary": "At 0 HP but makes no Death Saving Throws; still Unconscious. Taking damage restarts death saves. If not healed, regains 1 HP after 1d4 hours."
+    },
+    {
+      "id": "dead",
+      "name": "Dead",
+      "category": "vital",
+      "page": 180,
+      "summary": "Has no Hit Points and can be revived only by magic. On revival it keeps ongoing effects, has 1 fewer Exhaustion level and loses all Attunements."
+    },
+    {
+      "id": "hidden",
+      "name": "Hidden",
+      "category": "tactical",
+      "page": 183,
+      "summary": "Succeeded on a DC 15 Stealth Hide: Invisible while hidden; its total is the DC to find it. Ends on noise, being found, an attack roll or a Verbal spell."
+    },
+    {
+      "id": "surprised",
+      "name": "Surprised",
+      "category": "tactical",
+      "page": 189,
+      "summary": "Caught unaware as combat starts: Disadvantage on its Initiative roll (p. 13). In 5.1 it instead can't move or act on its first turn (5.1 p. 90)."
+    },
+    {
+      "id": "dodging",
+      "name": "Dodging",
+      "category": "boon",
+      "page": 181,
+      "summary": "Dodge: until its next turn, attacks vs it have Disadvantage if it sees the attacker; Advantage on Dex saves. Lost if Incapacitated or its Speed is 0."
+    },
+    {
+      "id": "disengaged",
+      "name": "Disengaged",
+      "category": "tactical",
+      "page": 181,
+      "summary": "Disengage action: its movement doesn't provoke Opportunity Attacks for the rest of the current turn."
+    },
+    {
+      "id": "dashing",
+      "name": "Dashing",
+      "category": "tactical",
+      "page": 180,
+      "summary": "Dash action: extra movement this turn equal to its Speed after modifiers; it may use a special speed (such as Fly) instead."
+    },
+    {
+      "id": "inspiration",
+      "name": "Heroic Inspiration",
+      "category": "boon",
+      "page": 183,
+      "summary": "A player character can expend it to reroll any die just rolled and must use the new roll. Only one is held; an extra is lost unless given to another PC."
+    },
+    {
+      "id": "blessed",
+      "name": "Blessed",
+      "category": "boon",
+      "page": 113,
+      "summary": "Bless (Concentration, up to 1 minute): adds 1d4 to each attack roll and saving throw it makes until the spell ends."
+    },
+    {
+      "id": "baned",
+      "name": "Baned",
+      "category": "tactical",
+      "page": 112,
+      "summary": "Bane (Concentration, up to 1 minute): after a failed Cha save, it subtracts 1d4 from each attack roll and saving throw until the spell ends."
+    },
+    {
+      "id": "hasted",
+      "name": "Hasted",
+      "category": "boon",
+      "page": 139,
+      "summary": "Haste: Speed doubled, +2 AC, Adv. on Dex saves, one extra limited action a turn. When it ends: Incapacitated and Speed 0 until the end of its next turn."
+    },
+    {
+      "id": "slowed",
+      "name": "Slowed",
+      "category": "tactical",
+      "page": 163,
+      "summary": "Slow: Speed halved, −2 AC and Dex saves, no Reactions, an action or Bonus Action (not both), 1 attack; 25% Somatic spell failure; Wis save each turn."
+    },
+    {
+      "id": "burning",
+      "name": "Burning",
+      "category": "affliction",
+      "page": 178,
+      "summary": "Burning hazard: 1d4 Fire damage at the start of each of its turns. An action spent going Prone and rolling puts it out, as does dousing or submerging."
+    },
+    {
+      "id": "flying",
+      "name": "Flying",
+      "category": "tactical",
+      "page": 182,
+      "summary": "Falls if Incapacitated, Prone or its Fly Speed drops to 0, unless it can hover. A fall deals 1d6 Bludgeoning per 10 ft (max 20d6) and leaves it Prone."
+    },
+    {
+      "id": "readied",
+      "name": "Readied",
+      "category": "tactical",
+      "page": 186,
+      "summary": "Ready action: on a chosen trigger, it uses its Reaction to act or move up to its Speed. A readied spell is cast now and held with Concentration (p. 187)."
+    },
+    {
+      "id": "custom",
+      "name": "Custom marker",
+      "category": "tactical",
+      "page": null,
+      "summary": "App status only: a DM-defined marker (name, glyph, description, optional duration in rounds). It stands for no SRD rule."
+    }
+  ]
+}

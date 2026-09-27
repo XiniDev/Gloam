@@ -8,10 +8,10 @@
       "code": "HOST",
       "phase": "P1",
       "text": "On first start with an empty data directory, the terminal prints a one-time setup URL; opening it from `localhost` lets the Admin set a password; the link cannot be reused; the same request carrying a `cf-ray` or `cf-connecting-ip` header is rejected with 403.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/host.test.ts › AC-HOST-01 first start prints a one-time local-only setup link…; › AC-HOST-01 the terminal banner prints the one-time setup URL on first run (real process)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T11:51:33.367Z"
     },
     {
       "id": "AC-HOST-02",
@@ -74,10 +74,10 @@
       "code": "HOST",
       "phase": "P1",
       "text": "SIGINT/SIGTERM performs a graceful shutdown (clients notified, snapshot written, tunnel stopped, database closed) within 10 s.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/host.test.ts › AC-HOST-07 SIGINT/SIGTERM: graceful shutdown … within 10 s (real child process; IPC-raised signal on Windows)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T11:51:33.441Z"
     },
     {
       "id": "AC-HOST-08",
@@ -85,10 +85,10 @@
       "code": "HOST",
       "phase": "P1",
       "text": "Named-tunnel mode runs cloudflared with the stored token passed via `TUNNEL_TOKEN` (not argv) and uses the configured public hostname; the token is never shown in full again after saving (masked) and never logged.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/host.test.ts › AC-HOST-08 named tunnel: token only via TUNNEL_TOKEN, configured hostname, masked after saving, never logged",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T11:51:33.510Z"
     },
     {
       "id": "AC-HOST-09",
@@ -107,10 +107,10 @@
       "code": "AUTH",
       "phase": "P1",
       "text": "A wrong invite code shows a generic error; 10 wrong attempts from one client IP within 10 minutes return HTTP 429 for 10 minutes. (Client IP = `cf-connecting-ip` when the socket peer is loopback and the header is present; otherwise the socket address.)",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/auth.test.ts › AC-AUTH-01 wrong codes get a generic error; 10 wrong attempts from one IP → 429 for 10 minutes",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T11:51:33.580Z"
     },
     {
       "id": "AC-AUTH-02",
@@ -140,10 +140,10 @@
       "code": "AUTH",
       "phase": "P1",
       "text": "A returning player on the same origin is recognised by device cookie; on a new origin they can choose \"I've played before\", pick their profile and enter their PIN; 5 wrong PINs lock that profile's PIN entry for 15 minutes.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/auth.test.ts › AC-AUTH-04 returning players: device cookie on the same origin; PIN on a new origin; 5 wrong PINs lock 15 min",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T11:51:33.651Z"
     },
     {
       "id": "AC-AUTH-05",
@@ -151,10 +151,10 @@
       "code": "AUTH",
       "phase": "P1",
       "text": "Kick returns the person to the waiting room; kicked or banned sockets are closed by the server within 500 ms.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/auth.test.ts › AC-AUTH-05 kick returns the person to the waiting room; kicked and banned sockets close within 500 ms",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T11:51:33.721Z"
     },
     {
       "id": "AC-AUTH-06",
@@ -162,10 +162,10 @@
       "code": "AUTH",
       "phase": "P1",
       "text": "Pending users' state contains only their own knock status (asserted by inspecting the lobby room state in a test).",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/auth.test.ts › AC-AUTH-06 pending users' lobby state contains only their own knock status",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T11:51:33.793Z"
     },
     {
       "id": "AC-AUTH-07",
@@ -184,10 +184,10 @@
       "code": "AUTH",
       "phase": "P1",
       "text": "Rotating the invite code invalidates the old code immediately; people already inside are unaffected.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/auth.test.ts › AC-AUTH-08 rotating the invite code kills the old one immediately; people inside are unaffected",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T11:51:33.865Z"
     },
     {
       "id": "AC-AUTH-09",
@@ -195,10 +195,10 @@
       "code": "AUTH",
       "phase": "P1",
       "text": "With auto-admit on, PIN-verified or device-recognised returning profiles are admitted without a prompt, and the knock is still recorded in the security log.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/auth.test.ts › AC-AUTH-09 with auto-admit on, PIN-verified or device-recognised returning players skip the prompt; knock still logged",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T11:51:33.936Z"
     },
     {
       "id": "AC-AUTH-10",
@@ -206,10 +206,10 @@
       "code": "AUTH",
       "phase": "P1",
       "text": "Invite codes are 10 Crockford-base32 characters (≈50 bits of entropy) displayed as `XXXXX-XXXXX`, stored only as SHA-256 hashes, and die when the table closes.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/auth.test.ts › AC-AUTH-10 codes are 10 Crockford chars shown as XXXXX-XXXXX, stored only as SHA-256, and die at close",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T11:51:34.005Z"
     },
     {
       "id": "AC-SCN-01",
@@ -1460,10 +1460,10 @@
       "code": "SPL",
       "phase": "P9",
       "text": "The SRD 5.2.1 pack loads exactly 339 spells with per-level counts 27, 57, 57, 42, 34, 38, 31, 20, 17, 16 (cantrip → 9th), asserted at startup and in tests.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/content/packs.test.ts › loads exactly 339 spells…; startup assertion in packages/server/src/content/packs.ts; packages/content/scripts/verify.test.ts",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T11:51:34.717Z"
     },
     {
       "id": "AC-SPL-02",
@@ -1658,10 +1658,10 @@
       "code": "PER",
       "phase": "P1",
       "text": "Every accepted command is persisted in the same SQLite transaction as its history entry before any broadcast (verified by an integration test that inspects the database inside the broadcast hook).",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/persistence.test.ts › AC-PER-01 every accepted command is in SQLite (row + history, one transaction) before any broadcast (onBeforePatch probe + simulated disk failure)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T11:51:34.075Z"
     },
     {
       "id": "AC-PER-02",
@@ -1691,10 +1691,10 @@
       "code": "PER",
       "phase": "P1",
       "text": "A daily online backup is written (14 kept) and Backup now works while the table is open.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/persistence.test.ts › AC-PER-04 a daily online backup after 04:00 (14 kept) and Backup now while the table is open",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T11:51:34.144Z"
     },
     {
       "id": "AC-PER-05",
@@ -2252,10 +2252,10 @@
       "code": "SEC",
       "phase": "P1",
       "text": "Every REST body and room message is validated with a strict zod schema (unknown keys rejected, numbers range-checked, strings length-capped); invalid input never reaches domain code (fuzz test).",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/security.test.ts › AC-SEC-01 REST bodies and room messages are strictly validated; fuzzed input never reaches domain code",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T11:51:34.214Z"
     },
     {
       "id": "AC-SEC-02",
@@ -2263,10 +2263,10 @@
       "code": "SEC",
       "phase": "P1",
       "text": "Every state-changing REST request authenticated by cookie requires a valid CSRF token and an allowed `Origin` (requests authenticated by a bearer API token and carrying no cookies are exempt); room messages require an authenticated, admitted session.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/security.test.ts › AC-SEC-02 cookie-authenticated state changes need a valid CSRF token and an allowed Origin",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T11:51:34.284Z"
     },
     {
       "id": "AC-SEC-03",
@@ -2274,10 +2274,10 @@
       "code": "SEC",
       "phase": "P1",
       "text": "The CSP and security headers in §22.4 and the cookie attributes in §22.2 are present on every response (test asserts headers).",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/security.test.ts › AC-SEC-03 CSP and security headers on every response; cookie attributes as specified",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T11:51:34.354Z"
     },
     {
       "id": "AC-SEC-04",
@@ -2285,10 +2285,10 @@
       "code": "SEC",
       "phase": "P1",
       "text": "Local-only endpoints (setup, magic admin link, API tokens by default) refuse requests that carry Cloudflare headers or come from a non-loopback address.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/security.test.ts › AC-SEC-04 local-only endpoints refuse Cloudflare headers and non-loopback addresses",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T11:51:34.426Z"
     },
     {
       "id": "AC-SEC-05",
@@ -2296,10 +2296,10 @@
       "code": "SEC",
       "phase": "P1",
       "text": "Per-user rate limits on room messages (§13.5) disconnect abusive clients after a warning; per-IP limits protect auth endpoints.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/security.test.ts › AC-SEC-05 room message rate limits disconnect abusers after a warning; per-IP limits protect auth",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T11:51:34.499Z"
     },
     {
       "id": "AC-SEC-06",
@@ -2307,10 +2307,10 @@
       "code": "SEC",
       "phase": "P1",
       "text": "Secrets (admin password hash, PIN hashes, session and invite hashes, tunnel token, API token hashes, `secret.key`) never appear in logs, API responses or client state (grep test over logs and snapshots).",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/security.test.ts › AC-SEC-06 secrets never appear in logs, API responses or client state",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T11:51:34.574Z"
     },
     {
       "id": "AC-SEC-07",
@@ -2329,10 +2329,10 @@
       "code": "SEC",
       "phase": "P1",
       "text": "The data directory and `secret.key` are created with owner-only permissions where the OS supports it.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/security.test.ts › AC-SEC-08 the data directory and secret.key are owner-only (icacls on Windows, 0700/0600 on POSIX)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T11:51:34.643Z"
     },
     {
       "id": "AC-SEC-09",

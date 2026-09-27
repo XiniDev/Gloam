@@ -1,0 +1,505 @@
+{
+  "$comment": "Saves, damage and targeting settled by hand where the PDF prose and Foundry disagree, where a prose pattern can't read the phrasing, or where Foundry's formula can't be expressed in the dice grammar (SPEC §18.1). Each entry quotes the PDF; the report shows what prose and Foundry said. `save.onSuccess`: half = half damage on a success; none = a success avoids the effect; special = the text says what happens.",
+  "spells": {
+    "bestow-curse": {
+      "page": 112,
+      "source": "\"You touch a creature, which must succeed on a Wisdom saving throw or become cursed for the duration.\" A success avoids the curse (Foundry's onSave \"half\" is a default with no damage behind it).",
+      "set": {
+        "save": {
+          "ability": "wis",
+          "onSuccess": "none"
+        }
+      }
+    },
+    "black-tentacles": {
+      "page": 113,
+      "source": "\"Each creature in that area makes a Strength saving throw. On a failed save, it takes 3d6 Bludgeoning damage, and it has the Restrained condition until the spell ends.\" Nothing happens on a success.",
+      "set": {
+        "save": {
+          "ability": "str",
+          "onSuccess": "none"
+        }
+      }
+    },
+    "conjure-animals": {
+      "page": 117,
+      "source": "\"you can force that creature to make a Dexterity saving throw. On a failed save, the creature takes 3d10 Slashing damage.\" No damage on a success (Open5e's Strength is the unrelated \"Advantage on Strength saving throws while you’re within 5 feet of the pack\").",
+      "set": {
+        "save": {
+          "ability": "dex",
+          "onSuccess": "none"
+        }
+      }
+    },
+    "contact-other-plane": {
+      "page": 119,
+      "source": "\"When you cast this spell, make a DC 15 Intelligence saving throw. On a successful save, you can ask the entity up to five questions … On a failed save, you take 6d6 Psychic damage and have the Incapacitated condition until you finish a Long Rest.\" The caster's own save; no damage on a success.",
+      "set": {
+        "save": {
+          "ability": "int",
+          "onSuccess": "none"
+        }
+      }
+    },
+    "contagion": {
+      "page": 119,
+      "source": "\"The target must succeed on a Constitution saving throw or take 11d8 Necrotic damage and have the Poisoned condition.\" Nothing on a success.",
+      "set": {
+        "save": {
+          "ability": "con",
+          "onSuccess": "none"
+        }
+      }
+    },
+    "delayed-blast-fireball": {
+      "page": 122,
+      "source": "\"each creature in a 20-foot-radius Sphere centered on that point makes a Dexterity saving throw. A creature takes Fire damage equal to the total accumulated damage on a failed save or half as much damage on a successful one. The spell’s base damage is 12d6, and the damage increases by 1d6 whenever your turn ends and the spell hasn’t ended.\" Higher levels: \"The base damage increases by 1d6 for each spell slot level above 7.\" Foundry's formula (a per-turn counter) can't be expressed; the per-turn growth stays in the text.",
+      "review": "The +1d6 per turn the bead waits is kept in the text (the card rolls the base 12d6 + slot scaling).",
+      "set": {
+        "save": {
+          "ability": "dex",
+          "onSuccess": "half"
+        },
+        "damage": [
+          {
+            "formula": "12d6",
+            "type": "fire",
+            "scaling": {
+              "mode": "slot",
+              "perLevel": "1d6"
+            }
+          }
+        ]
+      }
+    },
+    "dream": {
+      "page": 126,
+      "source": "\"the target makes a Wisdom saving throw. On a failed save, the target gains no benefit from its rest, and it takes 3d6 Psychic damage when it wakes up.\" Nothing on a success. Foundry's Incapacitated status is the messenger's: \"While in the trance, the messenger is Incapacitated and has a Speed of 0.\" — not a condition on the target.",
+      "set": {
+        "save": {
+          "ability": "wis",
+          "onSuccess": "none"
+        },
+        "conditions": []
+      }
+    },
+    "ensnaring-strike": {
+      "page": 128,
+      "source": "\"it makes a Strength saving throw … On a failed save, the target has the Restrained condition until the spell ends. On a successful save, the vines shrivel away, and the spell ends.\" The Piercing damage only happens while Restrained, so a success avoids everything.",
+      "set": {
+        "save": {
+          "ability": "str",
+          "onSuccess": "none"
+        }
+      }
+    },
+    "storm-of-vengeance": {
+      "page": 165,
+      "source": "\"Each creature under the cloud when it appears must succeed on a Constitution saving throw or take 2d6 Thunder damage and have the Deafened condition for the duration.\" Only this happens on casting; the acid rain, lightning bolts (Dexterity, half), hail and freezing rain come on later turns (\"At the start of each of your later turns\") and stay in the text.",
+      "review": "Only the damage when the cloud appears is structured; the later turns' effects are text.",
+      "set": {
+        "save": {
+          "ability": "con",
+          "onSuccess": "none"
+        },
+        "damage": [
+          {
+            "formula": "2d6",
+            "type": "thunder"
+          }
+        ]
+      }
+    },
+    "web": {
+      "page": 174,
+      "source": "\"it must succeed on a Dexterity saving throw or have the Restrained condition while in the webs or until it breaks free.\" Nothing on a success (Foundry's onSave \"full\" has no damage behind it). The only damage is conditional — \"Any 5-foot Cube of webs exposed to fire burns away in 1 round, dealing 2d4 Fire damage to any creature that starts its turn in the fire\" — so the spell itself deals none (it is in the effect's trigger note).",
+      "set": {
+        "save": {
+          "ability": "dex",
+          "onSuccess": "none"
+        },
+        "damage": []
+      }
+    },
+    "power-word-heal": {
+      "page": 154,
+      "source": "\"The target regains all its Hit Points.\" There is no number to roll; Foundry's healing value 1000 is not in the SRD, so no healing formula is recorded (the DM restores the target to its Hit Point maximum).",
+      "review": "No healing formula: \"all its Hit Points\" has no number (Foundry's 1000 is not in the SRD).",
+      "set": {
+        "healing": null
+      }
+    },
+    "searing-smite": {
+      "page": 160,
+      "source": "\"As you hit the target, it takes an extra 1d6 Fire damage from the attack.\" Then \"At the start of each of its turns until the spell ends, the target takes 1d6 Fire damage and then makes a Constitution saving throw. On a failed save, the spell continues. On a successful save, the spell ends.\" The save never reduces damage already taken, so its outcome is special.",
+      "set": {
+        "save": {
+          "ability": "con",
+          "onSuccess": "special"
+        }
+      }
+    },
+    "heat-metal": {
+      "page": 139,
+      "source": "\"Any creature in physical contact with the object takes 2d8 Fire damage when you cast the spell.\" The Constitution save only decides whether a holder drops the object (\"must succeed on a Constitution saving throw or drop the object if it can\"); it doesn't reduce the damage.",
+      "set": {
+        "save": {
+          "ability": "con",
+          "onSuccess": "special"
+        }
+      }
+    },
+    "arcane-hand": {
+      "page": 110,
+      "source": "Four options: Clenched Fist (\"Make a melee spell attack. On a hit, the target takes 5d8 Force damage\"), Forceful Hand (Strength save), Grasping Hand (Dexterity save, then crush damage with no save) and Interposing Hand. The save depends on the option, so its outcome is special.",
+      "set": {
+        "save": {
+          "ability": "str",
+          "onSuccess": "special"
+        }
+      }
+    },
+    "prismatic-wall": {
+      "page": 155,
+      "source": "\"Each layer forces the creature to make a Dexterity saving throw or be affected by that layer’s properties as described in the Prismatic Layers table\" (damage layers: \"Successful Save: Half as much damage\"). The Constitution save against blindness for creatures near the wall stays in the text.",
+      "set": {
+        "save": {
+          "ability": "dex",
+          "onSuccess": "half"
+        }
+      }
+    },
+    "spirit-guardians": {
+      "page": 164,
+      "source": "\"On a failed save, the creature takes 3d8 Radiant damage (if you are good or neutral) or 3d8 Necrotic damage (if you are evil).\" Radiant is listed first; the caster's alignment picks the type. Higher levels: \"The damage increases by 1d8 for each spell slot level above 3.\"",
+      "set": {
+        "damage": [
+          {
+            "formula": "3d8",
+            "type": "radiant",
+            "typeOptions": ["radiant", "necrotic"],
+            "scaling": {
+              "mode": "slot",
+              "perLevel": "1d8"
+            }
+          }
+        ]
+      }
+    },
+    "earthquake": {
+      "page": 127,
+      "source": "\"each creature on the ground in the area makes a Dexterity saving throw. On a failed save, a creature has the Prone condition, and its Concentration is broken.\" The 12d6 Bludgeoning damage is only for creatures caught by a collapsing structure (\"On a failed save, the creature takes 12d6 Bludgeoning damage, has the Prone condition, and is buried in the rubble\"), so it stays in the text.",
+      "review": "Collapse damage (12d6) for creatures near structures is kept in the text.",
+      "set": {
+        "save": {
+          "ability": "dex",
+          "onSuccess": "none"
+        },
+        "damage": []
+      }
+    },
+    "acid-arrow": {
+      "page": 107,
+      "source": "\"On a hit, the target takes 4d4 Acid damage and 2d4 Acid damage at the end of its next turn.\" Only the immediate 4d4 is rolled when the spell resolves; the delayed 2d4 (which also scales) stays in the text. Higher levels: \"The damage (both initial and later) increases by 1d4 for each spell slot level above 2.\"",
+      "review": "Delayed damage (2d4 at the end of the target's next turn) kept in the text so it isn't rolled with the hit.",
+      "set": {
+        "damage": [
+          {
+            "formula": "4d4",
+            "type": "acid",
+            "scaling": {
+              "mode": "slot",
+              "perLevel": "1d4"
+            }
+          }
+        ]
+      }
+    },
+    "vitriolic-sphere": {
+      "page": 172,
+      "source": "\"On a failed save, a creature takes 10d4 Acid damage and another 5d4 Acid damage at the end of its next turn. On a successful save, a creature takes half the initial damage only.\" Only the initial damage is rolled when the spell resolves; \"The initial damage increases by 2d4 for each spell slot level above 4.\"",
+      "review": "Delayed damage (5d4 at the end of the target's next turn) kept in the text.",
+      "set": {
+        "save": {
+          "ability": "dex",
+          "onSuccess": "half"
+        },
+        "damage": [
+          {
+            "formula": "10d4",
+            "type": "acid",
+            "scaling": {
+              "mode": "slot",
+              "perLevel": "2d4"
+            }
+          }
+        ]
+      }
+    },
+    "weird": {
+      "page": 174,
+      "source": "\"On a failed save, a target takes 10d10 Psychic damage and has the Frightened condition for the duration.\" The repeated 5d10 (\"On a failed save, it takes 5d10 Psychic damage\") happens on later turns and stays in the text.",
+      "review": "Repeating 5d10 on later turns kept in the text.",
+      "set": {
+        "damage": [
+          {
+            "formula": "10d10",
+            "type": "psychic"
+          }
+        ]
+      }
+    },
+    "wall-of-ice": {
+      "page": 172,
+      "source": "Damage when the wall appears: \"makes a Dexterity saving throw, taking 10d6 Cold damage on a failed save or half as much damage on a successful one.\" The 5d6 for later crossing the \"sheet of frigid air\" stays in the text. Higher levels: \"The damage the wall deals when it appears increases by 2d6\".",
+      "review": "The frigid-air damage for crossing later is kept in the text.",
+      "set": {
+        "damage": [
+          {
+            "formula": "10d6",
+            "type": "cold",
+            "scaling": {
+              "mode": "slot",
+              "perLevel": "2d6"
+            }
+          }
+        ]
+      }
+    },
+    "wall-of-thorns": {
+      "page": 173,
+      "source": "\"When the wall appears, each creature in its area makes a Dexterity saving throw, taking 7d8 Piercing damage on a failed save or half as much damage on a successful one.\" The 7d8 Slashing for moving through the wall later is the effect's trigger (spell-effects.json). \"Both types of damage increase by 1d8 for each spell slot level above 6.\"",
+      "review": "The Slashing damage for moving through the wall later is an effect trigger, not spell damage.",
+      "set": {
+        "damage": [
+          {
+            "formula": "7d8",
+            "type": "piercing",
+            "scaling": {
+              "mode": "slot",
+              "perLevel": "1d8"
+            }
+          }
+        ]
+      }
+    },
+    "tsunami": {
+      "page": 171,
+      "source": "\"When the wall appears, each creature in its area makes a Strength saving throw, taking 6d10 Bludgeoning damage on a failed save or half as much damage on a successful one.\" The moving wall's later 5d10 (reduced by 1d10 each round; Foundry's formula can't be expressed) stays in the text.",
+      "review": "The moving wall's later, shrinking damage (5d10, then −1d10 per round) is kept in the text.",
+      "set": {
+        "save": {
+          "ability": "str",
+          "onSuccess": "half"
+        },
+        "damage": [
+          {
+            "formula": "6d10",
+            "type": "bludgeoning"
+          }
+        ]
+      }
+    },
+    "dimension-door": {
+      "page": 123,
+      "source": "\"If you, the other creature, or both would arrive in a space occupied by a creature or completely filled by one or more objects, you and any creature traveling with you each take 4d6 Force damage, and the teleportation fails.\" A mishap, not damage the spell deals to targets.",
+      "set": {
+        "damage": []
+      }
+    },
+    "teleport": {
+      "page": 168,
+      "source": "Mishap only: \"Each teleporting creature (or the target object) takes 3d10 Force damage, and the GM rerolls on the table\". Not damage the spell deals to targets.",
+      "set": {
+        "damage": []
+      }
+    },
+    "meld-into-stone": {
+      "page": 148,
+      "source": "\"its partial destruction or a change in its shape (to the extent that you no longer fit within it) expels you and deals 6d6 Force damage to you.\" A mishap to the caster, not damage or a condition the spell imposes when cast.",
+      "set": {
+        "damage": [],
+        "conditions": []
+      }
+    },
+    "forcecage": {
+      "page": 134,
+      "source": "No save when cast. The Charisma save is only for a trapped creature trying to leave by magic: \"If the creature tries to use teleportation or interplanar travel to leave, it must first make a Charisma saving throw.\"",
+      "set": {
+        "save": null
+      }
+    },
+    "power-word-stun": {
+      "page": 154,
+      "source": "\"If the target has 150 Hit Points or fewer, it has the Stunned condition. Otherwise, its Speed is 0 until the start of your next turn.\" No save when cast; the Constitution save is the stunned target's repeated save to end the condition.",
+      "set": {
+        "save": null,
+        "conditions": [
+          {
+            "id": "stunned",
+            "onFailedSave": false
+          }
+        ]
+      }
+    },
+    "aid": {
+      "page": 107,
+      "source": "\"Each target’s Hit Point maximum and current Hit Points increase by 5 for the duration.\" Raising the maximum isn't healing (regaining Hit Points), so no healing formula is recorded.",
+      "review": "Hit Point maximum increases are not recorded as healing.",
+      "set": {
+        "healing": null
+      }
+    },
+    "heroes-feast": {
+      "page": 140,
+      "source": "\"Its Hit Point maximum also increases by 2d10, and it gains the same number of Hit Points.\" A maximum increase, not healing.",
+      "review": "Hit Point maximum increases are not recorded as healing.",
+      "set": {
+        "healing": null
+      }
+    },
+    "aura-of-life": {
+      "page": 111,
+      "source": "\"If an ally with 0 Hit Points starts its turn in the aura, that ally regains 1 Hit Point.\" A conditional effect of the aura, not healing rolled when the spell is cast.",
+      "set": {
+        "healing": null
+      }
+    },
+    "haste": {
+      "page": 139,
+      "source": "\"When the spell ends, the target is Incapacitated and has a Speed of 0 until the end of its next turn, as a wave of lethargy washes over it.\" Happens when the spell ends, not a condition to apply on casting.",
+      "set": {
+        "conditions": []
+      }
+    },
+    "wind-walk": {
+      "page": 174,
+      "source": "\"Reverting takes 1 minute, during which the target has the Stunned condition.\" Only while reverting, not on casting.",
+      "set": {
+        "conditions": []
+      }
+    },
+    "conjure-elemental": {
+      "page": 118,
+      "source": "\"Choose the spirit’s element, which determines its damage type: air (Lightning), earth (Thunder), fire (Fire), or water (Cold).\" \"On a failed save, the target takes 4d8 damage of the spirit’s type. On a successful save, the target isn’t Restrained by the spirit.\"",
+      "set": {
+        "save": {
+          "ability": "dex",
+          "onSuccess": "none"
+        },
+        "damage": [
+          {
+            "formula": "4d8",
+            "type": "lightning",
+            "typeOptions": ["lightning", "thunder", "fire", "cold"]
+          }
+        ]
+      }
+    },
+    "freezing-sphere": {
+      "page": 134,
+      "source": "\"If the globe strikes a body of water, it freezes the water … Creatures that were swimming on the surface of frozen water are trapped in the ice and have the Restrained condition.\" Situational (water only), not a result of the Constitution save against the blast.",
+      "set": {
+        "conditions": []
+      }
+    },
+    "light": {
+      "page": 144,
+      "source": "\"You touch one Large or smaller object that isn’t being worn or carried by someone else.\"",
+      "set": {
+        "targeting": {
+          "kind": "object",
+          "count": 1
+        }
+      }
+    },
+    "prismatic-spray": {
+      "page": 154,
+      "source": "\"Each creature in the Cone makes a Dexterity saving throw. For each target, roll 1d8 to determine which color ray affects it\"; the Prismatic Rays table gives Red 12d6 Fire, Orange Acid, Yellow Lightning, Green Poison, Blue Cold with \"Successful Save: Half as much damage\" (Indigo and Violet impose conditions).",
+      "set": {
+        "save": {
+          "ability": "dex",
+          "onSuccess": "half"
+        },
+        "damage": [
+          {
+            "formula": "12d6",
+            "type": "fire",
+            "typeOptions": ["fire", "acid", "lightning", "poison", "cold"]
+          }
+        ]
+      }
+    },
+    "alter-self": {
+      "page": 107,
+      "source": "\"You grow claws (Slashing), fangs (Piercing), horns (Piercing), or hooves (Bludgeoning). When you use your Unarmed Strike to deal damage with that new growth, it deals 1d6 damage of the type in parentheses … and you use your spellcasting ability modifier for the attack and damage rolls\". One Unarmed Strike damage entry whose type depends on the growth (Foundry lists three parts, which would read as all three).",
+      "set": {
+        "damage": [
+          {
+            "formula": "1d6 + @spellmod",
+            "type": "slashing",
+            "typeOptions": ["slashing", "piercing", "bludgeoning"]
+          }
+        ]
+      }
+    },
+    "divine-smite": {
+      "page": 125,
+      "source": "\"The target takes an extra 2d8 Radiant damage from the attack. The damage increases by 1d8 if the target is a Fiend or an Undead.\" Higher levels: \"The damage increases by 1d8 for each spell slot level above 1.\" The +1d8 against Fiends and Undead stays in the text (Foundry's separate 3d8 part would read as extra damage).",
+      "set": {
+        "damage": [
+          {
+            "formula": "2d8",
+            "type": "radiant",
+            "scaling": {
+              "mode": "slot",
+              "perLevel": "1d8"
+            }
+          }
+        ]
+      }
+    },
+    "fire-shield": {
+      "page": 132,
+      "source": "\"The attacker takes 2d8 Fire damage from a warm shield or 2d8 Cold damage from a chill shield.\" One entry; the shield you choose sets the type.",
+      "set": {
+        "damage": [
+          {
+            "formula": "2d8",
+            "type": "fire",
+            "typeOptions": ["fire", "cold"]
+          }
+        ]
+      }
+    },
+    "wish": {
+      "page": 175,
+      "source": "\"each time you cast a spell until you finish a Long Rest, you take 1d10 Necrotic damage per level of that spell\" — stress damage to the caster when casting later spells, not damage this spell deals.",
+      "set": {
+        "damage": []
+      }
+    },
+    "sorcerous-burst": {
+      "page": 163,
+      "source": "\"On a hit, the target takes 1d8 damage of a type you choose: Acid, Cold, Fire, Lightning, Poison, Psychic, or Thunder. If you roll an 8 on a d8 for this spell, you can roll another d8, and add it to the damage.\" Cantrip Upgrade: \"The damage increases by 1d8 when you reach levels 5 (2d8), 11 (3d8), and 17 (4d8).\" The optional exploding d8s (capped by your modifier) stay in the text; Foundry's formula can't be expressed.",
+      "review": "The optional exploding d8s (up to your modifier) are kept in the text.",
+      "set": {
+        "damage": [
+          {
+            "formula": "1d8",
+            "type": "acid",
+            "typeOptions": ["acid", "cold", "fire", "lightning", "poison", "psychic", "thunder"],
+            "scaling": {
+              "mode": "cantrip",
+              "atLevels": {
+                "5": "2d8",
+                "11": "3d8",
+                "17": "4d8"
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

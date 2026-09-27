@@ -10,7 +10,6 @@
   "dependencies": {
     "@colyseus/core": "0.18.17",
     "@colyseus/schema": "5.0.34",
-    "@colyseus/tools": "0.18.4",
     "@colyseus/ws-transport": "0.18.4",
     "@gloam/shared": "workspace:*",
     "@gltf-transform/core": "4.5.0",
@@ -31,7 +30,8 @@
     "p-limit": "7.3.3",
     "pino": "10.3.1",
     "sharp": "0.35.4",
-    "zod": "4.6.5"
+    "zod": "4.6.5",
+    "@gloam/content": "workspace:*"
   },
   "devDependencies": {
     "@colyseus/sdk": "0.18.4",

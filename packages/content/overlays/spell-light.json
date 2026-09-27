@@ -1,0 +1,120 @@
+{
+  "$comment": "Light, obscurement and magical darkness (SPEC §34.4), hand-verified against the SRD 5.2.1 PDF. `light.dim` is the ADDITIONAL dim radius beyond `bright` (the SRD's \"Dim Light for an additional N feet\"; the vision engine lights r ≤ bright + dim as dim, SPEC §15.3). Top-level `light` is what the spell's subject sheds (the object, the target, the caster's hand or the area); the persistent effect's own props live in spell-effects.json. Spell light is magical; `pierceDarkness` is true only where the text lets the light overcome magical Darkness.",
+  "spells": {
+    "light": {
+      "page": 144,
+      "source": "\"the object sheds Bright Light in a 20-foot radius and Dim Light for an additional 20 feet. The light can be colored as you like.\"",
+      "set": { "light": { "bright": 20, "dim": 20, "magical": true, "pierceDarkness": false } }
+    },
+    "dancing-lights": {
+      "page": 121,
+      "source": "\"You create up to four torch-size lights … each light sheds Dim Light in a 10-foot radius.\" (per light)",
+      "set": { "light": { "bright": 0, "dim": 10, "magical": true, "pierceDarkness": false } }
+    },
+    "starry-wisp": {
+      "page": 165,
+      "source": "\"until the end of your next turn, it emits Dim Light in a 10-foot radius and can’t benefit from the Invisible condition.\" (on the target)",
+      "set": { "light": { "bright": 0, "dim": 10, "magical": true, "pierceDarkness": false } }
+    },
+    "produce-flame": {
+      "page": 156,
+      "source": "\"it sheds Bright Light in a 20-foot radius and Dim Light for an additional 20 feet\" (the flame in your hand).",
+      "set": { "light": { "bright": 20, "dim": 20, "magical": true, "pierceDarkness": false } }
+    },
+    "continual-flame": {
+      "page": 119,
+      "source": "\"The effect casts Bright Light in a 20-foot radius and Dim Light for an additional 20 feet.\" (on the touched object)",
+      "set": { "light": { "bright": 20, "dim": 20, "magical": true, "pierceDarkness": false } }
+    },
+    "flame-blade": {
+      "page": 132,
+      "source": "\"The flaming blade sheds Bright Light in a 10-foot radius and Dim Light for an additional 10 feet.\"",
+      "set": { "light": { "bright": 10, "dim": 10, "magical": true, "pierceDarkness": false } }
+    },
+    "flaming-sphere": {
+      "page": 132,
+      "source": "\"it sheds Bright Light in a 20-foot radius and Dim Light for an additional 20 feet.\"",
+      "set": { "light": { "bright": 20, "dim": 20, "magical": true, "pierceDarkness": false } }
+    },
+    "shining-smite": {
+      "page": 162,
+      "source": "\"Until the spell ends, the target sheds Bright Light in a 5-foot radius … and it can’t benefit from the Invisible condition.\" (no dim light stated)",
+      "set": { "light": { "bright": 5, "dim": 0, "magical": true, "pierceDarkness": false } }
+    },
+    "faerie-fire": {
+      "page": 129,
+      "source": "\"For the duration, objects and affected creatures shed Dim Light in a 10-foot radius and can’t benefit from the Invisible condition.\" (per outlined object or creature)",
+      "set": { "light": { "bright": 0, "dim": 10, "magical": true, "pierceDarkness": false } }
+    },
+    "moonbeam": {
+      "page": 150,
+      "source": "\"Until the spell ends, Dim Light fills the Cylinder\" (5-foot radius).",
+      "set": { "light": { "bright": 0, "dim": 5, "magical": true, "pierceDarkness": false } }
+    },
+    "daylight": {
+      "page": 122,
+      "source": "\"sunlight spreads from a point within range and fills a 60-foot-radius Sphere. The sunlight’s area is Bright Light and sheds Dim Light for an additional 60 feet.\" \"If any of this spell’s area overlaps with an area of Darkness created by a spell of level 3 or lower, that other spell is dispelled.\" → pierces (dispels) magical Darkness of level ≤ 3.",
+      "set": { "light": { "bright": 60, "dim": 60, "magical": true, "pierceDarkness": true } }
+    },
+    "fire-shield": {
+      "page": 132,
+      "source": "\"Wispy flames wreathe your body for the duration, shedding Bright Light in a 10-foot radius and Dim Light for an additional 10 feet.\"",
+      "set": { "light": { "bright": 10, "dim": 10, "magical": true, "pierceDarkness": false } }
+    },
+    "conjure-celestial": {
+      "page": 118,
+      "source": "\"Until the spell ends, Bright Light fills the Cylinder\" (10-foot radius; no dim light stated).",
+      "set": { "light": { "bright": 10, "dim": 0, "magical": true, "pierceDarkness": false } }
+    },
+    "sunbeam": {
+      "page": 166,
+      "source": "\"a mote of brilliant radiance shines above you. It sheds Bright Light in a 30-foot radius and Dim Light for an additional 30 feet. This light is sunlight.\"",
+      "set": { "light": { "bright": 30, "dim": 30, "magical": true, "pierceDarkness": false } }
+    },
+    "prismatic-wall": {
+      "page": 155,
+      "source": "\"The wall sheds Bright Light within 100 feet and Dim Light for an additional 100 feet.\"",
+      "set": { "light": { "bright": 100, "dim": 100, "magical": true, "pierceDarkness": false } }
+    },
+    "darkness": {
+      "page": 122,
+      "source": "\"magical Darkness spreads … Darkvision can’t see through it, and nonmagical light can’t illuminate it.\" \"If any of this spell’s area overlaps with an area of Bright Light or Dim Light created by a spell of level 2 or lower, that other spell is dispelled.\"",
+      "set": { "obscurement": "magicalDarkness", "light": null }
+    },
+    "fog-cloud": {
+      "page": 133,
+      "source": "\"You create a 20-foot-radius Sphere of fog … The Sphere is Heavily Obscured.\"",
+      "set": { "obscurement": "heavy" }
+    },
+    "sleet-storm": {
+      "page": 163,
+      "source": "\"The area is Heavily Obscured, and exposed flames in the area are doused.\"",
+      "set": { "obscurement": "heavy" }
+    },
+    "stinking-cloud": {
+      "page": 165,
+      "source": "\"The cloud is Heavily Obscured.\"",
+      "set": { "obscurement": "heavy" }
+    },
+    "cloudkill": {
+      "page": 116,
+      "source": "\"Its area is Heavily Obscured.\"",
+      "set": { "obscurement": "heavy" }
+    },
+    "incendiary-cloud": {
+      "page": 142,
+      "source": "\"The cloud’s area is Heavily Obscured.\"",
+      "set": { "obscurement": "heavy" }
+    },
+    "web": {
+      "page": 174,
+      "source": "\"The webs are Difficult Terrain, and the area within them is Lightly Obscured.\"",
+      "set": { "obscurement": "light" }
+    },
+    "insect-plague": {
+      "page": 143,
+      "source": "\"its area is Lightly Obscured and Difficult Terrain.\"",
+      "set": { "obscurement": "light" }
+    }
+  }
+}

@@ -76,16 +76,10 @@ export class PeopleService {
       throw new GloamError("FORBIDDEN");
     const session = this.ctx.sessions.get(d.sessionId);
     if (!session || session.kind !== "player") throw new GloamError("NOT_FOUND", "That knock is gone.");
-    switch (d.decision) {
-      case "admitPlayer":
-        return this.admit(session.id, "player", actor);
-      case "admitSpectator":
-        return this.admit(session.id, "spectator", actor);
-      case "deny":
-        return this.deny(session.id, actor);
-      case "ban":
-        return this.ban(session.userId, actor, d.reason ?? null);
-    }
+    if (d.decision === "admitPlayer") this.admit(session.id, "player", actor);
+    else if (d.decision === "admitSpectator") this.admit(session.id, "spectator", actor);
+    else if (d.decision === "deny") this.deny(session.id, actor);
+    else this.ban(session.userId, actor, d.reason ?? null);
   }
 
   admit(sessionId: string, as: "player" | "spectator", actor: Actor, opts: { auto?: boolean } = {}): void {

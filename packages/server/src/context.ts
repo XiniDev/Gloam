@@ -6,6 +6,7 @@ import type { ProfileService } from "./auth/profiles.ts";
 import type { AttemptLimiter, BucketMap } from "./auth/rateLimit.ts";
 import type { SessionService } from "./auth/sessions.ts";
 import type { Config } from "./config.ts";
+import type { ContentPack } from "./content/packs.ts";
 import type { DataPaths } from "./dataDir.ts";
 import type { Db, Sqlite } from "./db/client.ts";
 import type { Logger } from "./logger.ts";
@@ -55,6 +56,8 @@ export interface ServerContext {
   rooms: RoomRegistry;
   limits: Limits;
   http: HttpControl;
+  /** SRD 5.2.1 pack, loaded and count-checked at startup. */
+  content: ContentPack;
   startedAt: number;
 }
 

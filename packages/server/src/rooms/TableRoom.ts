@@ -19,8 +19,8 @@ import {
   buildHandlers,
   type ClientAuth,
   def,
-  type MessageDef,
   isSameOrigin,
+  type MessageDef,
   parseCookies,
 } from "./dispatch.ts";
 import { CLOSE, type TableRoomApi } from "./registry.ts";

@@ -56,7 +56,8 @@ export async function openDatabase(path: string, backupsDir: string, log: Logger
     try {
       migrate(db, { migrationsFolder: MIGRATIONS_DIR });
       const violations = sqlite.pragma("foreign_key_check") as unknown[];
-      if (violations.length > 0) throw new Error(`foreign key check failed after migration (${violations.length} rows)`);
+      if (violations.length > 0)
+        throw new Error(`foreign key check failed after migration (${violations.length} rows)`);
     } finally {
       sqlite.pragma("foreign_keys = ON");
     }
