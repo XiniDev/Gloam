@@ -138,6 +138,8 @@ export const Wall = schema(
     door: t.string(),
     dmKind: t.string().view(TAG_DM),
     dmHidden: t.boolean().view(TAG_DM),
+    /** The true door state (secret and hidden doors send players nothing in `door`). */
+    dmDoor: t.string().view(TAG_DM),
   },
   "Wall",
 );
@@ -174,6 +176,10 @@ export const ZoneS = schema(
     label: t.string(),
     color: t.string(),
     shapeJson: t.string(),
+    /** DMs: hidden from players (`visible: false`). */
+    dmHidden: t.boolean().view(TAG_DM),
+    /** DMs: the zone's note and hazard triggers, as JSON. */
+    dmJson: t.string().view(TAG_DM),
   },
   "Zone",
 );

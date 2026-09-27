@@ -153,6 +153,24 @@ export async function commitMove(): Promise<void> {
   }
 }
 
+// A plan follows the world: when a door opens or a wall moves, the preview re-routes at once (AC-WAL-03), not on
+// the next pointer move.
+let seen: { walls: unknown; zones: unknown } | null = null;
+useEntities.subscribe((st) => {
+  const d = boardData(st);
+  if (seen && seen.walls === d.walls && seen.zones === d.zones) return;
+  seen = { walls: d.walls, zones: d.zones };
+  if (!useMove.getState().tokenId) return;
+  // At once, not on the next animation frame (which a slow renderer can hold back): routing takes milliseconds.
+  moveDiag.worldAt = performance.now();
+  compute();
+  broadcast(false);
+  wake();
+});
+
+/** Diagnostics (test hooks): when the world last changed under a plan, and when the preview was last computed. */
+export const moveDiag = { worldAt: 0, resultAt: 0, resultOk: false };
+
 let frame = 0;
 function schedule(): void {
   if (frame) return;
@@ -189,6 +207,8 @@ function compute(): void {
       : { points: [s.from, ...s.waypoints, s.goal], cost: 0, difficultFt: 0, ok: false };
   }
   useMove.setState({ preview });
+  moveDiag.resultAt = performance.now();
+  moveDiag.resultOk = preview.ok;
 }
 
 /** `move.preview` to the other viewers, at most 15 times a second (an empty path clears it). */

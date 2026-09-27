@@ -130,7 +130,9 @@ export class ViewManager {
       // viewer's sight); its token link only while the carrier is perceivable.
       if (visibleTokens.has(l.tokenId)) out.lights.set(l.id, TAG_LINK);
     }
-    for (const z of m.inScene("zone", activeSceneId)) if (dm || z.visible) out.zones.set(z.id, VISIBLE);
+    for (const z of m.inScene("zone", activeSceneId))
+      if (dm) out.zones.set(z.id, TAG_DM);
+      else if (z.visible) out.zones.set(z.id, VISIBLE);
     for (const e of m.inScene("effect", activeSceneId)) {
       if (dm) {
         out.effects.set(e.id, TAG_LINK);

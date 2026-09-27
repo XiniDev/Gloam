@@ -1,5 +1,5 @@
 import { dist, type P, pathLength } from "@gloam/shared/geometry";
-import { clearanceRadius, pathCost, validateMove } from "@gloam/shared/movement";
+import { clearanceRadius, hazardPrompts, pathCost, validateMove } from "@gloam/shared/movement";
 import { GloamError, MoveCommit } from "@gloam/shared/protocol";
 import { controlsToken, effectiveTokenState, isDm } from "@gloam/shared/rules";
 import type { TokenEntity } from "@gloam/shared/schemas";
@@ -110,6 +110,16 @@ export const moveCommit: CommandDef<z.infer<typeof MoveCommit>, MoveResult> = {
         payload: { id: t.id, path, durationMs },
         to: { viewersOf: t.id },
       });
+    // Hazards the move went into prompt the DM (SPEC §8.7 Zones: "on enter").
+    if (patch.pos) {
+      const prompts = hazardPrompts(ctx.model.inScene("zone", t.sceneId), { when: "enter", path });
+      if (prompts.length)
+        events.push({
+          name: "hazard.prompt",
+          payload: { tokenId: t.id, tokenName: t.name, prompts },
+          to: { dms: true },
+        });
+    }
     if (unseen)
       events.push({
         name: "toast",

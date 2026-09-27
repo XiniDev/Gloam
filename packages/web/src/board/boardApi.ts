@@ -1,4 +1,4 @@
-import { type Camera, Plane, Raycaster, Vector2, Vector3 } from "three";
+import { type Camera, type Object3D, Plane, Raycaster, Vector2, Vector3 } from "three";
 
 /**
  * A small bridge from the DOM (HUD, drag-and-drop, keyboard) into the canvas: turn screen points into table
@@ -15,6 +15,10 @@ export const boardApi: {
   /** Last known cursor position on the table (for paste, Quick Unit, spotlight). */
   cursor: { x: number; y: number } | null;
   groundAt(clientX: number, clientY: number): { x: number; y: number } | null;
+  /** The token drawn under a screen point (its id), or null. */
+  tokenAt(clientX: number, clientY: number): string | null;
+  /** The board's tokens group (set by TokensLayer), for picking. */
+  tokens: Object3D | null;
   project(x: number, y: number, elevation?: number): { sx: number; sy: number } | null;
   /** A still of the board as it is now (for the travel freeze-frame), or null without a board. */
   snapshot(): HTMLCanvasElement | null;
@@ -27,6 +31,23 @@ export const boardApi: {
   claimedPointer: number | null;
 } = {
   claimedPointer: null,
+  tokens: null,
+  tokenAt(clientX, clientY) {
+    const cam = boardApi.camera;
+    const el = boardApi.element;
+    const root = boardApi.tokens;
+    if (!cam || !el || !root) return null;
+    const r = el.getBoundingClientRect();
+    ndc.set(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
+    ray.setFromCamera(ndc, cam);
+    for (const hit of ray.intersectObject(root, true)) {
+      // Plates, rings and ghosts don't count; the token's own parts carry its id up the tree.
+      let o: Object3D | null = hit.object;
+      while (o && !o.userData.tokenId) o = o.parent;
+      if (o) return o.userData.tokenId as string;
+    }
+    return null;
+  },
   snapshot: () => null,
   frames: 0,
   camera: null,

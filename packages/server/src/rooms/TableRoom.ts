@@ -9,7 +9,9 @@ import {
   HandToggle,
   LobbyDecide,
   MESSAGE_RATES,
+  MeasureShare,
   MovePreview,
+  PingSend,
   SceneRef,
   TableKick,
 } from "@gloam/shared/protocol";
@@ -149,8 +151,37 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
         const color = roomCtx().profiles.get(auth.userId)?.color ?? "";
         this.toViewersOf(p.tokenId, "move.preview", { ...p, by: auth.userId, color }, client);
       }),
+      // A finished measurement, shown to everyone else for 3 s (SPEC §8.6 Measurement tools).
+      "measure.share": def(MeasureShare, MESSAGE_RATES["measure.share"], ({ client, auth }, p) => {
+        if (!this.projector.activeSceneId) return;
+        const color = roomCtx().profiles.get(auth.userId)?.color ?? "";
+        for (const c of this.clients)
+          if (c !== client) c.send("measure.shared", { ...p, by: auth.userId, name: auth.name, color });
+      }),
+      // Pings (SPEC §8.18): everyone at the table sees them, in the sender's colour.
+      "ping.send": def(PingSend, MESSAGE_RATES["ping.send"], ({ auth }, p) => {
+        if (!this.projector.activeSceneId) return;
+        const color = roomCtx().profiles.get(auth.userId)?.color ?? "";
+        this.broadcastAll("ping", {
+          x: p.x,
+          y: p.y,
+          color,
+          by: auth.userId,
+          name: auth.name,
+          spotlight: false,
+        });
+      }),
       "camera.spotlight": def(CameraSpotlight, MESSAGE_RATES["camera.spotlight"], ({ auth }, p) => {
         this.requireDm(auth);
+        const color = roomCtx().profiles.get(auth.userId)?.color ?? "";
+        this.broadcastAll("ping", {
+          x: p.x,
+          y: p.y,
+          color,
+          by: auth.userId,
+          name: auth.name,
+          spotlight: true,
+        });
         for (const c of this.clients) {
           const role = (c.auth as ClientAuth | undefined)?.role;
           if (role !== "admin" && role !== "dm")

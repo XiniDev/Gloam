@@ -2,6 +2,7 @@ import { useFrame } from "@react-three/fiber";
 import { useEffect } from "react";
 import { useTable } from "../../net/table.ts";
 import { boardData, useBoard, useEntities } from "../../state/entities.ts";
+import { boardApi } from "../boardApi.ts";
 import { setTokenPositionLookup } from "../CameraRig.tsx";
 import { again } from "../frames.ts";
 import { layoutOverlays } from "./declutter.ts";
@@ -23,7 +24,12 @@ export function TokensLayer() {
   });
 
   return (
-    <group name="tokens">
+    <group
+      name="tokens"
+      ref={(g) => {
+        boardApi.tokens = g;
+      }}
+    >
       {[...tokens.values()].map((t) => (
         <TokenObject key={t.id} token={t} viewer={viewer} />
       ))}

@@ -26,6 +26,10 @@ function normalise(c: CollectionName, j: Json): Json {
   } else if (c === "walls") {
     if (typeof j.dmKind !== "string") delete j.dmKind;
     if (typeof j.dmHidden !== "boolean") delete j.dmHidden;
+    if (typeof j.dmDoor !== "string") delete j.dmDoor;
+  } else if (c === "zones") {
+    if (typeof j.dmHidden !== "boolean") delete j.dmHidden;
+    if (typeof j.dmJson !== "string" || !j.dmJson) delete j.dmJson;
   }
   return j;
 }

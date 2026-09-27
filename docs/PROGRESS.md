@@ -117,3 +117,20 @@ PASSING 28/224 · DISPUTED 0 · FAILING 196
   120 random scenes), cost integration (difficult terrain, crawl), server validation (collision truncation,
   clamp/reject budgets), cramped-start rule. 22 unit tests.
 - Next: `move.commit` server command and client drag preview (P3 MOV criteria), then walls editor, doors, zones.
+
+## 2026-09-27 — P3: moving tokens, doors, measuring, elevation, pings
+
+- Server: `move.commit` (routed and freehand, player truncation at true obstacles with the "unseen" toast, DMs
+  ignore blocking, crawl when prone, auto-facing), `move.preview` relay to the token's other viewers, room events,
+  `door.toggle` (reach, locks, secret doors revealed only when the DM opens them), zones (create/update/delete,
+  impassable, water, hidden zones out of players' state) and hazard prompts to DMs. 13 server tests.
+- Client: drag and click-to-move with waypoints, routed preview once per frame, re-route at once when a door
+  changes (door → new path 16–36 ms end-to-end), remote ghosts, gliding committed moves with footsteps, door
+  handles with rattle/sounds, zones rendering, measuring (ruler/radius/cone/line/cube, shared 3 s, units),
+  elevation (stepper, Alt+wheel, stem/ring/label, 3-D distances), pings and the DM's Spotlight ping.
+- Passing now (73/224): MOV-03, MOV-08, MOV-11, MOV-12, MOV-13, MOV-14, MOV-17, TOK-07, FUN-02, WAL-04 (plus
+  WAL-01, MOV-02 earlier). Journeys: p3-movement (2), p3-tools (1).
+- Held: WAL-03 (paths proven; vision is P4), WAL-05 (needs the Zones tool; turn-start/end triggers arrive with
+  combat in P8 — the engine side is tested).
+- Next: Zones tool (WAL-05), walls editor (WAL-02), 3D walls with swinging doors (WAL-06), 1 000-wall editing perf
+  (WAL-07), then P3 shots and the critic round.

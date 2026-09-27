@@ -113,6 +113,7 @@ export interface WallView {
   door: string;
   dmKind?: string;
   dmHidden?: boolean;
+  dmDoor?: string;
 }
 
 export interface LinkView {
@@ -146,6 +147,9 @@ export interface ZoneView {
   label: string;
   color: string;
   shapeJson: string;
+  dmHidden?: boolean;
+  /** `{ note, triggers }` (DMs only). */
+  dmJson?: string;
 }
 
 export interface EffectView {

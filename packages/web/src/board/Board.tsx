@@ -8,7 +8,7 @@ import {
   useState,
 } from "react";
 import { PCFShadowMap, PCFSoftShadowMap } from "three";
-import { request, useTable } from "../net/table.ts";
+import { request, send, useTable } from "../net/table.ts";
 import { boardData, useBoard, useEntities } from "../state/entities.ts";
 import { ASSET_DRAG_TYPE, type AssetDragPayload } from "../state/library.ts";
 import { useSettings } from "../state/settings.ts";
@@ -33,8 +33,10 @@ import { DoorsLayer } from "./map/DoorsLayer.tsx";
 import { MapAlignGizmo } from "./map/MapAlignGizmo.tsx";
 import { MapLayer } from "./map/MapLayer.tsx";
 import { WallsLayer } from "./map/WallsLayer.tsx";
+import { ZonesLayer } from "./map/ZonesLayer.tsx";
 import { clickFloor, hoverBoard, leaveBoard, moveKey } from "./move/input.ts";
 import { MoveLayer } from "./move/MoveLayer.tsx";
+import { PingLayer } from "./PingLayer.tsx";
 import { PostFX } from "./PostFX.tsx";
 import { setMaxAnisotropy } from "./resources.ts";
 import { boundsFromJson } from "./scene.ts";
@@ -42,6 +44,14 @@ import { TableSurface } from "./TableSurface.tsx";
 import { TestProbe } from "./TestProbe.tsx";
 import { chooseTier, probeDevice, TIERS, TierGovernor, useTier } from "./tiers.ts";
 import { TokensLayer } from "./tokens/TokensLayer.tsx";
+import { MeasureLayer } from "./tools/MeasureLayer.tsx";
+import {
+  clearMeasure,
+  finish as finishMeasure,
+  measureDown,
+  measureMove,
+  measureUp,
+} from "./tools/measure.ts";
 
 setupText();
 
@@ -160,6 +170,13 @@ export default function Board() {
       const el = e.target as HTMLElement | null;
       if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return;
       const ui = useUi.getState();
+      // Measuring: Enter finishes a ruler, Esc clears.
+      if (ui.tool === "measure" && (e.key === "Enter" || e.key === "Escape")) {
+        if (e.key === "Enter") finishMeasure();
+        else if (!clearMeasure()) ui.set({ tool: "select" });
+        e.preventDefault();
+        return;
+      }
       // Planning a move: Enter goes, Esc drops the waypoints and then the plan (before deselecting).
       if (moveKey(e)) {
         e.preventDefault();
@@ -207,7 +224,10 @@ export default function Board() {
     // Token presses stop propagation inside the canvas; anything reaching here without a token hit is the table.
     // Tokens set `hover` on pointer-over, so a press with a hovered token is a token press, not the table.
     wake();
-    const panTool = useUi.getState().tool === "pan";
+    const tool = useUi.getState().tool;
+    const panTool = tool === "pan";
+    // Tools that draw or place with a left press (a press on empty table doesn't pan there).
+    const drawing = tool === "measure" || tool === "ping" || tool === "walls" || tool === "zones";
     // Did a token take this press? (Its handler runs first; see boardApi.claimedPointer.)
     const claimed = boardApi.claimedPointer === e.pointerId;
     boardApi.claimedPointer = null; // valid for this press only (a mouse's pointer id never changes)
@@ -218,7 +238,7 @@ export default function Board() {
       e.pointerType !== "touch" &&
       (e.button === 1 ||
         (e.button === 0 &&
-          (cameraRig.spaceHeld || panTool || (!onToken && !(dm && e.shiftKey) && !e.altKey))));
+          (cameraRig.spaceHeld || panTool || (!onToken && !drawing && !(dm && e.shiftKey) && !e.altKey))));
     if (panStart) {
       const grab = boardApi.groundAt(e.clientX, e.clientY);
       if (grab) {
@@ -227,12 +247,22 @@ export default function Board() {
       }
     }
     if (e.button !== 0) return;
+    // Ping (SPEC §8.18): Alt+click, or a click with the Ping tool; the DM's Alt+Shift+click is the Spotlight.
+    if ((e.altKey && !e.shiftKey && !onToken) || (tool === "ping" && !cameraRig.spaceHeld)) {
+      const p = boardApi.groundAt(e.clientX, e.clientY);
+      if (p) send("ping.send", { x: p.x, y: p.y });
+      return;
+    }
     if (dm && e.altKey && e.shiftKey) {
       const p = boardApi.groundAt(e.clientX, e.clientY);
       if (p) {
         void request("camera.spotlight", { x: p.x, y: p.y }).catch(() => {});
         toast.info("Spotlight", "Players who allow it are looking here.");
       }
+      return;
+    }
+    if (tool === "measure" && !cameraRig.spaceHeld) {
+      measureDown(e.clientX, e.clientY);
       return;
     }
     const boxSelect = dm && e.shiftKey && !onToken && !panTool && !cameraRig.spaceHeld;
@@ -305,11 +335,13 @@ export default function Board() {
     boardApi.cursor = boardApi.groundAt(e.clientX, e.clientY);
     const p = press.current;
     if (p?.box) setBox({ x0: p.x, y0: p.y, x1: e.clientX, y1: e.clientY });
+    if (useUi.getState().tool === "measure") measureMove(e.clientX, e.clientY);
     // Hovering (nothing held): click-to-move previews a move for the selected token.
     if (!p && !drag && e.buttons === 0) hoverBoard(e.clientX, e.clientY, useUi.getState().hover !== null);
   };
   const onPointerUp = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (pan.current?.pointerId === e.pointerId) pan.current = null;
+    if (useUi.getState().tool === "measure") measureUp();
     const p = press.current;
     press.current = null;
     if (!p) return;
@@ -344,6 +376,9 @@ export default function Board() {
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerLeave={leaveBoard}
+      onDoubleClick={() => {
+        if (useUi.getState().tool === "measure") finishMeasure();
+      }}
       onContextMenu={(e) => e.preventDefault()}
       onDragOver={onDragOver}
       onWheel={() => wake()}
@@ -372,7 +407,10 @@ export default function Board() {
         <DustMotes bounds={bounds} count={tier.dust} />
         {scene ? <MapLayer scene={scene} bounds={bounds} /> : null}
         <TokensLayer />
+        <ZonesLayer />
         <MoveLayer />
+        <PingLayer />
+        <MeasureLayer />
         <WallsLayer />
         <DoorsLayer />
         <MapAlignGizmo />

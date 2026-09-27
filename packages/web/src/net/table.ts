@@ -6,10 +6,13 @@ import { Table, type TableState } from "@gloam/shared/state";
 import { create } from "zustand";
 import { startMoveAnim } from "../board/move/anims.ts";
 import { clearRemotePreview, onRemotePreview } from "../board/move/remote.ts";
+import { addPing } from "../board/PingLayer.tsx";
+import { type MeasureShape, onSharedMeasure } from "../board/tools/measure.ts";
 import { useEntities } from "../state/entities.ts";
 import { type AssetItem, type AssetRender, type SceneListItem, useLibrary } from "../state/library.ts";
 import { useUi } from "../state/ui.ts";
 import { provideTestHook } from "../test/hooks.ts";
+import { useToasts } from "../ui/Toast.tsx";
 import { preloadAssets } from "./assets.ts";
 import { colyseus, leaveRoom, rejectionMessage } from "./colyseus.ts";
 import { resetSync, syncLive } from "./sync.ts";
@@ -77,6 +80,38 @@ function parseCampaignSettings(json: string): CampaignSettings {
   } catch {
     return CampaignSettings.parse({});
   }
+}
+
+interface SharedMeasureMessage {
+  shape: MeasureShape;
+  points: { x: number; y: number; z: number }[];
+  widthFt?: number;
+  by: string;
+  name: string;
+  color: string;
+}
+
+interface HazardMessage {
+  tokenId: string;
+  tokenName: string;
+  prompts: {
+    zoneLabel: string;
+    when: "enter" | "startTurn" | "endTurn";
+    label: string;
+    save?: { ability: string; dc: number; onSuccess: "half" | "none" };
+    damage?: { formula: string; type: string };
+  }[];
+}
+
+/** "Flames lick at you — DC 12 DEX save (half on a success) · 1d4 fire". */
+export function hazardText(p: HazardMessage["prompts"][number]): string {
+  const parts = [p.label];
+  if (p.save)
+    parts.push(
+      `DC ${p.save.dc} ${p.save.ability.toUpperCase()} save${p.save.onSuccess === "half" ? " (half on a success)" : " (none on a success)"}`,
+    );
+  if (p.damage) parts.push(`${p.damage.formula} ${p.damage.type}`);
+  return parts.join(" — ");
 }
 
 /** One-shot table events the UI reacts to (navigation, toasts, knock cards). */
@@ -260,6 +295,32 @@ async function join(campaignId: string): Promise<Room<unknown, TableState>> {
   room.onMessage("token.moved", (m: { id: string; path: { x: number; y: number }[]; durationMs: number }) => {
     clearRemotePreview(m.id);
     startMoveAnim(m.id, m.path, m.durationMs);
+  });
+  room.onMessage("measure.shared", (m: SharedMeasureMessage) =>
+    onSharedMeasure({
+      shape: m.shape,
+      points: m.points,
+      widthFt: m.widthFt,
+      by: m.by,
+      name: m.name,
+      color: m.color,
+    }),
+  );
+  room.onMessage(
+    "ping",
+    (m: { x: number; y: number; color: string; by: string; name: string; spotlight: boolean }) =>
+      addPing({ x: m.x, y: m.y, color: m.color, spotlight: m.spotlight, by: m.by }),
+  );
+  // Hazards (SPEC §8.7 Zones): a DM prompt when a creature walks into one — sticky until dismissed.
+  room.onMessage("hazard.prompt", (m: HazardMessage) => {
+    for (const p of m.prompts)
+      useToasts.getState().push({
+        kind: "warning",
+        title: `${p.zoneLabel || "Hazard"}: ${m.tokenName} ${p.when === "enter" ? "entered" : p.when === "startTurn" ? "starts a turn inside" : "ends a turn inside"}`,
+        body: hazardText(p),
+        duration: 0,
+        actions: [{ label: "Dismiss", onClick: () => {} }],
+      });
   });
   room.onMessage(
     "move.preview",

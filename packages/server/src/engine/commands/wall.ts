@@ -94,8 +94,9 @@ export const DOOR_REACH_FT = 5;
 /**
  * `door.toggle` (SPEC §8.7 Doors; AC-WAL-03): players open and close unlocked doors within 5 ft of a token they
  * control; a locked door refuses them ("It's locked" — the client rattles it). DMs open, close, lock and unlock any
- * door anywhere, secret doors included. To players a secret door is a wall, so trying one gets exactly a wall's
- * answer. Movement uses the new state at once (the scene's geometry version changes).
+ * door anywhere, secret doors included. To players a shut secret door is a wall, so trying one gets exactly a wall's
+ * answer; one the DM has opened is a door they can see, and may shut (it then reads as a wall again). Movement uses
+ * the new state at once (the scene's geometry version changes).
  */
 export const doorToggle: CommandDef<z.infer<typeof DoorToggle>, { doorState: string }> = {
   type: "door.toggle",
@@ -105,7 +106,8 @@ export const doorToggle: CommandDef<z.infer<typeof DoorToggle>, { doorState: str
     const w = ctx.model.get("wall", p.wallId);
     const dm = isDm(ctx.actor.role);
     if (!w || (!dm && w.hidden)) throw new GloamError("NOT_FOUND", "That no longer exists.");
-    if (!(w.kind === "door" || (dm && w.kind === "secret")))
+    const shown = w.kind === "secret" && w.doorState === "open";
+    if (!(w.kind === "door" || (w.kind === "secret" && (dm || shown))))
       throw new GloamError("FORBIDDEN", "That isn't a door.");
     if (dm) return;
     if (ctx.actor.role === "spectator") throw new GloamError("FORBIDDEN");

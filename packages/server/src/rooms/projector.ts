@@ -156,20 +156,24 @@ export function wallBlocksSight(w: WallEntity): boolean {
 }
 
 /**
- * Wall view. The public `kind`/`door` fields are player-safe (§13.4): a secret door reads as a plain wall, a hidden
- * sight-blocking wall as an anonymous "occluder"; the truth is in the DM-tagged fields.
+ * Wall view. The public `kind`/`door` fields are player-safe (§13.4): a shut secret door reads as a plain wall, a
+ * hidden sight-blocking wall as an anonymous "occluder"; the truth is in the DM-tagged fields. A secret door the DM
+ * has opened is revealed — an open door to everyone — because the gap is really there: players walk and (P4) see
+ * through it, so their state must say so. Shut again, it reads as a wall again.
  */
 export function wallView(w: WallEntity): WallView {
+  const shown = w.kind === "secret" && w.doorState === "open";
   return {
     id: w.id,
     ax: w.a.x,
     ay: w.a.y,
     bx: w.b.x,
     by: w.b.y,
-    kind: w.hidden ? "occluder" : w.kind === "secret" ? "wall" : w.kind,
-    door: w.hidden || w.kind === "secret" ? "" : (w.doorState ?? ""),
+    kind: w.hidden ? "occluder" : w.kind === "secret" ? (shown ? "door" : "wall") : w.kind,
+    door: w.hidden || (w.kind === "secret" && !shown) ? "" : (w.doorState ?? ""),
     dmKind: w.kind,
     dmHidden: w.hidden,
+    dmDoor: w.doorState ?? "",
   };
 }
 
@@ -214,7 +218,16 @@ export function zoneView(z: ZoneEntity): ZoneView {
       x: sh.x + Math.cos((i / 48) * Math.PI * 2) * sh.r,
       y: sh.y + Math.sin((i / 48) * Math.PI * 2) * sh.r,
     }));
-  return { id: z.id, kind: z.kind, points, label: z.label, color: z.color, shapeJson: JSON.stringify(sh) };
+  return {
+    id: z.id,
+    kind: z.kind,
+    points,
+    label: z.label,
+    color: z.color,
+    shapeJson: JSON.stringify(sh),
+    dmHidden: !z.visible,
+    dmJson: JSON.stringify({ note: z.note, triggers: z.triggers }),
+  };
 }
 
 export function effectView(e: EffectEntity, ctx: ProjectionCtx): EffectView {

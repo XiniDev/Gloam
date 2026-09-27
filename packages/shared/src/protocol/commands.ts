@@ -309,6 +309,24 @@ export const MovePreview = z.strictObject({
   cost: z.number().finite().min(0).max(100_000),
 });
 
+export const MEASURE_SHAPES = ["ruler", "radius", "cone", "line", "cube"] as const;
+const Elev = z.number().finite().min(-1000).max(10_000);
+/**
+ * `measure.share` (SPEC §8.6 Measurement tools): a finished measurement, shown to the others for 3 s. Points carry
+ * elevation (a ruler between flying tokens measures in 3D).
+ */
+export const MeasureShare = z.strictObject({
+  shape: z.enum(MEASURE_SHAPES),
+  points: z
+    .array(z.strictObject({ x: Coord, y: Coord, z: Elev.default(0) }))
+    .min(2)
+    .max(32),
+  widthFt: z.number().finite().min(0.5).max(1000).optional(),
+});
+
+/** `ping.send` (SPEC §8.18 Ping): a point on the table everyone sees ring in the sender's colour. */
+export const PingSend = z.strictObject({ x: Coord, y: Coord });
+
 /** DM Spotlight (SPEC §8.4): pull opted-in players' cameras to a point over 600 ms. */
 export const CameraSpotlight = z.strictObject({ x: z.number().finite(), y: z.number().finite() });
 

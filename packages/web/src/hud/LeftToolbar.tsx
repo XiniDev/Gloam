@@ -1,7 +1,7 @@
-import { Hand, MousePointer2 } from "lucide-react";
+import { BrickWall, Hand, LandPlot, MousePointer2, Radar, Ruler } from "lucide-react";
 import { type ReactElement, useEffect, useRef } from "react";
 import { boardApi } from "../board/boardApi.ts";
-import { useTable } from "../net/table.ts";
+import { request, useTable } from "../net/table.ts";
 import { type Tool, useUi } from "../state/ui.ts";
 import { IconButton } from "../ui/Button.tsx";
 import { hudOrder } from "./Intro.tsx";
@@ -28,9 +28,14 @@ function QuickUnitGlyph() {
   );
 }
 
-const TOOLS: { id: Tool; label: string; key: string; icon: ReactElement }[] = [
+/** SPEC §29.3 left toolbar and Appendix H keys (H is Hand raise; panning also works with Space+drag). */
+const TOOLS: { id: Tool; label: string; key?: string; icon: ReactElement; dm?: boolean }[] = [
   { id: "select", label: "Select", key: "V", icon: <MousePointer2 size={19} /> },
-  { id: "pan", label: "Pan", key: "H", icon: <Hand size={19} /> },
+  { id: "pan", label: "Pan (or Space+drag)", icon: <Hand size={19} /> },
+  { id: "measure", label: "Measure", key: "M", icon: <Ruler size={19} /> },
+  { id: "ping", label: "Ping (or Alt+click)", icon: <Radar size={19} /> },
+  { id: "walls", label: "Walls", key: "W", icon: <BrickWall size={19} />, dm: true },
+  { id: "zones", label: "Zones", key: "Z", icon: <LandPlot size={19} />, dm: true },
 ];
 
 /** The board's left toolbar (SPEC §29.3). Tools arrive with their phases; only working ones are shown. */
@@ -48,9 +53,18 @@ export function LeftToolbar() {
     const onKey = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement | null;
       if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return;
-      if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
-      if (e.code === "KeyV") useUi.getState().set({ tool: "select" });
-      else if (e.code === "KeyH") useUi.getState().set({ tool: "pan" });
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const ui = useUi.getState();
+      // Shift+W: the Walls tool drawing doors.
+      if (e.shiftKey) {
+        if (e.code === "KeyW" && dm) ui.set({ tool: "walls", wallKind: "door" });
+        return;
+      }
+      if (e.code === "KeyV") ui.set({ tool: "select" });
+      else if (e.code === "KeyM") ui.set({ tool: ui.tool === "measure" ? "select" : "measure" });
+      else if (e.code === "KeyH") void request("hand.toggle", {}).catch(() => {});
+      else if (e.code === "KeyW" && dm) ui.set({ tool: "walls", wallKind: "wall" });
+      else if (e.code === "KeyZ" && dm) ui.set({ tool: "zones" });
       else if (e.code === "KeyQ" && dm) openQuickUnit();
     };
     window.addEventListener("keydown", onKey);
@@ -67,13 +81,13 @@ export function LeftToolbar() {
       data-hud="toolbar"
       className="panel pointer-events-auto absolute left-3 top-1/2 z-30 flex min-w-[52px] -translate-y-1/2 flex-col items-center gap-1 p-1.5"
     >
-      {TOOLS.map((t) => (
+      {TOOLS.filter((t) => !t.dm).map((t) => (
         <IconButton
           key={t.id}
           label={t.label}
           shortcut={t.key}
           active={tool === t.id}
-          onClick={() => useUi.getState().set({ tool: t.id })}
+          onClick={() => useUi.getState().set({ tool: tool === t.id && t.id !== "select" ? "select" : t.id })}
         >
           {t.icon}
         </IconButton>
@@ -81,6 +95,17 @@ export function LeftToolbar() {
       {dm ? (
         <>
           <span className="my-1 h-px w-7 bg-[var(--line-soft)]" aria-hidden />
+          {TOOLS.filter((t) => t.dm).map((t) => (
+            <IconButton
+              key={t.id}
+              label={t.label}
+              shortcut={t.key}
+              active={tool === t.id}
+              onClick={() => useUi.getState().set({ tool: tool === t.id ? "select" : t.id })}
+            >
+              {t.icon}
+            </IconButton>
+          ))}
           <IconButton label="Quick unit" shortcut="Q" tone="accent" onClick={openQuickUnit}>
             <QuickUnitGlyph />
           </IconButton>

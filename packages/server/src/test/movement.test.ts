@@ -64,6 +64,14 @@ describe("P3 — movement on the server (MOV)", () => {
     lastMove = Date.now();
     return rq<T>(room, "move.commit", payload);
   };
+  /** `door.toggle` at the protocol's pace (5/s per user), so no answer below is a rate limit's. */
+  let lastDoor = 0;
+  const door = async <T = { doorState: string }>(room: TableRoomClient, payload: unknown): Promise<T> => {
+    const wait = lastDoor + 210 - Date.now();
+    if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+    lastDoor = Date.now();
+    return rq<T>(room, "door.toggle", payload);
+  };
   const tokenPos = () => t.server.ctx.rooms.tables.get(campaignId)?.model.get("token", rogue)?.pos as P;
   const dave = () => players[0] as (typeof players)[number];
   const eve = () => players[1] as (typeof players)[number];
@@ -317,30 +325,26 @@ describe("P3 — movement on the server (MOV)", () => {
   it("AC-WAL-03: players open and close unlocked doors within 5 ft of their token; locked doors refuse them; DMs work any door", async () => {
     // Dave's rogue far from the door at x = 70, y 45..55.
     await commit(dm, { tokenId: rogue, points: [tokenPos(), { x: 40, y: 50 }] });
-    await expect(rq(dave().room, "door.toggle", { wallId: walls.door })).rejects.toThrow(
-      /FORBIDDEN .*within 5 ft/,
-    );
+    await expect(door(dave().room, { wallId: walls.door })).rejects.toThrow(/FORBIDDEN .*within 5 ft/);
     // Base edge within 5 ft: centre 2.5 + 5 = 7.5 ft from the door line.
     await commit(dm, { tokenId: rogue, points: [tokenPos(), { x: 62.6, y: 50 }] });
-    expect(await rq(dave().room, "door.toggle", { wallId: walls.door })).toEqual({ doorState: "open" });
-    expect(await rq(dave().room, "door.toggle", { wallId: walls.door, action: "close" })).toEqual({
+    expect(await door(dave().room, { wallId: walls.door })).toEqual({ doorState: "open" });
+    expect(await door(dave().room, { wallId: walls.door, action: "close" })).toEqual({
       doorState: "closed",
     });
     // Players can't lock; the DM can, from anywhere; then players are refused with "It's locked".
-    await expect(rq(dave().room, "door.toggle", { wallId: walls.door, action: "lock" })).rejects.toThrow(
-      /FORBIDDEN .*DM/,
-    );
-    expect(await rq(dm, "door.toggle", { wallId: walls.door, action: "lock" })).toEqual({
+    await expect(door(dave().room, { wallId: walls.door, action: "lock" })).rejects.toThrow(/FORBIDDEN .*DM/);
+    expect(await door(dm, { wallId: walls.door, action: "lock" })).toEqual({
       doorState: "locked",
     });
-    await expect(rq(dave().room, "door.toggle", { wallId: walls.door })).rejects.toThrow(/BLOCKED .*locked/);
-    expect(await rq(dm, "door.toggle", { wallId: walls.door, action: "unlock" })).toEqual({
+    await expect(door(dave().room, { wallId: walls.door })).rejects.toThrow(/BLOCKED .*locked/);
+    expect(await door(dm, { wallId: walls.door, action: "unlock" })).toEqual({
       doorState: "closed",
     });
     // Eve has no token near the door.
-    await expect(rq(eve().room, "door.toggle", { wallId: walls.door })).rejects.toThrow(/FORBIDDEN/);
+    await expect(door(eve().room, { wallId: walls.door })).rejects.toThrow(/FORBIDDEN/);
     // A plain wall isn't a door.
-    await expect(rq(dave().room, "door.toggle", { wallId: walls.north })).rejects.toThrow(/isn't a door/);
+    await expect(door(dave().room, { wallId: walls.north })).rejects.toThrow(/isn't a door/);
   });
 
   it("AC-WAL-04: a secret door is a wall in players' state — same kind, no door state — and answers like one", async () => {
@@ -359,13 +363,28 @@ describe("P3 — movement on the server (MOV)", () => {
     const dmSeen = await waitFor(() => dm.state.walls.get(secret));
     expect(dmSeen.dmKind || dmSeen.kind).toBe("secret");
     // Trying it gets a wall's answer, word for word.
-    const asWall = await rq(dave().room, "door.toggle", { wallId: walls.north }).catch(
-      (e: Error) => e.message,
-    );
-    const asSecret = await rq(dave().room, "door.toggle", { wallId: secret }).catch((e: Error) => e.message);
+    const asWall = await door(dave().room, { wallId: walls.north }).catch((e: Error) => e.message);
+    const asSecret = await door(dave().room, { wallId: secret }).catch((e: Error) => e.message);
+    expect(asWall).toMatch(/isn't a door/);
     expect(asSecret).toBe(asWall);
-    // The DM can open it (and it then lets bodies through on the server).
-    expect(await rq(dm, "door.toggle", { wallId: secret })).toEqual({ doorState: "open" });
+    // The DM can open it (and it then lets bodies through on the server) — which reveals it: the gap is real, so
+    // players' state says "open door", and a player may answer it as a door.
+    expect(await door(dm, { wallId: secret })).toEqual({ doorState: "open" });
+    await waitFor(() => (dave().room.state.walls.get(secret)?.door === "open" ? true : undefined));
+    expect(dave().room.state.walls.get(secret)?.kind).toBe("door");
+    expect(dave().room.state.walls.get(secret)?.dmKind).toBe(plain.dmKind);
+    const asOpen = await door(dave().room, { wallId: secret }).catch((e: Error) => e.message);
+    expect(asOpen).toMatch(/within 5 ft/); // a door's answer now: Dave's rogue is too far away to shut it
+    // Shut again, it is a wall again, to the letter.
+    expect(await door(dm, { wallId: secret, action: "close" })).toEqual({ doorState: "closed" });
+    await waitFor(() => (dave().room.state.walls.get(secret)?.kind === plain.kind ? true : undefined));
+    const again = dave().room.state.walls.get(secret);
+    expect([again?.kind, again?.door, again?.dmKind, again?.dmDoor]).toEqual([
+      plain.kind,
+      plain.door,
+      plain.dmKind,
+      plain.dmDoor,
+    ]);
   });
 
   it("AC-WAL-05: zones — impassable blocks like a wall, water doubles for non-swimmers, invisible zones stay out of players' state", async () => {
@@ -425,5 +444,58 @@ describe("P3 — movement on the server (MOV)", () => {
         },
       }),
     ).rejects.toThrow(/INVALID/);
+  });
+
+  it("AC-WAL-05: walking into a hazard prompts the DM (never the player) with the trigger's save and damage", async () => {
+    await commit(dm, { tokenId: rogue, points: [tokenPos(), { x: 80, y: 80 }] });
+    await rq(dm, "zone.create", {
+      sceneId,
+      kind: "hazard",
+      label: "Burning floor",
+      shape: { kind: "rect", x: 84, y: 76, w: 8, h: 8 },
+      triggers: [
+        {
+          when: "enter",
+          label: "Flames lick at you",
+          save: { ability: "dex", dc: 12, onSuccess: "half" },
+          damage: { formula: "1d4", type: "fire" },
+        },
+      ],
+    });
+    dmMsgs.length = 0;
+    dave().msgs.length = 0;
+    // Passing beside it: no prompt.
+    await commit(dave().room, {
+      tokenId: rogue,
+      points: [
+        { x: 80, y: 80 },
+        { x: 80, y: 95 },
+      ],
+    });
+    await new Promise((res) => setTimeout(res, 150));
+    expect(dmMsgs.find((m) => m.type === "hazard.prompt")).toBeUndefined();
+    // Into it.
+    await commit(dave().room, {
+      tokenId: rogue,
+      points: [
+        { x: 80, y: 95 },
+        { x: 88, y: 80 },
+      ],
+    });
+    const prompt = await waitFor(() => dmMsgs.find((m) => m.type === "hazard.prompt"));
+    expect(prompt.payload).toMatchObject({
+      tokenId: rogue,
+      tokenName: "Dave's Rogue",
+      prompts: [
+        {
+          zoneLabel: "Burning floor",
+          when: "enter",
+          label: "Flames lick at you",
+          save: { ability: "dex", dc: 12, onSuccess: "half" },
+          damage: { formula: "1d4", type: "fire" },
+        },
+      ],
+    });
+    expect(dave().msgs.find((m) => m.type === "hazard.prompt")).toBeUndefined();
   });
 });

@@ -21,13 +21,15 @@ import { cameraRig } from "./CameraRig.tsx";
 import { boardDiag, useLoading } from "./diag.ts";
 import { setAnimating, wake } from "./frames.ts";
 import { animatingTokens } from "./move/anims.ts";
-import { useMove } from "./move/drag.ts";
+import { moveDiag, useMove } from "./move/drag.ts";
 import { remoteLog, useRemoteMoves } from "./move/remote.ts";
+import { usePings } from "./PingLayer.tsx";
 import { resourceStats } from "./resources.ts";
 import { TIERS, TierGovernor, useTier } from "./tiers.ts";
 import { overlayDiagnostics } from "./tokens/declutter.ts";
 import { createHpBarMaterial, setHpBar } from "./tokens/hpBar.ts";
 import { hpBarState, overlayFade } from "./tokens/TokenObject.tsx";
+import { current as currentMeasure, measuredFt, useMeasure } from "./tools/measure.ts";
 
 /**
  * Test hooks for the board (SPEC §23.7; present only in `vite build --mode test`): camera read/write, renderer and
@@ -157,6 +159,16 @@ export function TestProbe() {
     });
     provideTestHook("walls", () => [...boardData(useEntities.getState()).walls.values()]);
     provideTestHook("wall", (id: string) => boardData(useEntities.getState()).walls.get(id) ?? null);
+    provideTestHook("zones", () => [...boardData(useEntities.getState()).zones.values()]);
+    /** AC-WAL-03/04: the door handles drawn on this viewer's board. */
+    provideTestHook("doorHandles", () => {
+      const out: { wallId: string; doorState: string }[] = [];
+      scene.traverse((o) => {
+        if (o.userData.part === "doorHandle")
+          out.push({ wallId: o.userData.wallId as string, doorState: o.userData.doorState as string });
+      });
+      return out;
+    });
     /** The token as this viewer holds it (its view shape, tags included), or null. */
     provideTestHook("token", (id: string) => boardData(useEntities.getState()).tokens.get(id) ?? null);
     provideTestHook("visibleTokenIds", () => [...boardData(useEntities.getState()).tokens.keys()].sort());
@@ -245,6 +257,23 @@ export function TestProbe() {
       })),
     );
     provideTestHook("moveAnims", () => animatingTokens());
+    provideTestHook("moveDiag", () => ({ ...moveDiag }));
+    provideTestHook("measure", () => {
+      const m = useMeasure.getState();
+      const c = currentMeasure();
+      return {
+        points: m.points,
+        done: m.done,
+        shape: c?.shape ?? null,
+        ft: c ? measuredFt(c) : null,
+        shared: m.shared.map((x) => ({ shape: x.shape, by: x.by, name: x.name, ft: measuredFt(x) })),
+      };
+    });
+    provideTestHook("pings", () =>
+      usePings
+        .getState()
+        .pings.map((p) => ({ x: p.x, y: p.y, color: p.color, spotlight: p.spotlight, by: p.by })),
+    );
     provideTestHook("remoteMoveLog", () => [...remoteLog]);
     /** Keeps the board drawing for `ms` (a burst of ordinary redraws, as camera or store changes cause). */
     provideTestHook("redraw", (ms: number) => {

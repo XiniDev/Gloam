@@ -174,6 +174,24 @@ test.describe("P3 — moving tokens (MOV, WAL)", () => {
     await expect.poll(async () => (await tokenPos(dave, tokenId))?.x ?? 0).toBeGreaterThan(31.5);
     await expect.poll(async () => (await tokenPos(dave, tokenId))?.x ?? 0).toBeLessThan(33.5);
 
+    // AC-MOV-03: difficult terrain doubles the part of the path inside it, and the pill says how much was difficult.
+    const { zoneId: mud } = await req<{ zoneId: string }>(admin, "zone.create", {
+      sceneId,
+      kind: "difficult",
+      label: "Mud",
+      shape: { kind: "rect", x: 40, y: 0, w: 10, h: 40 },
+    });
+    await expect.poll(async () => (await hook<unknown[]>(dave, "zones")).length).toBe(1);
+    const here = (await tokenPos(dave, tokenId)) as P;
+    await dragToken(dave, here, { x: 55, y: here.y }, { release: false });
+    await expect.poll(async () => (await moveState(dave)).preview?.difficultFt ?? 0).toBeGreaterThan(9.9);
+    const through = (await moveState(dave)).preview as NonNullable<MoveHook["preview"]>;
+    expect(through.cost).toBeCloseTo(55 - here.x + 10, 1);
+    await expect(dave.getByTestId("move-label")).toHaveText(/^\d+(\.5)? ft \(10 ft difficult\)$/);
+    await dave.keyboard.press("Escape");
+    await dave.mouse.up();
+    await req(admin, "zone.delete", { zoneIds: [mud] });
+
     // AC-MOV-17: click-to-move with Ctrl+click waypoints, through each in order; a plain click goes.
     const start = (await tokenPos(dave, tokenId)) as P;
     const t0 = await screen(dave, start.x, start.y);
@@ -223,7 +241,7 @@ test.describe("P3 — moving tokens (MOV, WAL)", () => {
     await expect.poll(async () => (await tokenPos(dave, tokenId))?.x ?? 0).toBeLessThan(12 - 1.9);
   });
 
-  test("AC-WAL-03: door handles — a player opens and shuts a door within reach; a locked one refuses and rattles; the DM locks it from anywhere", async ({
+  test("AC-WAL-03 / AC-WAL-04: door handles — a player opens and shuts a door within reach; a locked one refuses and rattles; the DM locks it from anywhere; a secret door has no handle until the DM opens it", async ({
     admin,
     browser,
     gloam,
@@ -263,9 +281,39 @@ test.describe("P3 — moving tokens (MOV, WAL)", () => {
     await dave.waitForTimeout(600);
     const wall = async (p: Page) => (await hook<{ door: string } | null>(p, "wall", door))?.door;
     const handle = await screen(dave, 30, 20, 0.9);
+    // Dave plans a move through the shut door (click-to-move): no way there.
+    const me = await screen(dave, 26, 20, 0.15);
+    await dave.mouse.click(me.x, me.y);
+    const beyond = await screen(dave, 34, 20, 0);
+    await dave.mouse.move(beyond.x, beyond.y);
+    await expect.poll(async () => (await moveState(dave)).preview?.ok).toBe(false);
+    await expect(dave.getByTestId("move-label")).toHaveText("No path");
+    // He opens it: within 200 ms of the door opening on his screen, the plan goes straight through (AC-WAL-03).
+    // Timed on Dave's clock from the moment the toggle is sent: server, patch, store and re-route included.
+    const sent = await dave.evaluate(() => performance.now());
+    await req(dave, "door.toggle", { wallId: door });
+    await expect
+      .poll(async () => {
+        const d = await hook<{ worldAt: number; resultAt: number; resultOk: boolean }>(dave, "moveDiag");
+        return d.worldAt > sent && d.resultAt >= d.worldAt && d.resultOk;
+      })
+      .toBe(true);
+    const d = await hook<{ worldAt: number; resultAt: number }>(dave, "moveDiag");
+    const lag = d.resultAt - sent;
+    test.info().annotations.push({
+      type: "door → path",
+      description: `${lag.toFixed(1)} ms (route ${(d.resultAt - d.worldAt).toFixed(1)} ms)`,
+    });
+    expect(lag).toBeLessThan(200);
+    expect((await moveState(dave)).preview?.cost).toBeCloseTo(8, 0);
+    await expect.poll(() => wall(admin)).toBe("open");
+    await dave.keyboard.press("Escape"); // drop the plan
+    await dave.keyboard.press("Escape"); // and the selection
+    // Handles: a click shuts it again.
+    await dave.mouse.click(handle.x, handle.y);
+    await expect.poll(() => wall(dave)).toBe("closed");
     await dave.mouse.click(handle.x, handle.y);
     await expect.poll(() => wall(dave)).toBe("open");
-    await expect.poll(() => wall(admin)).toBe("open");
     await dave.mouse.click(handle.x, handle.y);
     await expect.poll(() => wall(dave)).toBe("closed");
     // The DM locks it with Shift+click on its handle (anywhere); Dave's click is refused and the door stays locked.
@@ -278,5 +326,32 @@ test.describe("P3 — moving tokens (MOV, WAL)", () => {
     await dave.waitForTimeout(500);
     expect(await wall(dave)).toBe("locked");
     await expect(dave.getByText("Can't reach that door")).toHaveCount(0);
+
+    // AC-WAL-04: a secret door. The DM sees it (and its handle); to Dave it is a wall — same kind, no door state,
+    // no handle.
+    const handles = async (p: Page) =>
+      (await hook<{ wallId: string; doorState: string }[]>(p, "doorHandles")).map((h) => h.wallId).sort();
+    const {
+      wallIds: [secret],
+    } = await req<{ wallIds: string[] }>(admin, "wall.create", {
+      sceneId,
+      walls: [{ a: { x: 45, y: 10 }, b: { x: 45, y: 14 }, kind: "secret" }],
+    });
+    const plain = wallIds[0] as string;
+    await expect.poll(() => handles(admin)).toContain(secret);
+    await expect.poll(() => hook(dave, "wall", secret)).not.toBeNull();
+    const asSeen = async (id: string) => {
+      const w = (await hook<Record<string, unknown>>(dave, "wall", id)) as Record<string, unknown>;
+      return [w.kind, w.door, w.dmKind, w.dmDoor];
+    };
+    expect(await asSeen(secret as string)).toEqual(await asSeen(plain));
+    expect(await handles(dave)).toEqual([door]);
+    // The DM opens it: the gap is real, so Dave now sees an open door (and its handle); shut, it is a wall again.
+    await req(admin, "door.toggle", { wallId: secret, action: "open" });
+    await expect.poll(() => handles(dave)).toEqual([door, secret].sort());
+    expect(await asSeen(secret as string)).toEqual(["door", "open", undefined, undefined]);
+    await req(admin, "door.toggle", { wallId: secret, action: "close" });
+    await expect.poll(() => handles(dave)).toEqual([door]);
+    expect(await asSeen(secret as string)).toEqual(await asSeen(plain));
   });
 });

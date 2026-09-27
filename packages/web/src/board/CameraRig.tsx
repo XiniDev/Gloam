@@ -222,11 +222,29 @@ export function CameraRig({ bounds, sceneId }: { bounds: Bounds; sceneId: string
     const onUp = (e: KeyboardEvent) => {
       if (e.code === "Space") cameraRig.spaceHeld = false;
     };
+    // Alt+wheel over a token raises or lowers it (AC-TOK-07): while Alt is held the wheel doesn't zoom.
+    const setAltWheel = (alt: boolean) => {
+      const c = cameraRig.controls;
+      if (c) c.mouseButtons.wheel = alt ? ACTION.NONE : ACTION.DOLLY;
+    };
+    const onAltDown = (e: KeyboardEvent) => {
+      if (e.key === "Alt") setAltWheel(true);
+    };
+    const onAltUp = (e: KeyboardEvent) => {
+      if (e.key === "Alt") setAltWheel(false);
+    };
+    const onBlur = () => setAltWheel(false);
+    window.addEventListener("keydown", onAltDown);
+    window.addEventListener("keyup", onAltUp);
+    window.addEventListener("blur", onBlur);
     window.addEventListener("keydown", onKey);
     window.addEventListener("keyup", onUp);
     return () => {
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("keyup", onUp);
+      window.removeEventListener("keydown", onAltDown);
+      window.removeEventListener("keyup", onAltUp);
+      window.removeEventListener("blur", onBlur);
     };
   }, []);
 

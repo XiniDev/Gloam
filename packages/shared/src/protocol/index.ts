@@ -128,6 +128,8 @@ export const MESSAGE_RATES = {
   "asset.list": rate(5, 15),
   "camera.spotlight": rate(1, 2), // Library filters and search-as-you-type come in bursts
   "move.preview": rate(15, 20),
+  "ping.send": rate(3, 3),
+  "measure.share": rate(5, 5),
 } as const satisfies Record<string, RateSpec>;
 
 export * from "./commands.ts";

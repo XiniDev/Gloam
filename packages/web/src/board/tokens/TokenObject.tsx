@@ -1,8 +1,9 @@
 import { SIZE_MINI_HEIGHT_FT, type Size } from "@gloam/shared";
 import { HP_BAND_HIDDEN, HP_BAND_LABELS } from "@gloam/shared/rules";
 import type { TokenView } from "@gloam/shared/state";
-import { Billboard, Text } from "@react-three/drei";
+import { Billboard, Html, Text } from "@react-three/drei";
 import { type ThreeEvent, useFrame } from "@react-three/fiber";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import { memo, useEffect, useMemo, useRef } from "react";
 import {
   AnimationMixer,
@@ -17,9 +18,11 @@ import {
   Vector3,
 } from "three";
 import { audio } from "../../audio/engine.ts";
-import { useTable } from "../../net/table.ts";
+import { request, useTable } from "../../net/table.ts";
 import { useSettings } from "../../state/settings.ts";
 import { useUi } from "../../state/ui.ts";
+import { IconButton } from "../../ui/Button.tsx";
+import { toast } from "../../ui/Toast.tsx";
 import { boardApi } from "../boardApi.ts";
 import { cameraRig } from "../CameraRig.tsx";
 import { C, col, ringColorOf } from "../colors.ts";
@@ -440,6 +443,18 @@ export const TokenObject = memo(function TokenObject({
   const onUp = () => {
     if (down.current?.timer) clearTimeout(down.current.timer);
   };
+  // Alt+wheel over the token raises or lowers it in 5-ft steps (AC-TOK-07; the camera doesn't zoom while Alt is held).
+  const wheelAt = useRef(0);
+  const onWheel = (e: ThreeEvent<WheelEvent>) => {
+    const n = e.nativeEvent;
+    if (!n.altKey || !canRaise(token, viewer)) return;
+    // (No preventDefault: wheel listeners are passive, and the camera ignores the wheel while Alt is held.)
+    e.stopPropagation();
+    const now = performance.now();
+    if (now - wheelAt.current < 90) return; // one step per wheel notch, not per trackpad tick
+    wheelAt.current = now;
+    void request("token.elevation", { tokenId: token.id, delta: n.deltaY < 0 ? 5 : -5 }).catch(() => {});
+  };
   const onContext = (e: ThreeEvent<MouseEvent>) => {
     e.stopPropagation();
     e.nativeEvent.preventDefault();
@@ -459,6 +474,7 @@ export const TokenObject = memo(function TokenObject({
         onPointerMove={onMove}
         onPointerUp={onUp}
         onContextMenu={onContext}
+        onWheel={onWheel}
         onPointerOver={(e) => {
           e.stopPropagation();
           useUi.getState().set({ hover: token.id });
@@ -573,6 +589,7 @@ export const TokenObject = memo(function TokenObject({
         ) : null}
       </group>
       <Elevation elevation={token.elevation} radius={R} />
+      {selected && canRaise(token, viewer) ? <ElevationStepper token={token} radius={R} /> : null}
       <Overlay
         token={token}
         viewer={viewer}
@@ -626,6 +643,45 @@ function useMiniMaterials(mini: MiniInstance | null, opacity: number, dead: bool
 }
 
 /** Flying tokens: a thin stem to a ground ring and an elevation label (SPEC §8.5 flying). */
+/** Who may raise this token: a DM always; its controller when it can fly (SPEC §8.6 Speeds and modes). */
+function canRaise(t: TokenView, viewer: Viewer): boolean {
+  if (viewer.dm) return true;
+  return t.ownerIds.includes(viewer.userId) && (t.own?.speedFly ?? 0) > 0;
+}
+
+/**
+ * The HUD elevation stepper (AC-TOK-07): ▲/▼ in 5-ft steps beside the selected token, with its height. Alt+wheel
+ * over the token does the same.
+ */
+function ElevationStepper({ token, radius }: { token: TokenView; radius: number }) {
+  const step = (delta: number) =>
+    void request("token.elevation", { tokenId: token.id, delta }).catch((e) =>
+      toast.danger("Couldn't change its height", (e as Error).message),
+    );
+  return (
+    <Html position={[radius + 1.4, 0.2, 0]} center zIndexRange={[25, 0]}>
+      <div
+        className="panel flex flex-col items-center gap-0.5 p-1"
+        role="group"
+        aria-label={`Elevation of ${token.name}`}
+        data-testid="elevation-stepper"
+        onPointerDown={(e) => e.stopPropagation()}
+      >
+        <IconButton label="Raise 5 ft (Alt+wheel)" onClick={() => step(5)}>
+          <ChevronUp size={16} />
+        </IconButton>
+        <span className="tabular text-12 font-bold text-bone" data-testid="elevation-value">
+          {token.elevation > 0 ? "+" : ""}
+          {Math.round(token.elevation)} ft
+        </span>
+        <IconButton label="Lower 5 ft (Alt+wheel)" onClick={() => step(-5)}>
+          <ChevronDown size={16} />
+        </IconButton>
+      </div>
+    </Html>
+  );
+}
+
 function Elevation({ elevation, radius }: { elevation: number; radius: number }) {
   const mat = useMemo(
     () =>
@@ -638,15 +694,21 @@ function Elevation({ elevation, radius }: { elevation: number; radius: number })
   return (
     <group>
       {up ? (
-        <mesh position-y={-elevation / 2} material={mat}>
+        <mesh position-y={-elevation / 2} material={mat} userData={{ part: "elevationStem" }}>
           <cylinderGeometry args={[0.05, 0.05, elevation, 8]} />
         </mesh>
       ) : null}
-      <mesh position-y={-elevation + 0.03} rotation-x={Math.PI / 2} material={mat}>
+      <mesh
+        position-y={-elevation + 0.03}
+        rotation-x={Math.PI / 2}
+        material={mat}
+        userData={{ part: "elevationRing" }}
+      >
         <torusGeometry args={[radius, 0.05, 8, 64]} />
       </mesh>
       <Billboard position={[radius + 0.6, -elevation + 0.6, 0]}>
         <Text
+          userData={{ part: "elevationLabel" }}
           font={CAPS_FONT}
           fontSize={0.5}
           color={C.brass300}

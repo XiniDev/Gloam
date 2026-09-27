@@ -437,10 +437,10 @@
       "code": "TOK",
       "phase": "P3",
       "text": "Flying tokens can be raised or lowered in 5-ft steps (Alt+wheel or a HUD stepper) and show a stem, ground ring and elevation label; measured distances include the vertical component.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p3-tools.spec.ts › AC-MOV-11 / AC-MOV-12 / AC-TOK-07 / AC-FUN-02: ruler, radius, cone, line and cube… (HUD stepper ×3 → +15 ft, Alt+wheel → +20 ft, elevationStem/Ring/Label visible, owl→boulder ruler = 25 ft 3-D)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T21:02:20.493Z"
     },
     {
       "id": "AC-TOK-08",
@@ -536,10 +536,10 @@
       "code": "MOV",
       "phase": "P3",
       "text": "Difficult terrain doubles the cost of the part of the path inside it, and the label shows the difficult portion.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/shared/src/movement/movement.test.ts › cost (§16.4, AC-MOV-03); packages/server/src/test/movement.test.ts › difficult terrain doubles the part of the path inside it, priced by the server (AC-MOV-03 server); e2e/journeys/p3-movement.spec.ts › AC-MOV-08 / AC-MOV-13 / AC-MOV-14 / AC-MOV-17: routed drags go round walls… (Mud zone: cost +10, pill '… ft (10 ft difficult)')",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T21:02:20.024Z"
     },
     {
       "id": "AC-MOV-04",
@@ -591,10 +591,10 @@
       "code": "MOV",
       "phase": "P3",
       "text": "The server rejects path segments that cross movement-blocking walls; walls hidden from the player truncate the move at the contact point with the \"unseen\" toast.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/movement.test.ts › routed move / hidden wall 'unseen' toast / freehand truncation (AC-MOV-08); e2e/journeys/p3-movement.spec.ts › AC-MOV-08 / AC-MOV-13 / AC-MOV-14 / AC-MOV-17: routed drags go round walls… (routed drag round walls, hidden wall stops at contact with the toast)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T21:02:20.093Z"
     },
     {
       "id": "AC-MOV-09",
@@ -624,10 +624,10 @@
       "code": "MOV",
       "phase": "P3",
       "text": "Ruler, radius, cone (53.13°), line and cube tools show live distances in the campaign's units and are shared to others for 3 s by default.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p3-tools.spec.ts › AC-MOV-11 / AC-MOV-12 / AC-TOK-07 / AC-FUN-02: ruler, radius, cone, line and cube… (ruler segments + total, radius/cone 53.13°/line/cube live labels, shared to the DM then gone after 3 s)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T21:02:20.361Z"
     },
     {
       "id": "AC-MOV-12",
@@ -635,10 +635,10 @@
       "code": "MOV",
       "phase": "P3",
       "text": "Feet display rounds to 0.5 ft; metres use 5 ft = 1.5 m and round to 0.1 m; all internal maths is in feet.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p3-tools.spec.ts › AC-MOV-11 / AC-MOV-12 / AC-TOK-07 / AC-FUN-02: ruler, radius, cone, line and cube… (campaign units m: 10 ft cube = 3 m, ruler to 0.1 m at 5 ft = 1.5 m; ft to nearest 0.5)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T21:02:20.428Z"
     },
     {
       "id": "AC-MOV-13",
@@ -646,10 +646,10 @@
       "code": "MOV",
       "phase": "P3",
       "text": "Viewers who can see a token see its drag preview (≤ 15 Hz) and the committed move animating along the path at 30 ft/s (250 ms–2 s).",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/movement.test.ts › AC-MOV-13 (server): drags are relayed to everyone else who can see the token, never to those who can't; e2e/journeys/p3-movement.spec.ts › AC-MOV-08 / AC-MOV-13 / AC-MOV-14 / AC-MOV-17: routed drags go round walls… (DM sees the drag ≤15 Hz and the glide); packages/web/src/board/move/anims.test.ts (30 ft/s, 250 ms–2 s)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T21:02:20.162Z"
     },
     {
       "id": "AC-MOV-14",
@@ -657,10 +657,10 @@
       "code": "MOV",
       "phase": "P3",
       "text": "Holding Alt while dragging switches to freehand; collisions truncate the freehand path.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p3-movement.spec.ts › AC-MOV-08 / AC-MOV-13 / AC-MOV-14 / AC-MOV-17: routed drags go round walls… (Alt freehand drag stops at the wall, x in (31.5, 33.5)); packages/server/src/test/movement.test.ts › freehand truncation",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T21:02:20.228Z"
     },
     {
       "id": "AC-MOV-15",
@@ -690,10 +690,10 @@
       "code": "MOV",
       "phase": "P3",
       "text": "Ctrl/Cmd+click waypoints route the path through each waypoint in order, the total cost includes all legs, and a plain click or Enter commits.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p3-movement.spec.ts › AC-MOV-08 / AC-MOV-13 / AC-MOV-14 / AC-MOV-17: routed drags go round walls… (click-to-move, Ctrl+click waypoints routed in order, total over all legs, plain click commits)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T21:02:20.295Z"
     },
     {
       "id": "AC-MOV-18",
@@ -745,10 +745,10 @@
       "code": "WAL",
       "phase": "P3",
       "text": "Secret doors are indistinguishable from walls in players' state until revealed (no door flag, no door handle, same kind value as a wall).",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/movement.test.ts › AC-WAL-04: a secret door is a wall in players' state — same kind, no door state — and answers like one (paced, message asserted; opened = revealed, shut = wall again); e2e/journeys/p3-movement.spec.ts › AC-WAL-03 / AC-WAL-04: door handles … a secret door has no handle until the DM opens it",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T21:02:20.625Z"
     },
     {
       "id": "AC-WAL-05",
@@ -1889,10 +1889,10 @@
       "code": "FUN",
       "phase": "P3",
       "text": "Pings appear for everyone in the sender's colour; the DM Spotlight ping also moves opted-in cameras.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p3-tools.spec.ts › AC-MOV-11 / AC-MOV-12 / AC-TOK-07 / AC-FUN-02: ruler, radius, cone, line and cube… (Alt+click ping arrives at the DM in Dave's colour; DM Alt+Shift+click spotlight ping moves Dave's camera to the spot)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T21:02:20.560Z"
     },
     {
       "id": "AC-FUN-03",

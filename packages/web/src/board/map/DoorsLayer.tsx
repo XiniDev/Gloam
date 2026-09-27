@@ -34,7 +34,7 @@ const isDoor = (w: WallView, dm: boolean) =>
   (dm ? (w.dmKind ?? w.kind) : w.kind) === "door" || (dm && w.dmKind === "secret");
 
 function DoorHandle({ wall, dm }: { wall: WallView; dm: boolean }) {
-  const state = (wall.door || "closed") as "closed" | "open" | "locked";
+  const state = ((dm ? wall.dmDoor || wall.door : wall.door) || "closed") as "closed" | "open" | "locked";
   const sprite = useRef<Sprite>(null);
   const shake = useRef(0);
   const x = (wall.ax + wall.bx) / 2;
@@ -86,6 +86,12 @@ function DoorHandle({ wall, dm }: { wall: WallView; dm: boolean }) {
 }
 
 /** Door open/close sounds: when a door this viewer knows changes state. */
+/**
+ * The door state a viewer hears: the truth for DMs (secret and hidden doors), what players see for players — a
+ * revealed secret door is a wall one moment and an open door the next, so a wall counts as shut.
+ */
+const doorSound = (w: WallView) => w.dmDoor || w.door || (w.kind === "wall" ? "closed" : "");
+
 function useDoorSounds() {
   useEffect(() => {
     let prev = boardData(useEntities.getState()).walls;
@@ -94,9 +100,11 @@ function useDoorSounds() {
       if (walls === prev) return;
       for (const [id, w] of walls) {
         const before = prev.get(id);
-        if (!before || before.door === w.door || !w.door || !before.door) continue;
-        if (w.door === "open") audio.play("doorOpen");
-        else if (before.door === "open") audio.play("doorClose");
+        const now = doorSound(w);
+        const was = before && doorSound(before);
+        if (!now || !was || now === was) continue;
+        if (now === "open") audio.play("doorOpen");
+        else if (was === "open") audio.play("doorClose");
       }
       prev = walls;
     });

@@ -31,7 +31,7 @@ export function clientMoveWorld(creature: { swim: boolean } = { swim: false }): 
         b: { x: w.bx, y: w.by },
         // DMs hold the true kind; players the player-safe one (which is what their moves are planned against).
         kind: w.dmKind ?? w.kind,
-        doorState: (w.door || null) as "open" | "closed" | "locked" | null,
+        doorState: (w.dmDoor || w.door || null) as "open" | "closed" | "locked" | null,
       })),
       zones: [...d.zones.values()].flatMap((z) => {
         const shape = parseShape(z.shapeJson);
