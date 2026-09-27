@@ -75,7 +75,7 @@ export class PeopleService {
     if (d.decision === "ban" ? actor.role !== "admin" : !this.canAdmit(actor))
       throw new GloamError("FORBIDDEN");
     const session = this.ctx.sessions.get(d.sessionId);
-    if (!session || session.kind !== "player") throw new GloamError("NOT_FOUND", "That knock is gone.");
+    if (session?.kind !== "player") throw new GloamError("NOT_FOUND", "That knock is gone.");
     if (d.decision === "admitPlayer") this.admit(session.id, "player", actor);
     else if (d.decision === "admitSpectator") this.admit(session.id, "spectator", actor);
     else if (d.decision === "deny") this.deny(session.id, actor);

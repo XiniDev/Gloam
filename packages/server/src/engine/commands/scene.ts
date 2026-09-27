@@ -6,9 +6,9 @@ import {
   SceneReorder,
   SceneUpdate,
 } from "@gloam/shared/protocol";
-import type { SceneEntity, ZoneEntity } from "@gloam/shared/schemas";
+import type { AreaShape, SceneEntity, ZoneEntity } from "@gloam/shared/schemas";
 import { eq } from "drizzle-orm";
-import { z } from "zod";
+import type { z } from "zod";
 import { assetFiles, assets } from "../../db/schema.ts";
 import { newId } from "../../ids.ts";
 import type { CommandCtx, CommandDef } from "../commandBus.ts";
@@ -120,6 +120,18 @@ function scalePt(p: { x: number; y: number }, k: number): { x: number; y: number
   return { x: p.x * k, y: p.y * k };
 }
 
+/** An area's anchor on the map after a recalibration by factor `k` (emanations follow their token instead). */
+function scaleShapeAnchor(sh: AreaShape, k: number): AreaShape {
+  switch (sh.kind) {
+    case "emanation":
+      return sh;
+    case "wall":
+      return { ...sh, points: sh.points.map((p) => scalePt(p, k)) };
+    default:
+      return { ...sh, origin: { ...sh.origin, x: sh.origin.x * k, y: sh.origin.y * k } };
+  }
+}
+
 /**
  * `scene.calibrate` — image maps: feet per pixel; changing it rescales walls, zones, lights and token positions
  * proportionally so they stay aligned with the map art (AC-SCN-08). Model maps: the GLB transform.
@@ -157,8 +169,14 @@ export const sceneCalibrate: CommandDef<z.infer<typeof SceneCalibrate>> = {
     );
     for (const w of ctx.model.inScene("wall", s.id))
       ops.push(...setOps("wall", w, { a: scalePt(w.a, k), b: scalePt(w.b, k) }));
+    // Carried lights too: their stored position follows the (rescaled) carrier.
     for (const l of ctx.model.inScene("light", s.id))
-      if (!l.tokenId) ops.push(...setOps("light", l, { pos: scalePt(l.pos, k) }));
+      ops.push(...setOps("light", l, { pos: scalePt(l.pos, k) }));
+    // Areas stay on the map features they were placed on; their sizes are rules distances and don't change.
+    for (const e of ctx.model.inScene("effect", s.id)) {
+      const shape = scaleShapeAnchor(e.shape, k);
+      if (shape !== e.shape) ops.push(...setOps("effect", e, { shape }));
+    }
     for (const t of ctx.model.inScene("token", s.id))
       ops.push(...setOps("token", t, { pos: scalePt(t.pos, k) }));
     for (const z of ctx.model.inScene("zone", s.id)) {
@@ -191,7 +209,13 @@ export const sceneActivate: CommandDef<z.infer<typeof SceneRef>> = {
       throw new GloamError("INVALID", "Restore the scene before activating it.");
     const c = ctx.model.campaign;
     const ops = setOps("campaign", c, { activeSceneId: s.id });
-    return { ops, summary: `Activated scene ${s.name}`, sceneId: s.id };
+    return {
+      ops,
+      summary: `Activated scene ${s.name}`,
+      sceneId: s.id,
+      // Snapshot on scene activation (SPEC §20.3, AC-PER-03).
+      after: ops.length ? [() => void ctx.app.snapshots.write(c.id, "scene", s.name)] : [],
+    };
   },
 };
 
@@ -307,5 +331,3 @@ export const SCENE_COMMANDS = [
   sceneDuplicate,
   sceneReorder,
 ] as CommandDef<never, unknown>[];
-
-export const _schemaGuard = z;

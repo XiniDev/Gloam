@@ -20,6 +20,8 @@ export default defineConfig({
           pool: "forks",
           testTimeout: 30_000,
           hookTimeout: 60_000,
+          // Wraps WebSocket before any test imports the Colyseus SDK (network inspection, AC-SCN-03/TOK-08).
+          setupFiles: ["src/test/ws-recorder.ts"],
         },
       },
       {

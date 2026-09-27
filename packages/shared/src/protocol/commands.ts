@@ -94,8 +94,59 @@ export const TokenStatsIn = z.strictObject({
   vuln: z.array(z.enum(DAMAGE_TYPES)).max(13).default([]),
   conditionImmune: z.array(z.enum(CONDITION_IDS)).max(15).default([]),
   reachFt: Ft.max(100).default(5),
-  size: z.enum(SIZES).default("medium"),
+  size: z.enum(SIZES).optional(),
   isPC: z.boolean().default(false),
+});
+
+/**
+ * Patch shapes for `token.update`. Deliberately separate from the create schemas: zod 4 applies `.default()`
+ * values inside `.partial()`, so a partial of a defaulted schema would silently reset every omitted field.
+ */
+const DamageTypes = z.array(z.enum(DAMAGE_TYPES)).max(13);
+export const TokenStatsPatch = z.strictObject({
+  hp: z.number().int().min(-9999).max(99_999).optional(),
+  hpMax: z.number().int().min(0).max(99_999).optional(),
+  hpTemp: z.number().int().min(0).max(99_999).optional(),
+  ac: z.number().int().min(0).max(99).optional(),
+  speeds: z
+    .strictObject({
+      walk: Ft.max(5000).optional(),
+      fly: Ft.max(5000).optional(),
+      swim: Ft.max(5000).optional(),
+      climb: Ft.max(5000).optional(),
+      burrow: Ft.max(5000).optional(),
+      hover: z.boolean().optional(),
+    })
+    .optional(),
+  senses: z
+    .strictObject({
+      darkvision: Ft.max(5000).optional(),
+      blindsight: Ft.max(5000).optional(),
+      tremorsense: Ft.max(5000).optional(),
+      truesight: Ft.max(5000).optional(),
+    })
+    .optional(),
+  saves: z
+    .partialRecord(z.enum(["str", "dex", "con", "int", "wis", "cha"]), z.number().int().min(-20).max(40))
+    .optional(),
+  dexMod: z.number().int().min(-10).max(20).optional(),
+  initBonus: z.number().int().min(-20).max(40).optional(),
+  resist: DamageTypes.optional(),
+  immune: DamageTypes.optional(),
+  vuln: DamageTypes.optional(),
+  conditionImmune: z.array(z.enum(CONDITION_IDS)).max(15).optional(),
+  reachFt: Ft.max(100).optional(),
+  isPC: z.boolean().optional(),
+});
+
+export const AppearancePatch = z.strictObject({
+  mode: z.enum(["model", "standee", "coin", "auto"]).optional(),
+  assetId: z.string().max(40).nullable().optional(),
+  portraitAssetId: z.string().max(40).nullable().optional(),
+  scale: z.number().positive().max(100).optional(),
+  offsetY: z.number().min(-100).max(100).optional(),
+  rotationOffsetDeg: z.number().min(-360).max(360).optional(),
+  tint: Hex.nullable().optional(),
 });
 
 export const Appearance = z.strictObject({
@@ -133,9 +184,9 @@ export const TokenUpdate = z.strictObject({
   size: z.enum(SIZES).optional(),
   sizeFt: Ft.max(200).optional(),
   disposition: z.enum(["party", "friendly", "neutral", "hostile"]).optional(),
-  appearance: Appearance.partial().optional(),
+  appearance: AppearancePatch.optional(),
   hpDisplay: z.enum(["exact", "bar", "descriptor", "hidden"]).optional(),
-  stats: TokenStatsIn.partial().optional(),
+  stats: TokenStatsPatch.optional(),
   ownerIds: z.array(Id).max(20).optional(),
   hidden: z.boolean().optional(),
   revealTo: z.union([z.enum(["vision", "all"]), z.array(Id).max(20)]).optional(),

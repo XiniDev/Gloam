@@ -1680,10 +1680,10 @@
       "code": "PER",
       "phase": "P1",
       "text": "Automatic snapshots run every 10 minutes (last 24 kept), on scene activation, on close and on shutdown; manual named snapshots work; restoring creates a pre-restore snapshot first.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/persistence.test.ts › AC-PER-03 (auto every interval with 24 kept, close, shutdown, manual named, pre-restore on restore) + packages/server/src/test/board.test.ts › AC-PER-03 (activation clause: each scene.activate writes a 'scene' snapshot)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T13:03:47.629Z"
     },
     {
       "id": "AC-PER-04",

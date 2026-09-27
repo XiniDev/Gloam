@@ -8,9 +8,10 @@ import {
   HandToggle,
   LobbyDecide,
   MESSAGE_RATES,
+  SceneRef,
   TableKick,
 } from "@gloam/shared/protocol";
-import { Presence, Table, type TableState } from "@gloam/shared/state";
+import { type PrepSnapshot, Presence, Table, type TableState } from "@gloam/shared/state";
 import { z } from "zod";
 import { type CommandActor, CommandBus, type CommitInfo } from "../engine/commandBus.ts";
 import { CampaignModel } from "../engine/model.ts";
@@ -23,8 +24,10 @@ import {
   type MessageDef,
   parseCookies,
 } from "./dispatch.ts";
+import { type ProjectionCtx, prepSnapshot, StateProjector } from "./projector.ts";
 import { CLOSE, type TableRoomApi } from "./registry.ts";
 import { roomCtx } from "./roomContext.ts";
+import { type Viewer, ViewManager } from "./views.ts";
 
 export interface TableRoomOptions {
   campaignId: string;
@@ -40,6 +43,10 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
   private readonly closing = new WeakSet<Client>();
   model!: CampaignModel;
   bus!: CommandBus;
+  projector!: StateProjector;
+  views!: ViewManager;
+  /** DM connections viewing a non-active scene in prep (SPEC §13.7): client → scene id. */
+  private readonly prepSubs = new Map<Client, string>();
   /** Test probe (AC-PER-01): runs right before Colyseus encodes and sends a state patch. */
   beforePatchProbe: (() => void) | null = null;
 
@@ -113,6 +120,41 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
         if (raised) this.toDms("hand.raised", { userId: auth.userId, name: auth.name });
         return { raised };
       }),
+      "prep.open": def(SceneRef, MESSAGE_RATES["prep.open"], ({ client, auth }, p): PrepSnapshot | null => {
+        this.requireDm(auth);
+        const scene = this.model.get("scene", p.sceneId);
+        if (!scene || scene.deletedAt) throw new GloamError("NOT_FOUND", "That scene no longer exists.");
+        if (scene.id === this.projector.activeSceneId) {
+          // The active scene is already in the live state; no prep subscription needed.
+          this.prepSubs.delete(client);
+          return null;
+        }
+        this.prepSubs.set(client, scene.id);
+        return prepSnapshot(scene, this.projectionCtx());
+      }),
+      "prep.close": def(z.strictObject({}), MESSAGE_RATES["prep.close"], ({ client, auth }) => {
+        this.requireDm(auth);
+        this.prepSubs.delete(client);
+      }),
+      "scene.list": def(z.strictObject({}), MESSAGE_RATES["scene.list"], ({ auth }) => {
+        this.requireDm(auth);
+        return this.sceneList();
+      }),
+      "scene.preload": def(SceneRef, MESSAGE_RATES["scene.preload"], ({ auth }, p) => {
+        this.requireDm(auth);
+        const scene = this.model.get("scene", p.sceneId);
+        if (!scene || scene.deletedAt) throw new GloamError("NOT_FOUND", "That scene no longer exists.");
+        // Everyone's browser fetches the scene's images and models in the background (SPEC §8.3 Preload).
+        const assetIds = new Set<string>();
+        if (scene.mapAssetId) assetIds.add(scene.mapAssetId);
+        for (const t of this.model.inScene("token", scene.id)) {
+          if (t.hidden) continue;
+          if (t.appearance.assetId) assetIds.add(t.appearance.assetId);
+          if (t.appearance.portraitAssetId) assetIds.add(t.appearance.portraitAssetId);
+        }
+        this.broadcastAll("scene.preload", { assetIds: [...assetIds] });
+        return { count: assetIds.size };
+      }),
       ...this.commandHandlers(),
       "history.undo": def(
         z.strictObject({ force: z.boolean().optional() }),
@@ -154,6 +196,56 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
     this.bus = new CommandBus(ctx, model, { onCommitted: (info) => this.onCommitted(info) });
     registerCommands(this.bus);
     this.syncCampaign();
+    this.views?.detachAll();
+    this.projector = new StateProjector(this.state, this.projectionCtx());
+    this.views = new ViewManager(this.state, model);
+    this.projector.loadActive();
+    this.syncAllViews();
+  }
+
+  projectionCtx(): ProjectionCtx {
+    return {
+      model: this.model,
+      colorOf: (userId) => roomCtx().profiles.get(userId)?.color,
+    };
+  }
+
+  private viewerOf(client: Client): Viewer | null {
+    const auth = client.auth as ClientAuth | undefined;
+    return auth ? { userId: auth.userId, role: auth.role } : null;
+  }
+
+  syncAllViews(): void {
+    for (const c of this.clients) {
+      const v = this.viewerOf(c);
+      if (v) this.views.sync(c, v, this.projector.activeSceneId);
+    }
+  }
+
+  private requireDm(auth: ClientAuth): void {
+    if (auth.role !== "admin" && auth.role !== "dm")
+      throw new GloamError("FORBIDDEN", "Only the DM can do that.");
+  }
+
+  /** The DM scene list (SPEC §8.3 DM scene tools). */
+  sceneList() {
+    const active = this.projector.activeSceneId;
+    return this.model
+      .all("scene")
+      .sort((a, b) => a.sort - b.sort)
+      .map((s) => ({
+        id: s.id,
+        name: s.name,
+        sort: s.sort,
+        mapKind: s.mapKind,
+        mapAssetId: s.mapAssetId,
+        thumbnailAssetId: s.thumbnailAssetId,
+        active: s.id === active,
+        archived: s.archivedAt !== null,
+        deleted: s.deletedAt !== null,
+        tokenCount: this.model.inScene("token", s.id).length,
+        updatedAt: s.updatedAt,
+      }));
   }
 
   /** Projects the campaign document into the synchronised state. */
@@ -171,6 +263,20 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
   /** Post-commit (§14.1 step 5–6): mirror changed entities into the Colyseus state. */
   private onCommitted(info: CommitInfo): void {
     if (info.ops.some((o) => (o.k === "set" || o.k === "create") && o.e === "campaign")) this.syncCampaign();
+    const active = this.model.activeScene;
+    const nextActive = active && !active.deletedAt ? active.id : "";
+    if (nextActive !== this.projector.activeSceneId) this.views.detachAll();
+    const res = this.projector.apply(info.ops);
+    if (res.switched) {
+      // Everyone travels (SPEC §8.3): DMs who were prepping the new active scene now see it live.
+      for (const [client, sceneId] of this.prepSubs) if (sceneId === nextActive) this.prepSubs.delete(client);
+    }
+    if (res.activeChanged) this.syncAllViews();
+    for (const [sceneId, patch] of res.prep) {
+      for (const [client, sub] of this.prepSubs) if (sub === sceneId) client.send("prep.patch", patch);
+    }
+    if (info.ops.some((o) => o.k !== "fog" && o.k !== "sheet" && o.e === "scene"))
+      this.toDms("scene.list", this.sceneList());
   }
 
   actorFor(auth: ClientAuth): CommandActor {
@@ -212,6 +318,7 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
     this.clientsByUser.set(auth.userId, set);
     this.upsertPresence(auth, true);
     this.syncCampaign();
+    this.views.sync(client, { userId: auth.userId, role: auth.role }, this.projector.activeSceneId);
     client.send("welcome", {
       userId: auth.userId,
       role: auth.role,
@@ -276,6 +383,8 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
 
   override onLeave(client: Client): void {
     const auth = client.auth as ClientAuth | undefined;
+    this.views.forget(client);
+    this.prepSubs.delete(client);
     client.view?.dispose();
     if (!auth) return;
     const set = this.clientsByUser.get(auth.userId);

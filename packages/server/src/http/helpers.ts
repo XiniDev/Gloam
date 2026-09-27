@@ -197,7 +197,7 @@ export function requireLocal(ctx: ServerContext, req: Request): void {
 
 export function requireAdmin(req: Request): VerifiedSession {
   const a = req.gloam.auth;
-  if (!a || a.session.kind !== "admin" || !a.user.isAdmin)
+  if (a?.session.kind !== "admin" || !a.user.isAdmin)
     throw new GloamError("UNAUTHENTICATED", "Admin sign-in required.");
   return a;
 }

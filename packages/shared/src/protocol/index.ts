@@ -121,6 +121,10 @@ export const MESSAGE_RATES = {
   "admin.unban": rate(2),
   "clock.sync": rate(1, 6),
   "hand.toggle": rate(1),
+  "prep.open": rate(2),
+  "prep.close": rate(2),
+  "scene.list": rate(5),
+  "scene.preload": rate(1),
 } as const satisfies Record<string, RateSpec>;
 
 export * from "./commands.ts";

@@ -119,6 +119,41 @@ export const tokenCreate: CommandDef<z.infer<typeof TokenCreate>, { tokenId: str
 
 const OWNER_FIELDS = new Set(["appearance", "name"]);
 
+type AppearancePatchT = NonNullable<z.infer<typeof TokenUpdate>["appearance"]>;
+type StatsPatchT = NonNullable<z.infer<typeof TokenUpdate>["stats"]>;
+
+/** Field-by-field appearance merge; `null` clears an optional field (e.g. back to no image). */
+function mergeAppearance(cur: TokenEntity["appearance"], p: AppearancePatchT): TokenEntity["appearance"] {
+  const next: TokenEntity["appearance"] = { ...cur };
+  if (p.mode !== undefined) next.mode = p.mode;
+  if (p.scale !== undefined) next.scale = p.scale;
+  if (p.offsetY !== undefined) next.offsetY = p.offsetY;
+  if (p.rotationOffsetDeg !== undefined) next.rotationOffsetDeg = p.rotationOffsetDeg;
+  for (const k of ["assetId", "portraitAssetId", "tint"] as const) {
+    const v = p[k];
+    if (v === null) delete next[k];
+    else if (v !== undefined) next[k] = v;
+  }
+  return next;
+}
+
+/** Deep merge of a stats patch (speeds, senses and saves merge key by key). */
+function mergeStats(cur: TokenStats, p: StatsPatchT): TokenStats {
+  const next: TokenStats = clone(cur);
+  const { speeds, senses, saves, ...flat } = p;
+  for (const [k, v] of Object.entries(flat))
+    if (v !== undefined) (next as unknown as Record<string, unknown>)[k] = clone(v);
+  if (speeds)
+    for (const [k, v] of Object.entries(speeds))
+      if (v !== undefined) (next.speeds as unknown as Record<string, unknown>)[k] = v;
+  if (senses)
+    for (const [k, v] of Object.entries(senses))
+      if (v !== undefined) (next.senses as unknown as Record<string, unknown>)[k] = v;
+  if (saves) next.saves = { ...next.saves, ...saves };
+  if (next.hp > next.hpMax && p.hp === undefined) next.hp = next.hpMax;
+  return next;
+}
+
 /** `token.update` — DMs change anything; a token's owners may change its appearance and name. */
 export const tokenUpdate: CommandDef<z.infer<typeof TokenUpdate>> = {
   type: "token.update",
@@ -135,8 +170,8 @@ export const tokenUpdate: CommandDef<z.infer<typeof TokenUpdate>> = {
   plan(ctx, p) {
     const t = mustGet(ctx, "token", p.tokenId);
     if (p.appearance) {
-      assertAsset(ctx, p.appearance.assetId);
-      assertAsset(ctx, p.appearance.portraitAssetId);
+      assertAsset(ctx, p.appearance.assetId ?? undefined);
+      assertAsset(ctx, p.appearance.portraitAssetId ?? undefined);
     }
     const patch: Partial<TokenEntity> = {};
     if (p.name !== undefined) patch.name = p.name;
@@ -149,7 +184,7 @@ export const tokenUpdate: CommandDef<z.infer<typeof TokenUpdate>> = {
     if (p.revealTo !== undefined) patch.revealTo = p.revealTo;
     if (p.locked !== undefined) patch.locked = p.locked;
     if (p.dmNote !== undefined) patch.dmNote = p.dmNote;
-    if (p.appearance) patch.appearance = { ...t.appearance, ...p.appearance };
+    if (p.appearance) patch.appearance = mergeAppearance(t.appearance, p.appearance);
     if (p.size !== undefined) {
       patch.sizeFt = SIZE_BASE_FT[p.size];
       if (t.stats) patch.stats = { ...(patch.stats ?? t.stats), size: p.size };
@@ -157,7 +192,7 @@ export const tokenUpdate: CommandDef<z.infer<typeof TokenUpdate>> = {
     if (p.sizeFt !== undefined) patch.sizeFt = p.sizeFt;
     if (p.stats) {
       if (!t.stats) throw new GloamError("INVALID", "A linked token's numbers live on its character sheet.");
-      patch.stats = { ...(patch.stats ?? t.stats), ...clone(p.stats) } as TokenStats;
+      patch.stats = mergeStats(patch.stats ?? t.stats, p.stats);
     }
     const ops = setOps("token", t, patch);
     if (ops.length)
