@@ -1,10 +1,12 @@
-import { useThree } from "@react-three/fiber";
-import { useEffect } from "react";
+import { useFrame, useThree } from "@react-three/fiber";
+import { useEffect, useMemo } from "react";
 import { Vector3 } from "three";
 import { boardData, useEntities } from "../state/entities.ts";
 import { provideTestHook } from "../test/hooks.ts";
+import { boardApi } from "./boardApi.ts";
 import { cameraRig } from "./CameraRig.tsx";
 import { boardDiag, useLoading } from "./diag.ts";
+import { setAnimating, wake } from "./frames.ts";
 import { resourceStats } from "./resources.ts";
 import { TIERS, TierGovernor, useTier } from "./tiers.ts";
 import { hpBarState } from "./tokens/TokenObject.tsx";
@@ -16,6 +18,21 @@ import { hpBarState } from "./tokens/TokenObject.tsx";
 export function TestProbe() {
   const gl = useThree((s) => s.gl);
   const scene = useThree((s) => s.scene);
+  // The camera at every rendered frame (after the controls and the rig's tweens have run), for timing journeys.
+  const v = useMemo(() => new Vector3(), []);
+  useFrame(() => {
+    const c = cameraRig.controls;
+    if (!c) return;
+    c.getTarget(v);
+    boardDiag.cameraLog.push({
+      t: performance.now(),
+      tx: v.x,
+      tz: v.z,
+      pitch: cameraRig.pitchDeg(),
+      dist: c.distance,
+    });
+    if (boardDiag.cameraLog.length > 600) boardDiag.cameraLog.splice(0, 100);
+  });
   useEffect(() => {
     if (!__GLOAM_TEST__) return;
     provideTestHook(
@@ -27,6 +44,7 @@ export function TestProbe() {
           if (set.target) cameraRig.moveTargetTo(set.target[0], set.target[1], set.ms ?? 0);
           if (set.pitchDeg !== undefined) cameraRig.pitchTo(set.pitchDeg, set.ms ?? 0);
           if (set.distance !== undefined) void c.dollyTo(set.distance, false);
+          wake();
         }
         const t = c.getTarget(new Vector3());
         const p = c.getPosition(new Vector3());
@@ -53,11 +71,18 @@ export function TestProbe() {
         postfx: boardDiag.postfx,
         map: boardDiag.map,
         memory: { ...gl.info.memory },
+        /** Frames rendered so far (on-demand rendering: an idle board stops counting). */
+        frames: gl.info.render.frame,
         programs: gl.info.programs?.length ?? 0,
         resources: resourceStats(),
         firstFrameAt: boardDiag.firstFrameAt,
       };
     });
+    provideTestHook("cameraLog", () => ({ log: boardDiag.cameraLog, tweenStarts: boardDiag.tweenStarts }));
+    provideTestHook("groundAt", (x: number, y: number) => boardApi.groundAt(x, y));
+    provideTestHook("project", (x: number, y: number, elevation?: number) =>
+      boardApi.project(x, y, elevation ?? 0),
+    );
     provideTestHook("boardScene", () => {
       const e = useEntities.getState();
       return {
@@ -81,6 +106,8 @@ export function TestProbe() {
     });
     provideTestHook("forceFrameMs", (ms: number | null) => {
       TierGovernor.forcedMs = ms;
+      // The governor measures rendered frames; while a test forces frame times, keep them coming.
+      setAnimating("test:forceFrameMs", ms !== null);
     });
     /** AC-TOK-10: the minis on the table and how many distinct geometries/materials they use. */
     provideTestHook("miniStats", () => {

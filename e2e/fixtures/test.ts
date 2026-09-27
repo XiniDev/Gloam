@@ -37,8 +37,9 @@ export async function newPlayerContext(
   browser: Browser,
   origin: string,
   g: Guard,
+  options: { viewport?: { width: number; height: number } } = {},
 ): Promise<{ context: BrowserContext; page: Page }> {
-  const context = await browser.newContext({ baseURL: origin });
+  const context = await browser.newContext({ baseURL: origin, ...options });
   g.contexts.push(context);
   const page = await context.newPage();
   guard(page, origin, g);
@@ -74,9 +75,11 @@ export const test = base.extend<Fixtures>({
     expect(g.external, "requests that left the origin").toEqual([]);
     expect(g.errors, "console errors and uncaught page exceptions").toEqual([]);
   },
-  admin: async ({ browser, gloam, guardLog }, use) => {
+  admin: async ({ browser, gloam, guardLog, viewport }, use) => {
     const context = await browser.newContext({
       baseURL: gloam.url,
+      // The configured (or test.use) viewport; a hand-made context would otherwise get Playwright's 1280 × 720.
+      viewport,
       permissions: ["clipboard-read", "clipboard-write"],
     });
     guardLog.contexts.push(context);

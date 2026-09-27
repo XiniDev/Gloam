@@ -95,9 +95,14 @@ export async function admitPlayer(
   guardLog: Guard,
   code: string,
   name: string,
-  contextOptions: { reducedMotion?: "reduce" | "no-preference" } = {},
+  contextOptions: {
+    reducedMotion?: "reduce" | "no-preference";
+    viewport?: { width: number; height: number };
+  } = {},
 ): Promise<Page> {
-  const { page, context } = await newPlayerContext(browser, gloam.url, guardLog);
+  const { page, context } = await newPlayerContext(browser, gloam.url, guardLog, {
+    ...(contextOptions.viewport ? { viewport: contextOptions.viewport } : {}),
+  });
   if (contextOptions.reducedMotion) await page.emulateMedia({ reducedMotion: contextOptions.reducedMotion });
   void context;
   await knockAsNew(page, gloam.url, code, name);

@@ -1,5 +1,6 @@
 import { CanvasTexture, SRGBColorSpace } from "three";
 import { C } from "../colors.ts";
+import { wake } from "../frames.ts";
 
 /** Small canvas-drawn textures for tokens: an initials face for art-less tokens and the DM-hidden eye-slash badge. */
 
@@ -22,6 +23,7 @@ function texture(key: string, size: number, draw: (g: CanvasRenderingContext2D) 
       g.clearRect(0, 0, size, size);
       draw(g);
       tex.needsUpdate = true;
+      wake();
     });
   }
   t.colorSpace = SRGBColorSpace;

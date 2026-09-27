@@ -19,6 +19,7 @@ import { CameraRig, cameraRig } from "./CameraRig.tsx";
 import { C } from "./colors.ts";
 import { boardDiag } from "./diag.ts";
 import { setupText } from "./fonts.ts";
+import { wake, wantsNextFrame } from "./frames.ts";
 import { Lighting } from "./Lighting.tsx";
 import { MapAlignGizmo } from "./map/MapAlignGizmo.tsx";
 import { MapLayer } from "./map/MapLayer.tsx";
@@ -32,6 +33,9 @@ import { chooseTier, probeDevice, TIERS, TierGovernor, useTier } from "./tiers.t
 import { TokensLayer } from "./tokens/TokensLayer.tsx";
 
 setupText();
+
+/** Longer than this between frames means the board was idle (nothing to draw), not slow. */
+const IDLE_GAP_MS = 200;
 
 /** Reads the device on the first frame, then adapts the tier from frame times (SPEC §8.4). */
 function TierSetup() {
@@ -51,10 +55,15 @@ function TierSetup() {
     boardApi.camera = camera;
     boardApi.element = gl.domElement;
   }, [camera, gl]);
-  useFrame((_s, dt) => {
+  const lastFrame = useRef(0);
+  useFrame((state, dt) => {
+    const now = performance.now();
     // The first-load intro waits for this before fading the board up (SPEC §27.7).
-    if (boardDiag.firstFrameAt === null) boardDiag.firstFrameAt = performance.now();
-    governor.tick(dt);
+    if (boardDiag.firstFrameAt === null) boardDiag.firstFrameAt = now;
+    // On-demand frames: only back-to-back frames measure rendering cost; an idle gap isn't a slow frame.
+    if (now - lastFrame.current < IDLE_GAP_MS) governor.tick(dt);
+    lastFrame.current = now;
+    if (wantsNextFrame(now)) state.invalidate();
   });
   return null;
 }
@@ -82,8 +91,32 @@ export default function Board() {
   const dm = me?.role === "dm" || me?.role === "admin";
   const [box, setBox] = useState<Box | null>(null);
   const press = useRef<{ x: number; y: number; empty: boolean; box: boolean } | null>(null);
+  /** Grab-the-table pan: the table point under the pointer when the drag began stays under it. */
+  const pan = useRef<{ pointerId: number; grab: { x: number; y: number } } | null>(null);
   const clipboard = useRef<string[]>([]);
   const tool = useUi((s) => s.tool);
+
+  // Anything the board shows may have changed: draw for a moment (on-demand rendering, see frames.ts).
+  useEffect(() => {
+    const offs = [
+      useEntities.subscribe(() => wake()),
+      useUi.subscribe(() => wake()),
+      useSettings.subscribe(() => wake()),
+      // The tier, not its fps readout (that updates twice a second while frames run and would never let go).
+      useTier.subscribe((s, prev) => {
+        if (s.name !== prev.name || s.pinned !== prev.pinned) wake();
+      }),
+      useTable.subscribe(() => wake()),
+    ];
+    const onInput = () => wake();
+    window.addEventListener("keydown", onInput);
+    window.addEventListener("resize", onInput);
+    return () => {
+      for (const off of offs) off();
+      window.removeEventListener("keydown", onInput);
+      window.removeEventListener("resize", onInput);
+    };
+  }, []);
 
   // Board keyboard: Esc clears; DM: Delete removes, Ctrl/Cmd+C/V copies and pastes at the cursor.
   useEffect(() => {
@@ -132,8 +165,23 @@ export default function Board() {
   const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     // Token presses stop propagation inside the canvas; anything reaching here without a token hit is the table.
     // Tokens set `hover` on pointer-over, so a press with a hovered token is a token press, not the table.
-    const pan = useUi.getState().tool === "pan";
-    const onToken = !pan && useUi.getState().hover !== null;
+    wake();
+    const panTool = useUi.getState().tool === "pan";
+    const onToken = !panTool && !cameraRig.spaceHeld && useUi.getState().hover !== null;
+    // Pan: middle-drag, Space+drag with any tool, the Pan tool, or a left-drag on empty table (mouse and pen;
+    // one-finger touch pans through the camera controls with the other gestures).
+    const panStart =
+      e.pointerType !== "touch" &&
+      (e.button === 1 ||
+        (e.button === 0 &&
+          (cameraRig.spaceHeld || panTool || (!onToken && !(dm && e.shiftKey) && !e.altKey))));
+    if (panStart) {
+      const grab = boardApi.groundAt(e.clientX, e.clientY);
+      if (grab) {
+        pan.current = { pointerId: e.pointerId, grab };
+        e.currentTarget.setPointerCapture(e.pointerId);
+      }
+    }
     if (e.button !== 0) return;
     if (dm && e.altKey && e.shiftKey) {
       const p = boardApi.groundAt(e.clientX, e.clientY);
@@ -143,8 +191,8 @@ export default function Board() {
       }
       return;
     }
-    const boxSelect = dm && e.shiftKey && !onToken && !pan;
-    press.current = { x: e.clientX, y: e.clientY, empty: !onToken && !pan, box: boxSelect };
+    const boxSelect = dm && e.shiftKey && !onToken && !panTool && !cameraRig.spaceHeld;
+    press.current = { x: e.clientX, y: e.clientY, empty: !onToken && !panTool, box: boxSelect };
     if (boxSelect) {
       const c = cameraRig.controls;
       if (c) c.enabled = false;
@@ -204,11 +252,18 @@ export default function Board() {
     }
   };
   const onPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+    wake(400);
+    const drag = pan.current;
+    if (drag && drag.pointerId === e.pointerId) {
+      const now = boardApi.groundAt(e.clientX, e.clientY);
+      if (now) cameraRig.panBy(drag.grab.x - now.x, drag.grab.y - now.y);
+    }
     boardApi.cursor = boardApi.groundAt(e.clientX, e.clientY);
     const p = press.current;
     if (p?.box) setBox({ x0: p.x, y0: p.y, x1: e.clientX, y1: e.clientY });
   };
   const onPointerUp = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (pan.current?.pointerId === e.pointerId) pan.current = null;
     const p = press.current;
     press.current = null;
     if (!p) return;
@@ -241,6 +296,7 @@ export default function Board() {
       onPointerUp={onPointerUp}
       onContextMenu={(e) => e.preventDefault()}
       onDragOver={onDragOver}
+      onWheel={() => wake()}
       onDrop={(e) => void onDrop(e)}
       style={{ cursor: tool === "pan" ? "grab" : undefined }}
     >
@@ -254,6 +310,7 @@ export default function Board() {
           alpha: false,
         }}
         camera={{ fov: 40, near: 0.5, far: 4000, position: [30, 60, 90] }}
+        frameloop="demand"
         style={{ background: C.ink950 }}
         onCreated={({ gl }) => gl.setClearColor(C.ink950)}
       >

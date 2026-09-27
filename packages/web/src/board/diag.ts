@@ -16,11 +16,17 @@ export const boardDiag: {
   postfx: { bloom: boolean; ao: boolean; smaa: boolean; composer: boolean };
   firstFrameAt: number | null;
   tokenModes: Map<string, { mode: string; coin: number; standee: number }>;
+  /** When the camera rig began each recent tween (kind + performance.now()), newest last. */
+  tweenStarts: { kind: string; at: number }[];
+  /** Test builds: the camera at every rendered frame (TestProbe fills it). */
+  cameraLog: { t: number; tx: number; tz: number; pitch: number; dist: number }[];
 } = {
   map: null,
   postfx: { bloom: false, ao: false, smaa: false, composer: false },
   firstFrameAt: null,
   tokenModes: new Map(),
+  tweenStarts: [],
+  cameraLog: [],
 };
 
 /**

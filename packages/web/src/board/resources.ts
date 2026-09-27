@@ -11,6 +11,7 @@ import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.j
 import { type GLTF, GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { assetUrl, fetchAsset } from "../net/assets.ts";
 import { useLoading } from "./diag.ts";
+import { wake } from "./frames.ts";
 
 /**
  * Refcounted GPU resources per asset (SPEC §24.8): every token using the same image shares one texture, every mini
@@ -43,7 +44,13 @@ function acquire<T>(
   if (!e) {
     const loaded = useLoading.getState().begin();
     const entry: Entry<T> = { promise: load(), refs: 0, dispose };
-    entry.promise.finally(loaded).catch(() => {});
+    // A finished load changes the picture (on-demand rendering): draw for a moment.
+    entry.promise
+      .finally(() => {
+        loaded();
+        wake();
+      })
+      .catch(() => {});
     entry.promise.then(
       (v) => {
         entry.value = v;

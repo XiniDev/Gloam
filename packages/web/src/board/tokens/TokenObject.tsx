@@ -20,6 +20,7 @@ import { cameraRig } from "../CameraRig.tsx";
 import { C, col, ringColorOf } from "../colors.ts";
 import { boardDiag } from "../diag.ts";
 import { CAPS_FONT } from "../fonts.ts";
+import { setAnimating } from "../frames.ts";
 import { TIERS, useTier } from "../tiers.ts";
 import { cylinder, plane, torus } from "./geometries.ts";
 import { hiddenBadgeTexture, initialsTexture } from "./glyphs.ts";
@@ -196,7 +197,22 @@ export const TokenObject = memo(function TokenObject({
     });
     if (selRing.current) selRing.current.scale.setScalar(1 + 0.035 * Math.sin(state.clock.elapsedTime * 3.2));
     mixer?.update(dt);
+    // On-demand rendering: keep drawing while this token is still gliding or crossfading.
+    if (
+      g.position.distanceToSquared(target) > 1e-6 ||
+      (mode === "auto" && Math.abs(coinW.current - wantCoin) > 1e-3)
+    )
+      state.invalidate();
   });
+  // The selection pulse and a mini's idle animation run continuously while they're on.
+  useEffect(() => {
+    setAnimating(`sel:${token.id}`, selected);
+    return () => setAnimating(`sel:${token.id}`, false);
+  }, [selected, token.id]);
+  useEffect(() => {
+    setAnimating(`mix:${token.id}`, mixer !== null);
+    return () => setAnimating(`mix:${token.id}`, false);
+  }, [mixer, token.id]);
   useEffect(() => () => void boardDiag.tokenModes.delete(token.id), [token.id]);
 
   // ── interaction: select (Shift toggles), radial menu on right-click or long-press ──────────────────────
@@ -204,7 +220,7 @@ export const TokenObject = memo(function TokenObject({
   const onDown = (e: ThreeEvent<PointerEvent>) => {
     const n = e.nativeEvent;
     // The Pan tool (H): a left press anywhere, tokens included, drags the view.
-    if (n.button === 0 && useUi.getState().tool === "pan") return;
+    if (n.button === 0 && (useUi.getState().tool === "pan" || cameraRig.spaceHeld)) return;
     e.stopPropagation();
     down.current = { x: n.clientX, y: n.clientY, button: n.button, timer: null };
     if (n.button === 0) {
@@ -518,6 +534,8 @@ function Overlay({
       );
       hpBarState.set(token.id, { frac: Math.max(0, frac), temp: Math.max(0, temp), ghost: gv });
     } else hpBarState.delete(token.id);
+    // The damage ghost holds and drains over ~1 s: keep drawing until it has caught up.
+    if (showBar && Math.abs(gv - Math.max(0, frac)) > 1e-4) state.invalidate();
   });
   useEffect(() => () => void hpBarState.delete(token.id), [token.id]);
 

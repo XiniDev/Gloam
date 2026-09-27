@@ -6,6 +6,8 @@ import { Box3, MathUtils, Vector3 } from "three";
 import { tableEvents } from "../net/table.ts";
 import { useSettings } from "../state/settings.ts";
 import { useUi } from "../state/ui.ts";
+import { boardDiag } from "./diag.ts";
+import { wake } from "./frames.ts";
 import { type Bounds, boundsCenter, boundsSize } from "./scene.ts";
 
 const { ACTION } = CameraControlsImpl;
@@ -17,6 +19,12 @@ export const PITCH_MIN = 25;
 export const DISTANCE = { min: 8, max: 400 } as const;
 const PRESET_MS = 400;
 const SPOTLIGHT_MS = 600;
+
+/** Diagnostics: when each tween began (the E2E journeys time the camera's motion against it). */
+function noteTween(kind: string): void {
+  boardDiag.tweenStarts.push({ kind, at: performance.now() });
+  if (boardDiag.tweenStarts.length > 20) boardDiag.tweenStarts.shift();
+}
 
 const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
 
@@ -34,8 +42,14 @@ export const cameraRig: {
   pitchTo(pitchDeg: number, ms?: number): void;
   moveTargetTo(x: number, z: number, ms?: number): void;
   pitchDeg(): number;
+  /** Moves the view so the table slides by (dx, dz) feet (the grab-the-table pan). */
+  panBy(dx: number, dz: number): void;
+  /** Space is held: a left-drag pans whatever is under it. */
+  spaceHeld: boolean;
 } = {
   controls: null,
+  spaceHeld: false,
+  panBy: () => {},
   pitchTo: () => {},
   moveTargetTo: () => {},
   pitchDeg: () => PRESETS.tabletop,
@@ -73,8 +87,9 @@ export function CameraRig({ bounds, sceneId }: { bounds: Bounds; sceneId: string
     c.azimuthRotateSpeed = 0.55;
     c.polarRotateSpeed = 0.55;
     c.dollySpeed = 0.6;
-    c.mouseButtons.left = ACTION.SCREEN_PAN;
-    c.mouseButtons.middle = ACTION.SCREEN_PAN;
+    // Mouse and pen panning is the Board's "grab the table" pan (panBy): exact under the pointer at any pitch.
+    c.mouseButtons.left = ACTION.NONE;
+    c.mouseButtons.middle = ACTION.NONE;
     c.mouseButtons.right = ACTION.ROTATE;
     c.mouseButtons.wheel = ACTION.DOLLY;
     c.touches.one = ACTION.TOUCH_SCREEN_PAN;
@@ -137,6 +152,8 @@ export function CameraRig({ bounds, sceneId }: { bounds: Bounds; sceneId: string
       const from = c.polarAngle;
       const to = Math.max(0.0001, (90 - pitchDeg) * DEG);
       tweens.current = tweens.current.filter((t) => t.kind !== "pitch");
+      wake();
+      noteTween("pitch");
       tweens.current.push({
         kind: "pitch",
         start: performance.now(),
@@ -144,11 +161,21 @@ export function CameraRig({ bounds, sceneId }: { bounds: Bounds; sceneId: string
         apply: (k) => void c.rotatePolarTo(from + (to - from) * k, false),
       });
     };
+    cameraRig.panBy = (dx, dz) => {
+      const c = ref.current;
+      if (!c) return;
+      const t = c.getTarget(new Vector3());
+      follow.current = null;
+      void c.moveTo(t.x + dx, t.y, t.z + dz, false);
+      wake();
+    };
     cameraRig.moveTargetTo = (x, z, ms = PRESET_MS) => {
       const c = ref.current;
       if (!c) return;
       const t0 = c.getTarget(new Vector3());
       tweens.current = tweens.current.filter((t) => t.kind !== "move");
+      wake();
+      noteTween("move");
       tweens.current.push({
         kind: "move",
         start: performance.now(),
@@ -160,7 +187,6 @@ export function CameraRig({ bounds, sceneId }: { bounds: Bounds; sceneId: string
 
   // Keyboard: Shift+1/2/3 presets, T toggles top-down ↔ tabletop, F focuses the selection, Shift+F follows it.
   useEffect(() => {
-    let spaceHeld = false;
     const onKey = (e: KeyboardEvent) => {
       if (isTyping(e) || e.ctrlKey || e.metaKey || e.altKey) return;
       if (e.shiftKey && (e.code === "Digit1" || e.code === "Digit2" || e.code === "Digit3")) {
@@ -176,13 +202,14 @@ export function CameraRig({ bounds, sceneId }: { bounds: Bounds; sceneId: string
         follow.current = e.shiftKey && follow.current !== id ? id : null;
         const pos = tokenPosition(id);
         if (pos) cameraRig.moveTargetTo(pos.x, pos.y);
-      } else if (e.code === "Space" && !spaceHeld) {
-        spaceHeld = true;
-        if (ref.current) ref.current.mouseButtons.left = ACTION.SCREEN_PAN;
+      } else if (e.code === "Space") {
+        // Space + drag pans with any tool (the Board reads this flag).
+        if (!e.repeat) e.preventDefault();
+        cameraRig.spaceHeld = true;
       }
     };
     const onUp = (e: KeyboardEvent) => {
-      if (e.code === "Space") spaceHeld = false;
+      if (e.code === "Space") cameraRig.spaceHeld = false;
     };
     window.addEventListener("keydown", onKey);
     window.addEventListener("keyup", onUp);
@@ -202,8 +229,10 @@ export function CameraRig({ bounds, sceneId }: { bounds: Bounds; sceneId: string
     [],
   );
 
-  useFrame(() => {
+  useFrame((state) => {
     const now = performance.now();
+    // On-demand rendering: a tween or a follow keeps frames coming (user input is handled by the controls).
+    if (tweens.current.length || follow.current) state.invalidate();
     if (tweens.current.length) {
       tweens.current = tweens.current.filter((t) => {
         const k = Math.min(1, (now - t.start) / t.duration);

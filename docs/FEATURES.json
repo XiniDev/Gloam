@@ -316,10 +316,10 @@
       "code": "BRD",
       "phase": "P2",
       "text": "Camera controls work as specified (zoom toward cursor, orbit, pan, presets Shift+1/2/3 and T with 400 ms transitions, pitch and distance clamps, bounds clamp).",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p2-camera.spec.ts › AC-BRD-02: Shift+1/3/2 and T presets each fitted at 400 ms (easing inverted over 3–5 rendered frames, start within 6 ms of the key); wheel zoom keeps the table point under the cursor within 0.75 ft while distance drops; left-drag pan keeps the grabbed point under the pointer within 1 ft; right-drag orbits (azimuth changes) and tilt clamps at 25° and 90°; distance clamps at 8 and 400 ft; target clamps to scene bounds + 20 %",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T15:38:07.049Z"
     },
     {
       "id": "AC-BRD-03",
@@ -338,10 +338,10 @@
       "code": "BRD",
       "phase": "P2",
       "text": "DM Spotlight moves all opted-in players' cameras to the target over 600 ms.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p2-camera.spec.ts › AC-BRD-04: DM Alt+Shift+click; Dave's camera target glides to the spot (≤ 0.05 ft) with rendered frames implying 600 ms from his rig's start; Erin, who turned off 'Let the DM move my camera' in Settings, doesn't move",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T15:38:07.117Z"
     },
     {
       "id": "AC-BRD-05",
