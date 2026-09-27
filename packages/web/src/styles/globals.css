@@ -233,3 +233,91 @@
   animation-iteration-count: 1 !important;
   transition-duration: 80ms !important;
 }
+
+/* Slider (SPEC §28): brass thumb on an ink track; the filled part is brass. `--fill` is set inline (0–100%). */
+.gloam-range {
+  appearance: none;
+  height: 20px;
+  background: transparent;
+  cursor: pointer;
+}
+.gloam-range::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(to right, var(--brass-600) var(--fill, 0%), var(--ink-700) var(--fill, 0%));
+}
+.gloam-range::-moz-range-track {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--ink-700);
+}
+.gloam-range::-moz-range-progress {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--brass-600);
+}
+.gloam-range::-webkit-slider-thumb {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  margin-top: -6px;
+  border-radius: 50%;
+  border: 1px solid var(--brass-800);
+  background: var(--brass-300);
+  box-shadow: 0 0 8px var(--glow-brass-soft);
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+.gloam-range::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1px solid var(--brass-800);
+  background: var(--brass-300);
+  box-shadow: 0 0 8px var(--glow-brass-soft);
+}
+.gloam-range:hover::-webkit-slider-thumb,
+.gloam-range:focus-visible::-webkit-slider-thumb {
+  transform: scale(1.15);
+}
+.gloam-range:focus-visible {
+  outline: none;
+}
+.gloam-range:focus-visible::-webkit-slider-thumb {
+  box-shadow: var(--ring-focus);
+}
+.gloam-range:focus-visible::-moz-range-thumb {
+  box-shadow: var(--ring-focus);
+}
+.gloam-range:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* First-load sequence (SPEC §27.7, AC-DS-04): the candle ignites, then HUD groups rise in 60 ms apart. Only opacity
+   and transform animate, so nothing shifts layout. */
+@keyframes intro-ignite {
+  from {
+    opacity: 0;
+    transform: scale(0.3) translateY(14px);
+    filter: brightness(2.4);
+  }
+  55% {
+    opacity: 1;
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+}
+[data-intro="ignite"] [data-hud-order],
+[data-intro="board"] [data-hud-order] {
+  opacity: 0;
+}
+[data-intro="hud"] [data-hud-order] {
+  animation: rise-in 240ms var(--ease-out) both;
+  animation-delay: calc(var(--hud-i, 0) * 60ms);
+}
+[data-intro="hud"][data-intro-reduced] [data-hud-order] {
+  animation-delay: 0ms;
+}

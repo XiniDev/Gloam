@@ -1,7 +1,7 @@
 import { BOARD_COLORS } from "@gloam/shared";
 
 /** "#RRGGBB" → linear-ish vec3 for shader uniforms (colours come from the shared constants, SPEC §27.2). */
-export function rgb(hex: string): [number, number, number] {
+export function vec3Of(hex: string): [number, number, number] {
   const n = Number.parseInt(hex.slice(1), 16);
   return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
 }
@@ -74,16 +74,16 @@ void main(){
 }`;
 
 export const BACKDROP_UNIFORMS = {
-  uWood: rgb(BOARD_COLORS.oak),
-  uWoodDark: rgb(BOARD_COLORS.oakDark),
-  uPaper: rgb(BOARD_COLORS.mapPaper),
-  uInk: rgb(BOARD_COLORS.mapInk),
-  uCandle: rgb(BOARD_COLORS.candle),
-  uVoid: rgb(BOARD_COLORS.ink950),
+  uWood: vec3Of(BOARD_COLORS.oak),
+  uWoodDark: vec3Of(BOARD_COLORS.oakDark),
+  uPaper: vec3Of(BOARD_COLORS.mapPaper),
+  uInk: vec3Of(BOARD_COLORS.mapInk),
+  uCandle: vec3Of(BOARD_COLORS.candle),
+  uVoid: vec3Of(BOARD_COLORS.ink950),
 };
 
 export const FLAME_UNIFORMS = {
-  uCore: rgb(BOARD_COLORS.flameCore),
-  uOuter: rgb(BOARD_COLORS.flameOuter),
-  uBlue: rgb(BOARD_COLORS.flameBlue),
+  uCore: vec3Of(BOARD_COLORS.flameCore),
+  uOuter: vec3Of(BOARD_COLORS.flameOuter),
+  uBlue: vec3Of(BOARD_COLORS.flameBlue),
 };

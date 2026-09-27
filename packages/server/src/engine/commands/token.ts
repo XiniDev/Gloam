@@ -4,6 +4,8 @@ import {
   TokenCreate,
   TokenDelete,
   TokenDuplicate,
+  TokenElevation,
+  TokenFacing,
   TokenPlace,
   TokenUpdate,
 } from "@gloam/shared/protocol";
@@ -284,7 +286,47 @@ export const tokenDuplicate: CommandDef<z.infer<typeof TokenDuplicate>, { tokenI
   },
 };
 
+/** Whoever controls the token (its owners, DMs) may raise, lower and turn it (SPEC §13.5 controller commands). */
+function requireController(ctx: CommandCtx, p: { tokenId: string }): void {
+  const t = mustGet(ctx, "token", p.tokenId);
+  if (!controlsToken(ctx.actor.role, ctx.actor.userId, t)) throw new GloamError("FORBIDDEN");
+  if (t.locked && !isDm(ctx.actor.role)) throw new GloamError("FORBIDDEN", "The DM locked this token.");
+}
+
+/** `token.elevation` — absolute or relative, snapped to 5-ft steps (AC-TOK-07's stepper; P3 adds Alt+wheel). */
+export const tokenElevation: CommandDef<z.infer<typeof TokenElevation>> = {
+  type: "token.elevation",
+  schema: TokenElevation,
+  undoable: true,
+  authorize: requireController,
+  plan(ctx, p) {
+    const t = mustGet(ctx, "token", p.tokenId);
+    const raw = p.elevation ?? t.elevation + (p.delta ?? 0);
+    const elevation = Math.max(-1000, Math.round(raw / 5) * 5);
+    const ops = setOps("token", t, { elevation });
+    const light = t.lightId ? ctx.model.get("light", t.lightId) : undefined;
+    if (light && ops.length) ops.push(...setOps("light", light, { elevation: elevation + 3 }));
+    return { ops, summary: `${t.name} to ${elevation} ft`, sceneId: t.sceneId };
+  },
+};
+
+/** `token.facing` — turn the token (SPEC §8.5 Facing). */
+export const tokenFacing: CommandDef<z.infer<typeof TokenFacing>> = {
+  type: "token.facing",
+  schema: TokenFacing,
+  undoable: true,
+  authorize: requireController,
+  plan(ctx, p) {
+    const t = mustGet(ctx, "token", p.tokenId);
+    const raw = p.rotationDeg ?? t.rotationDeg + (p.delta ?? 0);
+    const rotationDeg = ((raw % 360) + 360) % 360;
+    return { ops: setOps("token", t, { rotationDeg }), summary: `Turned ${t.name}`, sceneId: t.sceneId };
+  },
+};
+
 export const TOKEN_COMMANDS = [
+  tokenElevation,
+  tokenFacing,
   tokenCreate,
   tokenUpdate,
   tokenPlace,

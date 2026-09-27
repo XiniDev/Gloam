@@ -1,4 +1,4 @@
-import { type ReactNode, useId } from "react";
+import { type ReactNode, useId, useState } from "react";
 
 /** Brass-thumb switch (SPEC §28 Toggle). */
 export function Toggle({
@@ -139,6 +139,65 @@ export function Select<T extends string>({
           </option>
         ))}
       </select>
+    </div>
+  );
+}
+
+/**
+ * Slider (SPEC §28): a native range input (keyboard and screen-reader friendly) with a brass thumb on an ink track and
+ * a value bubble while it's being moved or focused.
+ */
+export function Slider({
+  value,
+  onChange,
+  min = 0,
+  max = 1,
+  step = 0.01,
+  label,
+  format = (v) => `${Math.round(v * 100)}%`,
+  disabled = false,
+  className = "",
+}: {
+  value: number;
+  onChange: (v: number) => void;
+  min?: number;
+  max?: number;
+  step?: number;
+  label: string;
+  format?: (v: number) => string;
+  disabled?: boolean;
+  className?: string;
+}) {
+  const [active, setActive] = useState(false);
+  const f = max > min ? (Math.min(max, Math.max(min, value)) - min) / (max - min) : 0;
+  return (
+    <div className={`relative flex items-center ${className}`}>
+      <input
+        type="range"
+        aria-label={label}
+        aria-valuetext={format(value)}
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        disabled={disabled}
+        onChange={(e) => onChange(Number(e.target.value))}
+        onPointerDown={() => setActive(true)}
+        onPointerUp={() => setActive(false)}
+        onFocus={() => setActive(true)}
+        onBlur={() => setActive(false)}
+        className="gloam-range w-full"
+        style={{ ["--fill" as string]: `${f * 100}%` }}
+      />
+      {active ? (
+        <span
+          aria-hidden
+          className="mono pointer-events-none absolute -top-6 -translate-x-1/2 rounded-[4px] border border-line bg-ink-950 px-1.5 text-12 text-brass-bright"
+          style={{ left: `calc(8px + ${f} * (100% - 16px))` }}
+        >
+          {format(value)}
+        </span>
+      ) : null}
     </div>
   );
 }

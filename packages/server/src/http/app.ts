@@ -11,6 +11,7 @@ import { csrfGuard, ok, requestContext, route, sendError } from "./helpers.ts";
 import { adminRoutes } from "./routes/admin.ts";
 import { assetRoutes } from "./routes/assets.ts";
 import { type AuthRouteHooks, authRoutes } from "./routes/auth.ts";
+import { fontRoutes } from "./routes/fonts.ts";
 
 const NONCE_PLACEHOLDER = "__GLOAM_NONCE__";
 const VALID_HOST = /^[A-Za-z0-9.\-:[\]]+$/;
@@ -125,6 +126,7 @@ export async function buildHttpApp(
   authRoutes(app, ctx, { sendSpa, onSetupComplete: opts.onSetupComplete });
   adminRoutes(app, ctx);
   assetRoutes(app, ctx);
+  fontRoutes(app, ctx);
 
   app.get(
     "/api/health",

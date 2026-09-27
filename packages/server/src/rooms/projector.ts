@@ -75,6 +75,7 @@ export function tokenView(t: TokenEntity, ctx: ProjectionCtx): TokenView {
     pos: { x: t.pos.x, y: t.pos.y },
     elevation: t.elevation,
     rotation: t.rotationDeg,
+    size: stats.size,
     sizeFt: t.sizeFt,
     mode: t.appearance.mode,
     assetId: t.appearance.assetId ?? "",

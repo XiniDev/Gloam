@@ -361,6 +361,9 @@ importers:
       '@use-gesture/react':
         specifier: 10.3.1
         version: 10.3.1(react@19.3.0)
+      camera-controls:
+        specifier: 3.1.2
+        version: 3.1.2(three@0.186.1)
       lucide-react:
         specifier: 1.48.0
         version: 1.48.0(react@19.3.0)

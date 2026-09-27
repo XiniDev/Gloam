@@ -1,0 +1,134 @@
+import {
+  COLLECTIONS,
+  type CollectionName,
+  type EffectView,
+  type LightView,
+  type PrepPatch,
+  type PrepSnapshot,
+  type SceneView,
+  type TokenView,
+  type WallView,
+  type ZoneView,
+} from "@gloam/shared/state";
+import { create } from "zustand";
+
+/** One scene's worth of board data, in the shared view shapes (SPEC §13.3). */
+export interface SceneData {
+  scene: SceneView | null;
+  tokens: Map<string, TokenView>;
+  walls: Map<string, WallView>;
+  lights: Map<string, LightView>;
+  zones: Map<string, ZoneView>;
+  effects: Map<string, EffectView>;
+}
+
+export type PrepMeta = PrepSnapshot["sceneMeta"];
+
+interface EntitiesStore {
+  /** The active scene, mirrored from the synchronised state. */
+  live: SceneData;
+  /** A DM's prep scene (SPEC §13.7), or null. */
+  prep: (SceneData & { meta: PrepMeta }) | null;
+  /** Bumps on every applied change (cheap subscription key). */
+  version: number;
+  /**
+   * Scene travel (SPEC §8.3 Scene activation): when the live scene changes, the board keeps showing the old one
+   * (`held`) while the screen fades to black, then the transition releases it under the black and fades in.
+   */
+  held: SceneData | null;
+  travel: { sceneId: string; name: string; startedAt: number } | null;
+  /** Travel transitions play once the first-load intro is over (the intro covers the first scene). */
+  armed: boolean;
+  setLive(next: SceneData): void;
+  releaseHeld(): void;
+  endTravel(): void;
+  arm(): void;
+  setPrep(snapshot: PrepSnapshot | null): void;
+  applyPrepPatch(patch: PrepPatch): void;
+  reset(): void;
+}
+
+export const emptyScene = (): SceneData => ({
+  scene: null,
+  tokens: new Map(),
+  walls: new Map(),
+  lights: new Map(),
+  zones: new Map(),
+  effects: new Map(),
+});
+
+export const useEntities = create<EntitiesStore>((set, get) => ({
+  live: emptyScene(),
+  prep: null,
+  version: 0,
+  held: null,
+  travel: null,
+  armed: false,
+  setLive(live) {
+    const s = get();
+    const from = s.live.scene?.id ?? null;
+    const to = live.scene?.id ?? null;
+    // A DM preparing another scene stays there; everyone else travels.
+    if (s.armed && to && from !== to && !s.prep) {
+      set({
+        live,
+        held: s.held ?? s.live,
+        travel: { sceneId: to, name: live.scene?.name ?? "", startedAt: performance.now() },
+        version: s.version + 1,
+      });
+      return;
+    }
+    set({ live, version: s.version + 1 });
+  },
+  releaseHeld: () => set({ held: null, version: get().version + 1 }),
+  endTravel: () => set({ travel: null, held: null, version: get().version + 1 }),
+  arm: () => set({ armed: true }),
+  setPrep(snapshot) {
+    if (!snapshot) {
+      set({ prep: null, version: get().version + 1 });
+      return;
+    }
+    const data: SceneData & { meta: PrepMeta } = {
+      scene: snapshot.scene,
+      meta: snapshot.sceneMeta,
+      tokens: new Map(snapshot.tokens.map((t) => [t.id, t])),
+      walls: new Map(snapshot.walls.map((w) => [w.id, w])),
+      lights: new Map(snapshot.lights.map((l) => [l.id, l])),
+      zones: new Map(snapshot.zones.map((z) => [z.id, z])),
+      effects: new Map(snapshot.effects.map((e) => [e.id, e])),
+    };
+    set({ prep: data, version: get().version + 1 });
+  },
+  applyPrepPatch(patch) {
+    const cur = get().prep;
+    if (!cur || cur.scene?.id !== patch.sceneId) return;
+    const next = { ...cur };
+    if (patch.scene === null) {
+      set({ prep: null, version: get().version + 1 });
+      return;
+    }
+    if (patch.scene) next.scene = patch.scene;
+    if (patch.sceneMeta) next.meta = patch.sceneMeta;
+    for (const c of COLLECTIONS) {
+      const up = patch.upsert[c] as { id: string }[] | undefined;
+      const rm = patch.remove[c];
+      if (!up?.length && !rm?.length) continue;
+      const map = new Map(cur[c] as Map<string, { id: string }>);
+      for (const id of rm ?? []) map.delete(id);
+      for (const v of up ?? []) map.set(v.id, v);
+      (next as Record<CollectionName, unknown>)[c] = map;
+    }
+    set({ prep: next, version: get().version + 1 });
+  },
+  reset: () => set({ live: emptyScene(), prep: null, held: null, travel: null, version: get().version + 1 }),
+}));
+
+/**
+ * Which scene the board shows: the scene being travelled away from while the screen fades out, else a DM's prep
+ * scene when one is open, else the live one.
+ */
+export function boardData(s: EntitiesStore): SceneData {
+  return s.held ?? s.prep ?? s.live;
+}
+
+export const useBoard = <T>(sel: (d: SceneData) => T): T => useEntities((s) => sel(boardData(s)));

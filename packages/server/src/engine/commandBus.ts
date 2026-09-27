@@ -97,6 +97,11 @@ export interface BusHooks {
   sheet?: SheetApplier;
 }
 
+interface UndoStep {
+  ids: number[];
+  group: string | null;
+}
+
 /**
  * The command bus (SPEC §14.1): parse → authorize → plan (pure) → ONE SQLite transaction (rows + history) →
  * apply to the in-memory model → sync state and post-commit effects → respond. better-sqlite3 is synchronous,
@@ -107,8 +112,12 @@ export class CommandBus {
   readonly model: CampaignModel;
   private readonly hooks: BusHooks;
   private readonly defs = new Map<string, CommandDef<unknown, unknown>>();
-  private readonly undoStacks = new Map<string, number[]>();
-  private readonly redoStacks = new Map<string, number[]>();
+  /**
+   * Per-user undo/redo stacks. Each step is one or more history entries: consecutive commands sent with the same
+   * `undoGroup` (e.g. Generate walls in 500-wall batches) undo and redo as one step.
+   */
+  private readonly undoStacks = new Map<string, UndoStep[]>();
+  private readonly redoStacks = new Map<string, UndoStep[]>();
   private readonly recentCids = new Map<string, { result: unknown; at: number }>();
   /** Test/diagnostic hook: called inside post-commit, after the transaction (AC-PER-01). */
   postCommitProbe: ((info: CommitInfo) => void) | null = null;
@@ -129,7 +138,12 @@ export class CommandBus {
     return this.defs.has(type);
   }
 
-  execute<R = unknown>(type: string, raw: unknown, actor: CommandActor, opts: { cid?: string } = {}): R {
+  execute<R = unknown>(
+    type: string,
+    raw: unknown,
+    actor: CommandActor,
+    opts: { cid?: string; undoGroup?: string } = {},
+  ): R {
     const t0 = performance.now();
     if (opts.cid) {
       const prev = this.recentCids.get(`${actor.userId}:${opts.cid}`);
@@ -153,7 +167,7 @@ export class CommandBus {
       plan.ops.length > 0
         ? this.commit(type, plan.ops, plan.summary, undoable, actor, plan.sceneId ?? null)
         : null;
-    if (entry && undoable) this.pushUndo(actor.userId, entry.id);
+    if (entry && undoable) this.pushUndo(actor.userId, entry.id, opts.undoGroup ?? null);
     const info: CommitInfo = { entry, ops: plan.ops, actor, type };
     if (plan.ops.length > 0) {
       this.hooks.onCommitted(info);
@@ -280,9 +294,11 @@ export class CommandBus {
 
   // ── undo / redo / revert (SPEC §14.4) ─────────────────────────────────────────────────────────────────
 
-  private pushUndo(userId: string, id: number): void {
+  private pushUndo(userId: string, id: number, group: string | null): void {
     const s = this.undoStacks.get(userId) ?? [];
-    s.push(id);
+    const top = s[s.length - 1];
+    if (group && top?.group === group) top.ids.push(id);
+    else s.push({ ids: [id], group });
     if (s.length > LIMITS.undoStack) s.shift();
     this.undoStacks.set(userId, s);
     this.redoStacks.set(userId, []);
@@ -362,12 +378,12 @@ export class CommandBus {
   undoEntry(
     e: HistoryEntry,
     actor: CommandActor,
-    opts: { force?: boolean; viaStack?: boolean } = {},
+    opts: { force?: boolean; ignore?: ReadonlySet<number> } = {},
   ): HistoryEntry {
     if (!e.undoable) throw new GloamError("INVALID", "That can't be undone.");
     if (e.undoneAt !== null) throw new GloamError("CONFLICT", "That was already undone.");
     const isDm = actor.role === "admin" || actor.role === "dm";
-    const conflicts = this.conflicts(e);
+    const conflicts = this.conflicts(e).filter((c) => !opts.ignore?.has(c.id));
     let ops: Op[];
     let summary = `Undo: ${e.summary}`;
     if (conflicts.length > 0) {
@@ -382,59 +398,85 @@ export class CommandBus {
     const next = this.commit("history.undo", ops, summary, true, actor, e.sceneId);
     this.markUndone(e.id, actor.userId);
     this.hooks.onCommitted({ entry: next, ops, actor, type: "history.undo" });
-    // An undo is itself undoable only through redo; keep stacks consistent.
-    if (opts.viaStack) {
-      const r = this.redoStacks.get(actor.userId) ?? [];
-      r.push(e.id);
-      this.redoStacks.set(actor.userId, r);
-    }
     this.markUndone(next.id, "system");
     return next;
   }
 
-  /** Ctrl/Cmd+Z: the user's own most recent undoable action (SPEC §8.14). */
+  /**
+   * Ctrl/Cmd+Z: the user's own most recent undoable step (SPEC §8.14). A grouped step is checked as a whole before
+   * anything changes (entries of the same step don't conflict with each other), then undone newest first.
+   */
   undo(actor: CommandActor, opts: { force?: boolean } = {}): HistoryEntry {
     const stack = this.undoStacks.get(actor.userId) ?? [];
     for (;;) {
-      const id = stack[stack.length - 1];
-      if (id === undefined) throw new GloamError("NOT_FOUND", "Nothing to undo.");
-      const e = this.entry(id);
-      if (!e || e.undoneAt !== null) {
+      const step = stack[stack.length - 1];
+      if (!step) throw new GloamError("NOT_FOUND", "Nothing to undo.");
+      const entries = step.ids
+        .map((id) => this.entry(id))
+        .filter((e): e is HistoryEntry => e !== null && e.undoneAt === null);
+      if (!entries.length) {
         stack.pop();
         continue;
       }
-      const res = this.undoEntry(e, actor, { force: opts.force, viaStack: true });
+      const ids = new Set(entries.map((e) => e.id));
+      const isDm = actor.role === "admin" || actor.role === "dm";
+      if (!(isDm && opts.force)) {
+        for (const e of entries) {
+          const c = this.conflicts(e).filter((x) => !ids.has(x.id));
+          if (c.length) {
+            const last = c[c.length - 1] as HistoryEntry;
+            throw new GloamError(
+              "CONFLICT",
+              `Can't undo: ${this.who(last.userId)} changed this since (${last.summary}).`,
+              { canForce: isDm },
+            );
+          }
+        }
+      }
+      let last: HistoryEntry | null = null;
+      for (const e of [...entries].reverse())
+        last = this.undoEntry(e, actor, { force: opts.force, ignore: ids });
       stack.pop();
-      return res;
+      const r = this.redoStacks.get(actor.userId) ?? [];
+      r.push({ ids: entries.map((e) => e.id), group: step.group });
+      this.redoStacks.set(actor.userId, r);
+      return last as HistoryEntry;
     }
   }
 
-  /** Ctrl/Cmd+Shift+Z / Ctrl+Y: re-apply after checking that the keys still hold the undo's values. */
+  /** Ctrl/Cmd+Shift+Z / Ctrl+Y: re-apply a step after checking that its keys still hold the undo's values. */
   redo(actor: CommandActor): HistoryEntry {
     const stack = this.redoStacks.get(actor.userId) ?? [];
-    const id = stack[stack.length - 1];
-    if (id === undefined) throw new GloamError("NOT_FOUND", "Nothing to redo.");
-    const e = this.entry(id);
-    if (!e) {
+    const step = stack[stack.length - 1];
+    if (!step) throw new GloamError("NOT_FOUND", "Nothing to redo.");
+    const entries = step.ids.map((id) => this.entry(id));
+    if (entries.some((e) => !e)) {
       stack.pop();
       throw new GloamError("NOT_FOUND", "Nothing to redo.");
     }
-    for (const op of e.ops) {
-      if (op.k === "set") {
-        const cur = this.model.get(op.e, op.id);
-        if (cur === undefined || !jsonEqual(getPath(cur, op.path), op.prev)) {
-          throw new GloamError("CONFLICT", "Can't redo: this changed since the undo.");
+    for (const e of entries as HistoryEntry[]) {
+      for (const op of e.ops) {
+        if (op.k === "set") {
+          const cur = this.model.get(op.e, op.id);
+          if (cur === undefined || !jsonEqual(getPath(cur, op.path), op.prev)) {
+            throw new GloamError("CONFLICT", "Can't redo: this changed since the undo.");
+          }
         }
       }
     }
-    const ops = this.forcedOps(e.ops);
-    const next = this.commit(e.type, ops, e.summary, true, actor, e.sceneId);
+    const redone: number[] = [];
+    let next: HistoryEntry | null = null;
+    for (const e of entries as HistoryEntry[]) {
+      const ops = this.forcedOps(e.ops);
+      next = this.commit(e.type, ops, e.summary, true, actor, e.sceneId);
+      redone.push(next.id);
+      this.hooks.onCommitted({ entry: next, ops, actor, type: "history.redo" });
+    }
     stack.pop();
     const u = this.undoStacks.get(actor.userId) ?? [];
-    u.push(next.id);
+    u.push({ ids: redone, group: step.group });
     this.undoStacks.set(actor.userId, u);
-    this.hooks.onCommitted({ entry: next, ops, actor, type: "history.redo" });
-    return next;
+    return next as HistoryEntry;
   }
 
   /** History panel Revert (DM): undo with force semantics. */

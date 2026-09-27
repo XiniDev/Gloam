@@ -1,0 +1,91 @@
+import { Hand, MousePointer2 } from "lucide-react";
+import { type ReactElement, useEffect } from "react";
+import { boardApi } from "../board/boardApi.ts";
+import { useTable } from "../net/table.ts";
+import { type Tool, useUi } from "../state/ui.ts";
+import { IconButton } from "../ui/Button.tsx";
+import { hudOrder } from "./Intro.tsx";
+
+/** Quick Unit glyph: a coin with a plus (custom, since creatures are a game concept; SPEC §27.6). */
+function QuickUnitGlyph() {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      aria-hidden
+    >
+      <ellipse cx="11" cy="15" rx="7.5" ry="3.2" />
+      <path d="M3.5 15v2.2c0 1.8 3.4 3.2 7.5 3.2s7.5-1.4 7.5-3.2V15" />
+      <path d="M11 6.5a2.2 2.2 0 1 0 0-.01M7.5 12.5c.6-1.8 2-2.8 3.5-2.8s2.9 1 3.5 2.8" />
+      <path d="M19 3v5M16.5 5.5h5" />
+    </svg>
+  );
+}
+
+const TOOLS: { id: Tool; label: string; key: string; icon: ReactElement }[] = [
+  { id: "select", label: "Select", key: "V", icon: <MousePointer2 size={19} /> },
+  { id: "pan", label: "Pan", key: "H", icon: <Hand size={19} /> },
+];
+
+/** The board's left toolbar (SPEC §29.3). Tools arrive with their phases; only working ones are shown. */
+export function LeftToolbar() {
+  const tool = useUi((s) => s.tool);
+  const role = useTable((s) => s.me?.role);
+  const dm = role === "dm" || role === "admin";
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return;
+      if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+      if (e.code === "KeyV") useUi.getState().set({ tool: "select" });
+      else if (e.code === "KeyH") useUi.getState().set({ tool: "pan" });
+      else if (e.code === "KeyQ" && dm) openQuickUnit();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [dm]);
+
+  return (
+    <nav
+      {...hudOrder(1)}
+      aria-label="Board tools"
+      data-hud="toolbar"
+      className="panel pointer-events-auto absolute left-3 top-1/2 z-30 flex w-[52px] -translate-y-1/2 flex-col items-center gap-1 p-1.5"
+    >
+      {TOOLS.map((t) => (
+        <IconButton
+          key={t.id}
+          label={t.label}
+          shortcut={t.key}
+          active={tool === t.id}
+          onClick={() => useUi.getState().set({ tool: t.id })}
+        >
+          {t.icon}
+        </IconButton>
+      ))}
+      {dm ? (
+        <>
+          <span className="my-1 h-px w-7 bg-[var(--line-soft)]" aria-hidden />
+          <IconButton label="Quick unit" shortcut="Q" tone="accent" onClick={openQuickUnit}>
+            <QuickUnitGlyph />
+          </IconButton>
+        </>
+      ) : null}
+    </nav>
+  );
+}
+
+/** Opens the Quick Unit dialog, placing the unit at the cursor (or the view's centre). */
+export function openQuickUnit(): void {
+  const el = boardApi.element;
+  const r = el?.getBoundingClientRect();
+  const at = boardApi.cursor ??
+    (r ? boardApi.groundAt(r.left + r.width / 2, r.top + r.height / 2) : null) ?? { x: 0, y: 0 };
+  useUi.getState().set({ quickUnit: at });
+}

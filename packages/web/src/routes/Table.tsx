@@ -1,10 +1,22 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router";
+import { Dock } from "../hud/Dock.tsx";
+import { MapToolsPanel } from "../hud/dm/MapToolsPanel.tsx";
+import { NewSceneWizard } from "../hud/dm/NewSceneWizard.tsx";
+import { Intro, useIntro } from "../hud/Intro.tsx";
 import { dismissKnockCard, showKnockCard } from "../hud/KnockCards.tsx";
+import { LeftToolbar } from "../hud/LeftToolbar.tsx";
+import { LoadingBar } from "../hud/LoadingBar.tsx";
+import { PrepBanner } from "../hud/PrepBanner.tsx";
+import { QuickUnitDialog } from "../hud/QuickUnitDialog.tsx";
+import { RadialMenu } from "../hud/RadialMenu.tsx";
+import { SceneTransition } from "../hud/SceneTransition.tsx";
 import { TopBar } from "../hud/TopBar.tsx";
+import { useUndoKeys } from "../hud/useUndoKeys.ts";
 import { joinErrorCode } from "../net/colyseus.ts";
 import { connectTable, disconnectTable, request, tableEvents, useTable } from "../net/table.ts";
 import { useSession } from "../state/session.ts";
+import { useUi } from "../state/ui.ts";
 import { ConnectionBanner } from "../ui/ConnectionBanner.tsx";
 import { FullScreenLoader } from "../ui/FullScreenLoader.tsx";
 import { toast } from "../ui/Toast.tsx";
@@ -16,6 +28,9 @@ export default function TableRoute() {
   const refresh = useSession((s) => s.refresh);
   const connection = useTable((s) => s.connection);
   const me = useTable((s) => s.me);
+  const introPhase = useIntro((s) => s.phase);
+  useUndoKeys();
+  const introReduced = useIntro((s) => s.reduced);
   useEffect(() => {
     let cancelled = false;
     const offs: (() => void)[] = [];
@@ -81,10 +96,37 @@ export default function TableRoute() {
 
   if (!me) return <FullScreenLoader label="Opening the door…" />;
   return (
-    <div className="relative h-[100dvh] w-full overflow-hidden bg-bg">
+    <div
+      className="relative h-[100dvh] w-full overflow-hidden bg-bg"
+      data-intro={introPhase === "done" ? undefined : introPhase}
+      data-intro-reduced={introReduced || undefined}
+    >
       <TableStage />
+      <SceneTransition />
       <TopBar />
+      <LeftToolbar />
+      <Dock />
+      <PrepBanner />
+      <MapToolsPanel />
+      <LoadingBar />
+      <RadialMenu />
+      <QuickUnitDialog />
+      <SceneWizardHost />
       <ConnectionBanner connection={connection} />
+      <Intro />
     </div>
+  );
+}
+
+/** The New scene wizard, opened from the Scenes panel or by dropping a Library map on the board (SPEC §8.3). */
+function SceneWizardHost() {
+  const wizard = useUi((s) => s.sceneWizard);
+  const dm = useTable((s) => s.me?.role === "dm" || s.me?.role === "admin");
+  return (
+    <NewSceneWizard
+      open={Boolean(wizard) && dm}
+      initialAssetId={typeof wizard === "object" && wizard ? wizard.assetId : undefined}
+      onClose={() => useUi.getState().set({ sceneWizard: null })}
+    />
   );
 }

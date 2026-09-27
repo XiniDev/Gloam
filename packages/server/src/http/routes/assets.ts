@@ -235,6 +235,30 @@ export function assetRoutes(app: Express, ctx: ServerContext): void {
     }),
   );
 
+  /** One asset's description (variants, sizes, mini bounds) for whoever may read it; 404 otherwise. */
+  app.get(
+    "/api/assets/:assetId",
+    route((req, res) => {
+      const a = requireSession(req);
+      const id = z
+        .string()
+        .regex(/^ast_[A-Za-z0-9]{8,32}$/)
+        .parse(req.params.assetId);
+      const asset = ctx.assets.get(id);
+      const readable =
+        asset &&
+        ctx.assets.canRead(asset, {
+          userId: a.user.id,
+          kind: a.session.kind as "admin" | "player",
+          status: a.session.status ?? undefined,
+          tableSessionNo: a.session.tableSessionNo,
+        });
+      const dto = readable ? ctx.assets.dtoById(id) : null;
+      if (!dto) throw new GloamError("NOT_FOUND");
+      ok(res, dto);
+    }),
+  );
+
   /**
    * Serving (SPEC §21.6): member-only, immutable, fixed Content-Type from the database, nosniff, a sandbox CSP
    * (AC-AST-05). Anything not readable answers 404, so asset ids can't be probed.

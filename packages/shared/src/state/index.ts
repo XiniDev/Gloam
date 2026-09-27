@@ -86,6 +86,7 @@ export const Token = schema(
     pos: V2,
     elevation: t.float32(),
     rotation: t.float32(),
+    size: t.string(), // size category (mini height; SPEC §8.5)
     sizeFt: t.float32(),
     mode: t.string(),
     assetId: t.string(),

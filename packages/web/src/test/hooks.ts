@@ -22,7 +22,7 @@ declare global {
   }
 }
 
-const providers: Record<string, () => unknown> = {};
+const providers: Record<string, (...args: unknown[]) => unknown> = {};
 
 export function installTestHooks(): void {
   if (!__GLOAM_TEST__) return;
@@ -35,9 +35,9 @@ export function installTestHooks(): void {
 }
 
 /** Registers a named test accessor (e.g. the board's visible token ids in Phase 2). */
-export function provideTestHook(name: string, fn: () => unknown): void {
+export function provideTestHook<A extends unknown[]>(name: string, fn: (...args: A) => unknown): void {
   if (!__GLOAM_TEST__ || !window.__gloam) return;
-  providers[name] = fn;
+  providers[name] = fn as (...args: unknown[]) => unknown;
   window.__gloam[name] = fn;
 }
 

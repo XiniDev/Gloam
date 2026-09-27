@@ -3,6 +3,7 @@ import { StateView } from "@colyseus/schema";
 import {
   AdminBan,
   AdminUnban,
+  CameraSpotlight,
   ClockSync,
   GloamError,
   HandToggle,
@@ -137,6 +138,14 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
         this.requireDm(auth);
         this.prepSubs.delete(client);
       }),
+      "camera.spotlight": def(CameraSpotlight, MESSAGE_RATES["camera.spotlight"], ({ auth }, p) => {
+        this.requireDm(auth);
+        for (const c of this.clients) {
+          const role = (c.auth as ClientAuth | undefined)?.role;
+          if (role !== "admin" && role !== "dm")
+            c.send("camera.spotlight", { x: p.x, y: p.y, by: auth.name });
+        }
+      }),
       "asset.list": def(LibraryQuery, MESSAGE_RATES["asset.list"], ({ auth }, p) => {
         const usage = this.assetUsage();
         return roomCtx()
@@ -168,12 +177,12 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
         { capacity: 5, perSecond: 5 },
         ({ auth }, p) => {
           const e = this.bus.undo(this.actorFor(auth), { force: p.force });
-          return { entryId: e.id };
+          return { entryId: e.id, summary: e.summary };
         },
       ),
       "history.redo": def(z.strictObject({}), { capacity: 5, perSecond: 5 }, ({ auth }) => {
         const e = this.bus.redo(this.actorFor(auth));
-        return { entryId: e.id };
+        return { entryId: e.id, summary: e.summary };
       }),
     },
     roomCtx().log,
@@ -252,6 +261,8 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
         deleted: s.deletedAt !== null,
         tokenCount: this.model.inScene("token", s.id).length,
         updatedAt: s.updatedAt,
+        calibration: s.calibration,
+        bounds: s.bounds,
       }));
   }
 
@@ -332,13 +343,16 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
         COMMAND_RATES[d.type] ?? { capacity: 10, perSecond: 10 },
         ({ auth }, raw) => {
           const payload = raw && typeof raw === "object" ? { ...(raw as Record<string, unknown>) } : raw;
-          let cid: string | undefined;
-          if (payload && typeof payload === "object" && "cid" in payload) {
-            const c = (payload as { cid?: unknown }).cid;
-            if (typeof c === "string" && /^[A-Za-z0-9_-]{8,40}$/.test(c)) cid = c;
-            delete (payload as { cid?: unknown }).cid;
-          }
-          return this.bus.execute(d.type, payload, this.actorFor(auth), { cid });
+          // Envelope fields: `cid` (idempotency) and `undoGroup` (consecutive commands that undo as one step).
+          const envelope = (k: "cid" | "undoGroup") => {
+            if (!payload || typeof payload !== "object" || !(k in payload)) return undefined;
+            const v = (payload as Record<string, unknown>)[k];
+            delete (payload as Record<string, unknown>)[k];
+            return typeof v === "string" && /^[A-Za-z0-9_-]{8,40}$/.test(v) ? v : undefined;
+          };
+          const cid = envelope("cid");
+          const undoGroup = envelope("undoGroup");
+          return this.bus.execute(d.type, payload, this.actorFor(auth), { cid, undoGroup });
         },
       );
     }

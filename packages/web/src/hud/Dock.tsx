@@ -1,0 +1,130 @@
+import { Users } from "lucide-react";
+import { lazy, type ReactElement, Suspense, useEffect, useRef, useState } from "react";
+import { useTable } from "../net/table.ts";
+import { pendingCount, useLibrary } from "../state/library.ts";
+import { type DockTab, useUi } from "../state/ui.ts";
+import { IconButton } from "../ui/Button.tsx";
+import { ErrorBoundary } from "../ui/ErrorBoundary.tsx";
+import { Sparkle } from "../ui/ornaments.tsx";
+import { hudOrder } from "./Intro.tsx";
+import { PartyPanel } from "./PartyPanel.tsx";
+
+const DmPanel = lazy(() => import("./dm/DmPanel.tsx"));
+
+const WIDTH_KEY = "gloam.dock.width";
+const MIN_W = 320;
+const MAX_W = 520;
+
+function loadWidth(): number {
+  try {
+    const n = Number(globalThis.localStorage?.getItem(WIDTH_KEY));
+    return Number.isFinite(n) && n >= MIN_W && n <= MAX_W ? n : 380;
+  } catch {
+    return 380;
+  }
+}
+
+/**
+ * The right dock (SPEC §28 Dock, §29.3): an icon rail and a resizable panel (320–520 px, remembered on this device).
+ * Phase 2 has the party and, for DMs, the DM panel (scenes, library, approvals); sheet, spells and the log arrive
+ * with their phases.
+ */
+export function Dock() {
+  const tab = useUi((s) => s.dock);
+  const role = useTable((s) => s.me?.role);
+  const dm = role === "dm" || role === "admin";
+  const pending = useLibrary(pendingCount);
+  const [width, setWidth] = useState(loadWidth);
+  const drag = useRef<{ x: number; w: number } | null>(null);
+
+  useEffect(() => {
+    if (tab === "dm" && !dm) useUi.getState().set({ dock: null });
+  }, [tab, dm]);
+
+  const tabs: { id: DockTab; label: string; icon: ReactElement; badge?: number }[] = [
+    { id: "party", label: "Party", icon: <Users size={19} /> },
+    ...(dm ? [{ id: "dm" as const, label: "DM panel", icon: <Sparkle size={18} />, badge: pending }] : []),
+  ];
+
+  const toggle = (id: DockTab) => useUi.getState().set({ dock: tab === id ? null : id });
+
+  return (
+    <aside
+      {...hudOrder(2)}
+      className="pointer-events-none absolute bottom-3 right-3 top-[68px] z-30 flex items-stretch gap-2"
+      data-hud="dock"
+    >
+      {tab ? (
+        <section
+          className="panel pointer-events-auto relative flex min-w-0 flex-col overflow-hidden"
+          style={{ width }}
+          aria-label={tab === "dm" ? "DM panel" : "Party"}
+        >
+          {/* Resize handle on the panel's left edge. */}
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize panel"
+            aria-valuemin={MIN_W}
+            aria-valuemax={MAX_W}
+            aria-valuenow={width}
+            tabIndex={0}
+            className="absolute inset-y-0 left-0 z-10 w-1.5 cursor-ew-resize hover:bg-[var(--glow-brass-soft)] focus-visible:bg-[var(--glow-brass-soft)]"
+            onPointerDown={(e) => {
+              drag.current = { x: e.clientX, w: width };
+              (e.target as HTMLElement).setPointerCapture(e.pointerId);
+            }}
+            onPointerMove={(e) => {
+              if (!drag.current) return;
+              setWidth(Math.min(MAX_W, Math.max(MIN_W, drag.current.w + (drag.current.x - e.clientX))));
+            }}
+            onPointerUp={() => {
+              drag.current = null;
+              try {
+                globalThis.localStorage?.setItem(WIDTH_KEY, String(width));
+              } catch {
+                // storage blocked: width lasts for this page only
+              }
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "ArrowLeft") setWidth((w) => Math.min(MAX_W, w + 20));
+              if (e.key === "ArrowRight") setWidth((w) => Math.max(MIN_W, w - 20));
+            }}
+          />
+          <ErrorBoundary where={tab}>
+            {tab === "party" ? <PartyPanel /> : null}
+            {tab === "dm" && dm ? (
+              <Suspense fallback={null}>
+                <DmPanel />
+              </Suspense>
+            ) : null}
+          </ErrorBoundary>
+        </section>
+      ) : null}
+      <nav
+        aria-label="Panels"
+        className="panel pointer-events-auto flex flex-col items-center gap-1 self-start p-1.5"
+      >
+        {tabs.map((t) => (
+          <div key={t.id} className="relative">
+            <IconButton
+              label={t.badge ? `${t.label} (${t.badge} waiting for approval)` : t.label}
+              active={tab === t.id}
+              onClick={() => toggle(t.id)}
+            >
+              {t.icon}
+            </IconButton>
+            {t.badge ? (
+              <span
+                className="tabular pointer-events-none absolute -right-1 -top-1 grid h-[18px] min-w-[18px] place-items-center rounded-full bg-accent px-1 text-12 font-bold text-ink-950"
+                aria-hidden
+              >
+                {t.badge}
+              </span>
+            ) : null}
+          </div>
+        ))}
+      </nav>
+    </aside>
+  );
+}

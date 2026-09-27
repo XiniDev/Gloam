@@ -101,6 +101,42 @@ export const BOARD_COLORS = {
   flameCore: "#FFF3D0",
   flameOuter: "#FF9A3C",
   flameBlue: "#6E8CFF",
+  /** Table wood grain (the oak table the maps lie on). */
+  oakLight: "#7A5234",
+  /** Standee card edge. */
+  cardboard: "#B59A72",
+  /** Token base top. */
+  baseInk: "#141A22",
+  selectGlow: "#E6C98B",
+  hoverRing: "#EDE6D6",
+  /** Procedural floors (SPEC §8.3): base, variation and joint colours per style. */
+  stoneA: "#6E6A63",
+  stoneB: "#8A857C",
+  stoneJoint: "#2B2926",
+  plankA: "#6B4A2E",
+  plankB: "#8A6440",
+  plankJoint: "#2A1A10",
+  grassA: "#3F5A2A",
+  grassB: "#6B8A3A",
+  grassDry: "#8A8A4A",
+  sandA: "#C9A874",
+  sandB: "#E1C595",
+  parchmentA: "#E3D5B3",
+  parchmentB: "#C4AE7E",
+  parchmentStain: "#A88B5A",
+  caveA: "#3A3836",
+  caveB: "#5A5550",
+  caveCrack: "#151413",
+} as const;
+
+/** Colour-blind swaps for dispositions and HP bands (SPEC §27.2, Okabe–Ito). */
+export const CB_BOARD_COLORS = {
+  hostile: "#D55E00",
+  friendly: "#009E73",
+  neutral: "#F0E442",
+  hpHigh: "#009E73",
+  hpMid: "#F0E442",
+  hpLow: "#D55E00",
 } as const;
 
 export const DAMAGE_TYPES = [

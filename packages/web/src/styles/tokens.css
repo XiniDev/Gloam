@@ -112,6 +112,8 @@
   /* translucent tones (derived) */
   --scrim: rgba(7, 9, 12, 0.72);
   --scrim-soft: rgba(7, 9, 12, 0.45);
+  --vignette-edge: rgba(7, 9, 12, 0.62); /* board vignette (SPEC §24.6: subtle) */
+  --selection-fill: rgba(212, 175, 106, 0.12); /* box-selection rectangle */
   --glow-brass: rgba(212, 175, 106, 0.35);
   --glow-brass-soft: rgba(212, 175, 106, 0.14);
   --glow-ember: rgba(240, 138, 75, 0.32);

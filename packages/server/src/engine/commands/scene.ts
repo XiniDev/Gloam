@@ -146,7 +146,11 @@ export const sceneCalibrate: CommandDef<z.infer<typeof SceneCalibrate>> = {
     const ops: Op[] = [];
     if ("transform" in p) {
       if (s.mapKind !== "model") throw new GloamError("INVALID", "Only 3D maps have a transform.");
-      const op = setPathOp("scene", s, ["calibration"], { ...s.calibration, ...p.transform });
+      const op = setPathOp("scene", s, ["calibration"], {
+        ...s.calibration,
+        ...p.transform,
+        ...(p.sliceFt !== undefined ? { sliceFt: p.sliceFt } : {}),
+      });
       if (op) ops.push(op);
       return { ops, summary: `Aligned the 3D map of ${s.name}`, sceneId: s.id };
     }

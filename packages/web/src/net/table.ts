@@ -1,8 +1,15 @@
 import { Callbacks, type Room } from "@colyseus/sdk";
 import type { KnockCard } from "@gloam/shared/protocol";
+import type { PrepPatch, PrepSnapshot } from "@gloam/shared/state";
 import { Table, type TableState } from "@gloam/shared/state";
 import { create } from "zustand";
+import { useEntities } from "../state/entities.ts";
+import { type AssetItem, type SceneListItem, useLibrary } from "../state/library.ts";
+import { useUi } from "../state/ui.ts";
+import { provideTestHook } from "../test/hooks.ts";
+import { preloadAssets } from "./assets.ts";
 import { colyseus, leaveRoom, rejectionMessage } from "./colyseus.ts";
+import { resetSync, syncLive } from "./sync.ts";
 
 export interface PresenceView {
   userId: string;
@@ -54,6 +61,8 @@ export interface TableEventMap {
   "hand.raised": { userId: string; name: string };
   left: { code: number };
   message: { type: string; payload: unknown };
+  "asset.pending": AssetItem;
+  spotlight: { x: number; y: number; by: string };
 }
 type EventName = keyof TableEventMap;
 type Listener<K extends EventName> = (payload: TableEventMap[K]) => void;
@@ -121,11 +130,35 @@ export function disconnectTable(): void {
   tableEvents.reset();
   if (prev) void prev.joining.then((room) => leaveRoom(room)).catch(() => {});
   useTable.getState().set({ room: null, me: null, presence: [], knocks: [], connection: "connecting" });
+  resetSync();
 }
 
 async function join(campaignId: string): Promise<Room<unknown, TableState>> {
   useTable.getState().set({ connection: "connecting", campaignId });
+  resetSync();
   const room = (await colyseus().joinById(campaignId, {}, Table)) as unknown as Room<unknown, TableState>;
+  // Board data: one store write per server patch (SPEC §13.6).
+  room.onStateChange((state) => {
+    syncLive(state as TableState);
+    // Everyone travelled to the scene this DM was preparing: the server dropped the prep subscription (§13.7).
+    const prep = useEntities.getState().prep;
+    if (prep && prep.scene?.id === (state as TableState).scene?.id) {
+      useEntities.getState().setPrep(null);
+      useUi.getState().set({ prepSceneId: null });
+    }
+  });
+  syncLive(room.state);
+  room.onMessage("prep.patch", (p: PrepPatch) => useEntities.getState().applyPrepPatch(p));
+  room.onMessage("scene.list", (list: SceneListItem[]) => useLibrary.getState().setScenes(list));
+  room.onMessage("asset.changed", (m: { asset: AssetItem }) => useLibrary.getState().upsert([m.asset]));
+  room.onMessage("asset.pending", (m: { asset: AssetItem }) => {
+    useLibrary.getState().upsert([m.asset]);
+    tableEvents.emit("asset.pending", m.asset);
+  });
+  room.onMessage("scene.preload", (m: { assetIds: string[] }) => preloadAssets(m.assetIds));
+  room.onMessage("camera.spotlight", (m: { x: number; y: number; by: string }) =>
+    tableEvents.emit("spotlight", m),
+  );
   const cb = Callbacks.get<TableState>(room as never);
   const presence = new Map<string, PresenceView>();
   const push = () =>
@@ -196,6 +229,8 @@ async function join(campaignId: string): Promise<Room<unknown, TableState>> {
     tableEvents.emit("left", { code });
   });
   useTable.getState().set({ room });
+  // Test builds only (SPEC §23.7): journeys drive commands through the same room and permissions as the UI.
+  provideTestHook("request", (type: string, payload: unknown) => request(type, payload));
   return room;
 }
 
@@ -229,4 +264,26 @@ export async function tableReady(campaignId: string, timeoutMs: number): Promise
       }),
   );
   await Promise.race([joined.catch(() => {}), new Promise((r) => setTimeout(r, timeoutMs))]);
+}
+
+/**
+ * DM prep view (SPEC §13.7): subscribe to a non-active scene and load its snapshot; `null` returns to the live scene.
+ * Opening the active scene simply shows it live (the server answers null).
+ */
+export async function openPrep(sceneId: string | null): Promise<void> {
+  const ui = useUi.getState();
+  if (!sceneId) {
+    if (ui.prepSceneId) await request("prep.close", {}).catch(() => {});
+    useEntities.getState().setPrep(null);
+    ui.set({ prepSceneId: null, selection: [] });
+    return;
+  }
+  const snap = await request<PrepSnapshot | null>("prep.open", { sceneId });
+  useEntities.getState().setPrep(snap);
+  ui.set({ prepSceneId: snap ? sceneId : null, selection: [] });
+}
+
+/** Keeps the scene list fresh for the DM panel. */
+export async function refreshScenes(): Promise<void> {
+  useLibrary.getState().setScenes(await request<SceneListItem[]>("scene.list", {}));
 }

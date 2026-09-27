@@ -65,3 +65,18 @@ PASSING 20/224 · DISPUTED 0 · FAILING 204
 ```
 PASSING 28/224 · DISPUTED 0 · FAILING 196
 ```
+
+## 2026-09-27 — P2 in progress: server done, board + HUD being built
+
+- Committed: P2 server core (scenes, tokens, state projector, per-client views, prep view) and the asset pipeline
+  (uploads, processor child, serving, library). 35/224 passing (P1 28/28; AST-01/02/03/04/05/07; PER-03).
+- Board (uncommitted, renders cleanly under software GL): table environment, image/GLB/procedural maps, camera
+  rig (presets, Spotlight, memory), performance tiers + governor, post-FX, tokens (model/standee/coin/auto,
+  bases, overlays, HP ghost bar, selection, hidden badge).
+- HUD (uncommitted, typechecks): left toolbar, dock (Party, DM: Scenes / Library / Approvals), new-scene wizard
+  with calibration, radial menu, Quick Unit, settings popover (volumes, graphics pin, UI size, motion, colour-blind,
+  DM camera opt-out), prep banner, scene travel transition (old scene held while fading to black), parchment
+  loading bar, first-load intro with staggered HUD, Library → board drag and drop, Pan tool.
+- Dev server: `pnpm dev` now runs on 4747 for live watching. It watches only server/shared sources; `--watch`
+  on the whole import graph restart-looped because Vite writes temporary modules. Tests keep to random ports.
+- Next: 3D map alignment + Generate walls (SCN-04), DM walls overlay, then P2 E2E journeys and marking ACs.

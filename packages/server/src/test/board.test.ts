@@ -290,4 +290,63 @@ describe("P2 — scenes, tokens and per-client views (SCN/TOK)", () => {
     expect(pw.get("wal_plainDoor001")).toMatchObject({ kind: "door", door: "open" });
     expect(dm.state.walls.get("wal_secretDoor01")).toMatchObject({ dmKind: "secret", dmHidden: false });
   });
+
+  it("AC-SCN-04 server: Generate walls arrives in 500-wall batches sharing an undoGroup and undoes/redoes as one step", async () => {
+    const r = room();
+    const before = [...r.model.inScene("wall", sceneB)].length;
+    const walls = (n: number, row: number) =>
+      Array.from({ length: n }, (_, i) => ({ a: { x: i, y: row }, b: { x: i + 0.8, y: row } }));
+    // The batch limit (§13.5) holds per message.
+    await expect(cmd(dm, "wall.create", { sceneId: sceneB, walls: walls(501, 90) })).rejects.toThrow();
+    const group = "gen_walls_0001";
+    for (const [n, row] of [
+      [500, 100],
+      [500, 101],
+      [200, 102],
+    ] as const)
+      await cmd(dm, "wall.create", { sceneId: sceneB, walls: walls(n, row), undoGroup: group });
+    expect([...r.model.inScene("wall", sceneB)].length).toBe(before + 1200);
+    await waitFor(() => player.state.walls?.size === 3 + 1200);
+    await cmd(dm, "history.undo", {});
+    expect([...r.model.inScene("wall", sceneB)].length).toBe(before);
+    await waitFor(() => player.state.walls?.size === 3);
+    await cmd(dm, "history.redo", {});
+    expect([...r.model.inScene("wall", sceneB)].length).toBe(before + 1200);
+    await cmd(dm, "history.undo", {});
+    expect([...r.model.inScene("wall", sceneB)].length).toBe(before);
+
+    // Without a group (or with a different command in between) each command is its own step.
+    await cmd(dm, "wall.create", { sceneId: sceneB, walls: walls(2, 110) });
+    await cmd(dm, "wall.create", { sceneId: sceneB, walls: walls(3, 111), undoGroup: "gen_walls_0002" });
+    await cmd(dm, "wall.create", { sceneId: sceneB, walls: walls(4, 112), undoGroup: "gen_walls_0002" });
+    await cmd(dm, "scene.update", { sceneId: sceneB, name: "Crypt (walls)" });
+    await cmd(dm, "wall.create", { sceneId: sceneB, walls: walls(5, 113), undoGroup: "gen_walls_0002" });
+    const count = () => [...r.model.inScene("wall", sceneB)].length;
+    expect(count()).toBe(before + 14);
+    await cmd(dm, "history.undo", {});
+    expect(count()).toBe(before + 9); // the 5 after the rename
+    await cmd(dm, "history.undo", {}); // the rename
+    await cmd(dm, "history.undo", {});
+    expect(count()).toBe(before + 2); // 3 + 4 together
+    await cmd(dm, "history.undo", {});
+    expect(count()).toBe(before);
+    // A grouped step is checked as a whole: when someone else changed part of it, a player's undo is refused and
+    // nothing of the step is undone (no half-applied group).
+    const mine = [...r.model.inScene("token", sceneB)].find((x) => x.name === "Thorin")?.id as string;
+    await cmd(player, "token.update", {
+      tokenId: mine,
+      appearance: { scale: 1.1 },
+      undoGroup: "look_group_01",
+    });
+    await cmd(player, "token.update", { tokenId: mine, name: "Thorin II", undoGroup: "look_group_01" });
+    await cmd(dm, "token.update", { tokenId: mine, name: "Thorin the DM's" });
+    await expect(cmd(player, "history.undo", {})).rejects.toBeTruthy();
+    expect(r.model.get("token", mine)).toMatchObject({ name: "Thorin the DM's" });
+    expect(r.model.get("token", mine)?.appearance.scale).toBe(1.1);
+
+    // A malformed group is ignored (not an error), like a malformed cid.
+    await cmd(dm, "wall.create", { sceneId: sceneB, walls: walls(1, 114), undoGroup: "x" });
+    await cmd(dm, "history.undo", {});
+    expect(count()).toBe(before);
+  });
 });

@@ -55,6 +55,8 @@ export const SceneCalibrate = z.union([
       rotationYDeg: z.number().min(-360).max(360),
       scale: z.number().positive().max(1000),
     }),
+    /** Generate walls' slice height, remembered per 3D map (SPEC §8.3: 5 ft, configurable 1–20 ft). */
+    sliceFt: z.number().min(1).max(20).optional(),
   }),
 ]);
 
@@ -205,6 +207,41 @@ export const TokenDuplicate = z.strictObject({
   offset: Vec2In.optional(),
   at: Vec2In.optional(),
 });
+
+/** Controller commands (SPEC §13.5): raise/lower in 5-ft steps, face a direction. */
+export const TokenElevation = z.strictObject({
+  tokenId: Id,
+  elevation: z.number().min(-1000).max(10_000).optional(),
+  delta: z.number().min(-1000).max(1000).optional(),
+});
+export const TokenFacing = z.strictObject({
+  tokenId: Id,
+  rotationDeg: z.number().min(-3600).max(3600).optional(),
+  delta: z.number().min(-360).max(360).optional(),
+});
+
+export const WALL_KINDS = ["wall", "door", "window", "curtain", "invisible", "secret"] as const;
+export const WallIn = z.strictObject({
+  a: Vec2In,
+  b: Vec2In,
+  kind: z.enum(WALL_KINDS).default("wall"),
+  doorState: z.enum(["closed", "open", "locked"]).nullable().optional(),
+  hidden: z.boolean().default(false),
+});
+/** `wall.create`: one or many segments (batches ≤ 500, SPEC §13.5). */
+export const WallCreate = z.strictObject({ sceneId: Id, walls: z.array(WallIn).min(1).max(500) });
+export const WallUpdate = z.strictObject({
+  wallId: Id,
+  a: Vec2In.optional(),
+  b: Vec2In.optional(),
+  kind: z.enum(WALL_KINDS).optional(),
+  doorState: z.enum(["closed", "open", "locked"]).nullable().optional(),
+  hidden: z.boolean().optional(),
+});
+export const WallDelete = z.strictObject({ wallIds: z.array(Id).min(1).max(500) });
+
+/** DM Spotlight (SPEC §8.4): pull opted-in players' cameras to a point over 600 ms. */
+export const CameraSpotlight = z.strictObject({ x: z.number().finite(), y: z.number().finite() });
 
 export type SceneCreate = z.infer<typeof SceneCreate>;
 export type SceneUpdate = z.infer<typeof SceneUpdate>;

@@ -239,10 +239,10 @@
       "code": "SCN",
       "phase": "P2",
       "text": "A DM can edit a non-active scene while players remain on the active one; players receive no data from the prep scene (asserted by network inspection in a test).",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/board.test.ts › AC-SCN-03: the DM edits a non-active scene through prep.open while a player stays on the active one; the player's raw WebSocket frames (ws-recorder) contain none of the prep scene's ids, names or entities, and its state never changes; the DM receives prep.patch updates",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T14:53:50.446Z"
     },
     {
       "id": "AC-SCN-04",

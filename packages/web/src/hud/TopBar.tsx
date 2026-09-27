@@ -2,6 +2,8 @@ import { useNavigate } from "react-router";
 import { type PresenceView, useTable } from "../net/table.ts";
 import { Sparkle, WaxSeal } from "../ui/ornaments.tsx";
 import { SoundChip } from "../ui/SoundChip.tsx";
+import { hudOrder } from "./Intro.tsx";
+import { SettingsPopover } from "./SettingsPopover.tsx";
 
 function Initials({ p }: { p: PresenceView }) {
   const letters = p.name
@@ -59,7 +61,10 @@ export function TopBar() {
   const presence = useTable((s) => s.presence);
   const me = useTable((s) => s.me);
   return (
-    <header className="pointer-events-none absolute inset-x-0 top-0 z-40 flex h-14 items-center gap-3 px-3 sm:px-4">
+    <header
+      {...hudOrder(0)}
+      className="pointer-events-none absolute inset-x-0 top-0 z-40 flex h-14 items-center gap-3 px-3 sm:px-4"
+    >
       <div className="pointer-events-auto flex min-w-0 items-center gap-2 rounded-[var(--radius-control)] bg-[var(--scrim-soft)] px-3 py-1.5 backdrop-blur-[3px]">
         <Sparkle size={16} />
         <h1 className="truncate text-18 text-bone">{name || "The table"}</h1>
@@ -78,6 +83,7 @@ export function TopBar() {
             ))}
         </ul>
         <SoundChip />
+        <SettingsPopover />
         {me?.role === "admin" ? (
           <button
             type="button"

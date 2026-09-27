@@ -63,6 +63,8 @@ export interface TokenView {
   pos: V2View;
   elevation: number;
   rotation: number;
+  /** Size category: tiny … gargantuan. */
+  size: string;
   sizeFt: number;
   mode: string;
   assetId: string;
