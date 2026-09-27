@@ -197,6 +197,18 @@ export function rectPolygon(x: number, y: number, w: number, h: number): P[] {
   ];
 }
 
+/**
+ * A circle as an n-gon. `outside` puts the edges on the circle (the polygon contains it — for anything that must
+ * block at least the whole circle); otherwise the vertices are on it.
+ */
+export function circlePolygon(c: P, r: number, n = 48, outside = false): P[] {
+  const R = outside ? r / Math.cos(Math.PI / n) : r;
+  return Array.from({ length: n }, (_, k) => {
+    const a = (k / n) * Math.PI * 2;
+    return { x: c.x + Math.cos(a) * R, y: c.y + Math.sin(a) * R };
+  });
+}
+
 /** The point at arc length s along a polyline (clamped to its ends). */
 export function pointAtLength(points: P[], s: number): { point: P; index: number } {
   let acc = 0;

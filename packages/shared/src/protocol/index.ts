@@ -127,6 +127,7 @@ export const MESSAGE_RATES = {
   "scene.preload": rate(1),
   "asset.list": rate(5, 15),
   "camera.spotlight": rate(1, 2), // Library filters and search-as-you-type come in bursts
+  "move.preview": rate(15, 20),
 } as const satisfies Record<string, RateSpec>;
 
 export * from "./commands.ts";

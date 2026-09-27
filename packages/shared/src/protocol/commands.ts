@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { CONDITION_IDS, DAMAGE_TYPES, SIZES } from "../constants.ts";
+import { ABILITIES, CONDITION_IDS, DAMAGE_TYPES, SIZES } from "../constants.ts";
 
 /** Command payload schemas (SPEC §13.5). All strict: unknown keys are rejected (AC-SEC-01). */
 
@@ -239,6 +239,75 @@ export const WallUpdate = z.strictObject({
   hidden: z.boolean().optional(),
 });
 export const WallDelete = z.strictObject({ wallIds: z.array(Id).min(1).max(500) });
+/**
+ * `door.toggle` (SPEC §8.7 Doors): open/close for players whose token is within 5 ft of the door; DMs also lock and
+ * unlock, anywhere. "toggle" opens a shut door and shuts an open one.
+ */
+export const DoorToggle = z.strictObject({
+  wallId: Id,
+  action: z.enum(["toggle", "open", "close", "lock", "unlock"]).default("toggle"),
+});
+
+export const ZONE_KINDS = ["difficult", "water", "hazard", "impassable", "label"] as const;
+export const ZoneShapeIn = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("polygon"), points: z.array(Vec2In).min(3).max(256) }),
+  z.strictObject({ kind: z.literal("rect"), x: Coord, y: Coord, w: Ft.min(0.1), h: Ft.min(0.1) }),
+  z.strictObject({ kind: z.literal("circle"), x: Coord, y: Coord, r: Ft.min(0.1) }),
+]);
+export const ZoneTriggerIn = z.strictObject({
+  when: z.enum(["enter", "startTurn", "endTurn"]),
+  label: z.string().trim().min(1).max(80),
+  save: z
+    .strictObject({
+      ability: z.enum(ABILITIES),
+      dc: z.number().int().min(1).max(40),
+      onSuccess: z.enum(["half", "none"]),
+    })
+    .optional(),
+  damage: z
+    .strictObject({ formula: z.string().trim().min(1).max(60), type: z.enum(DAMAGE_TYPES) })
+    .optional(),
+});
+export const ZoneIn = z.strictObject({
+  kind: z.enum(ZONE_KINDS),
+  shape: ZoneShapeIn,
+  label: z.string().trim().max(80).default(""),
+  color: Hex.optional(),
+  visible: z.boolean().default(true),
+  triggers: z.array(ZoneTriggerIn).max(6).default([]),
+  note: z.string().max(2000).default(""),
+});
+/** `zone.create` (DM): one zone (SPEC §8.7 Zones). */
+export const ZoneCreate = ZoneIn.extend({ sceneId: Id });
+export const ZoneUpdate = z.strictObject({
+  zoneId: Id,
+  kind: z.enum(ZONE_KINDS).optional(),
+  shape: ZoneShapeIn.optional(),
+  label: z.string().trim().max(80).optional(),
+  color: Hex.optional(),
+  visible: z.boolean().optional(),
+  triggers: z.array(ZoneTriggerIn).max(6).optional(),
+  note: z.string().max(2000).optional(),
+});
+export const ZoneDelete = z.strictObject({ zoneIds: z.array(Id).min(1).max(500) });
+
+export const MOVE_MODES = ["walk", "fly", "swim", "climb", "burrow"] as const;
+/**
+ * `move.commit` (SPEC §13.5, §16.5): a token's move along a path the client previewed — routed, freehand or through
+ * waypoints. Points in feet, the first within 0.5 ft of the token; `elevations` (one per point) for flying.
+ */
+export const MoveCommit = z.strictObject({
+  tokenId: Id,
+  points: z.array(Vec2In).min(2).max(256),
+  mode: z.enum(MOVE_MODES).default("walk"),
+  elevations: z.array(z.number().finite().min(-1000).max(10_000)).max(256).optional(),
+});
+/** `move.preview` (msg, ≤ 15/s): the path a controller is dragging, relayed to everyone who can see the token. */
+export const MovePreview = z.strictObject({
+  tokenId: Id,
+  points: z.array(Vec2In).max(64),
+  cost: z.number().finite().min(0).max(100_000),
+});
 
 /** DM Spotlight (SPEC §8.4): pull opted-in players' cameras to a point over 600 ms. */
 export const CameraSpotlight = z.strictObject({ x: z.number().finite(), y: z.number().finite() });
@@ -246,4 +315,6 @@ export const CameraSpotlight = z.strictObject({ x: z.number().finite(), y: z.num
 export type SceneCreate = z.infer<typeof SceneCreate>;
 export type SceneUpdate = z.infer<typeof SceneUpdate>;
 export type TokenCreate = z.infer<typeof TokenCreate>;
+export type MoveCommit = z.infer<typeof MoveCommit>;
+export type MovePreview = z.infer<typeof MovePreview>;
 export type TokenUpdate = z.infer<typeof TokenUpdate>;

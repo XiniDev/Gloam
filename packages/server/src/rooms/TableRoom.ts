@@ -9,14 +9,16 @@ import {
   HandToggle,
   LobbyDecide,
   MESSAGE_RATES,
+  MovePreview,
   SceneRef,
   TableKick,
 } from "@gloam/shared/protocol";
+import { controlsToken } from "@gloam/shared/rules";
 import { type PrepSnapshot, Presence, Table, type TableState } from "@gloam/shared/state";
 import { z } from "zod";
 import { renderDto } from "../assets/service.ts";
 import { LibraryQuery } from "../assets/types.ts";
-import { type CommandActor, CommandBus, type CommitInfo } from "../engine/commandBus.ts";
+import { type CommandActor, CommandBus, type CommitInfo, type RoomEvent } from "../engine/commandBus.ts";
 import { CampaignModel } from "../engine/model.ts";
 import { ALL_COMMANDS, COMMAND_RATES, registerCommands } from "../engine/registry.ts";
 import {
@@ -139,6 +141,14 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
         this.requireDm(auth);
         this.prepSubs.delete(client);
       }),
+      // A controller's drag, relayed to everyone else who can see the token (SPEC §8.6 Others see planning).
+      "move.preview": def(MovePreview, MESSAGE_RATES["move.preview"], ({ client, auth }, p) => {
+        const t = this.model.get("token", p.tokenId);
+        if (!t || t.sceneId !== this.projector.activeSceneId) throw new GloamError("NOT_FOUND");
+        if (!controlsToken(auth.role, auth.userId, t)) throw new GloamError("FORBIDDEN");
+        const color = roomCtx().profiles.get(auth.userId)?.color ?? "";
+        this.toViewersOf(p.tokenId, "move.preview", { ...p, by: auth.userId, color }, client);
+      }),
       "camera.spotlight": def(CameraSpotlight, MESSAGE_RATES["camera.spotlight"], ({ auth }, p) => {
         this.requireDm(auth);
         for (const c of this.clients) {
@@ -210,7 +220,10 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
     const model = CampaignModel.load(ctx.db, this.campaignId);
     if (!model) throw new Error(`campaign ${this.campaignId} not found`);
     this.model = model;
-    this.bus = new CommandBus(ctx, model, { onCommitted: (info) => this.onCommitted(info) });
+    this.bus = new CommandBus(ctx, model, {
+      onCommitted: (info) => this.onCommitted(info),
+      onEvents: (events) => this.deliver(events),
+    });
     registerCommands(this.bus);
     this.syncCampaign();
     this.views?.detachAll();
@@ -480,6 +493,27 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
   }
 
   // ── TableRoomApi ──────────────────────────────────────────────────────────────────────────────────────
+
+  /** Delivers command events (§14.1 post-commit): to a token's viewers, to users, or to the DMs. */
+  private deliver(events: RoomEvent[]): void {
+    for (const e of events) {
+      if ("viewersOf" in e.to) this.toViewersOf(e.to.viewersOf, e.name, e.payload);
+      else if ("users" in e.to)
+        for (const u of e.to.users)
+          for (const c of this.clientsByUser.get(u) ?? []) c.send(e.name, e.payload);
+      else this.toDms(e.name, e.payload);
+    }
+  }
+
+  /** Sends to every client whose view holds the token (DMs always), optionally skipping one (the sender). */
+  toViewersOf(tokenId: string, type: string, payload: unknown, except?: Client): void {
+    for (const c of this.clients) {
+      if (c === except) continue;
+      const role = (c.auth as ClientAuth | undefined)?.role;
+      if (role === "admin" || role === "dm" || this.views.grantsOf(c)?.tokens.has(tokenId))
+        c.send(type, payload);
+    }
+  }
 
   toDms(type: string, payload: unknown): void {
     for (const c of this.clients) {

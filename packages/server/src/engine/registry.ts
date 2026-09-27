@@ -1,9 +1,11 @@
 import type { CommandBus, CommandDef } from "./commandBus.ts";
 import { ASSET_COMMANDS } from "./commands/asset.ts";
 import { campaignUpdate } from "./commands/campaign.ts";
+import { MOVE_COMMANDS } from "./commands/move.ts";
 import { SCENE_COMMANDS } from "./commands/scene.ts";
 import { TOKEN_COMMANDS } from "./commands/token.ts";
 import { WALL_COMMANDS } from "./commands/wall.ts";
+import { ZONE_COMMANDS } from "./commands/zone.ts";
 
 /** Every command definition, in one list. Phases add their command modules here. */
 export const ALL_COMMANDS: CommandDef<never, unknown>[] = [
@@ -12,6 +14,8 @@ export const ALL_COMMANDS: CommandDef<never, unknown>[] = [
   ...TOKEN_COMMANDS,
   ...ASSET_COMMANDS,
   ...WALL_COMMANDS,
+  ...MOVE_COMMANDS,
+  ...ZONE_COMMANDS,
 ];
 
 /** Room message rate limits per command (SPEC §13.5); default 10/s. */
@@ -23,6 +27,9 @@ export const COMMAND_RATES: Record<string, { capacity: number; perSecond: number
   ...Object.fromEntries(WALL_COMMANDS.map((d) => [d.type, { capacity: 20, perSecond: 20 }])),
   "token.elevation": { capacity: 10, perSecond: 10 },
   "token.facing": { capacity: 10, perSecond: 10 },
+  ...Object.fromEntries(ZONE_COMMANDS.map((d) => [d.type, { capacity: 20, perSecond: 20 }])),
+  "move.commit": { capacity: 5, perSecond: 5 },
+  "door.toggle": { capacity: 5, perSecond: 5 },
 };
 
 export function registerCommands(bus: CommandBus): void {

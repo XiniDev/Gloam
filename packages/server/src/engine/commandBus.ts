@@ -41,6 +41,8 @@ export interface Plan<R = unknown> {
   result?: R;
   /** Post-commit effects (vision invalidation is automatic; these are messages, sounds, log entries). */
   after?: ((info: CommitInfo) => void)[];
+  /** Messages for the room to deliver after the commit (even when nothing changed, e.g. a move that bumped). */
+  events?: RoomEvent[];
   /** Overrides the definition's undoable flag for this plan (e.g. a no-op). */
   undoable?: boolean;
 }
@@ -77,6 +79,16 @@ export interface CommitInfo {
   type: string;
 }
 
+/**
+ * A message a command asks the room to deliver: to everyone who can see a token (after the commit's view
+ * changes), to particular users (all their tabs), or to the DMs.
+ */
+export interface RoomEvent {
+  name: string;
+  payload: unknown;
+  to: { viewersOf: string; except?: string } | { users: string[] } | { dms: true };
+}
+
 /** Applies one op to a working set of entities (clones), returning which entities changed. */
 type Working = Map<string, { kind: EntityKind; id: string; value: unknown | null }>;
 
@@ -93,6 +105,8 @@ export interface SheetApplier {
 export interface BusHooks {
   /** Called after commit with the ops, before post-commit effects: sync Colyseus state, invalidate vision. */
   onCommitted(info: CommitInfo): void;
+  /** Delivers a command's events (after onCommitted, so views already reflect the change). */
+  onEvents?(events: RoomEvent[], info: CommitInfo): void;
   fog?: FogApplier;
   sheet?: SheetApplier;
 }
@@ -172,6 +186,13 @@ export class CommandBus {
     if (plan.ops.length > 0) {
       this.hooks.onCommitted(info);
       this.postCommitProbe?.(info);
+    }
+    if (plan.events?.length) {
+      try {
+        this.hooks.onEvents?.(plan.events, info);
+      } catch (err) {
+        this.app.log.error({ err, type }, "post-commit events failed");
+      }
     }
     for (const fn of plan.after ?? []) {
       try {

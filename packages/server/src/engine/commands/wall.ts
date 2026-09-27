@@ -1,4 +1,6 @@
-import { WallCreate, WallDelete, WallUpdate } from "@gloam/shared/protocol";
+import { pointSegDist } from "@gloam/shared/geometry";
+import { DoorToggle, GloamError, WallCreate, WallDelete, WallUpdate } from "@gloam/shared/protocol";
+import { controlsToken, isDm } from "@gloam/shared/rules";
 import type { WallEntity } from "@gloam/shared/schemas";
 import type { z } from "zod";
 import { newId } from "../../ids.ts";
@@ -86,4 +88,62 @@ export const wallDelete: CommandDef<z.infer<typeof WallDelete>> = {
   },
 };
 
-export const WALL_COMMANDS = [wallCreate, wallUpdate, wallDelete] as CommandDef<never, unknown>[];
+/** A player can work a door within this many feet of their token's base edge (SPEC §8.7 Doors). */
+export const DOOR_REACH_FT = 5;
+
+/**
+ * `door.toggle` (SPEC §8.7 Doors; AC-WAL-03): players open and close unlocked doors within 5 ft of a token they
+ * control; a locked door refuses them ("It's locked" — the client rattles it). DMs open, close, lock and unlock any
+ * door anywhere, secret doors included. To players a secret door is a wall, so trying one gets exactly a wall's
+ * answer. Movement uses the new state at once (the scene's geometry version changes).
+ */
+export const doorToggle: CommandDef<z.infer<typeof DoorToggle>, { doorState: string }> = {
+  type: "door.toggle",
+  schema: DoorToggle,
+  undoable: true,
+  authorize(ctx, p) {
+    const w = ctx.model.get("wall", p.wallId);
+    const dm = isDm(ctx.actor.role);
+    if (!w || (!dm && w.hidden)) throw new GloamError("NOT_FOUND", "That no longer exists.");
+    if (!(w.kind === "door" || (dm && w.kind === "secret")))
+      throw new GloamError("FORBIDDEN", "That isn't a door.");
+    if (dm) return;
+    if (ctx.actor.role === "spectator") throw new GloamError("FORBIDDEN");
+    if (p.action === "lock" || p.action === "unlock")
+      throw new GloamError("FORBIDDEN", "Only the DM can lock or unlock doors.");
+    const near = ctx.model
+      .inScene("token", w.sceneId)
+      .some(
+        (t) =>
+          controlsToken(ctx.actor.role, ctx.actor.userId, t) &&
+          pointSegDist(t.pos, w.a, w.b) - t.sizeFt / 2 <= DOOR_REACH_FT + 1e-6,
+      );
+    if (!near) throw new GloamError("FORBIDDEN", "Get within 5 ft of the door first.");
+    if (w.doorState === "locked") throw new GloamError("BLOCKED", "It's locked.");
+  },
+  plan(ctx, p) {
+    const w = mustGet(ctx, "wall", p.wallId);
+    const cur = w.doorState ?? "closed";
+    const next =
+      p.action === "open"
+        ? "open"
+        : p.action === "close"
+          ? "closed"
+          : p.action === "lock"
+            ? "locked"
+            : p.action === "unlock"
+              ? "closed"
+              : cur === "open"
+                ? "closed"
+                : "open";
+    const verb = { open: "Opened", closed: cur === "locked" ? "Unlocked" : "Closed", locked: "Locked" }[next];
+    return {
+      ops: setOps("wall", w, { doorState: next }),
+      summary: `${verb} a ${w.kind === "secret" ? "secret door" : "door"}`,
+      sceneId: w.sceneId,
+      result: { doorState: next },
+    };
+  },
+};
+
+export const WALL_COMMANDS = [wallCreate, wallUpdate, wallDelete, doorToggle] as CommandDef<never, unknown>[];

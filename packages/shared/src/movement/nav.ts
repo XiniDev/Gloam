@@ -59,7 +59,7 @@ export class Nav {
         const x = cx + Math.cos(ang) * r;
         const y = cy + Math.sin(ang) * r;
         const key = `${Math.round(x * 100)},${Math.round(y * 100)}`;
-        if (seen.has(key) || !pointClear(world, x, y, rc)) continue;
+        if (seen.has(key) || !pointClearAt(world, x, y, rc)) continue;
         seen.add(key);
         xs.push(x);
         ys.push(y);
@@ -147,7 +147,7 @@ export function navFor(world: MoveWorld, rc: number): Nav {
 }
 
 /** Does a centre at (x, y) keep clearance rc from every wall and solid, inside the bounds? */
-export function pointClear(world: MoveWorld, x: number, y: number, rc: number): boolean {
+export function pointClearAt(world: MoveWorld, x: number, y: number, rc: number): boolean {
   const b = world.bounds;
   if (x < b.minX - 1e-9 || x > b.maxX + 1e-9 || y < b.minY - 1e-9 || y > b.maxY + 1e-9) return false;
   const r2 = (rc - 1e-6) * (rc - 1e-6);

@@ -1,5 +1,5 @@
 import { dist, lerp, type P, pointSegDist2, segSegDist2 } from "../geometry/index.ts";
-import { BEND, type Nav, navFor, pointClear as pointClearXY } from "./nav.ts";
+import { BEND, type Nav, navFor, pointClearAt } from "./nav.ts";
 import type { MoveWorld } from "./world.ts";
 
 /** Options for one creature's move (§16.2–16.4). */
@@ -70,7 +70,7 @@ export function pathCost(world: MoveWorld, points: P[], opts: Partial<MoveOption
 
 /** Does a centre at p keep clearance rc from every wall and solid, inside the bounds? */
 export function pointClear(world: MoveWorld, p: P, rc: number): boolean {
-  return pointClearXY(world, p.x, p.y, rc);
+  return pointClearAt(world, p.x, p.y, rc);
 }
 
 /**
