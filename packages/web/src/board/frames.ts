@@ -30,3 +30,39 @@ export function setAnimating(key: string, active: boolean): void {
 export function wantsNextFrame(now: number): boolean {
   return animating.size > 0 || now < awakeUntil;
 }
+
+/**
+ * Ambient motion (dust motes): low priority. When nothing else wants frames, ambient animators get at most
+ * AMBIENT_FPS; those paced frames are marked so the tier governor doesn't mistake the pacing for slowness.
+ */
+const AMBIENT_FPS = 30;
+const ambient = new Set<string>();
+let ambientTimer: ReturnType<typeof setTimeout> | null = null;
+let pacedFrame = false;
+
+export function setAmbient(key: string, active: boolean): void {
+  if (active) {
+    if (!ambient.has(key)) {
+      ambient.add(key);
+      invalidate();
+    }
+  } else ambient.delete(key);
+}
+
+/** After a rendered frame that wants no successor: schedule a paced one if something ambient is running. */
+export function scheduleAmbientFrame(): void {
+  if (!ambient.size || ambientTimer) return;
+  ambientTimer = setTimeout(() => {
+    ambientTimer = null;
+    if (!ambient.size) return;
+    pacedFrame = true;
+    invalidate();
+  }, 1000 / AMBIENT_FPS);
+}
+
+/** True once for a frame that was paced for ambient motion (not rendered as fast as possible). */
+export function takePacedFrame(): boolean {
+  const p = pacedFrame;
+  pacedFrame = false;
+  return p;
+}

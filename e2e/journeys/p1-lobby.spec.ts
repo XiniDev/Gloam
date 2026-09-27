@@ -131,3 +131,28 @@ test.describe("P1 — joining, the waiting room and admission (AUTH)", () => {
     await expect(page.getByText("That code didn't open the door")).toBeVisible();
   });
 });
+
+test.describe("Resilience — code chunks over a flaky connection", () => {
+  test("a route chunk that fails to load recovers with one automatic reload", async ({
+    admin,
+    browser,
+    gloam,
+    guardLog,
+  }) => {
+    await openTableAs(admin, "Local only");
+    const { page } = await newPlayerContext(browser, gloam.url, guardLog);
+    // The first request for the Join screen's code is dropped, as a flaky tunnel might.
+    let dropped = 0;
+    await page.route(/\/static\/Join-[^/]+\.js$/, async (route) => {
+      if (dropped++ === 0) return route.abort("connectionreset");
+      return route.continue();
+    });
+    await page.goto(`${gloam.url}/join`);
+    await expect(page.getByLabel("Invite code character 1 of 10")).toBeVisible({ timeout: 20_000 });
+    expect(dropped).toBeGreaterThanOrEqual(2);
+    // The one failure is expected here (it's what the page recovered from); nothing else may appear.
+    const expected = /Failed to fetch dynamically imported module|net::ERR_CONNECTION_RESET/;
+    const other = guardLog.errors.filter((e) => !expected.test(e));
+    guardLog.errors.splice(0, guardLog.errors.length, ...other);
+  });
+});

@@ -159,6 +159,7 @@ export class TierGovernor {
   private startFrames = 0;
   private frames = 0;
   private acc = 0;
+  private frameAcc = 0;
   private readonly target: number;
   /** Test hook: a forced frame time in ms (null = measured). */
   static forcedMs: number | null = null;
@@ -167,34 +168,42 @@ export class TierGovernor {
     this.target = targetFps;
   }
 
-  /** Feed one frame's duration (seconds). Returns a tier change, if any. */
+  /**
+   * Feed one frame's duration (seconds). Returns a tier change, if any. The windows (first second, 3 s below, 10 s
+   * above) run on real elapsed time; a test's forced frame time replaces only the measured frame duration.
+   */
   tick(dt: number): TierName | null {
     const store = useTier.getState();
-    const seconds = TierGovernor.forcedMs !== null ? TierGovernor.forcedMs / 1000 : Math.min(dt, 0.5);
+    const real = Math.min(dt, 0.5);
+    const frame = TierGovernor.forcedMs !== null ? TierGovernor.forcedMs / 1000 : real;
     this.frames++;
-    this.acc += seconds;
+    this.acc += real;
+    this.frameAcc += frame;
     if (this.acc >= 0.5) {
-      store.set({ fps: Math.round(this.frames / this.acc) });
+      store.set({ fps: Math.round(this.frames / this.frameAcc) });
       this.frames = 0;
       this.acc = 0;
+      this.frameAcc = 0;
     }
     if (store.pinned) return null;
-    const fps = 1 / Math.max(seconds, 1e-3);
+    const fps = 1 / Math.max(frame, 1e-3);
     if (this.sinceStart < 1) {
-      this.sinceStart += seconds;
+      this.sinceStart += real;
       this.startFrames++;
-      if (this.sinceStart >= 1 && this.startFrames < 24) return this.step(-1, "slow first second");
+      // A slow start drops a tier at once: under 24 frames in the first second (or slow forced frames).
+      if (this.sinceStart >= 1 && (this.startFrames < 24 || fps < 24))
+        return this.step(-1, "slow first second");
       return null;
     }
     if (fps < this.target * 0.85) {
-      this.below += seconds;
+      this.below += real;
       this.above = 0;
     } else if (fps > this.target * 1.1) {
-      this.above += seconds;
+      this.above += real;
       this.below = 0;
     } else {
-      this.below = Math.max(0, this.below - seconds);
-      this.above = Math.max(0, this.above - seconds);
+      this.below = Math.max(0, this.below - real);
+      this.above = Math.max(0, this.above - real);
     }
     if (this.below >= 3) return this.step(-1, "below target for 3 s");
     if (this.above >= 10) return this.step(1, "comfortably above target for 10 s");

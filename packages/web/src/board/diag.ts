@@ -8,14 +8,15 @@ export const boardDiag: {
     variant?: string;
     width?: number;
     height?: number;
-    /** The map's size on the table in feet (1 unit = 1 ft, AC-BRD-01). */
-    worldW?: number;
-    worldH?: number;
     style?: string;
   } | null;
   postfx: { bloom: boolean; ao: boolean; smaa: boolean; composer: boolean };
   firstFrameAt: number | null;
   tokenModes: Map<string, { mode: string; coin: number; standee: number }>;
+  /** The image map's plane on the table in feet (1 unit = 1 ft, AC-BRD-01), once its texture is shown. */
+  mapWorld: { w: number; h: number } | null;
+  /** Dust motes on the board (tier count; 0 on Low). */
+  dust: number;
   /** When the camera rig began each recent tween (kind + performance.now()), newest last. */
   tweenStarts: { kind: string; at: number }[];
   /** Test builds: the camera at every rendered frame (TestProbe fills it). */
@@ -25,6 +26,8 @@ export const boardDiag: {
   postfx: { bloom: false, ao: false, smaa: false, composer: false },
   firstFrameAt: null,
   tokenModes: new Map(),
+  mapWorld: null,
+  dust: 0,
   tweenStarts: [],
   cameraLog: [],
 };

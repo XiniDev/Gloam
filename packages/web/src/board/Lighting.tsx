@@ -6,6 +6,16 @@ import { C } from "./colors.ts";
 import { type Bounds, boundsCenter, boundsSize } from "./scene.ts";
 import type { TierSpec } from "./tiers.ts";
 
+/** The warm key light's direction: 35° up, from the south-west, so shadows fall away from the default camera. */
+export const KEY_ELEVATION_DEG = 35;
+export const KEY_AZIMUTH_DEG = -30;
+/** Unit vector from the lit point toward the key light. */
+export function keyLightDirection(): [number, number, number] {
+  const el = (KEY_ELEVATION_DEG * Math.PI) / 180;
+  const az = (KEY_AZIMUTH_DEG * Math.PI) / 180;
+  return [Math.sin(az) * Math.cos(el), Math.sin(el), Math.cos(az) * Math.cos(el)];
+}
+
 /** Scene ambient → hemisphere intensity (SPEC §24.2): bright 1.0, dim 0.45, dark 0.15. */
 export const AMBIENT_INTENSITY: Record<string, number> = { bright: 1.0, dim: 0.45, dark: 0.15 };
 const KEY_INTENSITY: Record<string, number> = { bright: 2.4, dim: 1.5, dark: 0.7 };
@@ -39,8 +49,8 @@ export function Lighting({ bounds, ambient, tier }: { bounds: Bounds; ambient: s
   const { w, h } = boundsSize(bounds);
   const span = Math.max(w, h, 40);
   const pos = useMemo(() => {
-    const elev = (35 * Math.PI) / 180;
-    const az = (-30 * Math.PI) / 180; // from the south-west, so shadows fall away from the default camera
+    const elev = (KEY_ELEVATION_DEG * Math.PI) / 180;
+    const az = (KEY_AZIMUTH_DEG * Math.PI) / 180;
     const d = span * 1.4;
     return [
       x + Math.sin(az) * Math.cos(elev) * d,

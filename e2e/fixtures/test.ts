@@ -75,11 +75,13 @@ export const test = base.extend<Fixtures>({
     expect(g.external, "requests that left the origin").toEqual([]);
     expect(g.errors, "console errors and uncaught page exceptions").toEqual([]);
   },
-  admin: async ({ browser, gloam, guardLog, viewport }, use) => {
+  admin: async ({ browser, gloam, guardLog, viewport, deviceScaleFactor }, use) => {
     const context = await browser.newContext({
       baseURL: gloam.url,
-      // The configured (or test.use) viewport; a hand-made context would otherwise get Playwright's 1280 × 720.
+      // The configured (or test.use) viewport and pixel ratio; a hand-made context would otherwise get
+      // Playwright's defaults (1280 × 720 at 1×).
       viewport,
+      deviceScaleFactor,
       permissions: ["clipboard-read", "clipboard-write"],
     });
     guardLog.contexts.push(context);

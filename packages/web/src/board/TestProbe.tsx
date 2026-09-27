@@ -69,13 +69,17 @@ export function TestProbe() {
         dpr: gl.getPixelRatio(),
         shadows: gl.shadowMap.enabled,
         postfx: boardDiag.postfx,
-        map: boardDiag.map,
+        map: boardDiag.map && {
+          ...boardDiag.map,
+          ...(boardDiag.mapWorld ? { worldW: boardDiag.mapWorld.w, worldH: boardDiag.mapWorld.h } : {}),
+        },
         memory: { ...gl.info.memory },
         /** Frames rendered so far (on-demand rendering: an idle board stops counting). */
         frames: gl.info.render.frame,
         programs: gl.info.programs?.length ?? 0,
         resources: resourceStats(),
         firstFrameAt: boardDiag.firstFrameAt,
+        dust: boardDiag.dust,
       };
     });
     provideTestHook("cameraLog", () => ({ log: boardDiag.cameraLog, tweenStarts: boardDiag.tweenStarts }));

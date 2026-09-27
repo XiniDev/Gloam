@@ -306,9 +306,9 @@
       "phase": "P2",
       "text": "The board renders the table environment and map at 1 unit = 1 ft, and loads nothing from outside the server (zero CSP violations and zero non-origin requests in the E2E network log).",
       "passes": true,
-      "evidence": "e2e/journeys/p2-first-load.spec.ts › AC-BRD-01: the oak table renders; a 1400×700 px map at 70 px/5 ft lies 100 × 50 units on the table (stats.map.worldW/H); Medium and Large bases measure 5 and 10 units; the guard fixture records zero CSP violations and zero non-origin requests across all E2E journeys",
+      "evidence": "e2e/journeys/p2-first-load.spec.ts › AC-BRD-01: the oak table renders; a 1400×700 px map at 70 px/5 ft lies 100 × 50 units on the table (stats.map.worldW/H); Medium and Large bases measure 5 and 10 units · e2e/journeys/p2-tiers.spec.ts: dust motes in the key light per tier (Medium 60/High 110/Ultra 160; none on Low) · the guard fixture records zero CSP violations and zero non-origin requests across all E2E journeys",
       "disputed": null,
-      "updatedAt": "2026-09-27T15:15:10.242Z"
+      "updatedAt": "2026-09-27T15:55:01.502Z"
     },
     {
       "id": "AC-BRD-02",
@@ -327,10 +327,10 @@
       "code": "BRD",
       "phase": "P2",
       "text": "Performance tiers are auto-selected, adapt at runtime, and can be pinned by the user; Low disables shadow maps, bloom and ambient occlusion and caps DPR at 1.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p2-tiers.spec.ts › AC-BRD-03 (2× display): software GL auto-selects Low from the device profile; Low has no shadow map, no bloom/AO/composer and renders at DPR 1; forced fast frames step up to Medium after 10 s and slow ones back to Low after 3 s; Settings → Graphics pins High (shadows, bloom, SMAA, DPR 1.75) and it holds under 200 ms frames; Ultra adds AO and DPR 2; Auto returns to the device profile; a pin survives a reload · packages/web/src/board/tiers.test.ts (7 tests: heuristics, pinning, 3 s/10 s windows on real time, slow first second, pinned never changes)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T15:55:01.366Z"
     },
     {
       "id": "AC-BRD-04",
@@ -360,10 +360,10 @@
       "code": "BRD",
       "phase": "P2",
       "text": "Image maps up to 16 384 × 16 384 source pixels are accepted and displayed using a variant that fits the device's texture limit.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p2-tiers.spec.ts › AC-BRD-06: a 16 384 × 16 384 PNG uploaded through the New scene wizard becomes a scene; with MAX_TEXTURE_SIZE 8192 the board loads w1024 on Low (cap 2048) and w8192 on Ultra, the texture is held by the map and the plane is 16 384 px × 5/70 ft wide · server: packages/server/src/test/assets.test.ts › AC-BRD-06 (server) variants 8192/4096/1024/256, 16 385 refused",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T15:55:01.434Z"
     },
     {
       "id": "AC-TOK-01",

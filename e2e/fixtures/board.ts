@@ -66,6 +66,8 @@ export interface BoardStats {
   spec: { textureCap: number; dpr: number; shadowMap: number };
   memory: { geometries: number; textures: number };
   firstFrameAt: number | null;
+  dust: number;
+  frames: number;
 }
 export const stats = (page: Page) => hook<BoardStats>(page, "stats");
 
@@ -169,4 +171,23 @@ export interface AssetFixtures {
 export function assetFixtures(): Promise<AssetFixtures> {
   const path = ["..", "..", "packages", "server", "src", "test", "assetFixtures.ts"].join("/");
   return import(path) as Promise<AssetFixtures>;
+}
+
+interface SharpChain {
+  resize(w: number, h: number, o: { kernel: string }): SharpChain;
+  png(o?: { compressionLevel?: number }): SharpChain;
+  toBuffer(): Promise<Buffer>;
+}
+
+/** A size × size PNG checkerboard of `cells` × `cells` squares in two map-like colours (compresses tiny). */
+export async function checkerPng(size: number, cells: number): Promise<Buffer> {
+  const S = requireFromServer("sharp") as (input: Buffer, o: unknown) => SharpChain;
+  const raw = Buffer.alloc(cells * cells * 3);
+  for (let j = 0; j < cells; j++)
+    for (let i = 0; i < cells; i++)
+      raw.set((i + j) % 2 ? [60, 120, 90] : [200, 170, 110], (j * cells + i) * 3);
+  return S(raw, { raw: { width: cells, height: cells, channels: 3 }, limitInputPixels: false })
+    .resize(size, size, { kernel: "nearest" })
+    .png({ compressionLevel: 9 })
+    .toBuffer();
 }

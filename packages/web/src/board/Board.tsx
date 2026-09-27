@@ -17,9 +17,10 @@ import { toast } from "../ui/Toast.tsx";
 import { boardApi } from "./boardApi.ts";
 import { CameraRig, cameraRig } from "./CameraRig.tsx";
 import { C } from "./colors.ts";
+import { DustMotes } from "./DustMotes.tsx";
 import { boardDiag } from "./diag.ts";
 import { setupText } from "./fonts.ts";
-import { wake, wantsNextFrame } from "./frames.ts";
+import { scheduleAmbientFrame, takePacedFrame, wake, wantsNextFrame } from "./frames.ts";
 import { Lighting } from "./Lighting.tsx";
 import { MapAlignGizmo } from "./map/MapAlignGizmo.tsx";
 import { MapLayer } from "./map/MapLayer.tsx";
@@ -33,9 +34,6 @@ import { chooseTier, probeDevice, TIERS, TierGovernor, useTier } from "./tiers.t
 import { TokensLayer } from "./tokens/TokensLayer.tsx";
 
 setupText();
-
-/** Longer than this between frames means the board was idle (nothing to draw), not slow. */
-const IDLE_GAP_MS = 200;
 
 /** Reads the device on the first frame, then adapts the tier from frame times (SPEC §8.4). */
 function TierSetup() {
@@ -55,15 +53,18 @@ function TierSetup() {
     boardApi.camera = camera;
     boardApi.element = gl.domElement;
   }, [camera, gl]);
-  const lastFrame = useRef(0);
+  const continuing = useRef(false);
   useFrame((state, dt) => {
     const now = performance.now();
     // The first-load intro waits for this before fading the board up (SPEC §27.7).
     if (boardDiag.firstFrameAt === null) boardDiag.firstFrameAt = now;
-    // On-demand frames: only back-to-back frames measure rendering cost; an idle gap isn't a slow frame.
-    if (now - lastFrame.current < IDLE_GAP_MS) governor.tick(dt);
-    lastFrame.current = now;
-    if (wantsNextFrame(now)) state.invalidate();
+    // On-demand frames: a frame measures rendering cost only if the previous one asked for it straight away (a
+    // continuous run) — however long it took. A frame after an idle pause, or one paced for ambient motion, doesn't.
+    const paced = takePacedFrame();
+    if (!paced && continuing.current) governor.tick(dt);
+    continuing.current = wantsNextFrame(now);
+    if (continuing.current) state.invalidate();
+    else scheduleAmbientFrame();
   });
   return null;
 }
@@ -319,6 +320,7 @@ export default function Board() {
         <CameraRig bounds={bounds} sceneId={scene?.id ?? "none"} />
         <Lighting bounds={bounds} ambient={scene?.ambient ?? "bright"} tier={tier} />
         <TableSurface bounds={bounds} />
+        <DustMotes bounds={bounds} count={tier.dust} />
         {scene ? <MapLayer scene={scene} bounds={bounds} /> : null}
         <TokensLayer />
         <WallsLayer />
