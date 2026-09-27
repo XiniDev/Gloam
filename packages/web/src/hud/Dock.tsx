@@ -8,6 +8,7 @@ import { ErrorBoundary } from "../ui/ErrorBoundary.tsx";
 import { lazyPage } from "../ui/lazyPage.ts";
 import { Sparkle } from "../ui/ornaments.tsx";
 import { hudOrder } from "./Intro.tsx";
+import { insetMeasures, useHudInsets, useIsPhone, useMeasuredInset } from "./insets.ts";
 import { PartyPanel } from "./PartyPanel.tsx";
 
 const DmPanel = lazyPage(() => import("./dm/DmPanel.tsx"));
@@ -39,6 +40,10 @@ export function Dock() {
   const pending = useLibrary(pendingCount);
   const [width, setWidth] = useState(loadWidth);
   const drag = useRef<{ x: number; w: number } | null>(null);
+  const asideRef = useRef<HTMLElement>(null);
+  const phone = useIsPhone();
+  const banner = useHudInsets((s) => s.banner);
+  useMeasuredInset("right", asideRef, insetMeasures.right);
 
   useEffect(() => {
     if (tab === "dm" && !dm) useUi.getState().set({ dock: null });
@@ -49,12 +54,17 @@ export function Dock() {
     ...(dm ? [{ id: "dm" as const, label: "DM panel", icon: <Sparkle size={18} />, badge: pending }] : []),
   ];
 
+  const order = hudOrder(2);
   const toggle = (id: DockTab) => useUi.getState().set({ dock: tab === id ? null : id });
 
   return (
     <aside
-      {...hudOrder(2)}
-      className="pointer-events-none absolute bottom-3 right-3 top-[68px] z-30 flex items-stretch gap-2"
+      ref={asideRef}
+      {...order}
+      className="pointer-events-none absolute bottom-3 right-3 z-30 flex items-stretch gap-2"
+      // Below the top bar — and on phones below the prep banner, which spans the screen there. (Merged with the
+      // intro's stagger variable, which a second `style` prop would drop.)
+      style={{ ...order.style, top: 68 + (phone ? banner : 0) }}
       data-hud="dock"
     >
       {tab ? (

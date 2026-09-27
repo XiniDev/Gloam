@@ -64,18 +64,27 @@ export function Segmented<T extends string>({
   options,
   label,
   size = "M",
+  phoneColumns,
 }: {
   value: T;
   onChange: (v: T) => void;
   options: SegmentOption<T>[];
   label: string;
   size?: "S" | "M";
+  /** On phones, lay the segments out in this many even columns instead of letting the row wrap unevenly. */
+  phoneColumns?: 2 | 3;
 }) {
+  const layout =
+    phoneColumns === 2
+      ? "grid grid-cols-2 sm:inline-flex sm:flex-wrap"
+      : phoneColumns === 3
+        ? "grid grid-cols-3 sm:inline-flex sm:flex-wrap"
+        : "inline-flex flex-wrap";
   return (
     <div
       role="radiogroup"
       aria-label={label}
-      className="inline-flex flex-wrap gap-1 rounded-[var(--radius-control)] border border-line bg-ink-900 p-1"
+      className={`${layout} gap-1 rounded-[var(--radius-control)] border border-line bg-ink-900 p-1`}
     >
       {options.map((o) => {
         const active = o.value === value;
@@ -88,7 +97,7 @@ export function Segmented<T extends string>({
             disabled={o.disabled}
             title={o.hint}
             onClick={() => onChange(o.value)}
-            className={`relative rounded-chip px-3 font-bold transition-colors duration-[var(--dur-fast)] disabled:opacity-40 ${
+            className={`relative whitespace-nowrap rounded-chip px-3 font-bold transition-colors duration-[var(--dur-fast)] disabled:opacity-40 ${
               size === "S" ? "h-8 text-13" : "h-9 text-14"
             } ${active ? "bg-raised text-brass-bright shadow-[inset_0_-2px_0_var(--brass-400)]" : "text-muted hover:text-bone"}`}
           >
@@ -118,14 +127,14 @@ export function Select<T extends string>({
   const sid = id ?? auto;
   return (
     <div>
-      <label htmlFor={sid} className="caps mb-1.5 block text-12 text-fog">
+      <label htmlFor={sid} className="caps mb-1.5 block truncate text-12 text-fog" title={label}>
         {label}
       </label>
       <select
         id={sid}
         value={value}
         onChange={(e) => onChange(e.target.value as T)}
-        className="h-10 w-full appearance-none rounded-[var(--radius-control)] border border-line bg-ink-900 bg-[length:12px] bg-[right_12px_center] bg-no-repeat px-3 pr-8 text-14 text-bone hover:border-line-strong focus:border-brass"
+        className="h-11 w-full appearance-none rounded-[var(--radius-control)] border border-line bg-ink-900 bg-[length:12px] bg-[right_12px_center] bg-no-repeat px-3 pr-8 text-14 text-bone hover:border-line-strong focus:border-brass"
         style={{
           backgroundImage:
             "linear-gradient(45deg, transparent 50%, var(--brass-400) 50%), linear-gradient(135deg, var(--brass-400) 50%, transparent 50%)",
@@ -192,7 +201,7 @@ export function Slider({
       {active ? (
         <span
           aria-hidden
-          className="mono pointer-events-none absolute -top-6 -translate-x-1/2 rounded-chip border border-line bg-ink-950 px-1.5 text-12 text-brass-bright"
+          className="tabular pointer-events-none absolute -top-6 -translate-x-1/2 rounded-chip border border-line bg-ink-950 px-1.5 text-12 text-brass-bright"
           style={{ left: `calc(8px + ${f} * (100% - 16px))` }}
         >
           {format(value)}

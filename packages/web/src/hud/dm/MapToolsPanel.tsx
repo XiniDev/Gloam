@@ -1,4 +1,4 @@
-import { Move3d, Rotate3d, Scale3d, X } from "lucide-react";
+import { Move, Rotate3d, Scaling, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { type MapTransform, useMapAlign } from "../../board/map/mapAlign.ts";
 import { sceneCalibration } from "../../board/scene.ts";
@@ -8,6 +8,7 @@ import { useUi } from "../../state/ui.ts";
 import { Button, IconButton } from "../../ui/Button.tsx";
 import { Segmented } from "../../ui/controls.tsx";
 import { toast } from "../../ui/Toast.tsx";
+import { useHudInsets, useIsPhone } from "../insets.ts";
 
 const BATCH = 500;
 
@@ -89,6 +90,14 @@ export function MapToolsPanel() {
   const mode = useMapAlign((s) => s.mode);
   const live = useMapAlign((s) => s.live);
   const object = useMapAlign((s) => s.object);
+  const banner = useHudInsets((s) => s.banner);
+  const dockRight = useHudInsets((s) => s.right);
+  const phone = useIsPhone();
+  // On a phone the dock's panel would cover the map being aligned: close it while the tools are open.
+  const aligning = dm && scene?.mapKind === "model" && mapTool === scene.id;
+  useEffect(() => {
+    if (phone && aligning) useUi.getState().set({ dock: null });
+  }, [phone, aligning]);
   const [slice, setSlice] = useState(5);
   const [asking, setAsking] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
@@ -194,7 +203,14 @@ export function MapToolsPanel() {
     <section
       aria-label="3D map tools"
       data-testid="map-tools"
-      className="panel pointer-events-auto absolute left-[76px] top-[68px] z-30 flex w-[min(300px,calc(100vw-96px))] flex-col gap-3 p-3"
+      // Beside the toolbar, below the top bar and the prep banner (never over either). On phones it takes the width
+      // up to the dock's rail, and the toolbar steps aside while aligning (its tools don't apply here).
+      className="panel pointer-events-auto absolute z-30 flex flex-col gap-3 p-3"
+      style={
+        phone
+          ? { top: 68 + banner, left: 12, right: dockRight }
+          : { top: 68 + banner, left: 76, width: "min(300px, calc(100vw - 96px))" }
+      }
     >
       <header className="flex items-center justify-between gap-2">
         <h2 className="caps text-12 text-brass">Align 3D map</h2>
@@ -208,7 +224,7 @@ export function MapToolsPanel() {
         value={mode}
         onChange={(m) => useMapAlign.getState().set({ mode: m })}
         options={[
-          { value: "translate", label: <Move3d size={16} aria-label="Move (W)" />, hint: "Move (W)" },
+          { value: "translate", label: <Move size={16} aria-label="Move (W)" />, hint: "Move (W)" },
           {
             value: "rotate",
             label: <Rotate3d size={16} aria-label="Rotate about Y (E)" />,
@@ -216,7 +232,7 @@ export function MapToolsPanel() {
           },
           {
             value: "scale",
-            label: <Scale3d size={16} aria-label="Uniform scale (R)" />,
+            label: <Scaling size={16} aria-label="Uniform scale (R)" />,
             hint: "Uniform scale (R)",
           },
         ]}

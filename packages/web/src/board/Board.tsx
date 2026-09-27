@@ -354,7 +354,7 @@ export default function Board() {
         <TierSetup />
         <CameraRig bounds={bounds} sceneId={scene?.id ?? "none"} />
         <Lighting bounds={bounds} ambient={scene?.ambient ?? "bright"} tier={tier} />
-        <TableSurface bounds={bounds} />
+        <TableSurface bounds={bounds} empty={!scene} />
         <DustMotes bounds={bounds} count={tier.dust} />
         {scene ? <MapLayer scene={scene} bounds={bounds} /> : null}
         <TokensLayer />

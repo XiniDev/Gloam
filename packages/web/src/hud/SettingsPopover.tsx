@@ -136,7 +136,7 @@ export function SettingsPopover() {
             </p>
           </Section>
           <Section title="Interface">
-            <div className="grid grid-cols-[76px_1fr] items-center gap-2">
+            <div className="grid grid-cols-[76px_1fr_40px] items-center gap-2">
               <span className="text-13 text-muted">Size</span>
               <Slider
                 label="Interface size"
@@ -146,6 +146,7 @@ export function SettingsPopover() {
                 value={s.uiScale}
                 onChange={(uiScale) => s.update({ uiScale })}
               />
+              <span className="tabular text-right text-13 text-muted">{Math.round(s.uiScale * 100)}%</span>
             </div>
             <div className="flex items-center justify-between gap-3">
               <span className="text-13 text-muted">Motion</span>

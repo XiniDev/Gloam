@@ -6,7 +6,7 @@ export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
 export type ButtonSize = "S" | "M" | "L";
 
 const BASE =
-  "relative inline-flex select-none items-center justify-center gap-2 whitespace-nowrap rounded-[var(--radius-control)] font-ui font-bold tracking-[0.01em] transition-[background-color,border-color,color,box-shadow,transform] duration-[var(--dur-fast)] ease-[var(--ease-out)] active:translate-y-px disabled:pointer-events-none disabled:opacity-45";
+  "relative inline-flex min-h-[var(--touch-min)] select-none items-center justify-center gap-2 whitespace-nowrap rounded-[var(--radius-control)] font-ui font-bold tracking-[0.01em] transition-[background-color,border-color,color,box-shadow,transform] duration-[var(--dur-fast)] ease-[var(--ease-out)] active:translate-y-px disabled:pointer-events-none disabled:opacity-45";
 
 const VARIANT: Record<ButtonVariant, string> = {
   primary:

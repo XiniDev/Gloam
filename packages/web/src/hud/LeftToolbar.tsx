@@ -1,10 +1,11 @@
 import { Hand, MousePointer2 } from "lucide-react";
-import { type ReactElement, useEffect } from "react";
+import { type ReactElement, useEffect, useRef } from "react";
 import { boardApi } from "../board/boardApi.ts";
 import { useTable } from "../net/table.ts";
 import { type Tool, useUi } from "../state/ui.ts";
 import { IconButton } from "../ui/Button.tsx";
 import { hudOrder } from "./Intro.tsx";
+import { insetMeasures, useIsPhone, useMeasuredInset } from "./insets.ts";
 
 /** Quick Unit glyph: a coin with a plus (custom, since creatures are a game concept; SPEC §27.6). */
 function QuickUnitGlyph() {
@@ -37,6 +38,11 @@ export function LeftToolbar() {
   const tool = useUi((s) => s.tool);
   const role = useTable((s) => s.me?.role);
   const dm = role === "dm" || role === "admin";
+  const navRef = useRef<HTMLElement>(null);
+  const phone = useIsPhone();
+  // On a phone the map tools take the toolbar's place while they're open.
+  const aligning = useUi((s) => s.mapTool !== null);
+  useMeasuredInset("left", navRef, insetMeasures.left, !(phone && aligning));
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -51,12 +57,15 @@ export function LeftToolbar() {
     return () => window.removeEventListener("keydown", onKey);
   }, [dm]);
 
+  if (phone && aligning) return null;
+
   return (
     <nav
+      ref={navRef}
       {...hudOrder(1)}
       aria-label="Board tools"
       data-hud="toolbar"
-      className="panel pointer-events-auto absolute left-3 top-1/2 z-30 flex w-[52px] -translate-y-1/2 flex-col items-center gap-1 p-1.5"
+      className="panel pointer-events-auto absolute left-3 top-1/2 z-30 flex min-w-[52px] -translate-y-1/2 flex-col items-center gap-1 p-1.5"
     >
       {TOOLS.map((t) => (
         <IconButton

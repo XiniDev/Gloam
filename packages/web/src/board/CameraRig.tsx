@@ -3,12 +3,14 @@ import { useFrame, useThree } from "@react-three/fiber";
 import CameraControlsImpl from "camera-controls";
 import { useEffect, useRef } from "react";
 import { Box3, MathUtils, Vector3 } from "three";
+import { useHudInsets } from "../hud/insets.ts";
 import { tableEvents } from "../net/table.ts";
 import { useSettings } from "../state/settings.ts";
 import { useUi } from "../state/ui.ts";
 import { boardDiag } from "./diag.ts";
 import { again, wake } from "./frames.ts";
-import { type Bounds, boundsCenter, boundsSize } from "./scene.ts";
+import { frameBounds } from "./framing.ts";
+import { type Bounds, boundsSize } from "./scene.ts";
 
 const { ACTION } = CameraControlsImpl;
 const DEG = MathUtils.DEG2RAD;
@@ -71,6 +73,7 @@ export function CameraRig({ bounds, sceneId }: { bounds: Bounds; sceneId: string
   const tweens = useRef<Tween[]>([]);
   const follow = useRef<string | null>(null);
   const camera = useThree((s) => s.camera);
+  const gl = useThree((s) => s.gl);
 
   // One-time control setup.
   useEffect(() => {
@@ -122,13 +125,21 @@ export function CameraRig({ bounds, sceneId }: { bounds: Bounds; sceneId: string
       void c.setLookAt(...saved.position, ...saved.target, false);
       return;
     }
-    const { x, y } = boundsCenter(bounds);
-    const { w, h } = boundsSize(bounds);
-    const fov = ((camera as { fov?: number }).fov ?? 40) * DEG;
-    const dist = MathUtils.clamp((Math.max(w, h * 1.3) / (2 * Math.tan(fov / 2))) * 0.85, 20, 260);
-    const pitch = PRESETS.tabletop * DEG;
-    void c.setLookAt(x, dist * Math.sin(pitch), y + dist * Math.cos(pitch), x, 0, y, false);
-  }, [sceneId, bounds, camera]);
+    // The whole map inside the part of the screen the HUD leaves visible, centred there (framing.ts).
+    const el = gl.domElement;
+    const W = el.clientWidth || window.innerWidth;
+    const H = el.clientHeight || window.innerHeight;
+    const hud = useHudInsets.getState();
+    const f = frameBounds({
+      bounds,
+      width: W,
+      height: H,
+      fovDeg: (camera as { fov?: number }).fov ?? 40,
+      pitchDeg: PRESETS.tabletop,
+      visible: { left: hud.left, top: hud.top + hud.banner, right: W - hud.right, bottom: H - 12 },
+    });
+    void c.setLookAt(...f.position, ...f.target, false);
+  }, [sceneId, bounds, camera, gl]);
 
   // Remember the view whenever the camera settles.
   useEffect(() => {

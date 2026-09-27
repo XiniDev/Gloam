@@ -1,9 +1,10 @@
 import { EyeOff } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { openPrep, request } from "../net/table.ts";
 import { useEntities } from "../state/entities.ts";
 import { Button } from "../ui/Button.tsx";
 import { toast } from "../ui/Toast.tsx";
+import { insetMeasures, useHudInsets, useIsPhone, useMeasuredInset } from "./insets.ts";
 
 /**
  * Prep view banner (SPEC §8.3, §13.7): while a DM edits a scene the players can't see, the board says so and offers
@@ -12,6 +13,10 @@ import { toast } from "../ui/Toast.tsx";
 export function PrepBanner() {
   const scene = useEntities((s) => s.prep?.scene ?? null);
   const [busy, setBusy] = useState<"back" | "activate" | null>(null);
+  const ref = useRef<HTMLDivElement>(null);
+  const phone = useIsPhone();
+  const right = useHudInsets((s) => s.right);
+  useMeasuredInset("banner", ref, insetMeasures.banner, Boolean(scene));
   if (!scene) return null;
   const run = async (what: "back" | "activate") => {
     setBusy(what);
@@ -29,9 +34,13 @@ export function PrepBanner() {
   };
   return (
     <div
+      ref={ref}
       role="status"
       data-testid="prep-banner"
-      className="pointer-events-none absolute inset-x-0 top-[60px] z-30 flex justify-center px-3"
+      // Centred in the board area the dock leaves free; on phones a full-width strip under the top bar (the dock and
+      // tool panels move down below it).
+      className="pointer-events-none absolute left-0 top-[60px] z-30 flex justify-center px-3"
+      style={{ right: phone ? 0 : right }}
     >
       <div className="panel pointer-events-auto flex max-w-full flex-wrap items-center gap-x-4 gap-y-2 border-[var(--brass-600)] px-4 py-2">
         <span className="flex min-w-0 items-center gap-2 text-14 text-bone">

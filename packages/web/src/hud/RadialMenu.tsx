@@ -226,6 +226,15 @@ export function RadialMenu() {
 
   // Slices are 74 × 62 px: the ring grows with their number so neighbours never touch (chord 2R·sin(π/n) ≥ 84 px).
   const R = Math.max(86, 42 / Math.sin(Math.PI / Math.max(3, shown.length)));
+  // The whole ring stays on screen and below the top bar: near an edge it shifts inward (its centre dot still marks
+  // the pressed point).
+  const reach = R + 37 + 8;
+  const vw = typeof window === "undefined" ? 0 : window.innerWidth;
+  const vh = typeof window === "undefined" ? 0 : window.innerHeight;
+  const cx = radial ? Math.min(Math.max(radial.x, reach), Math.max(reach, vw - reach)) : 0;
+  const cy = radial
+    ? Math.min(Math.max(radial.y, 56 + reach - 6), Math.max(56 + reach - 6, vh - reach + 6))
+    : 0;
   return (
     <AnimatePresence>
       {radial && token && shown.length ? (
@@ -234,7 +243,7 @@ export function RadialMenu() {
           role="menu"
           aria-label={`Actions for ${token.name}`}
           className="pointer-events-none fixed z-50"
-          style={{ left: radial.x, top: radial.y }}
+          style={{ left: cx, top: cy }}
           initial={{ opacity: 0, scale: 0.85 }}
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 0.9 }}
@@ -242,6 +251,7 @@ export function RadialMenu() {
         >
           <span
             className="absolute h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border border-[var(--brass-300)] bg-ink-950"
+            style={{ left: radial.x - cx, top: radial.y - cy }}
             aria-hidden
           />
           {shown.map((s, i) => {

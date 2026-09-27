@@ -76,12 +76,14 @@ function Num({
   onChange,
   error,
   suffix,
+  placeholder,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   error?: boolean;
   suffix?: string;
+  placeholder?: string;
 }) {
   const id = useId();
   return (
@@ -93,6 +95,7 @@ function Num({
         <input
           id={id}
           inputMode="numeric"
+          placeholder={placeholder}
           value={value}
           aria-invalid={error || undefined}
           onChange={(e) => onChange(e.target.value)}
@@ -366,7 +369,14 @@ export function QuickUnitDialog() {
           ) : null}
         </div>
         <div className="grid grid-cols-3 gap-3">
-          <Num label="HP" value={f.hp} error={tried && errors.hp} onChange={(v) => up({ hp: v })} />
+          <Num
+            label="HP"
+            value={f.hp}
+            // Left empty, a unit starts at full health.
+            placeholder={f.hpMax}
+            error={tried && errors.hp}
+            onChange={(v) => up({ hp: v })}
+          />
           <Num
             label="Max HP"
             value={f.hpMax}

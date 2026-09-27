@@ -87,7 +87,7 @@ export function SettingsPage() {
             These settings can only be changed on the host PC.
           </p>
         ) : null}
-        <div className="grid gap-4 sm:grid-cols-[1fr_auto] sm:items-end">
+        <div className="grid gap-4 sm:grid-cols-[1fr_13rem] sm:items-end">
           <TextInput
             label="Tunnel token"
             type="password"
@@ -98,8 +98,9 @@ export function SettingsPage() {
             disabled={hostOnly}
             help="Stored encrypted on this PC; never shown in full again."
           />
-          <div className="flex gap-2 pb-6">
+          <div className="flex gap-2 sm:pb-6">
             <Button
+              className="flex-1"
               variant="primary"
               disabled={hostOnly || token.length < 20}
               onClick={async () => (await save({ tunnelToken: token }, "Token saved")) && setToken("")}
@@ -117,7 +118,7 @@ export function SettingsPage() {
             ) : null}
           </div>
         </div>
-        <div className="grid gap-4 sm:grid-cols-[1fr_auto] sm:items-end">
+        <div className="grid gap-4 sm:grid-cols-[1fr_13rem] sm:items-end">
           <TextInput
             label="Public hostname"
             placeholder="table.example.com"
@@ -126,14 +127,14 @@ export function SettingsPage() {
             disabled={hostOnly}
           />
           <Button
-            className="mb-0.5"
+            className="w-full sm:mb-0.5"
             disabled={hostOnly || host === (s.publicHostname ?? "")}
             onClick={() => void save({ publicHostname: host || null })}
           >
             Save hostname
           </Button>
         </div>
-        <div className="grid gap-4 sm:grid-cols-[1fr_auto] sm:items-end">
+        <div className="grid gap-4 sm:grid-cols-[1fr_13rem] sm:items-end">
           <TextInput
             label="cloudflared path"
             placeholder="cloudflared (found on PATH)"
@@ -143,7 +144,7 @@ export function SettingsPage() {
             help="Only needed if cloudflared isn't on your PATH. Takes effect after a restart."
           />
           <Button
-            className="mb-6"
+            className="w-full sm:mb-6"
             disabled={hostOnly || cfPath === (s.cloudflaredPath ?? "")}
             onClick={() => void save({ cloudflaredPath: cfPath || null })}
           >

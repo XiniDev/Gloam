@@ -11,7 +11,6 @@ import {
   type Material,
   type Mesh,
   MeshStandardMaterial,
-  PlaneGeometry,
   type ShaderMaterial,
   type SpriteMaterial,
   type Texture,
@@ -24,7 +23,7 @@ import { cameraRig } from "../CameraRig.tsx";
 import { C, col, ringColorOf } from "../colors.ts";
 import { boardDiag } from "../diag.ts";
 import { disposeLater } from "../dispose.ts";
-import { CAPS_FONT } from "../fonts.ts";
+import { CAPS_FONT, NUMBER_FONT } from "../fonts.ts";
 import { again, frameDelta, setAnimating } from "../frames.ts";
 import { TIERS, useTier } from "../tiers.ts";
 import { AUTO_COIN_PITCH, approach, crossfadeStep } from "./crossfade.ts";
@@ -33,13 +32,19 @@ import { cylinder, plane, torus } from "./geometries.ts";
 import { hiddenBadgeTexture, initialsTexture } from "./glyphs.ts";
 import { type MiniInstance, useAssetMeta, useAssetTexture, useMini } from "./hooks.ts";
 import { createHpBarMaterial, HpGhost, setHpBar } from "./hpBar.ts";
+import { CHIP_GEOMETRY, createChipMaterial, setChip } from "./plateChip.ts";
 
 /** Pitch above which Auto mode shows the coin (SPEC §8.5, AC-TOK-11) and the crossfade time. */
 
 const BASE_H = 0.14;
 const COIN_H = 0.2;
 /** A troika text mesh (drei's <Text>): its opacities apply at render, no re-layout. */
-type TroikaText = Mesh & { fillOpacity: number; outlineOpacity: number };
+type TroikaText = Mesh & {
+  fillOpacity: number;
+  outlineOpacity: number;
+  /** troika's layout, once synced: the text block's [minX, minY, maxX, maxY] in its own units. */
+  textRenderInfo?: { blockBounds: [number, number, number, number] } | null;
+};
 
 const tmp = new Vector3();
 const screenUp = new Vector3();
@@ -65,15 +70,36 @@ const TIP = (80 * Math.PI) / 180;
 const ORIGIN: [number, number, number] = [0, 0, 0];
 
 /** Gap between a token's highest point on screen and its plate's lowest edge, in plate units. */
-const PLATE_GAP = 0.18;
+const PLATE_GAP = 0.2;
+
+/** A token's silhouette on screen (normalised device coordinates). */
+interface Silhouette {
+  top: number;
+  left: number;
+  right: number;
+}
 
 /** Diagnostics (test hooks): each overlay's fade factors this frame. */
 export const overlayFade = new Map<string, { far: number; clear: number; target: number; a: number }>();
 
 /** One plane for every token's HP bar (they differ only in their material's uniforms). */
 /** The bar is tall enough to carry its numbers (Exact mode) inside it. */
-const HP_BAR_H = 0.46;
-const HP_BAR_GEOMETRY = new PlaneGeometry(3.2, HP_BAR_H);
+/**
+ * Name plate layout, in plate units (≈ 20 px each on screen, never under 18.5): names 13–14 px in Cinzel, HP numbers
+ * and descriptor words ≥ 12 px (SPEC §27.3) — numbers in the display face — inside an ink chip (§27.4).
+ */
+const PLATE_PX = 20;
+const PLATE_PX_MIN = 18.5;
+const PLATE_PX_MAX = 26;
+const NAME_SIZE = 0.7;
+const NUM_SIZE = 0.66;
+const WORD_SIZE = 0.66;
+const BAR_H = 0.74;
+const BAR_W = 3.4;
+const NAME_GAP = 0.14;
+const CHIP_PAD_X = 0.34;
+const CHIP_PAD_Y = 0.2;
+const CHIP_OPACITY = 0.82;
 
 export const hpBarState = new Map<
   string,
@@ -229,22 +255,30 @@ export const TokenObject = memo(function TokenObject({
           : standeeH + BASE_H;
 
   /**
-   * The token's highest point on screen, as a normalised device y: the largest projected y over its visible parts —
+   * The token's silhouette on screen (normalised device coordinates): its highest point and horizontal extent over
+   * its visible parts —
    * the base and coin rims (sampled circles), the standee card's corners and the mini's box corners, each through
    * its real transform (facing the camera or lying flat; facing, overrides, tipped over). Measured after projection,
    * so perspective (a tall token's top reaching toward the camera) is exact. From the last frame's transforms, so a
    * pose change moves the plate a frame later at most.
    */
-  const screenTop = (cam: Camera): number => {
+  const screenTop = (cam: Camera, out: Silhouette): boolean => {
     const rt = root.current;
-    if (!rt) return Number.NEGATIVE_INFINITY;
+    if (!rt) return false;
     origin.setFromMatrixPosition(rt.matrixWorld);
-    let best = Number.NEGATIVE_INFINITY;
+    out.top = Number.NEGATIVE_INFINITY;
+    out.left = Number.POSITIVE_INFINITY;
+    out.right = Number.NEGATIVE_INFINITY;
+    const take = (v: Vector3) => {
+      v.project(cam);
+      if (v.y > out.top) out.top = v.y;
+      if (v.x < out.left) out.left = v.x;
+      if (v.x > out.right) out.right = v.x;
+    };
     const rim = (y: number) => {
       for (let k = 0; k < RIM_SAMPLES; k++) {
         const a = (k / RIM_SAMPLES) * Math.PI * 2;
-        corner.set(origin.x + Math.cos(a) * R, origin.y + y, origin.z + Math.sin(a) * R).project(cam);
-        best = Math.max(best, corner.y);
+        take(corner.set(origin.x + Math.cos(a) * R, origin.y + y, origin.z + Math.sin(a) * R));
       }
     };
     if (mode !== "coin") rim(BASE_H);
@@ -252,18 +286,23 @@ export const TokenObject = memo(function TokenObject({
     const card = standeeCard.current;
     if (standeeGroup.current?.visible && card)
       for (const x of [-standeeW / 2, standeeW / 2])
-        for (const y of [BASE_H, BASE_H + standeeH])
-          best = Math.max(best, corner.set(x, y, 0).applyMatrix4(card.matrixWorld).project(cam).y);
+        for (const y of [BASE_H, BASE_H + standeeH]) take(corner.set(x, y, 0).applyMatrix4(card.matrixWorld));
     const mg = miniGroup.current;
     if (mode === "model" && mini && mg) {
       const b = mini.localBox;
-      for (let i = 0; i < 8; i++) {
-        corner.set(i & 1 ? b.max.x : b.min.x, i & 2 ? b.max.y : b.min.y, i & 4 ? b.max.z : b.min.z);
-        best = Math.max(best, corner.applyMatrix4(mg.matrixWorld).project(cam).y);
-      }
+      for (let i = 0; i < 8; i++)
+        take(
+          corner
+            .set(i & 1 ? b.max.x : b.min.x, i & 2 ? b.max.y : b.min.y, i & 4 ? b.max.z : b.min.z)
+            .applyMatrix4(mg.matrixWorld),
+        );
     }
-    return best;
+    return Number.isFinite(out.top);
   };
+
+  /** The top's height now: in auto mode, the coin's or the standee's, whichever is showing. */
+  const topNow = () =>
+    mode === "auto" ? (coinW.current > 0.5 ? COIN_H : standeeH + BASE_H) : Math.max(topY, 0.3);
 
   // ── per frame: glide to position, facing, auto crossfade, billboarding, pulse ─────────────────────────
   useFrame((state) => {
@@ -503,9 +542,10 @@ export const TokenObject = memo(function TokenObject({
       <Overlay
         token={token}
         viewer={viewer}
-        top={Math.max(topY, 0.3)}
+        top={topNow}
         screenTop={screenTop}
-        opacity={baseOpacity}
+        // A DM-hidden token is faint (40 %); its plate stays readable for the DM.
+        opacity={hidden ? Math.max(0.75, baseOpacity) : baseOpacity}
         hidden={hidden}
       />
     </group>
@@ -602,9 +642,10 @@ function Overlay({
 }: {
   token: TokenView;
   viewer: Viewer;
-  top: number;
-  /** The token's highest point on screen, in normalised device coordinates (see TokenObject's `screenTop`). */
-  screenTop: (cam: Camera) => number;
+  /** Height of the token's top now (auto mode: the coin's or the standee's, whichever is showing). */
+  top: () => number;
+  /** The token's silhouette on screen, in normalised device coordinates (see TokenObject's `screenTop`). */
+  screenTop: (cam: Camera, out: Silhouette) => boolean;
   opacity: number;
   hidden: boolean;
 }) {
@@ -647,10 +688,17 @@ function Overlay({
     });
   }, [token.id]);
 
+  const chip = useMemo(() => createChipMaterial(), []);
+  useEffect(() => () => disposeLater(chip), [chip]);
+  const chipMesh = useRef<Mesh>(null);
+  const barMesh = useRef<Mesh>(null);
+  const shape = useRef<Silhouette>({ top: 0, left: 0, right: 0 });
+  /** The plate's lowest edge below its origin (plate units), from the last layout. */
+  const lowest = useRef(-BAR_H / 2 - CHIP_PAD_Y);
+
   useFrame((state) => {
     const g = group.current;
     if (!g) return;
-    // Plate scale: roughly constant on screen, within limits (so it's in world units ∝ camera distance).
     // Fresh transforms: this frame's camera and token pose (tokens move before overlays run, TOKEN_FRAME_PRIORITY).
     const a0 = anchor.current;
     const rt = a0?.parent;
@@ -660,37 +708,48 @@ function Overlay({
       rt.updateWorldMatrix(true, true);
       axis.setFromMatrixPosition(rt.matrixWorld);
     } else g.getWorldPosition(axis);
-    axis.y += top;
+    axis.y += top();
     const d = cam.position.distanceTo(axis);
-    const plate = Math.min(3.2, Math.max(0.55, d / 42));
+    // Screen pixels per world unit at the token's depth (perspective or orthographic alike).
+    const at = ndc.copy(axis).project(cam);
+    const up = screenUp.setFromMatrixColumn(cam.matrixWorld, 1);
+    const pxPerWorld = Math.max(
+      1e-6,
+      ((probe.copy(axis).add(up).project(cam).y - at.y) * state.size.height) / 2,
+    );
+    // The plate keeps its type readable: about 20 px per plate unit, a little larger up close and smaller far away,
+    // never below the 12-px minimum for its smallest text (SPEC §27.3); very far away it fades out instead.
+    const pxPerPlate = Math.min(
+      PLATE_PX_MAX,
+      Math.max(PLATE_PX_MIN, PLATE_PX * (70 / Math.max(1, d)) ** 0.3),
+    );
+    const plate = pxPerPlate / pxPerWorld;
     g.scale.setScalar(plate);
-    // Sit a fixed gap above the token's highest point on screen, over its centre line, at any pitch, pose or
+    layoutPlate();
+    // Sit a fixed gap above the token's highest point on screen, centred over its silhouette, at any pitch, pose or
     // perspective: find the spot in screen space, then put the anchor there at the depth of the token's top.
-    const high = screenTop(cam);
-    if (a0 && rt && Number.isFinite(high)) {
-      const up = screenUp.setFromMatrixColumn(cam.matrixWorld, 1);
-      const at = ndc.copy(axis).project(cam);
-      // Screen pixels per world unit at that depth (works for perspective and orthographic cameras alike).
-      const pxPerUnit = ((probe.copy(axis).add(up).project(cam).y - at.y) * state.size.height) / 2;
-      const lowest = showBar ? -HP_BAR_H / 2 : descriptor ? -0.53 : HP_BAR_H / 2 + 0.1;
-      const liftPx = (PLATE_GAP - lowest) * plate * pxPerUnit;
-      at.y = high + (liftPx * 2) / state.size.height;
+    if (a0 && rt && screenTop(cam, shape.current)) {
+      const liftPx = (PLATE_GAP - lowest.current) * pxPerPlate;
+      at.x = (shape.current.left + shape.current.right) / 2;
+      at.y = shape.current.top + (liftPx * 2) / state.size.height;
       at.unproject(cam).sub(probe.setFromMatrixPosition(rt.matrixWorld));
       // Still settling (a pose or view change reaches the plate a frame later): draw once more.
       if (at.distanceToSquared(a0.position) > 1e-6) again();
       a0.position.copy(at);
     }
-    // Overlays always read on top of other tokens and the map (troika re-derives materials, so reapply).
+    // Overlays always read on top of other tokens and the map (troika re-derives its materials — an array of
+    // outline + fill when outlined — so reapply every frame; the chip and bar keep their own lower orders).
     g.traverse((o) => {
-      const m = (o as Mesh).material as Material | undefined;
-      if (m?.depthTest) {
-        m.depthTest = false;
-        o.renderOrder = 30;
-      }
+      const m = (o as Mesh).material as Material | Material[] | undefined;
+      if (!m || o === chipMesh.current || o === barMesh.current) return;
+      for (const x of Array.isArray(m) ? m : [m]) if (x.depthTest) x.depthTest = false;
+      o.renderOrder = 30;
     });
     const far = 1 - Math.min(1, Math.max(0, (d - 260) / 80));
-    // Clutter fade (150 ms) toward the layout's verdict.
-    const target = overlayClear(token.id);
+    // Clutter fade (150 ms) toward the layout's verdict; while a radial menu is open, only its token's plate shows
+    // (others would peek through the gaps between its slices).
+    const radial = useUi.getState().radial;
+    const target = radial && radial.tokenId !== token.id ? 0 : overlayClear(token.id);
     clear.current = approach(clear.current, target, frameDelta() / 0.15);
     if (clear.current !== target) again();
     const fade = far * clear.current;
@@ -717,31 +776,67 @@ function Overlay({
     } else hpBarState.delete(token.id);
     // The damage ghost holds and drains over ~1 s: keep drawing until it has caught up.
     if (showBar && Math.abs(gv - Math.max(0, frac)) > 1e-4) again();
+    const cm = chipMesh.current;
+    if (cm) setChip(chip, cm.scale.x, cm.scale.y, a * CHIP_OPACITY);
   });
   useEffect(() => () => void hpBarState.delete(token.id), [token.id]);
+
+  /**
+   * Sizes the chip, the bar and the name around the text as troika has laid it out: the bar at the origin (as wide
+   * as its numbers need, at least BAR_W), the name above it, the chip behind both with even padding.
+   */
+  const layoutPlate = () => {
+    const nameB = nameText.current?.textRenderInfo?.blockBounds;
+    const numB = numText.current?.textRenderInfo?.blockBounds;
+    const wordB = wordText.current?.textRenderInfo?.blockBounds;
+    const nameW = nameB ? nameB[2] - nameB[0] : 0;
+    const nameTop = BAR_H / 2 + NAME_GAP + (nameB ? nameB[3] - nameB[1] : NAME_SIZE * 1.2);
+    const barW = showBar ? Math.max(BAR_W, numB ? numB[2] - numB[0] + 0.7 : 0) : 0;
+    const wordW = wordB ? wordB[2] - wordB[0] : 0;
+    const bm = barMesh.current;
+    if (bm) bm.scale.set(barW, BAR_H, 1);
+    const bottom = showBar || descriptor ? -BAR_H / 2 : BAR_H / 2 + NAME_GAP;
+    const w = Math.max(nameW, barW, wordW) + 2 * CHIP_PAD_X;
+    const h = nameTop - bottom + 2 * CHIP_PAD_Y;
+    const cm = chipMesh.current;
+    if (cm) {
+      cm.scale.set(w, h, 1);
+      cm.position.set(0, (nameTop + bottom) / 2, -0.01);
+    }
+    lowest.current = bottom - CHIP_PAD_Y;
+  };
 
   return (
     <group ref={anchor}>
       <Billboard>
         <group ref={group} userData={{ part: "overlay" }}>
+          <mesh
+            ref={chipMesh}
+            material={chip}
+            geometry={CHIP_GEOMETRY}
+            renderOrder={19}
+            raycast={() => null}
+            dispose={null}
+            userData={{ part: "plateChip" }}
+          />
           <Text
             ref={nameText}
             font={CAPS_FONT}
-            fontSize={0.52}
+            fontSize={NAME_SIZE}
             letterSpacing={0.08}
             color={C.bone100}
-            outlineWidth={0.045}
+            outlineWidth={0.02}
             outlineColor={C.ink950}
             anchorY="bottom"
-            position={[0, HP_BAR_H / 2 + 0.1, 0]}
+            position={[0, BAR_H / 2 + NAME_GAP, 0]}
             raycast={() => null}
           >
             {token.name}
           </Text>
           {hidden ? (
             <sprite
-              position={[0, HP_BAR_H / 2 + 1.1, 0]}
-              scale={[0.62, 0.62, 0.62]}
+              position={[0, BAR_H / 2 + 1.55, 0]}
+              scale={[0.7, 0.7, 0.7]}
               raycast={() => null}
               userData={{ part: "hiddenBadge" }}
             >
@@ -750,25 +845,27 @@ function Overlay({
           ) : null}
           {showBar ? (
             <mesh
+              ref={barMesh}
               material={bar as ShaderMaterial}
-              geometry={HP_BAR_GEOMETRY}
+              geometry={CHIP_GEOMETRY}
+              scale={[BAR_W, BAR_H, 1]}
               renderOrder={20}
               raycast={() => null}
               dispose={null}
             />
           ) : null}
           {showNumbers && nums ? (
-            // On the bar, never beside it: an overlay is never wider than its name or its bar.
+            // On the bar, never beside it: the plate is never wider than its name or its bar (the bar grows to fit).
             <Text
               ref={numText}
-              font={CAPS_FONT}
-              fontSize={0.3}
+              font={NUMBER_FONT}
+              fontSize={NUM_SIZE}
               color={C.bone100}
-              outlineWidth={0.05}
+              outlineWidth={0.075}
               outlineColor={C.ink950}
               anchorX="center"
               anchorY="middle"
-              position={[0, 0.005, 0.01]}
+              position={[0, -0.02, 0.01]}
               raycast={() => null}
             >
               {`${nums.hp} / ${nums.hpMax}${nums.hpTemp ? `  +${nums.hpTemp}` : ""}`}
@@ -778,12 +875,14 @@ function Overlay({
             <Text
               ref={wordText}
               font={CAPS_FONT}
-              fontSize={0.4}
+              fontSize={WORD_SIZE}
+              letterSpacing={0.08}
               color={C.brass300}
-              outlineWidth={0.04}
+              outlineWidth={0.02}
               outlineColor={C.ink950}
-              anchorY="top"
-              position={[0, -0.05, 0]}
+              anchorX="center"
+              anchorY="middle"
+              position={[0, 0, 0]}
               raycast={() => null}
             >
               {descriptor}

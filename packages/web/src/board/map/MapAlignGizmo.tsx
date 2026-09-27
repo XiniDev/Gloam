@@ -1,11 +1,13 @@
 import { TransformControls } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
 import { type ComponentRef, useRef } from "react";
+import type { Color } from "three";
 import { request, useTable } from "../../net/table.ts";
 import { useBoard } from "../../state/entities.ts";
 import { useUi } from "../../state/ui.ts";
 import { toast } from "../../ui/Toast.tsx";
 import { cameraRig } from "../CameraRig.tsx";
+import { C } from "../colors.ts";
 import { transformOf, useMapAlign } from "./mapAlign.ts";
 
 type TransformControlsImpl = ComponentRef<typeof TransformControls>;
@@ -23,6 +25,25 @@ export function MapAlignGizmo() {
   const ref = useRef<TransformControlsImpl>(null);
   const blocking = useRef(false);
   const prevScale = useRef(1);
+
+  // The handles in the board palette (ember X, verdigris Y, arcane Z) instead of three's pure red/green/blue. The
+  // gizmo is rebuilt when the mode changes, so recolour each frame it's new (cheap: a flag per material).
+  useFrame(() => {
+    const gizmo = (
+      ref.current as unknown as { children?: { traverse(fn: (o: unknown) => void): void }[] } | null
+    )?.children?.[0];
+    gizmo?.traverse((o) => {
+      const m = (o as { material?: { color?: Color; userData: Record<string, unknown> }; name?: string })
+        .material;
+      const name = (o as { name?: string }).name ?? "";
+      if (!m?.color || m.userData.gloamTint) return;
+      m.userData.gloamTint = true;
+      const axis = name.replace(/[^XYZ]/g, "");
+      if (axis === "X") m.color.set(C.ember400);
+      else if (axis === "Y") m.color.set(C.verdigris400);
+      else if (axis === "Z") m.color.set(C.arcane400);
+    });
+  });
 
   // Hovering a handle must not start a camera pan underneath it.
   useFrame(() => {

@@ -183,6 +183,7 @@ export function TablePage() {
             <div className="mt-5">
               <Segmented<Mode>
                 label="Doorway"
+                phoneColumns={2}
                 value={mode}
                 onChange={setMode}
                 options={(["quick", "named", "lan", "local"] as Mode[]).map((m) => ({

@@ -68,7 +68,10 @@ void main(){
   float core = smoothstep(0.6, 0.0, d) * smoothstep(h*0.8, 0.05, q.y);
   vec3 col = mix(uOuter, uCore, core);
   col = mix(col, uBlue, smoothstep(0.06, -0.02, q.y) * shape * 0.6);
-  float halo = exp(-dot(p - vec2(0.0, 0.2), p - vec2(0.0, 0.2)) * 9.0) * 0.35;
+  // The halo fades out before the canvas edges, so the glow never ends in a hard line (the canvas is small).
+  vec2 uv = gl_FragCoord.xy / uRes;
+  float edge = smoothstep(0.0, 0.3, uv.x) * smoothstep(1.0, 0.7, uv.x) * smoothstep(0.0, 0.12, uv.y) * smoothstep(1.0, 0.75, uv.y);
+  float halo = exp(-dot(p - vec2(0.0, 0.2), p - vec2(0.0, 0.2)) * 12.0) * 0.35 * edge;
   float a = clamp(shape + halo, 0.0, 1.0);
   gl_FragColor = vec4((col*shape + uOuter*halo) , a);
 }`;

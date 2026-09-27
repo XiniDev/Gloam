@@ -39,11 +39,17 @@ export function PartyPanel() {
                 {p.name}
               </span>
               {p.handRaised ? <span className="caps text-12 text-accent">hand raised</span> : null}
-              {p.role === "dm" || p.role === "admin" ? (
-                <WaxSeal size={18} label={ROLE_LABEL[p.role]} />
-              ) : (
-                <span className="caps text-12 text-fog">{ROLE_LABEL[p.role] ?? p.role}</span>
-              )}
+              {/* Every role reads as a word; the DM/Host also wear the wax seal (SPEC §27.4 ornaments). */}
+              <span className="flex items-center gap-1.5">
+                {p.role === "dm" || p.role === "admin" ? (
+                  <WaxSeal size={20} label={ROLE_LABEL[p.role]} />
+                ) : null}
+                <span
+                  className={`caps text-12 ${p.role === "dm" || p.role === "admin" ? "text-brass" : "text-fog"}`}
+                >
+                  {ROLE_LABEL[p.role] ?? p.role}
+                </span>
+              </span>
               {!p.online ? <span className="text-12 text-faint">away</span> : null}
             </li>
           ))}

@@ -12,7 +12,7 @@ export const PX_PRESETS = [50, 70, 100, 140, 200] as const;
 
 /**
  * Map calibration (SPEC §8.3): presets "pixels per 5 ft", Known distance (drag across a feature and type its real
- * length), or Map width in feet — with a live 5-ft grid and a ruler that reads in feet, so the DM sees the result
+ * length), or Map width in feet — with a ruler that reads in feet and ticks every 5 ft, so the DM sees the result
  * before saving (AC-SCN-01). All geometry is in source-image pixels.
  */
 export function CalibrationEditor({
@@ -39,7 +39,6 @@ export function CalibrationEditor({
     const len = Math.min(imageW * 0.8, ft / ftPerPx);
     return { a: { x: (imageW - len) / 2, y: imageH * 0.5 }, b: { x: (imageW + len) / 2, y: imageH * 0.5 } };
   });
-  const [grid, setGrid] = useState(true);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState<Pt>({ x: 0, y: 0 });
   const viewport = useRef<HTMLDivElement>(null);
@@ -117,8 +116,25 @@ export function CalibrationEditor({
     drag.current = null;
   };
 
-  const gridPx = 5 / ftPerPx;
+  const stepPx = 5 / ftPerPx;
   const rulerFt = dist(ruler) * ftPerPx;
+  const ticks = (() => {
+    const len = dist(ruler);
+    if (len < 1e-6 || stepPx * scale < 4) return [];
+    const ux = (ruler.b.x - ruler.a.x) / len;
+    const uy = (ruler.b.y - ruler.a.y) / len;
+    const out: { i: number; x: number; y: number; nx: number; ny: number; len: number }[] = [];
+    for (let i = 0; i * stepPx <= len + 1e-6 && i <= 400; i++)
+      out.push({
+        i,
+        x: ruler.a.x + ux * i * stepPx,
+        y: ruler.a.y + uy * i * stepPx,
+        nx: -uy,
+        ny: ux,
+        len: (i % 5 === 0 ? 10 : 6) / scale,
+      });
+    return out;
+  })();
   const nudge = (end: "a" | "b", dx: number, dy: number) =>
     setRuler((r) => ({ ...r, [end]: { x: r[end].x + dx, y: r[end].y + dy } }));
 
@@ -135,26 +151,28 @@ export function CalibrationEditor({
         ]}
       />
       {method === "presets" ? (
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
           <span className="text-13 text-muted">Pixels per 5 ft:</span>
-          {PX_PRESETS.map((px) => {
-            const active = Math.abs(5 / ftPerPx - px) < 0.01;
-            return (
-              <button
-                key={px}
-                type="button"
-                aria-pressed={active}
-                onClick={() => onChange(5 / px)}
-                className={`tabular h-8 rounded-[var(--radius-control)] border px-3 text-14 font-bold ${
-                  active
-                    ? "border-brass bg-[var(--glow-brass-soft)] text-brass-bright"
-                    : "border-line text-muted hover:text-bone"
-                }`}
-              >
-                {px}
-              </button>
-            );
-          })}
+          <div className="grid grid-cols-5 gap-2 sm:flex">
+            {PX_PRESETS.map((px) => {
+              const active = Math.abs(5 / ftPerPx - px) < 0.01;
+              return (
+                <button
+                  key={px}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => onChange(5 / px)}
+                  className={`tabular h-8 rounded-[var(--radius-control)] border px-3 text-14 font-bold ${
+                    active
+                      ? "border-brass bg-[var(--glow-brass-soft)] text-brass-bright"
+                      : "border-line text-muted hover:text-bone"
+                  }`}
+                >
+                  {px}
+                </button>
+              );
+            })}
+          </div>
         </div>
       ) : method === "known" ? (
         <div className="flex flex-wrap items-end gap-3">
@@ -214,22 +232,6 @@ export function CalibrationEditor({
             viewBox={`0 0 ${imageW} ${imageH}`}
             aria-hidden
           >
-            {grid && gridPx * scale >= 4 ? (
-              <>
-                <defs>
-                  <pattern id="calgrid" width={gridPx} height={gridPx} patternUnits="userSpaceOnUse">
-                    <path
-                      d={`M ${gridPx} 0 L 0 0 0 ${gridPx}`}
-                      fill="none"
-                      stroke="var(--brass-300)"
-                      strokeOpacity="0.55"
-                      strokeWidth={1.2 / scale}
-                    />
-                  </pattern>
-                </defs>
-                <rect width={imageW} height={imageH} fill="url(#calgrid)" />
-              </>
-            ) : null}
             {known && method === "known" ? (
               <line
                 x1={known.a.x}
@@ -258,6 +260,20 @@ export function CalibrationEditor({
               strokeWidth={4 / scale}
               style={{ cursor: "move" }}
             />
+            {/* A tick every 5 ft (taller every 25 ft): lay the ruler along a printed grid to check the scale — Gloam
+                itself draws no grid (SPEC §8.6). */}
+            {ticks.map((t) => (
+              <line
+                key={t.i}
+                x1={t.x - t.nx * t.len}
+                y1={t.y - t.ny * t.len}
+                x2={t.x + t.nx * t.len}
+                y2={t.y + t.ny * t.len}
+                stroke="var(--bone-100)"
+                strokeWidth={2 / scale}
+                pointerEvents="none"
+              />
+            ))}
             {(["a", "b"] as const).map((end) => (
               <circle
                 key={end}
@@ -309,23 +325,6 @@ export function CalibrationEditor({
             }}
           >
             <Scan size={16} />
-          </IconButton>
-          <IconButton
-            label={grid ? "Hide 5-ft grid" : "Show 5-ft grid"}
-            active={grid}
-            onClick={() => setGrid((g) => !g)}
-          >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.75"
-              aria-hidden
-            >
-              <path d="M4 9h16M4 15h16M9 4v16M15 4v16" />
-            </svg>
           </IconButton>
         </div>
       </div>

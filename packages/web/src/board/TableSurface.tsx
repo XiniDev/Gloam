@@ -8,18 +8,25 @@ import type { Bounds } from "./scene.ts";
 /** How far beyond the map edge the table fades into darkness (SPEC §8.4). */
 export const TABLE_FADE_FT = 60;
 
+/** The empty table (no scene yet): a pool of lamplight this big, fading out over this many feet. */
+const EMPTY_POOL = { halfX: 9, halfY: 6, fadeFt: 36 };
+
 /**
  * The oak table the maps lie on (SPEC §8.4, §24.3): a standard material whose colour and roughness come from fbm
- * grain in world space (planks along X, rings, per-plank tint), fading to black 60 ft from the map's edge.
+ * grain in world space (planks along X, rings, per-plank tint), fading to black 60 ft from the map's edge. With no
+ * scene on it, a smaller pool under the lamp fades out sooner, so the empty table still sits in deep, soft darkness.
  */
-export function TableSurface({ bounds }: { bounds: Bounds }) {
+export function TableSurface({ bounds, empty = false }: { bounds: Bounds; empty?: boolean }) {
   const material = useMemo(() => {
     const m = new MeshStandardMaterial({ color: C.oak, roughness: 0.62, metalness: 0 });
     const uRect = { value: new Vector4() };
+    const uFade = { value: TABLE_FADE_FT };
     m.userData.uRect = uRect;
+    m.userData.uFade = uFade;
     m.customProgramCacheKey = () => "gloam-table";
     m.onBeforeCompile = (shader) => {
       shader.uniforms.uRect = uRect;
+      shader.uniforms.uFade = uFade;
       shader.uniforms.uOak = { value: col(C.oak) };
       shader.uniforms.uOakDark = { value: col(C.oakDark) };
       shader.uniforms.uOakLight = { value: col(C.oakLight) };
@@ -34,7 +41,7 @@ export function TableSurface({ bounds }: { bounds: Bounds }) {
           "#include <common>",
           `#include <common>
 varying vec3 vWorldPos;
-uniform vec4 uRect; uniform vec3 uOak; uniform vec3 uOakDark; uniform vec3 uOakLight;
+uniform vec4 uRect; uniform float uFade; uniform vec3 uOak; uniform vec3 uOakDark; uniform vec3 uOakLight;
 ${NOISE_GLSL}`,
         )
         .replace(
@@ -64,7 +71,7 @@ diffuseColor.rgb = wood;`,
           `vec2 halfSize = 0.5 * (uRect.zw - uRect.xy);
 vec2 centre = 0.5 * (uRect.xy + uRect.zw);
 float edge = length(max(abs(vWorldPos.xz - centre) - halfSize, 0.0));
-gl_FragColor.rgb *= 1.0 - smoothstep(0.0, ${TABLE_FADE_FT.toFixed(1)}, edge);
+gl_FragColor.rgb *= 1.0 - smoothstep(0.0, uFade, edge);
 #include <dithering_fragment>`,
         );
     };
@@ -72,13 +79,23 @@ gl_FragColor.rgb *= 1.0 - smoothstep(0.0, ${TABLE_FADE_FT.toFixed(1)}, edge);
   }, []);
 
   useEffect(() => {
-    (material.userData.uRect as { value: Vector4 }).value.set(
-      bounds.minX,
-      bounds.minY,
-      bounds.maxX,
-      bounds.maxY,
-    );
-  }, [bounds, material]);
+    const rect = material.userData.uRect as { value: Vector4 };
+    const fade = material.userData.uFade as { value: number };
+    if (empty) {
+      const cx = (bounds.minX + bounds.maxX) / 2;
+      const cy = (bounds.minY + bounds.maxY) / 2;
+      rect.value.set(
+        cx - EMPTY_POOL.halfX,
+        cy - EMPTY_POOL.halfY,
+        cx + EMPTY_POOL.halfX,
+        cy + EMPTY_POOL.halfY,
+      );
+      fade.value = EMPTY_POOL.fadeFt;
+    } else {
+      rect.value.set(bounds.minX, bounds.minY, bounds.maxX, bounds.maxY);
+      fade.value = TABLE_FADE_FT;
+    }
+  }, [bounds, material, empty]);
   useEffect(() => () => disposeLater(material), [material]);
 
   const cx = (bounds.minX + bounds.maxX) / 2;

@@ -45,7 +45,7 @@ function Initials({ p }: { p: PresenceView }) {
         </span>
       ) : null}
       {p.role === "dm" || p.role === "admin" ? (
-        <span className="absolute -bottom-1.5 -right-1.5">
+        <span className="absolute -bottom-1 -right-1">
           <WaxSeal size={16} label={p.role === "admin" ? "Host" : "DM"} />
         </span>
       ) : null}
@@ -73,7 +73,8 @@ export function TopBar() {
         ) : null}
       </div>
       <div className="pointer-events-auto ml-auto flex items-center gap-1.5 sm:gap-3">
-        <ul className="flex items-center gap-2" aria-label="At the table">
+        {/* 12-px gaps: a portrait's seal or raised hand never touches its neighbour's ring. */}
+        <ul className="flex items-center gap-3" aria-label="At the table">
           {presence
             .filter((p) => p.online || p.role !== "admin")
             .map((p) => (

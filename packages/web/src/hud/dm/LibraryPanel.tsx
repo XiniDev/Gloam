@@ -249,6 +249,7 @@ export function LibraryPanel() {
         <Segmented<Tab>
           label="Library section"
           size="S"
+          phoneColumns={3}
           value={tab}
           onChange={(t) => {
             setTab(t);
@@ -269,10 +270,10 @@ export function LibraryPanel() {
             placeholder="Search names and tags"
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            className="h-9 min-w-0 flex-1 rounded-[var(--radius-control)] border border-line bg-ink-900 px-3 text-14 text-bone placeholder:text-faint focus:border-brass"
+            className="h-10 min-w-0 flex-1 rounded-[var(--radius-control)] border border-line bg-ink-900 px-3 text-14 text-bone placeholder:text-faint focus:border-brass"
           />
           <Button
-            size="S"
+            size="M"
             variant={uploading ? "secondary" : "primary"}
             onClick={() => setUploading((u) => !u)}
           >

@@ -1,5 +1,6 @@
 import { Callbacks, type Room } from "@colyseus/sdk";
 import type { KnockCard } from "@gloam/shared/protocol";
+import { DEFAULT_HOUSE_RULES, HouseRules } from "@gloam/shared/schemas";
 import type { PrepPatch, PrepSnapshot } from "@gloam/shared/state";
 import { Table, type TableState } from "@gloam/shared/state";
 import { create } from "zustand";
@@ -31,6 +32,8 @@ interface TableStore {
   campaignId: string | null;
   campaignName: string;
   units: "ft" | "m";
+  /** The campaign's house rules (SPEC §19.6) — the movement preview needs the squeeze factor, for one. */
+  houseRules: HouseRules;
   sessionNo: number;
   presence: PresenceView[];
   knocks: KnockCard[];
@@ -45,11 +48,22 @@ export const useTable = create<TableStore>((set) => ({
   campaignId: null,
   campaignName: "",
   units: "ft",
+  houseRules: DEFAULT_HOUSE_RULES,
   sessionNo: 0,
   presence: [],
   knocks: [],
   set: (p) => set(p),
 }));
+
+/** The synced house-rules JSON, validated (defaults for anything missing or malformed). */
+function parseHouseRules(json: string): HouseRules {
+  try {
+    const r = HouseRules.safeParse(JSON.parse(json || "{}"));
+    return r.success ? r.data : DEFAULT_HOUSE_RULES;
+  } catch {
+    return DEFAULT_HOUSE_RULES;
+  }
+}
 
 /** One-shot table events the UI reacts to (navigation, toasts, knock cards). */
 export interface TableEventMap {
@@ -194,10 +208,12 @@ async function join(campaignId: string): Promise<Room<unknown, TableState>> {
     useTable.getState().set({
       campaignName: room.state.campaignName,
       units: (room.state.units as "ft" | "m") || "ft",
+      houseRules: parseHouseRules(room.state.houseRulesJson),
       sessionNo: room.state.sessionNo,
     });
   cb.listen("campaignName", syncCampaign);
   cb.listen("units", syncCampaign);
+  cb.listen("houseRulesJson", syncCampaign);
   cb.listen("sessionNo", syncCampaign);
 
   room.onMessage(
@@ -256,6 +272,12 @@ export async function request<T = unknown>(type: string, payload: unknown = {}):
     const r = rejectionMessage(err);
     throw Object.assign(new Error(r.message), { code: r.code });
   }
+}
+
+/** Fire-and-forget message (drag previews, pings): dropped silently when not connected. */
+export function send(type: string, payload: unknown): void {
+  const room = useTable.getState().room;
+  if (room && useTable.getState().connection === "open") room.send(type, payload);
 }
 
 /**

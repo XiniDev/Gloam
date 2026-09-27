@@ -178,17 +178,22 @@ export function ScenesPanel() {
                       {s.name}
                     </button>
                   )}
-                  <p className="text-12 text-fog">
-                    {KIND_LABEL[s.mapKind]} · {s.tokenCount} token{s.tokenCount === 1 ? "" : "s"}
+                  {/* The state badge sits under the title with the details, so a narrow panel keeps the name. */}
+                  <p className="flex min-w-0 items-center gap-1.5 text-12 text-fog">
+                    {s.active ? (
+                      <span className="caps shrink-0 rounded-chip bg-accent px-1.5 py-px text-12 text-ink-950">
+                        Live
+                      </span>
+                    ) : prepId === s.id ? (
+                      <span className="caps shrink-0 rounded-chip border border-[var(--brass-600)] px-1.5 py-px text-12 text-accent">
+                        Prep
+                      </span>
+                    ) : null}
+                    <span className="truncate">
+                      {KIND_LABEL[s.mapKind]} · {s.tokenCount} token{s.tokenCount === 1 ? "" : "s"}
+                    </span>
                   </p>
                 </div>
-                {s.active ? (
-                  <span className="caps rounded-chip bg-accent px-1.5 py-0.5 text-12 text-ink-950">Live</span>
-                ) : prepId === s.id ? (
-                  <span className="caps rounded-chip border border-[var(--brass-600)] px-1.5 py-0.5 text-12 text-accent">
-                    Prep
-                  </span>
-                ) : null}
                 <Menu
                   label={`More for ${s.name}`}
                   items={[

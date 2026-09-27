@@ -155,6 +155,43 @@ function knockOnce(
 }
 
 /** Stick-slip door creak (Farnell) plus a latch (sound.md §2.2 "Admitted"). */
+/** A door's creak alone: the body of creakAndLatch without its latch. */
+function creak(ctx: AudioContext, engine: AudioEngine, out: AudioNode, t: number, dur: number): void {
+  const saw = ctx.createOscillator();
+  saw.type = "sawtooth";
+  const pts = 16;
+  for (let i = 0; i < pts; i++) {
+    const u = i / (pts - 1);
+    saw.frequency.setValueAtTime(
+      (42 + 50 * Math.sin(u * Math.PI)) * (1 + (Math.random() * 2 - 1) * 0.12),
+      t + u * dur,
+    );
+  }
+  const body = ctx.createGain();
+  for (const [f, q, g] of [
+    [250, 2, 1],
+    [560, 3, 0.6],
+  ] as const) {
+    const gg = ctx.createGain();
+    gg.gain.value = g;
+    saw
+      .connect(bpf(ctx, f, q))
+      .connect(gg)
+      .connect(body);
+  }
+  const hiss = bpf(ctx, 1100, 10);
+  noiseSrc(ctx, engine, "pink", t, dur).connect(hiss).connect(body);
+  const e = ctx.createGain();
+  e.gain.setValueAtTime(0, t);
+  e.gain.linearRampToValueAtTime(1, t + 0.05);
+  e.gain.setValueAtTime(1, t + dur - 0.1);
+  e.gain.linearRampToValueAtTime(0, t + dur);
+  body.connect(e).connect(out);
+  saw.start(t);
+  saw.stop(t + dur + 0.05);
+  saw.onended = () => saw.disconnect();
+}
+
 function creakAndLatch(ctx: AudioContext, engine: AudioEngine, out: AudioNode, t: number, dur: number): void {
   const saw = ctx.createOscillator();
   saw.type = "sawtooth";
@@ -260,6 +297,71 @@ export const RECIPES = {
         o.connect(env(ctx, t + at, 0.004, p, 0.35)).connect(out);
         o.start(t + at);
         o.stop(t + at + 1.6);
+        o.onended = () => o.disconnect();
+      }
+    },
+  },
+  /** A muffled footstep thump (effects): one every 5 ft of a committed move (SPEC §31). */
+  footstep: zzfx("footstep", "effects", [
+    {
+      at: 0,
+      p: [0.16, 0.08, 70, 0.002, 0.01, 0.06, 1, 1.8, 0, 0, 0, 0, 0, 0.8, 0, 0.05, 0, 0.5, 0.02, 0, -400],
+    },
+  ]),
+  /** A door opening (effects): the creak without the latch. */
+  doorOpen: {
+    channel: "effects",
+    variation: 0.04,
+    play(ctx, dest, t, _rate, engine) {
+      creak(ctx, engine, outGain(ctx, dest, 0.14), t, 0.45);
+    },
+  },
+  /** A door shutting (effects): a low wooden thud. */
+  doorClose: {
+    channel: "effects",
+    variation: 0.03,
+    play(ctx, dest, t, rate) {
+      const out = outGain(ctx, dest, 0.3);
+      const o = ctx.createOscillator();
+      o.type = "sine";
+      o.frequency.setValueAtTime(95 * rate, t);
+      o.frequency.exponentialRampToValueAtTime(55 * rate, t + 0.18);
+      o.connect(env(ctx, t, 0.002, 1, 0.07)).connect(out);
+      o.start(t);
+      o.stop(t + 0.4);
+      o.onended = () => o.disconnect();
+    },
+  },
+  /** A locked door rattling (effects): three quick metallic clicks around 3 kHz. */
+  lockRattle: {
+    channel: "effects",
+    variation: 0.04,
+    play(ctx, dest, t, _rate, engine) {
+      const out = outGain(ctx, dest, 0.35);
+      for (const off of [0, 0.07, 0.13])
+        noiseSrc(ctx, engine, "white", t + off, 0.03)
+          .connect(bpf(ctx, 3000, 6))
+          .connect(env(ctx, t + off, 0.0005, 0.9, 0.008))
+          .connect(out);
+    },
+  },
+  /** A sonar ping (UI): an 880 Hz sine with a fading echo (SPEC §31, pings). */
+  ping: {
+    channel: "ui",
+    variation: 0.02,
+    play(ctx, dest, t, rate) {
+      const out = outGain(ctx, dest, 0.16);
+      for (const [at, g] of [
+        [0, 1],
+        [0.18, 0.4],
+        [0.36, 0.15],
+      ] as const) {
+        const o = ctx.createOscillator();
+        o.type = "sine";
+        o.frequency.value = 880 * rate;
+        o.connect(env(ctx, t + at, 0.003, g, 0.12)).connect(out);
+        o.start(t + at);
+        o.stop(t + at + 0.7);
         o.onended = () => o.disconnect();
       }
     },

@@ -209,6 +209,33 @@ export function circlePolygon(c: P, r: number, n = 48, outside = false): P[] {
   });
 }
 
+/** Ramer–Douglas–Peucker simplification of an open polyline: every dropped point lies within `tol` of the result. */
+export function simplifyPath(points: P[], tol: number): P[] {
+  if (points.length < 3) return points.slice();
+  const keep = new Uint8Array(points.length);
+  keep[0] = 1;
+  keep[points.length - 1] = 1;
+  const stack: [number, number][] = [[0, points.length - 1]];
+  while (stack.length) {
+    const [i, j] = stack.pop() as [number, number];
+    let far = -1;
+    let best = tol;
+    const a = points[i] as P;
+    const b = points[j] as P;
+    for (let k = i + 1; k < j; k++) {
+      const d = pointSegDist(points[k] as P, a, b);
+      if (d > best) {
+        best = d;
+        far = k;
+      }
+    }
+    if (far < 0) continue;
+    keep[far] = 1;
+    stack.push([i, far], [far, j]);
+  }
+  return points.filter((_, k) => keep[k]);
+}
+
 /** The point at arc length s along a polyline (clamped to its ends). */
 export function pointAtLength(points: P[], s: number): { point: P; index: number } {
   let acc = 0;
