@@ -1,11 +1,25 @@
 import { readdirSync } from "node:fs";
 import { request as httpRequest } from "node:http";
 import type { Room } from "@colyseus/sdk";
+import { NodeIO } from "@gltf-transform/core";
+import { ALL_EXTENSIONS } from "@gltf-transform/extensions";
 import { validateBytes } from "gltf-validator";
+import { MeshoptDecoder } from "meshoptimizer";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { JOB_TIMEOUT_MS, PROCESSOR_RSS_LIMIT, PROFILE_CAP, QUOTA } from "../assets/types.ts";
 import { BucketMap } from "../auth/rateLimit.ts";
-import { bombPng, denseGlb, editGlbJson, glb, hookFile, image, noisePng, wav, zip } from "./assetFixtures.ts";
+import {
+  bombPng,
+  denseGlb,
+  editGlbJson,
+  glb,
+  hookFile,
+  image,
+  insideOutGlb,
+  noisePng,
+  wav,
+  zip,
+} from "./assetFixtures.ts";
 import {
   type Agent,
   createCampaign,
@@ -299,6 +313,43 @@ describe("P2 — assets and uploads (AST)", () => {
     const kitbash = await upload(admin, "mini", "kitbash.glb", await glb({ boxes: 16_000 }));
     expect(kitbash.error?.message).toMatch(/16,000 separate parts .*Ctrl\+J/);
   }, 90_000);
+
+  it("AC-AST-03 an inside-out mini is turned outward, so it doesn't render with its near faces missing", async () => {
+    for (const mixed of [false, true]) {
+      const r = await upload(
+        admin,
+        "mini",
+        `inside-out${mixed ? "-mixed" : ""}.glb`,
+        await insideOutGlb({ mixed }),
+      );
+      expect(r.status, JSON.stringify(r.error)).toBe(200);
+      const res = await get(admin, `/assets/${r.asset?.id}/glb`);
+      await MeshoptDecoder.ready;
+      const doc = await new NodeIO()
+        .registerExtensions(ALL_EXTENSIONS)
+        .registerDependencies({ "meshopt.decoder": MeshoptDecoder })
+        .readBinary(new Uint8Array(await res.arrayBuffer()));
+      let v = 0;
+      for (const mesh of doc.getRoot().listMeshes())
+        for (const prim of mesh.listPrimitives()) {
+          const pos = prim.getAttribute("POSITION");
+          const idx = prim.getIndices()?.getArray() ?? [];
+          const q = [0, 1, 2].map(() => [0, 0, 0]) as [number[], number[], number[]];
+          for (let t = 0; t < idx.length; t += 3) {
+            for (let k = 0; k < 3; k++) pos?.getElement(idx[t + k] as number, q[k] as number[]);
+            const [[ax, ay, az], [bx, by, bz], [cx, cy, cz]] = q as [
+              [number, number, number],
+              [number, number, number],
+              [number, number, number],
+            ];
+            v += ax * (by * cz - bz * cy) - ay * (bx * cz - bz * cx) + az * (bx * cy - by * cx);
+          }
+        }
+      // The 1 × 2 × 1 box's volume, positive: every face points out (quantisation moves it a little).
+      expect(v / 6).toBeGreaterThan(1.9);
+      expect(v / 6).toBeLessThan(2.1);
+    }
+  }, 60_000);
 
   it("AC-AST-03 processing runs in a separate child process; a hang, runaway memory or a crash can't take the server down", async () => {
     expect((await upload(admin, "token", "warm-up.png", await image("png", 30, 30))).status).toBe(200);

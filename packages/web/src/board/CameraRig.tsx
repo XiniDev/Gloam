@@ -7,7 +7,7 @@ import { tableEvents } from "../net/table.ts";
 import { useSettings } from "../state/settings.ts";
 import { useUi } from "../state/ui.ts";
 import { boardDiag } from "./diag.ts";
-import { wake } from "./frames.ts";
+import { again, wake } from "./frames.ts";
 import { type Bounds, boundsCenter, boundsSize } from "./scene.ts";
 
 const { ACTION } = CameraControlsImpl;
@@ -229,10 +229,10 @@ export function CameraRig({ bounds, sceneId }: { bounds: Bounds; sceneId: string
     [],
   );
 
-  useFrame((state) => {
+  useFrame(() => {
     const now = performance.now();
     // On-demand rendering: a tween or a follow keeps frames coming (user input is handled by the controls).
-    if (tweens.current.length || follow.current) state.invalidate();
+    if (tweens.current.length || follow.current) again();
     if (tweens.current.length) {
       tweens.current = tweens.current.filter((t) => {
         const k = Math.min(1, (now - t.start) / t.duration);

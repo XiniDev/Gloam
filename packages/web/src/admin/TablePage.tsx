@@ -280,7 +280,7 @@ export function TablePage() {
                 <p className="caps mb-1.5 text-12 text-fog">Invite code</p>
                 {s.invite ? (
                   <div className="flex flex-wrap items-center gap-3">
-                    <span className="mono select-all rounded-[var(--radius-control)] border border-brass-deep bg-ink-900 px-4 py-2 text-36 font-semibold tracking-[0.14em] text-brass-bright">
+                    <span className="mono select-all whitespace-nowrap rounded-[var(--radius-control)] border border-brass-deep bg-ink-900 px-4 py-2 text-28 font-semibold tracking-[0.14em] text-brass-bright sm:text-36">
                       {s.invite.display}
                     </span>
                     <div className="flex gap-1">

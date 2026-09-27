@@ -207,7 +207,7 @@ test.describe("P2 — DM tools: calibration, 3D maps, the Library (SCN-01, SCN-0
   }) => {
     const code = await adminAtTable(admin);
     await introDone(admin);
-    const { image } = await assetFixtures();
+    const { portraitPng, dungeonPng } = await assetFixtures();
     const sceneId = await createScene(admin, {
       name: "Hall",
       mapKind: "procedural",
@@ -217,11 +217,15 @@ test.describe("P2 — DM tools: calibration, 3D maps, the Library (SCN-01, SCN-0
     });
     await boardSettled(admin, sceneId);
     // Three different images (the same bytes twice would be one Library item, by design).
-    for (const [i, n] of ["Goblin archer", "Goblin shaman", "Owlbear"].entries())
-      await uploadVia(admin, await image("png", 128 + i * 2, 128), `${n}.png`, "token");
-    await uploadVia(admin, await checkerPng(700, 10), "Crypt map.png", "map");
+    for (const [n, kind, hue] of [
+      ["Goblin archer", "goblin", 0],
+      ["Goblin shaman", "goblin", 70],
+      ["Owlbear", "owl", 30],
+    ] as const)
+      await uploadVia(admin, await portraitPng(kind, { size: 128, hue }), `${n}.png`, "token");
+    await uploadVia(admin, await dungeonPng({ cols: 14, rows: 9 }), "Crypt map.png", "map");
     const dave = await admitPlayer(admin, browser, gloam, guardLog, code, "Dave", { viewport: VIEWPORT });
-    await uploadVia(dave, await image("png", 96, 96), "Dave's familiar.png", "token");
+    await uploadVia(dave, await portraitPng("owl", { size: 96 }), "Dave's familiar.png", "token");
 
     await dmPanel(admin, "Library");
     const cards = admin.getByRole("list", { name: "Library items" }).locator("[data-asset]");

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { frameDelta, setFrameDelta } from "../frames.ts";
-import { AUTO_COIN_PITCH, CROSSFADE_S, crossfadeStep } from "./crossfade.ts";
+import { AUTO_COIN_PITCH, approach, CROSSFADE_S, crossfadeStep } from "./crossfade.ts";
 
 describe("auto mode crossfade (AC-TOK-11)", () => {
   it("switches at 70° and crossfades linearly over 200 ms, whatever the frame rate", () => {
@@ -23,6 +23,22 @@ describe("auto mode crossfade (AC-TOK-11)", () => {
     expect(w).toBeCloseTo(0, 9);
     // Reversing mid-fade continues from where it is (no jump).
     expect(crossfadeStep(0.4, 0, 0.02)).toBeCloseTo(0.3, 9);
+  });
+
+  it("a settled fade stays settled (no dip toward the other end on every frame)", () => {
+    // A fade at its target must not move: a dip there made settled overlays and coins flicker on every redraw,
+    // and kept the board rendering forever.
+    for (const dt of [1 / 60, 0.05, 0.25]) {
+      expect(crossfadeStep(1, 1, dt)).toBe(1);
+      expect(crossfadeStep(0, 0, dt)).toBe(0);
+      expect(approach(1, 1, dt / 0.15)).toBe(1);
+      expect(approach(0.5, 0.5, 10)).toBe(0.5);
+    }
+    // It lands exactly on the target (no overshoot), from either side, and partial targets work.
+    expect(approach(0.95, 1, 0.2)).toBe(1);
+    expect(approach(0.05, 0, 0.2)).toBe(0);
+    expect(approach(0, 0.4, 1)).toBe(0.4);
+    expect(approach(1, 0.4, 0.25)).toBe(0.75);
   });
 
   it("the first frame after an idle pause steps a nominal 1/60 s, not the whole pause", () => {

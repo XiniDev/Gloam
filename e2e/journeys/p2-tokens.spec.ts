@@ -219,9 +219,9 @@ test.describe("P2 — tokens (TOK)", () => {
   }) => {
     const code = await adminAtTable(admin);
     await introDone(admin);
-    const { image, glb } = await assetFixtures();
-    const art = await uploadVia(admin, await image("png", 256, 256), "knight.png", "token");
-    const mini = await uploadVia(admin, await glb(), "statue.glb", "mini");
+    const { portraitPng, statueGlb } = await assetFixtures();
+    const art = await uploadVia(admin, await portraitPng("knight"), "knight.png", "token");
+    const mini = await uploadVia(admin, await statueGlb(), "statue.glb", "mini");
     const sceneId = await createScene(admin, {
       name: "Gallery",
       mapKind: "procedural",
@@ -556,5 +556,132 @@ test.describe("P2 — tokens (TOK)", () => {
     expect(near(px[Math.round(W * 0.2)] as number[], hex(BOARD_COLORS.brass400))).toBe(true);
     expect(near(px[Math.round(W * 0.65)] as number[], hex(BOARD_COLORS.hpGhost))).toBe(true);
     expect(near(px[Math.round(W * 0.9)] as number[], hex(BOARD_COLORS.ink900))).toBe(true);
+  });
+
+  test("overlay layout (§8.5): every plate sits just above its own token at any pitch and pose, shown plates never overlap, and settled fades stay settled", async ({
+    admin,
+  }) => {
+    await adminAtTable(admin);
+    await introDone(admin);
+    const { portraitPng, statueGlb } = await assetFixtures();
+    const art = await uploadVia(admin, await portraitPng("knight"), "knight.png", "token");
+    const mini = await uploadVia(admin, await statueGlb(), "guardian.glb", "mini");
+    const sceneId = await createScene(admin, {
+      name: "Crowd",
+      mapKind: "procedural",
+      floorStyle: "stone",
+      widthFt: 80,
+      heightFt: 50,
+    });
+    await boardSettled(admin, sceneId);
+    const hp = (n: number, max = 20) => ({ stats: { hp: n, hpMax: max, ac: 12 } });
+    const tokens = [
+      {
+        name: "Stone Guardian",
+        pos: { x: 44, y: 26 },
+        size: "large",
+        appearance: { mode: "model", assetId: mini.id },
+        ...hp(60, 60),
+      },
+      {
+        name: "Fallen Guardian",
+        pos: { x: 62, y: 30 },
+        size: "large",
+        appearance: { mode: "model", assetId: mini.id },
+        ...hp(0, 60),
+      },
+      {
+        name: "Sir Aldric",
+        pos: { x: 16, y: 26 },
+        appearance: { mode: "auto", assetId: art.id },
+        ...hp(24, 31),
+      },
+      {
+        name: "Fallen Knight",
+        pos: { x: 26, y: 34 },
+        appearance: { mode: "standee", assetId: art.id },
+        ...hp(0, 31),
+      },
+      { name: "Goblin Boss", pos: { x: 30, y: 20 }, hpDisplay: "descriptor", ...hp(12, 21) },
+      // A tight pack: at a distance their plates would pile up — declutter keeps one of each overlap.
+      ...[0, 1, 2, 3].map((i) => ({
+        name: `Goblin ${i + 1}`,
+        pos: { x: 56 + (i % 2) * 5, y: 10 + Math.floor(i / 2) * 5 },
+        size: "small",
+        ...hp(7, 7),
+      })),
+    ];
+    for (const t of tokens) await req(admin, "token.create", { sceneId, ...t });
+
+    type R = { x0: number; y0: number; x1: number; y1: number };
+    type O = {
+      id: string;
+      clear: number;
+      rect?: R;
+      flips: number;
+      token: R | null;
+      fade?: { clear: number; target: number; a: number };
+    };
+    const overlays = () => hook<O[]>(admin, "overlays");
+    // Settled: frames have been drawn since the view changed and the board has gone idle again, every plate is laid
+    // out and done fading, and nothing moved since the last look (minis load late; a slow first frame after a big
+    // view change must not pass for "nothing changed").
+    let last = "";
+    let since = 0;
+    const frames = async () => (await hook<{ frames: number }>(admin, "stats")).frames;
+    const settled = async () => {
+      const o = await overlays();
+      const f = await frames();
+      const ready =
+        f > since + 2 &&
+        o.length === tokens.length &&
+        o.every((x) => x.rect && x.token && x.fade && x.fade.clear === x.fade.target);
+      const now = JSON.stringify([f, o.map((x) => [x.clear, x.rect, x.token])]);
+      const same = now === last;
+      last = now;
+      return ready && same;
+    };
+    const overlap = (a: R, b: R) => a.x0 < b.x1 && a.x1 > b.x0 && a.y0 < b.y1 && a.y1 > b.y0;
+    for (const view of [
+      { pitchDeg: 90, distance: 75 },
+      { pitchDeg: 55, distance: 70 },
+      { pitchDeg: 30, distance: 60 },
+      { pitchDeg: 55, distance: 160 },
+    ]) {
+      since = await frames();
+      await camera(admin, { ...view, target: [40, 25], ms: 0 });
+      await expect.poll(settled, { timeout: 20_000, intervals: [400] }).toBe(true);
+      const all = await overlays();
+      const shown = all.filter((o) => o.clear === 1);
+      expect(shown.length, JSON.stringify(view)).toBeGreaterThan(0);
+      for (const o of shown) {
+        const plate = o.rect as R;
+        const tok = o.token as R;
+        const label = `${JSON.stringify(view)} ${((await tokenView(admin, o.id)) as { name: string }).name}`;
+        // Just above the token's highest point: a small gap, not floating (or sinking into it).
+        const gap = tok.y0 - plate.y1;
+        expect(gap, label).toBeGreaterThanOrEqual(-1);
+        expect(gap, label).toBeLessThanOrEqual(14);
+        // And over it, not beside it: its centre within the middle 60 % of the token's width on screen (perspective
+        // shifts a tall token's top away from the view's centre, and the plate follows the top).
+        const cx = (plate.x0 + plate.x1) / 2;
+        const w = tok.x1 - tok.x0;
+        expect(cx, label).toBeGreaterThanOrEqual(tok.x0 + 0.2 * w);
+        expect(cx, label).toBeLessThanOrEqual(tok.x1 - 0.2 * w);
+      }
+      for (const [i, a] of shown.entries())
+        for (const b of shown.slice(i + 1))
+          expect(overlap(a.rect as R, b.rect as R), `${JSON.stringify(view)} ${a.id} × ${b.id}`).toBe(false);
+      // Settled stays settled: a burst of ordinary redraws changes no verdict and moves no fade.
+      await hook(admin, "redraw", 600);
+      await admin.waitForTimeout(700);
+      const again = await overlays();
+      for (const o of again) {
+        const before = all.find((x) => x.id === o.id) as O;
+        expect(o.flips, o.id).toBe(before.flips);
+        expect(o.fade?.clear, o.id).toBe(o.fade?.target);
+        expect(o.fade?.a, o.id).toBe(before.fade?.a);
+      }
+    }
   });
 });

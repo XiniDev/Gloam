@@ -5,7 +5,6 @@ import {
   assetFixtures,
   boardSettled,
   camera,
-  checkerPng,
   createScene,
   hook,
   introDone,
@@ -18,6 +17,13 @@ async function dmPanel(page: Page, tab: "Scenes" | "Library" | "Approvals"): Pro
   const tabs = page.getByRole("tablist", { name: "DM panel sections" });
   if (!(await tabs.isVisible())) await page.getByRole("button", { name: /^DM panel/ }).click();
   await page.getByRole("tab", { name: tab }).click();
+}
+
+/** Closes the dock's panel (as a player would before reaching for the toolbar or a token it covers). */
+async function closeDock(page: Page): Promise<void> {
+  const open = page.locator('[data-hud="dock"] nav button[aria-pressed="true"]');
+  if (await open.count()) await open.first().click();
+  await expect(page.locator('[data-hud="dock"] section')).toHaveCount(0);
 }
 
 /**
@@ -84,9 +90,9 @@ test("P2 key screens", async ({ admin, browser, gloam, guardLog }, info) => {
   await admin.getByRole("button", { name: "Go to the table" }).click();
   await introDone(admin);
   const daveId = ((await hook<{ userId: string }>(dave, "me")) as { userId: string }).userId;
-  const { image, glb } = await assetFixtures();
-  const art = await uploadVia(admin, await image("png", 256, 256), "Knight portrait.png", "token");
-  const statue = await uploadVia(admin, await glb(), "Stone guardian.glb", "mini");
+  const { portraitPng, statueGlb, dungeonPng, roomGlb } = await assetFixtures();
+  const art = await uploadVia(admin, await portraitPng("knight"), "Knight portrait.png", "token");
+  const statue = await uploadVia(admin, await statueGlb(), "Stone guardian.glb", "mini");
   const crypt = await createScene(admin, {
     name: "The Lantern Crypt",
     mapKind: "procedural",
@@ -143,7 +149,7 @@ test("P2 key screens", async ({ admin, browser, gloam, guardLog }, info) => {
     await dmPanel(admin, "Library");
     await expect(admin.getByText("Knight portrait")).toBeVisible();
   });
-  await uploadVia(dave, await image("png", 200, 200), "Dave's familiar.png", "token").catch((e) =>
+  await uploadVia(dave, await portraitPng("owl", { size: 200 }), "Dave's familiar.png", "token").catch((e) =>
     notes.push(`upload: ${e}`),
   );
   await step("13-dm-approvals", admin, async () => {
@@ -172,11 +178,12 @@ test("P2 key screens", async ({ admin, browser, gloam, guardLog }, info) => {
       .setInputFiles({
         name: "Ruined chapel.png",
         mimeType: "image/png",
-        buffer: await checkerPng(1400, 20),
+        buffer: await dungeonPng(),
       });
     await expect(admin.getByRole("dialog", { name: "Calibrate the map" })).toBeVisible({ timeout: 60_000 });
   });
   await admin.keyboard.press("Escape");
+  await closeDock(admin).catch((e) => notes.push(`closeDock: ${e}`));
   await step("17-quick-unit", admin, async () => {
     await admin.getByRole("button", { name: "Quick unit" }).click();
     await expect(admin.getByRole("dialog", { name: "Quick unit" })).toBeVisible();
@@ -208,7 +215,7 @@ test("P2 key screens", async ({ admin, browser, gloam, guardLog }, info) => {
     {
       name: "The Sunken Vault",
       mapKind: "model",
-      mapAssetId: (await uploadVia(admin, await glb({ boxes: 6 }), "Vault.glb", "map")).id,
+      mapAssetId: (await uploadVia(admin, await roomGlb(), "Vault.glb", "map")).id,
     },
     false,
   );

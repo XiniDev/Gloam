@@ -6,6 +6,7 @@ import { type ThreeEvent, useFrame } from "@react-three/fiber";
 import { memo, useEffect, useMemo, useRef } from "react";
 import {
   AnimationMixer,
+  type Camera,
   type Group,
   type Material,
   type Mesh,
@@ -24,9 +25,9 @@ import { C, col, ringColorOf } from "../colors.ts";
 import { boardDiag } from "../diag.ts";
 import { disposeLater } from "../dispose.ts";
 import { CAPS_FONT } from "../fonts.ts";
-import { frameDelta, setAnimating } from "../frames.ts";
+import { again, frameDelta, setAnimating } from "../frames.ts";
 import { TIERS, useTier } from "../tiers.ts";
-import { AUTO_COIN_PITCH, crossfadeStep } from "./crossfade.ts";
+import { AUTO_COIN_PITCH, approach, crossfadeStep } from "./crossfade.ts";
 import { overlayClear, PRIORITY, registerOverlay } from "./declutter.ts";
 import { cylinder, plane, torus } from "./geometries.ts";
 import { hiddenBadgeTexture, initialsTexture } from "./glyphs.ts";
@@ -42,6 +43,13 @@ type TroikaText = Mesh & { fillOpacity: number; outlineOpacity: number };
 
 const tmp = new Vector3();
 const screenUp = new Vector3();
+const origin = new Vector3();
+const corner = new Vector3();
+const axis = new Vector3();
+const ndc = new Vector3();
+const probe = new Vector3();
+/** Points sampled around a base or coin rim when finding its top on screen. */
+const RIM_SAMPLES = 24;
 
 export interface Viewer {
   userId: string;
@@ -49,6 +57,19 @@ export interface Viewer {
 }
 
 /** Live HP-bar values per token, read by the test hooks (AC-TOK-05). */
+/** Tokens move (glide, facing, billboards) before their overlays place themselves (default priority 0). */
+const TOKEN_FRAME_PRIORITY = -0.5;
+
+/** How far a prone or dead mini tips over (SPEC §8.5). */
+const TIP = (80 * Math.PI) / 180;
+const ORIGIN: [number, number, number] = [0, 0, 0];
+
+/** Gap between a token's highest point on screen and its plate's lowest edge, in plate units. */
+const PLATE_GAP = 0.18;
+
+/** Diagnostics (test hooks): each overlay's fade factors this frame. */
+export const overlayFade = new Map<string, { far: number; clear: number; target: number; a: number }>();
+
 /** One plane for every token's HP bar (they differ only in their material's uniforms). */
 /** The bar is tall enough to carry its numbers (Exact mode) inside it. */
 const HP_BAR_H = 0.46;
@@ -111,6 +132,8 @@ export const TokenObject = memo(function TokenObject({
   const coinW = useRef(mode === "coin" ? 1 : 0);
   const standeeGroup = useRef<Group>(null);
   const coinGroup = useRef<Group>(null);
+  const miniGroup = useRef<Group>(null);
+  const standeeCard = useRef<Group>(null);
   const selRing = useRef<Mesh>(null);
 
   // ── materials (per token, so hidden opacity never touches shared ones) ───────────────────────────────
@@ -175,12 +198,72 @@ export const TokenObject = memo(function TokenObject({
   }, [mini]);
   useEffect(() => () => void mixer?.stopAllAction(), [mixer]);
 
+  const lying = token.prone || token.dead;
+  // Lying down: the mini's pose centred on its base, and a flat card no longer than the base is wide.
+  const tipped = useMemo(() => {
+    if (!mini) return { offset: ORIGIN, height: 0 };
+    const b = mini.localBox;
+    const c = Math.cos(TIP);
+    const s = Math.sin(TIP);
+    let x0 = Number.POSITIVE_INFINITY;
+    let x1 = Number.NEGATIVE_INFINITY;
+    let y0 = Number.POSITIVE_INFINITY;
+    let y1 = Number.NEGATIVE_INFINITY;
+    for (const x of [b.min.x, b.max.x])
+      for (const y of [b.min.y, b.max.y]) {
+        x0 = Math.min(x0, x * c - y * s);
+        x1 = Math.max(x1, x * c - y * s);
+        y0 = Math.min(y0, x * s + y * c);
+        y1 = Math.max(y1, x * s + y * c);
+      }
+    return { offset: [-(x0 + x1) / 2, -y0, 0] as [number, number, number], height: y1 - y0 };
+  }, [mini]);
+  const flatScale = Math.min(1, (R * 1.92) / (BASE_H + standeeH));
   const topY =
     mode === "model" && mini
-      ? mini.height * token.scale * (ov.scale ?? 1) + miniLift
+      ? (lying ? tipped.height : mini.localBox.max.y - mini.localBox.min.y) * miniScale + miniLift
       : mode === "coin"
         ? COIN_H
-        : standeeH + BASE_H;
+        : lying
+          ? BASE_H + 0.06
+          : standeeH + BASE_H;
+
+  /**
+   * The token's highest point on screen, as a normalised device y: the largest projected y over its visible parts —
+   * the base and coin rims (sampled circles), the standee card's corners and the mini's box corners, each through
+   * its real transform (facing the camera or lying flat; facing, overrides, tipped over). Measured after projection,
+   * so perspective (a tall token's top reaching toward the camera) is exact. From the last frame's transforms, so a
+   * pose change moves the plate a frame later at most.
+   */
+  const screenTop = (cam: Camera): number => {
+    const rt = root.current;
+    if (!rt) return Number.NEGATIVE_INFINITY;
+    origin.setFromMatrixPosition(rt.matrixWorld);
+    let best = Number.NEGATIVE_INFINITY;
+    const rim = (y: number) => {
+      for (let k = 0; k < RIM_SAMPLES; k++) {
+        const a = (k / RIM_SAMPLES) * Math.PI * 2;
+        corner.set(origin.x + Math.cos(a) * R, origin.y + y, origin.z + Math.sin(a) * R).project(cam);
+        best = Math.max(best, corner.y);
+      }
+    };
+    if (mode !== "coin") rim(BASE_H);
+    if (mode === "coin" || coinGroup.current?.visible) rim(COIN_H);
+    const card = standeeCard.current;
+    if (standeeGroup.current?.visible && card)
+      for (const x of [-standeeW / 2, standeeW / 2])
+        for (const y of [BASE_H, BASE_H + standeeH])
+          best = Math.max(best, corner.set(x, y, 0).applyMatrix4(card.matrixWorld).project(cam).y);
+    const mg = miniGroup.current;
+    if (mode === "model" && mini && mg) {
+      const b = mini.localBox;
+      for (let i = 0; i < 8; i++) {
+        corner.set(i & 1 ? b.max.x : b.min.x, i & 2 ? b.max.y : b.min.y, i & 4 ? b.max.z : b.min.z);
+        best = Math.max(best, corner.applyMatrix4(mg.matrixWorld).project(cam).y);
+      }
+    }
+    return best;
+  };
 
   // ── per frame: glide to position, facing, auto crossfade, billboarding, pulse ─────────────────────────
   useFrame((state) => {
@@ -203,10 +286,15 @@ export const TokenObject = memo(function TokenObject({
     if (coinGroup.current) coinGroup.current.visible = mode !== "model" && cw > 0.001;
     if (standeeGroup.current) {
       standeeGroup.current.visible = mode !== "model" && cw < 0.999;
-      // Billboard around the vertical axis only (SPEC §8.5 Standee).
+      // Billboard around the vertical axis only (SPEC §8.5 Standee). Lying flat, the card instead reads upright on
+      // screen: its top (local −z) along the camera's screen-up, flattened onto the table.
       const cam = state.camera.position;
-      standeeGroup.current.rotation.y =
-        Math.atan2(cam.x - g.position.x, cam.z - g.position.z) - (body.current?.rotation.y ?? 0);
+      let yaw = Math.atan2(cam.x - g.position.x, cam.z - g.position.z);
+      if (lying) {
+        const up = screenUp.setFromMatrixColumn(state.camera.matrixWorld, 1);
+        yaw = Math.atan2(-up.x, -up.z);
+      }
+      standeeGroup.current.rotation.y = yaw - (body.current?.rotation.y ?? 0);
     }
     setOpacity(coinFaceMat, baseOpacity * cw);
     setOpacity(standeeFront, baseOpacity * (1 - cw));
@@ -226,8 +314,8 @@ export const TokenObject = memo(function TokenObject({
       g.position.distanceToSquared(target) > 1e-6 ||
       (mode === "auto" && Math.abs(coinW.current - wantCoin) > 1e-3)
     )
-      state.invalidate();
-  });
+      again();
+  }, TOKEN_FRAME_PRIORITY);
   // The selection pulse and a mini's idle animation run continuously while they're on.
   useEffect(() => {
     setAnimating(`sel:${token.id}`, selected);
@@ -290,7 +378,6 @@ export const TokenObject = memo(function TokenObject({
       .set({ radial: { tokenId: token.id, x: e.nativeEvent.clientX, y: e.nativeEvent.clientY } });
   };
 
-  const lying = token.prone || token.dead;
   return (
     <group ref={root} name={`token:${token.id}`} userData={{ tokenId: token.id }}>
       <group
@@ -334,10 +421,12 @@ export const TokenObject = memo(function TokenObject({
             userData={{ part: "mini" }}
             position-y={BASE_H + miniLift}
             rotation-y={((ov.rotationYDeg ?? 0) * Math.PI) / 180}
-            rotation-z={lying ? (80 * Math.PI) / 180 : 0}
             scale={miniScale}
           >
-            <primitive object={mini.root} position={mini.offset} dispose={null} />
+            {/* Prone or dead: tipped 80° onto its side, lying centred on its base (not thrown off it). */}
+            <group ref={miniGroup} rotation-z={lying ? TIP : 0} position={lying ? tipped.offset : ORIGIN}>
+              <primitive object={mini.root} position={mini.offset} dispose={null} />
+            </group>
           </group>
         ) : null}
         {mode !== "model" ? (
@@ -362,27 +451,31 @@ export const TokenObject = memo(function TokenObject({
                 dispose={null}
               />
             </group>
-            <group
-              ref={standeeGroup}
-              userData={{ part: "standee" }}
-              rotation-x={lying ? -Math.PI / 2 : 0}
-              position-y={lying ? BASE_H + 0.05 : 0}
-            >
-              <mesh
-                position={[0, BASE_H + standeeH / 2, 0.03]}
-                material={standeeFront}
-                geometry={plane(standeeW, standeeH)}
-                castShadow
-                dispose={null}
-              />
-              <mesh
-                position={[0, BASE_H + standeeH / 2, -0.03]}
-                rotation-y={Math.PI}
-                material={standeeBack}
-                geometry={plane(standeeW, standeeH)}
-                castShadow
-                dispose={null}
-              />
+            <group ref={standeeGroup} userData={{ part: "standee" }}>
+              {/* Prone or dead: the card lies flat (face up, its top away from the camera), centred on the base and
+                  no longer than the base is wide. Nested so the tip happens before the camera-facing turn. */}
+              <group
+                ref={standeeCard}
+                rotation-x={lying ? -Math.PI / 2 : 0}
+                position={lying ? [0, BASE_H + 0.05, (BASE_H + standeeH / 2) * flatScale] : ORIGIN}
+                scale={lying ? flatScale : 1}
+              >
+                <mesh
+                  position={[0, BASE_H + standeeH / 2, 0.03]}
+                  material={standeeFront}
+                  geometry={plane(standeeW, standeeH)}
+                  castShadow
+                  dispose={null}
+                />
+                <mesh
+                  position={[0, BASE_H + standeeH / 2, -0.03]}
+                  rotation-y={Math.PI}
+                  material={standeeBack}
+                  geometry={plane(standeeW, standeeH)}
+                  castShadow
+                  dispose={null}
+                />
+              </group>
             </group>
           </>
         ) : null}
@@ -411,7 +504,7 @@ export const TokenObject = memo(function TokenObject({
         token={token}
         viewer={viewer}
         top={Math.max(topY, 0.3)}
-        radius={R}
+        screenTop={screenTop}
         opacity={baseOpacity}
         hidden={hidden}
       />
@@ -503,14 +596,15 @@ function Overlay({
   token,
   viewer,
   top,
-  radius,
+  screenTop,
   opacity,
   hidden,
 }: {
   token: TokenView;
   viewer: Viewer;
   top: number;
-  radius: number;
+  /** The token's highest point on screen, in normalised device coordinates (see TokenObject's `screenTop`). */
+  screenTop: (cam: Camera) => number;
   opacity: number;
   hidden: boolean;
 }) {
@@ -556,10 +650,35 @@ function Overlay({
   useFrame((state) => {
     const g = group.current;
     if (!g) return;
-    // Lift the plate along the camera's screen-up: above the token at any pitch, never over its face top-down.
-    if (anchor.current) {
-      const up = screenUp.setFromMatrixColumn(state.camera.matrixWorld, 1);
-      anchor.current.position.set(0, top, 0).addScaledVector(up, radius + 0.9);
+    // Plate scale: roughly constant on screen, within limits (so it's in world units ∝ camera distance).
+    // Fresh transforms: this frame's camera and token pose (tokens move before overlays run, TOKEN_FRAME_PRIORITY).
+    const a0 = anchor.current;
+    const rt = a0?.parent;
+    const cam = state.camera;
+    cam.updateMatrixWorld();
+    if (rt) {
+      rt.updateWorldMatrix(true, true);
+      axis.setFromMatrixPosition(rt.matrixWorld);
+    } else g.getWorldPosition(axis);
+    axis.y += top;
+    const d = cam.position.distanceTo(axis);
+    const plate = Math.min(3.2, Math.max(0.55, d / 42));
+    g.scale.setScalar(plate);
+    // Sit a fixed gap above the token's highest point on screen, over its centre line, at any pitch, pose or
+    // perspective: find the spot in screen space, then put the anchor there at the depth of the token's top.
+    const high = screenTop(cam);
+    if (a0 && rt && Number.isFinite(high)) {
+      const up = screenUp.setFromMatrixColumn(cam.matrixWorld, 1);
+      const at = ndc.copy(axis).project(cam);
+      // Screen pixels per world unit at that depth (works for perspective and orthographic cameras alike).
+      const pxPerUnit = ((probe.copy(axis).add(up).project(cam).y - at.y) * state.size.height) / 2;
+      const lowest = showBar ? -HP_BAR_H / 2 : descriptor ? -0.53 : HP_BAR_H / 2 + 0.1;
+      const liftPx = (PLATE_GAP - lowest) * plate * pxPerUnit;
+      at.y = high + (liftPx * 2) / state.size.height;
+      at.unproject(cam).sub(probe.setFromMatrixPosition(rt.matrixWorld));
+      // Still settling (a pose or view change reaches the plate a frame later): draw once more.
+      if (at.distanceToSquared(a0.position) > 1e-6) again();
+      a0.position.copy(at);
     }
     // Overlays always read on top of other tokens and the map (troika re-derives materials, so reapply).
     g.traverse((o) => {
@@ -569,15 +688,11 @@ function Overlay({
         o.renderOrder = 30;
       }
     });
-    const d = state.camera.position.distanceTo(g.getWorldPosition(tmp));
-    g.scale.setScalar(Math.min(3.2, Math.max(0.55, d / 42)));
     const far = 1 - Math.min(1, Math.max(0, (d - 260) / 80));
     // Clutter fade (150 ms) toward the layout's verdict.
     const target = overlayClear(token.id);
-    const step = frameDelta() / 0.15;
-    clear.current =
-      target > clear.current ? Math.min(1, clear.current + step) : Math.max(0, clear.current - step);
-    if (clear.current !== target) state.invalidate();
+    clear.current = approach(clear.current, target, frameDelta() / 0.15);
+    if (clear.current !== target) again();
     const fade = far * clear.current;
     g.visible = fade > 0.02;
     const a = fade * opacity;
@@ -587,6 +702,7 @@ function Overlay({
         t.outlineOpacity = a;
       }
     if (badge.current) badge.current.opacity = fade;
+    overlayFade.set(token.id, { far, clear: clear.current, target, a });
     const now = performance.now();
     const gv = showBar ? ghost.current.update(Math.max(0, frac), now) : 0;
     if (showBar) {
@@ -600,7 +716,7 @@ function Overlay({
       });
     } else hpBarState.delete(token.id);
     // The damage ghost holds and drains over ~1 s: keep drawing until it has caught up.
-    if (showBar && Math.abs(gv - Math.max(0, frac)) > 1e-4) state.invalidate();
+    if (showBar && Math.abs(gv - Math.max(0, frac)) > 1e-4) again();
   });
   useEffect(() => () => void hpBarState.delete(token.id), [token.id]);
 

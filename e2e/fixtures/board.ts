@@ -168,6 +168,15 @@ export interface AssetFixtures {
   image(format: "png" | "jpeg" | "webp", width: number, height: number): Promise<Buffer>;
   glb(opts?: Record<string, unknown>): Promise<Uint8Array>;
   roomGlb(): Promise<Uint8Array>;
+  /** A stone guardian mini (for screenshots). */
+  statueGlb(): Promise<Uint8Array>;
+  /** Illustrated token art; `hue` makes distinct files of one figure. */
+  portraitPng(
+    kind: "knight" | "owl" | "goblin" | "mage",
+    opts?: { size?: number; hue?: number },
+  ): Promise<Buffer>;
+  /** A drawn dungeon map, `cols` × `rows` squares of `pxPer5ft` pixels. */
+  dungeonPng(opts?: { cols?: number; rows?: number; pxPer5ft?: number }): Promise<Buffer>;
 }
 export function assetFixtures(): Promise<AssetFixtures> {
   const path = ["..", "..", "packages", "server", "src", "test", "assetFixtures.ts"].join("/");

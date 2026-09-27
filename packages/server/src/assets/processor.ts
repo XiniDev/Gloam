@@ -21,6 +21,7 @@ import draco3d from "draco3dgltf";
 import { validateBytes } from "gltf-validator";
 import { MeshoptDecoder, MeshoptEncoder, MeshoptSimplifier } from "meshoptimizer";
 import sharp, { type Metadata, type OutputInfo } from "sharp";
+import { orientShells } from "./orient.ts";
 import { audioProblem, glbJson, hasActiveContent, polyglotReason } from "./sniff.ts";
 import {
   GLB_BUDGET,
@@ -260,6 +261,9 @@ async function runModel(job: ProcessJob): Promise<ProcessResult> {
     if (tris <= budget.triangles) break;
     await doc.transform(simplify({ simplifier: MeshoptSimplifier, ratio: budget.triangles / tris, error }));
   }
+  // Minis whose triangles face inward render inside out; repair closed shells (orient.ts). Not maps: inward rooms
+  // are deliberate there.
+  if (profile === "mini") orientShells(doc);
   const trianglesOut = countTriangles(doc);
   // Simplification works per primitive, so thousands of tiny separate parts can't be reduced. Shipping such a
   // model would cost every player frame rate, so refuse it with the fix instead.

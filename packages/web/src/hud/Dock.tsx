@@ -15,6 +15,8 @@ const DmPanel = lazyPage(() => import("./dm/DmPanel.tsx"));
 const WIDTH_KEY = "gloam.dock.width";
 const MIN_W = 320;
 const MAX_W = 520;
+/** The rail, the gap beside it and both screen gutters. */
+const RAIL_ROOM = 84;
 
 function loadWidth(): number {
   try {
@@ -58,7 +60,9 @@ export function Dock() {
       {tab ? (
         <section
           className="panel pointer-events-auto relative flex min-w-0 flex-col overflow-hidden"
-          style={{ width }}
+          // Never wider than the screen leaves beside the rail (phones: nearly full width, over the toolbar, until
+          // P14's bottom sheets).
+          style={{ width: `min(${width}px, calc(100vw - ${RAIL_ROOM}px))` }}
           aria-label={tab === "dm" ? "DM panel" : "Party"}
         >
           {/* Resize handle on the panel's left edge. */}

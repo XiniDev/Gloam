@@ -72,7 +72,7 @@ export function TopBar() {
           <span className="caps hidden text-12 text-fog sm:inline">Session {sessionNo}</span>
         ) : null}
       </div>
-      <div className="pointer-events-auto ml-auto flex items-center gap-3">
+      <div className="pointer-events-auto ml-auto flex items-center gap-1.5 sm:gap-3">
         <ul className="flex items-center gap-2" aria-label="At the table">
           {presence
             .filter((p) => p.online || p.role !== "admin")
@@ -87,10 +87,12 @@ export function TopBar() {
         {me?.role === "admin" ? (
           <button
             type="button"
+            aria-label="Admin console"
             onClick={() => navigate("/admin")}
-            className="hit rounded-[var(--radius-control)] border border-line bg-raised px-3 text-13 font-bold text-bone hover:border-brass"
+            className="hit whitespace-nowrap rounded-[var(--radius-control)] border border-line bg-raised px-3 text-13 font-bold text-bone hover:border-brass"
           >
-            Admin console
+            <span className="sm:hidden">Admin</span>
+            <span className="hidden sm:inline">Admin console</span>
           </button>
         ) : null}
       </div>

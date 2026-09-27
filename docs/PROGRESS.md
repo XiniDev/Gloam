@@ -98,3 +98,22 @@ PASSING 28/224 · DISPUTED 0 · FAILING 196
   selection lost on a quick click, lost sessionStorage saves, map-tool edit race, invite code overflowing the Join
   card, unreachable admin actions on phones, overlapping token overlays.
 - Next: `pnpm shots` review round + visual-critic (≤ 2 rounds), then P3 (walls and movement).
+
+## 2026-09-27 — Screenshot review round 2; P3 pathfinder engine
+
+- Visual fixes from reviewing `pnpm shots` (and Xini's report of a glitched Stone Guardian): the "glitch" was an
+  inside-out, noise-textured test box — the renderer drew bad input faithfully. The GLB pipeline now repairs
+  inside-out minis (closed shells, inconsistent winding; unit + server tests), and screenshots use an illustrated
+  portrait set, a drawn dungeon map and a modelled stone-guardian mini.
+- Name plates: a fade bug dipped settled plates and auto coins on every redraw (flicker; plates caught half-faded);
+  plates floated far above tall minis onto the token behind; lying minis were thrown off their base and flat
+  standees stood upright from side views; a board going idle right after a camera change could keep a one-frame-
+  stale layout. All fixed; new journey "overlay layout" checks plate placement at 90/55/30° and at a distance,
+  including tipped-over minis and flat standees, no plate overlaps, and stability across redraws.
+- Phones: admin invite code on one line, dock panel fits beside its rail, Quick Unit fields reflow (labels no
+  longer run together), compact admin button.
+- P3 (started): shared movement engine — wall blocking matrix, clearance, visibility-graph pathfinder with cached
+  per-scene structures and a connectivity grid (≈ 0.2–0.3 ms per warm query on 500 walls; matches brute force on
+  120 random scenes), cost integration (difficult terrain, crawl), server validation (collision truncation,
+  clamp/reject budgets), cramped-start rule. 22 unit tests.
+- Next: `move.commit` server command and client drag preview (P3 MOV criteria), then walls editor, doors, zones.

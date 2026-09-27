@@ -525,10 +525,10 @@
       "code": "MOV",
       "phase": "P3",
       "text": "The client preview cost equals the server's authoritative cost within 0.05 ft for 200 randomised shared-test scenarios.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/shared/src/movement/movement.test.ts › client preview = server authority (AC-MOV-02) › costs agree within 0.05 ft over 200 randomised scenes, and valid previews are never truncated (the browser preview and the server run the same shared route/validateMove code)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T19:26:11.086Z"
     },
     {
       "id": "AC-MOV-03",
@@ -712,10 +712,10 @@
       "code": "WAL",
       "phase": "P3",
       "text": "The six wall kinds (door with closed/open/locked states) follow the blocking matrix exactly, verified by unit tests on the shared blocking predicates.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/shared/src/movement/movement.test.ts › the wall blocking matrix (AC-WAL-01) › matches §8.7 for every kind and door state (move, sight and light for wall, door closed/locked/open, window, curtain, invisible, secret, occluder)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T19:26:11.086Z"
     },
     {
       "id": "AC-WAL-02",

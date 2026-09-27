@@ -66,8 +66,9 @@ export const useEntities = create<EntitiesStore>((set, get) => ({
     const s = get();
     const from = s.live.scene?.id ?? null;
     const to = live.scene?.id ?? null;
-    // A DM preparing another scene stays there; everyone else travels.
-    if (s.armed && to && from !== to && !s.prep) {
+    // A DM preparing another scene stays there; everyone else travels — from one scene to another only: the first
+    // scene arriving (after the intro on a slow join, or a reconnect's fresh sync) just appears.
+    if (s.armed && from && to && from !== to && !s.prep) {
       // Still showing the old scene: let the transition freeze it before the board switches.
       travelHooks.beforeTravel?.();
       set({

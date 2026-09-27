@@ -22,8 +22,9 @@ import { boardDiag, useLoading } from "./diag.ts";
 import { setAnimating, wake } from "./frames.ts";
 import { resourceStats } from "./resources.ts";
 import { TIERS, TierGovernor, useTier } from "./tiers.ts";
+import { overlayDiagnostics } from "./tokens/declutter.ts";
 import { createHpBarMaterial, setHpBar } from "./tokens/hpBar.ts";
-import { hpBarState } from "./tokens/TokenObject.tsx";
+import { hpBarState, overlayFade } from "./tokens/TokenObject.tsx";
 
 /**
  * Test hooks for the board (SPEC §23.7; present only in `vite build --mode test`): camera read/write, renderer and
@@ -112,6 +113,41 @@ export function TestProbe() {
       };
     });
     provideTestHook("scene", () => boardData(useEntities.getState()).scene);
+    // Every overlay: its layout verdict, plate rectangle and fade, and the screen rectangle of its token's visible
+    // parts (base, coin, standee or mini) — so journeys can check where plates sit relative to their tokens.
+    provideTestHook("overlays", () => {
+      const cam = boardApi.camera;
+      const el = boardApi.element;
+      const w = el?.clientWidth ?? 0;
+      const h = el?.clientHeight ?? 0;
+      const tokenRect = (id: string) => {
+        const body = scene.getObjectByName(`token:${id}`)?.children[0];
+        if (!body || !cam) return null;
+        // Each visible part's own box corners through its transform (a world-aligned box would inflate turned or
+        // tipped parts), projected.
+        const r = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
+        const c = new Vector3();
+        body.updateWorldMatrix(true, true);
+        body.traverseVisible((o) => {
+          const m = o as Mesh;
+          if (!m.isMesh || !m.geometry) return;
+          if (!m.geometry.boundingBox) m.geometry.computeBoundingBox();
+          const b = m.geometry.boundingBox as Box3;
+          for (let i = 0; i < 8; i++) {
+            c.set(i & 1 ? b.max.x : b.min.x, i & 2 ? b.max.y : b.min.y, i & 4 ? b.max.z : b.min.z);
+            c.applyMatrix4(m.matrixWorld).project(cam);
+            const sx = ((c.x + 1) / 2) * w;
+            const sy = ((1 - c.y) / 2) * h;
+            r.x0 = Math.min(r.x0, sx);
+            r.y0 = Math.min(r.y0, sy);
+            r.x1 = Math.max(r.x1, sx);
+            r.y1 = Math.max(r.y1, sy);
+          }
+        });
+        return Number.isFinite(r.x0) ? r : null;
+      };
+      return overlayDiagnostics().map((o) => ({ ...o, fade: overlayFade.get(o.id), token: tokenRect(o.id) }));
+    });
     provideTestHook("ui", () => {
       const u = useUi.getState();
       return { selection: u.selection, hover: u.hover, tool: u.tool, radial: u.radial };
@@ -183,6 +219,12 @@ export function TestProbe() {
       geo.dispose();
       mat.dispose();
       return Array.from({ length: width }, (_, i) => [buf[i * 4], buf[i * 4 + 1], buf[i * 4 + 2]]);
+    });
+    /** Keeps the board drawing for `ms` (a burst of ordinary redraws, as camera or store changes cause). */
+    provideTestHook("redraw", (ms: number) => {
+      const before = boardApi.frames;
+      wake(ms);
+      return before;
     });
     provideTestHook("forceFrameMs", (ms: number | null) => {
       TierGovernor.forcedMs = ms;

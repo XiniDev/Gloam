@@ -86,7 +86,7 @@ function Num({
   const id = useId();
   return (
     <div className="min-w-0">
-      <label htmlFor={id} className="caps mb-1 block text-12 text-fog">
+      <label htmlFor={id} className="caps mb-1 block truncate text-12 text-fog" title={label}>
         {label}
       </label>
       <div className="relative">
@@ -375,7 +375,7 @@ export function QuickUnitDialog() {
           />
           <Num label="AC" value={f.ac} error={tried && errors.ac} onChange={(v) => up({ ac: v })} />
         </div>
-        <fieldset className="grid grid-cols-5 gap-2">
+        <fieldset className="grid grid-cols-3 gap-2 sm:grid-cols-5">
           <legend className="caps mb-1.5 text-12 text-brass">Speed</legend>
           {SPEEDS.map((k) => (
             <Num
@@ -391,7 +391,7 @@ export function QuickUnitDialog() {
         {Number(f.speeds.fly) > 0 ? (
           <Toggle label="Hovers" checked={f.hover} onChange={(hover) => up({ hover })} />
         ) : null}
-        <fieldset className="grid grid-cols-4 gap-2">
+        <fieldset className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           <legend className="caps mb-1.5 text-12 text-brass">Senses</legend>
           {SENSES.map((k) => (
             <Num

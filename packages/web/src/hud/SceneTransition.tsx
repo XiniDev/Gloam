@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { boardApi } from "../board/boardApi.ts";
 import { useLoading } from "../board/diag.ts";
+import { setAnimating } from "../board/frames.ts";
 import { travelHooks, useEntities } from "../state/entities.ts";
 import { prefersReducedMotion } from "../state/settings.ts";
 import { provideTestHook } from "../test/hooks.ts";
@@ -67,6 +68,9 @@ export function SceneTransition() {
       phaseRef.current = p;
       setPhase(p);
       log.push({ sceneId: travel.sceneId, phase: p, at: performance.now() });
+      // The new scene warms up under the fade and the name: keep the board drawing until it's revealed (an idle
+      // board draws nothing, and the reveal waits for its frames).
+      setAnimating("travel", p === "out" || p === "title");
     };
     const after = (ms: number, fn: () => void) => timers.current.push(setTimeout(fn, ms));
     let raf = 0;
@@ -103,6 +107,7 @@ export function SceneTransition() {
       cancelAnimationFrame(raf);
       for (const t of timers.current) clearTimeout(t);
       timers.current = [];
+      if (phaseRef.current === "idle") setAnimating("travel", false);
     };
   }, [travel, out, fadeIn, reduced]);
 

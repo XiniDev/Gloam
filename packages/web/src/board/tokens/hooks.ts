@@ -61,6 +61,8 @@ export interface MiniInstance {
   /** Offset that grounds the model at y = 0 and centres it on its base. */
   offset: Vector3;
   height: number;
+  /** The model's bounds after `offset` (grounded and centred), before `scale`. */
+  localBox: Box3;
 }
 
 /**
@@ -101,7 +103,9 @@ export function useMini(meta: AssetRender | null, size: Size): MiniInstance | nu
         const target = SIZE_MINI_HEIGHT_FT[size] ?? SIZE_MINI_HEIGHT_FT.medium;
         const scale = target / height;
         const centre = box.getCenter(new Vector3());
-        setInst({ root, gltf, scale, height: target, offset: new Vector3(-centre.x, -box.min.y, -centre.z) });
+        const offset = new Vector3(-centre.x, -box.min.y, -centre.z);
+        const localBox = box.clone().translate(offset);
+        setInst({ root, gltf, scale, height: target, offset, localBox });
       },
       () => {},
     );

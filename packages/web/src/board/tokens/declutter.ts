@@ -12,6 +12,10 @@ interface Entry {
   priority: () => number;
   /** Target visibility from the last layout: 1 shown, 0 hidden by clutter. */
   clear: number;
+  /** Screen rectangle from the last layout (diagnostics). */
+  rect?: { x0: number; y0: number; x1: number; y1: number };
+  /** How many times its verdict changed (diagnostics: a stable layout stops changing). */
+  flips: number;
 }
 
 const entries = new Map<string, Entry>();
@@ -20,7 +24,7 @@ const corner = new Vector3();
 const PAD_PX = 3;
 
 export function registerOverlay(id: string, group: Object3D, priority: () => number): () => void {
-  entries.set(id, { group, priority, clear: 1 });
+  entries.set(id, { group, priority, clear: 1, flips: 0 });
   return () => {
     if (entries.get(id)?.group === group) entries.delete(id);
   };
@@ -74,8 +78,10 @@ export function layoutOverlays(camera: Camera, width: number, height: number): b
     );
     const clear = hit ? 0 : 1;
     if (!hit) placed.push(r);
+    it.e.rect = r;
     if (it.e.clear !== clear) {
       it.e.clear = clear;
+      it.e.flips++;
       changed = true;
     }
   }
@@ -84,3 +90,8 @@ export function layoutOverlays(camera: Camera, width: number, height: number): b
 
 /** Overlay priorities (higher wins a spot on screen). */
 export const PRIORITY = { hovered: 5, selected: 4, own: 3, party: 2, other: 1 } as const;
+
+/** Diagnostics for the test hooks: every overlay's verdict, rectangle and flip count. */
+export function overlayDiagnostics() {
+  return [...entries].map(([id, e]) => ({ id, clear: e.clear, rect: e.rect, flips: e.flips }));
+}

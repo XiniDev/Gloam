@@ -1,9 +1,7 @@
-import type { Page } from "@playwright/test";
 import {
   adminAtTable,
   assetFixtures,
   boardSettled,
-  brightness,
   createScene,
   hook,
   hudBoxes,
@@ -104,8 +102,13 @@ test.describe("P2 — first load, fonts and the table at 1 unit = 1 ft (DS-04, B
     await expect.poll(async () => (await stats(admin)).firstFrameAt).not.toBeNull();
 
     // A 1400 × 700 px map at 70 px per 5 ft is 100 × 50 ft on the table.
-    const { image } = await assetFixtures();
-    const asset = await uploadVia(admin, await image("png", 1400, 700), "hall.png", "map");
+    const { dungeonPng } = await assetFixtures();
+    const asset = await uploadVia(
+      admin,
+      await dungeonPng({ cols: 20, rows: 10, pxPer5ft: 70 }),
+      "hall.png",
+      "map",
+    );
     const sceneId = await createScene(admin, {
       name: "The Hall",
       mapKind: "image",

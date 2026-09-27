@@ -26,6 +26,25 @@ export function setAnimating(key: string, active: boolean): void {
   } else animating.delete(key);
 }
 
+/**
+ * An animation step drawn this frame needs the next one straight away (a fade, glide or tween in progress): unlike
+ * a bare invalidate(), the next frame then counts as part of a continuous run — it steps by its real time and the
+ * tier governor measures it. (Stepping by the nominal after-idle 1/60 s instead stretched a 150 ms fade to seconds
+ * on a slow device.)
+ */
+let requested = false;
+export function again(): void {
+  requested = true;
+  invalidate();
+}
+
+/** At the start of a frame: did anything during the previous one ask for this frame straight away? */
+export function takeRequested(): boolean {
+  const r = requested;
+  requested = false;
+  return r;
+}
+
 /** Called once per rendered frame: should another one follow? */
 export function wantsNextFrame(now: number): boolean {
   return animating.size > 0 || now < awakeUntil;

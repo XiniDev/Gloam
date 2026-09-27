@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { useTable } from "../../net/table.ts";
 import { boardData, useBoard, useEntities } from "../../state/entities.ts";
 import { setTokenPositionLookup } from "../CameraRig.tsx";
+import { again } from "../frames.ts";
 import { layoutOverlays } from "./declutter.ts";
 import { TokenObject } from "./TokenObject.tsx";
 
@@ -18,7 +19,7 @@ export function TokensLayer() {
 
   // After every overlay has placed itself this frame: decide which ones have room on screen (declutter.ts).
   useFrame((state) => {
-    if (layoutOverlays(state.camera, state.size.width, state.size.height)) state.invalidate();
+    if (layoutOverlays(state.camera, state.size.width, state.size.height)) again();
   });
 
   return (
