@@ -1,7 +1,6 @@
 import { Move3d, Rotate3d, Scale3d, X } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import { type MapTransform, useMapAlign } from "../../board/map/mapAlign.ts";
-import { generateWalls } from "../../board/map/wallGen.ts";
 import { sceneCalibration } from "../../board/scene.ts";
 import { request, useTable } from "../../net/table.ts";
 import { useBoard } from "../../state/entities.ts";
@@ -128,6 +127,8 @@ export function MapToolsPanel() {
     // Let the label paint before the (synchronous) slice.
     await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
     try {
+      // three-mesh-bvh loads only when a DM actually generates walls.
+      const { generateWalls } = await import("../../board/map/wallGen.ts");
       const walls = generateWalls(object, slice);
       if (!walls.length) {
         toast.info(

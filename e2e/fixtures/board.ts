@@ -1,0 +1,167 @@
+import { createRequire } from "node:module";
+import { join } from "node:path";
+import type { Browser, Page } from "@playwright/test";
+import type { GloamProcess } from "./server.ts";
+import { expect, type Guard, knockAsNew, newPlayerContext, openTableAs } from "./test.ts";
+
+/** sharp lives in the server package (pnpm keeps dependencies per package). */
+const requireFromServer = createRequire(
+  join(import.meta.dirname, "..", "..", "packages", "server", "package.json"),
+);
+type RawImage = { data: Buffer; info: { width: number; height: number; channels: number } };
+export const sharp = requireFromServer("sharp") as (input: Buffer) => {
+  removeAlpha(): { raw(): { toBuffer(o: { resolveWithObject: true }): Promise<RawImage> } };
+};
+
+/** Calls a test hook in the page (SPEC §23.7) and returns its JSON result. */
+export function hook<T = unknown>(page: Page, name: string, ...args: unknown[]): Promise<T> {
+  return page.evaluate(
+    ([n, a]) => {
+      const fn = window.__gloam?.[n as string] as ((...x: unknown[]) => unknown) | undefined;
+      if (typeof fn !== "function") throw new Error(`no test hook ${n}`);
+      return fn(...(a as unknown[]));
+    },
+    [name, args] as const,
+  ) as Promise<T>;
+}
+
+/** A command through the page's own table connection (same permissions and rate limits as the UI). */
+export const req = <T = unknown>(page: Page, type: string, payload: unknown = {}) =>
+  hook<T>(page, "request", type, payload);
+
+export interface IntroState {
+  phase: "ignite" | "board" | "hud" | "done";
+  reduced: boolean;
+  played: boolean;
+  marks: Partial<Record<"start" | "ignite" | "board" | "hud" | "done" | "skipped", number>>;
+}
+export const intro = (page: Page) =>
+  page.evaluate(() => {
+    const f = window.__gloam?.intro as (() => IntroState) | undefined;
+    return f ? JSON.parse(JSON.stringify(f())) : null;
+  }) as Promise<IntroState | null>;
+
+export async function introDone(page: Page): Promise<void> {
+  await expect.poll(async () => (await intro(page))?.phase, { timeout: 20_000 }).toBe("done");
+}
+
+export interface BoardStats {
+  tier: string;
+  pinned: boolean;
+  reason: string;
+  dpr: number;
+  shadows: boolean;
+  postfx: { bloom: boolean; ao: boolean; smaa: boolean; composer: boolean };
+  map: {
+    kind: string;
+    assetId?: string;
+    variant?: string;
+    width?: number;
+    height?: number;
+    worldW?: number;
+    worldH?: number;
+    style?: string;
+  } | null;
+  device: { maxTexture: number; software: boolean; renderer: string } | null;
+  spec: { textureCap: number; dpr: number; shadowMap: number };
+  memory: { geometries: number; textures: number };
+  firstFrameAt: number | null;
+}
+export const stats = (page: Page) => hook<BoardStats>(page, "stats");
+
+export interface CameraState {
+  target: [number, number, number];
+  position: [number, number, number];
+  pitchDeg: number;
+  azimuthDeg: number;
+  distance: number;
+}
+export const camera = (page: Page, set?: Record<string, unknown>) => hook<CameraState>(page, "camera", set);
+
+/** Admin: create the campaign, open the table locally and sit down at it as the DM. Returns the invite code. */
+export async function adminAtTable(admin: Page): Promise<string> {
+  const code = await openTableAs(admin, "Local only");
+  await admin.getByRole("button", { name: "Go to the table" }).click();
+  await expect(admin).toHaveURL(/\/table$/);
+  await expect(admin.getByRole("heading", { name: "Test Campaign" })).toBeVisible();
+  return code;
+}
+
+/** A player knocks, the DM admits them from the knock card on the table, and they arrive at the table. */
+export async function admitPlayer(
+  admin: Page,
+  browser: Browser,
+  gloam: GloamProcess,
+  guardLog: Guard,
+  code: string,
+  name: string,
+  contextOptions: { reducedMotion?: "reduce" | "no-preference" } = {},
+): Promise<Page> {
+  const { page, context } = await newPlayerContext(browser, gloam.url, guardLog);
+  if (contextOptions.reducedMotion) await page.emulateMedia({ reducedMotion: contextOptions.reducedMotion });
+  void context;
+  await knockAsNew(page, gloam.url, code, name);
+  const card = admin.getByRole("alert").filter({ hasText: `${name} is knocking` });
+  await card.getByRole("button", { name: "Admit" }).click();
+  await expect(page).toHaveURL(/\/table$/);
+  await introDone(page);
+  return page;
+}
+
+/** Creates a scene through the DM's connection; `activate` moves everyone there. */
+export async function createScene(
+  dm: Page,
+  payload: Record<string, unknown>,
+  activate = true,
+): Promise<string> {
+  const { sceneId } = await req<{ sceneId: string }>(dm, "scene.create", payload);
+  if (activate) await req(dm, "scene.activate", { sceneId });
+  return sceneId;
+}
+
+/** Waits until the board shows this scene, with no travel transition running and nothing loading. */
+export async function boardSettled(page: Page, sceneId: string): Promise<void> {
+  await expect
+    .poll(() => hook<{ shown: string | null; travelling: boolean; loading: number }>(page, "boardScene"), {
+      timeout: 20_000,
+    })
+    .toMatchObject({ shown: sceneId, travelling: false, loading: 0 });
+}
+
+/** Mean luminance and the share of near-white pixels of a PNG screenshot. */
+export async function brightness(png: Buffer): Promise<{ mean: number; white: number }> {
+  const { data, info } = await sharp(png).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+  let sum = 0;
+  let white = 0;
+  const n = info.width * info.height;
+  for (let i = 0; i < data.length; i += info.channels) {
+    const y =
+      0.2126 * (data[i] as number) + 0.7152 * (data[i + 1] as number) + 0.0722 * (data[i + 2] as number);
+    sum += y;
+    if (y > 235) white++;
+  }
+  return { mean: sum / n, white: white / n };
+}
+
+/** Uploads bytes through the page's real upload path (test hook) and returns the asset. */
+export async function uploadVia(
+  page: Page,
+  bytes: Uint8Array | Buffer,
+  name: string,
+  purpose: string,
+): Promise<{ id: string; status: string; width?: number; height?: number; variants: { name: string }[] }> {
+  return hook(page, "upload", Buffer.from(bytes).toString("base64"), name, purpose);
+}
+
+/**
+ * The server's asset fixtures (one source of test images and GLBs), loaded at run time: the e2e TypeScript project
+ * doesn't compile the server's sources.
+ */
+export interface AssetFixtures {
+  image(format: "png" | "jpeg" | "webp", width: number, height: number): Promise<Buffer>;
+  glb(opts?: Record<string, unknown>): Promise<Uint8Array>;
+}
+export function assetFixtures(): Promise<AssetFixtures> {
+  const path = ["..", "..", "packages", "server", "src", "test", "assetFixtures.ts"].join("/");
+  return import(path) as Promise<AssetFixtures>;
+}

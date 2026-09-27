@@ -10,6 +10,7 @@ import { provideTestHook } from "../test/hooks.ts";
 import { preloadAssets } from "./assets.ts";
 import { colyseus, leaveRoom, rejectionMessage } from "./colyseus.ts";
 import { resetSync, syncLive } from "./sync.ts";
+import { type UploadPurpose, uploadAsset } from "./upload.ts";
 
 export interface PresenceView {
   userId: string;
@@ -231,6 +232,11 @@ async function join(campaignId: string): Promise<Room<unknown, TableState>> {
   useTable.getState().set({ room });
   // Test builds only (SPEC §23.7): journeys drive commands through the same room and permissions as the UI.
   provideTestHook("request", (type: string, payload: unknown) => request(type, payload));
+  // Uploads through the real client path (CSRF, progress, server pipeline) with bytes handed in by the test.
+  provideTestHook("upload", async (b64: string, name: string, purpose: UploadPurpose) => {
+    const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+    return uploadAsset(new File([bytes], name), purpose);
+  });
   return room;
 }
 

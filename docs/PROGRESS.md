@@ -80,3 +80,8 @@ PASSING 28/224 · DISPUTED 0 · FAILING 196
 - Dev server: `pnpm dev` now runs on 4747 for live watching. It watches only server/shared sources; `--watch`
   on the whole import graph restart-looped because Vite writes temporary modules. Tests keep to random ports.
 - Next: 3D map alignment + Generate walls (SCN-04), DM walls overlay, then P2 E2E journeys and marking ACs.
+- Later the same day: wall generation (slice → union → RDP, 13 unit tests), grouped undo (tests), Ctrl+Z/Ctrl+Y
+  keys, 3D map alignment gizmo + map tools panel, DM walls overlay; SCN-08 server test. First P2 journeys:
+  first-load intro (36 composited frames, no flash, zero layout shift, exact stagger, once per load, reduced
+  motion), 1 unit = 1 ft, self-hosted fonts. Found and fixed two multi-second software-GL stalls (context release;
+  first composite under an opaque overlay). Marked SCN-03, SCN-08, DS-04, BRD-01, DS-06 → 40/224.

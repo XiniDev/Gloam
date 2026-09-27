@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { prefersReducedMotion } from "../../state/settings.ts";
+import { type AmbientView, addAmbientView, ambientSupported } from "./ambientHost.ts";
 import { createShaderRenderer, runLoop, type Uniforms } from "./renderer.ts";
-import type { ShaderWorkerIn, ShaderWorkerOut } from "./shader.worker.ts";
 
 export type { Uniforms };
 
@@ -10,14 +10,6 @@ export type { Uniforms };
  * `loseContext()` is synchronous and waits behind them (≈ 600 ms of frames on software GL; ~3 ms once drained).
  */
 const RELEASE_AFTER_MS = 1000;
-/** Backstop for a worker that never acknowledges `dispose` (it closes itself after releasing its context). */
-const WORKER_TERMINATE_AFTER_MS = 5000;
-
-const offscreenSupported = (): boolean =>
-  typeof Worker === "function" &&
-  typeof OffscreenCanvas === "function" &&
-  "transferControlToOffscreen" in HTMLCanvasElement.prototype;
-
 /** Runs `fn` after the browser has painted the current frame (so the page's text never waits on GL setup). */
 function afterPaint(fn: () => void): () => void {
   let timer = 0;
@@ -62,8 +54,9 @@ export function ShaderCanvas({
   const uni = useRef(uniforms);
   const pushUniforms = useRef<((u: Uniforms) => void) | null>(null);
   const [lit, setLit] = useState(false);
-  // A canvas can hand its control to a worker only once, so a new shader gets a fresh element.
+  // A canvas whose on-page context was released can't be reused, so a restart gets a fresh element.
   const [key, setKey] = useState(0);
+  const [onPage, setOnPage] = useState(() => !ambientSupported());
 
   const uniformsJson = JSON.stringify(uniforms);
   useEffect(() => {
@@ -77,49 +70,66 @@ export function ShaderCanvas({
     if (!canvas) return;
     const still = prefersReducedMotion();
     let teardown: (() => void) | null = null;
-    let transferred = false;
+    let consumed = false;
     const cancelInit = afterPaint(() => {
-      teardown = offscreenSupported() ? startInWorker(canvas, still) : startOnPage(canvas, still);
+      teardown = onPage ? startOnPage(canvas, still) : startShared(canvas, still);
     });
     return () => {
       cancelInit();
       teardown?.();
       pushUniforms.current = null;
       setLit(false);
-      if (transferred) setKey((k) => k + 1);
+      if (consumed) setKey((k) => k + 1);
     };
 
-    function startInWorker(canvas: HTMLCanvasElement, still: boolean): () => void {
-      const worker = new Worker(new URL("./shader.worker.ts", import.meta.url), { type: "module" });
-      const send = (m: ShaderWorkerIn, transfer: Transferable[] = []) => worker.postMessage(m, transfer);
-      worker.onmessage = (e: MessageEvent<ShaderWorkerOut>) => {
-        if (e.data.type === "lit") setLit(true);
-      };
-      const offscreen = canvas.transferControlToOffscreen();
-      transferred = true;
-      send(
-        { type: "init", canvas: offscreen, frag, still, preserve: __GLOAM_TEST__, uniforms: uni.current },
-        [offscreen],
-      );
-      pushUniforms.current = (u) => send({ type: "uniforms", uniforms: u });
+    /** The shared ambient worker: frames arrive as ImageBitmaps for a `bitmaprenderer` canvas. */
+    function startShared(canvas: HTMLCanvasElement, still: boolean): (() => void) | null {
+      const ctx = canvas.getContext("bitmaprenderer");
+      if (!ctx) {
+        setOnPage(true);
+        return null;
+      }
+      let view: AmbientView | null = null;
+      let shown = false;
       const ro = new ResizeObserver(([entry]) => {
-        if (entry) send({ type: "size", ...bufferSize(entry, scale) });
+        if (!entry) return;
+        const size = bufferSize(entry, scale);
+        if (view) view.size(size.w, size.h);
+        else
+          view = addAmbientView(
+            { frag, still, uniforms: uni.current, ...size },
+            {
+              onFrame(bitmap) {
+                if (canvas.width !== bitmap.width || canvas.height !== bitmap.height) {
+                  canvas.width = bitmap.width;
+                  canvas.height = bitmap.height;
+                }
+                ctx.transferFromImageBitmap(bitmap);
+                if (!shown) {
+                  shown = true;
+                  setLit(true);
+                }
+              },
+              // No WebGL in workers here: draw on the page instead (a fresh canvas; this one is a bitmap canvas).
+              onFailed() {
+                consumed = true;
+                setOnPage(true);
+              },
+            },
+          );
       });
       ro.observe(canvas);
-      const onVis = () => send({ type: "visible", visible: !document.hidden });
-      document.addEventListener("visibilitychange", onVis);
+      pushUniforms.current = (u) => view?.uniforms(u);
       return () => {
         ro.disconnect();
-        document.removeEventListener("visibilitychange", onVis);
-        worker.onmessage = null;
-        send({ type: "dispose" });
-        window.setTimeout(() => worker.terminate(), WORKER_TERMINATE_AFTER_MS);
+        view?.remove();
       };
     }
 
     function startOnPage(canvas: HTMLCanvasElement, still: boolean): (() => void) | null {
       const renderer = createShaderRenderer(canvas, frag, __GLOAM_TEST__);
       if (!renderer) return null;
+      consumed = true;
       let size = { w: 0, h: 0 };
       const loop = runLoop({
         renderer,
@@ -147,7 +157,7 @@ export function ShaderCanvas({
         window.setTimeout(() => renderer.dispose(), RELEASE_AFTER_MS);
       };
     }
-  }, [frag, scale, key]);
+  }, [frag, scale, key, onPage]);
 
   return (
     <canvas

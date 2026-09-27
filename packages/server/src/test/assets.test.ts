@@ -514,4 +514,149 @@ describe("P2 — assets and uploads (AST)", () => {
       /at most 16,384/,
     );
   }, 120_000);
+
+  it("AC-SCN-08 recalibrating an image map rescales walls, zones, lights and tokens with the art", async () => {
+    // A 1400 × 700 px map at 70 px per 5 ft: 100 × 50 ft.
+    const r = await upload(admin, "map", "crypt.png", await image("png", 1400, 700));
+    expect(r.status, JSON.stringify(r.error)).toBe(200);
+    const { sceneId } = (await dm.request("scene.create", {
+      name: "Recalibrate me",
+      mapKind: "image",
+      mapAssetId: r.asset?.id,
+      pxPer5ft: 70,
+    })) as { sceneId: string };
+    const room = t.server.ctx.rooms.tables.get(campaignId) as unknown as {
+      model: {
+        get(k: string, id: string): Record<string, unknown> | undefined;
+        inScene(k: string, s: string): Iterable<{ id: string }>;
+      };
+      bus: { commit(...a: unknown[]): unknown };
+    };
+    const scene0 = room.model.get("scene", sceneId) as {
+      bounds: Record<string, number>;
+      spawn: { x: number; y: number };
+    };
+    expect(scene0.bounds).toMatchObject({ minX: 0, minY: 0, maxX: 100, maxY: 50 });
+    // Map features at known art positions: a wall along a corridor, a pool (zone), a brazier (light), an orc.
+    await dm.request("wall.create", { sceneId, walls: [{ a: { x: 10, y: 20 }, b: { x: 40, y: 20 } }] });
+    const { tokenId } = (await dm.request("token.create", {
+      sceneId,
+      name: "Orc",
+      pos: { x: 30, y: 15 },
+      size: "large",
+    })) as { tokenId: string };
+    room.bus.commit(
+      "test.features",
+      [
+        {
+          k: "create",
+          e: "zone",
+          id: "zon_pool000001",
+          value: {
+            id: "zon_pool000001",
+            sceneId,
+            kind: "water",
+            shape: { kind: "rect", x: 50, y: 10, w: 10, h: 6 },
+            label: "Pool",
+            color: "#000000",
+            visible: true,
+            triggers: [],
+            note: "",
+          },
+        },
+        {
+          k: "create",
+          e: "zone",
+          id: "zon_pit0000001",
+          value: {
+            id: "zon_pit0000001",
+            sceneId,
+            kind: "hazard",
+            shape: {
+              kind: "polygon",
+              points: [
+                { x: 70, y: 30 },
+                { x: 80, y: 30 },
+                { x: 75, y: 40 },
+              ],
+            },
+            label: "Pit",
+            color: "#000000",
+            visible: true,
+            triggers: [],
+            note: "",
+          },
+        },
+        {
+          k: "create",
+          e: "light",
+          id: "lig_brazier001",
+          value: {
+            id: "lig_brazier001",
+            sceneId,
+            tokenId: null,
+            pos: { x: 20, y: 30 },
+            elevation: 3,
+            bright: 20,
+            dim: 40,
+            color: "#000000",
+            intensity: 1,
+            animation: "torch",
+            coneDeg: null,
+            directionDeg: 0,
+            magical: false,
+            pierceDarkness: false,
+            enabled: true,
+            dmOnly: false,
+            preset: "torch",
+          },
+        },
+      ],
+      "features",
+      false,
+      { userId: "system", role: "admin", name: "test" },
+      sceneId,
+    );
+    // The DM measured a door and found the grid is really 100 px per 5 ft: everything shrinks by 0.7.
+    await dm.request("scene.calibrate", { sceneId, ftPerPx: 5 / 100 });
+    const k = 0.7;
+    const scene = room.model.get("scene", sceneId) as {
+      bounds: Record<string, number>;
+      calibration: { ftPerPx: number };
+    };
+    expect(scene.calibration.ftPerPx).toBeCloseTo(0.05, 9);
+    expect(scene.bounds.maxX).toBeCloseTo(100 * k, 9);
+    expect(scene.bounds.maxY).toBeCloseTo(50 * k, 9);
+    const wall = [...room.model.inScene("wall", sceneId)][0] as unknown as {
+      a: { x: number; y: number };
+      b: { x: number; y: number };
+    };
+    expect([wall.a.x, wall.a.y, wall.b.x, wall.b.y].map((v) => +v.toFixed(9))).toEqual([7, 14, 28, 14]);
+    const pool = room.model.get("zone", "zon_pool000001") as { shape: Record<string, number> };
+    expect(pool.shape).toMatchObject({ kind: "rect" });
+    for (const [key, v] of Object.entries({ x: 35, y: 7, w: 7, h: 4.2 }))
+      expect(pool.shape[key]).toBeCloseTo(v, 9);
+    const pit = room.model.get("zone", "zon_pit0000001") as { shape: { points: { x: number; y: number }[] } };
+    expect(pit.shape.points.map((q) => [+q.x.toFixed(9), +q.y.toFixed(9)])).toEqual([
+      [49, 21],
+      [56, 21],
+      [52.5, 28],
+    ]);
+    const light = room.model.get("light", "lig_brazier001") as {
+      pos: { x: number; y: number };
+      bright: number;
+      dim: number;
+    };
+    expect([+light.pos.x.toFixed(9), +light.pos.y.toFixed(9)]).toEqual([14, 21]);
+    // Radii and creature sizes are rules distances in feet, not art: they stay.
+    expect([light.bright, light.dim]).toEqual([20, 40]);
+    const orc = room.model.get("token", tokenId) as { pos: { x: number; y: number }; sizeFt: number };
+    expect([+orc.pos.x.toFixed(9), +orc.pos.y.toFixed(9)]).toEqual([21, 10.5]);
+    expect(orc.sizeFt).toBe(10);
+    // One undo puts every feature back where it was.
+    await dm.request("history.undo", {});
+    const back = room.model.get("token", tokenId) as { pos: { x: number; y: number } };
+    expect([+back.pos.x.toFixed(9), +back.pos.y.toFixed(9)]).toEqual([30, 15]);
+    expect((room.model.get("light", "lig_brazier001") as { pos: { x: number } }).pos.x).toBeCloseTo(20, 9);
+  });
 });

@@ -23,6 +23,16 @@ const HUD_RISE_MS = 240;
 /** The board fades up once its first frame is drawn and its assets are in, or after this long regardless. */
 const BOARD_WAIT_MAX_MS = 6000;
 const SKIP_FADE_MS = 150;
+/** "Runs smoothly": SMOOTH_WINDOW_MS of frames each under SMOOTH_FRAME_MS (a warm-up stall can come a moment
+ * after the first frame, so a couple of quick frames aren't proof). */
+const SMOOTH_WINDOW_MS = 300;
+const SMOOTH_FRAME_MS = 100;
+/**
+ * Fully opaque, the overlay would let the compositor skip the board canvas beneath it, and the first composite (a
+ * multi-second stall under software GL) would land in the middle of the fade. At 99.5 % it looks the same and the
+ * board is composited — and warmed up — from the start.
+ */
+const COVER_OPACITY = 0.995;
 
 interface IntroStore {
   phase: IntroPhase;
@@ -79,10 +89,20 @@ export function Intro() {
     const after = (ms: number, fn: () => void) => timers.current.push(setTimeout(fn, ms));
     const startedAt = performance.now();
     let raf = 0;
-    // Hold on the lit candle until the board has drawn and loaded (never less than the ignition itself).
-    const waitForBoard = () => {
+    let lastFrame = 0;
+    let smoothSince = 0;
+    // Hold on the lit candle until the board has drawn, loaded, and runs smoothly (never less than the ignition
+    // itself): a slow machine pays its warm-up behind the candle instead of stuttering through the fade.
+    const waitForBoard = (now: number) => {
       const elapsed = performance.now() - startedAt;
-      const ready = boardDiag.firstFrameAt !== null && useLoading.getState().pending === 0;
+      // A frame slower than SMOOTH_FRAME_MS (a stall: shader compiles, first composites) restarts the window.
+      if (boardDiag.firstFrameAt === null || !lastFrame || now - lastFrame >= SMOOTH_FRAME_MS)
+        smoothSince = now;
+      lastFrame = now;
+      const ready =
+        boardDiag.firstFrameAt !== null &&
+        useLoading.getState().pending === 0 &&
+        now - smoothSince >= SMOOTH_WINDOW_MS;
       if ((ready && elapsed >= (r ? 0 : IGNITE_MS)) || elapsed >= BOARD_WAIT_MAX_MS) {
         useIntro.getState().go("board");
         const fade = r ? 200 : BOARD_FADE_MS;
@@ -131,7 +151,7 @@ export function Intro() {
       onPointerDown={skip}
       className="fixed inset-0 z-[800] grid cursor-pointer place-items-center bg-ink-950"
       style={{
-        opacity: fading ? 0 : 1,
+        opacity: fading ? 0 : COVER_OPACITY,
         transition: `opacity ${skipped ? SKIP_FADE_MS : reduced ? 200 : BOARD_FADE_MS}ms var(--ease-in-out)`,
       }}
     >

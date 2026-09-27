@@ -82,6 +82,82 @@ export function createShaderRenderer(
 }
 
 /**
+ * One GL context drawing many fragment shaders (the shared ambient worker): each shader is compiled once and kept
+ * for the page's lifetime, so no screen change ever creates or destroys a context — on software GL, releasing one
+ * froze every other context (the board included) for seconds.
+ */
+export interface MultiShaderGl {
+  /** Draws `frag` into a `w × h` buffer; false when the shader didn't compile. */
+  draw(frag: string, timeSec: number, w: number, h: number, uniforms: Uniforms): boolean;
+}
+
+export function createMultiShaderGl(canvas: OffscreenCanvas): MultiShaderGl | null {
+  const gl = canvas.getContext("webgl", CONTEXT_ATTRIBUTES(false)) as WebGLRenderingContext | null;
+  if (!gl) return null;
+  const buf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+  const vert = gl.createShader(gl.VERTEX_SHADER) as WebGLShader;
+  gl.shaderSource(vert, VERT);
+  gl.compileShader(vert);
+  interface Prog {
+    prog: WebGLProgram;
+    loc: number;
+    locations: Map<string, WebGLUniformLocation | null>;
+  }
+  const programs = new Map<string, Prog | null>();
+  let current: Prog | null = null;
+  const program = (frag: string): Prog | null => {
+    if (programs.has(frag)) return programs.get(frag) ?? null;
+    const fs = gl.createShader(gl.FRAGMENT_SHADER) as WebGLShader;
+    gl.shaderSource(fs, `precision mediump float;\n${frag}`);
+    gl.compileShader(fs);
+    const prog = gl.createProgram() as WebGLProgram;
+    gl.attachShader(prog, vert);
+    gl.attachShader(prog, fs);
+    gl.linkProgram(prog);
+    const ok = gl.getProgramParameter(prog, gl.LINK_STATUS) as boolean;
+    const p = ok ? { prog, loc: gl.getAttribLocation(prog, "p"), locations: new Map() } : null;
+    programs.set(frag, p);
+    return p;
+  };
+  return {
+    draw(frag, timeSec, w, h, uniforms) {
+      const p = program(frag);
+      if (!p) return false;
+      if (current !== p) {
+        // biome-ignore lint/correctness/useHookAtTopLevel: WebGL's useProgram, not a React hook
+        gl.useProgram(p.prog);
+        gl.enableVertexAttribArray(p.loc);
+        gl.vertexAttribPointer(p.loc, 2, gl.FLOAT, false, 0, 0);
+        current = p;
+      }
+      if (canvas.width !== w || canvas.height !== h) {
+        canvas.width = w;
+        canvas.height = h;
+      }
+      const at = (name: string) => {
+        if (!p.locations.has(name)) p.locations.set(name, gl.getUniformLocation(p.prog, name));
+        return p.locations.get(name) ?? null;
+      };
+      gl.viewport(0, 0, w, h);
+      gl.clearColor(0, 0, 0, 0);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.uniform1f(at("uTime"), timeSec);
+      gl.uniform2f(at("uRes"), w, h);
+      for (const [k, v] of Object.entries(uniforms)) {
+        const l = at(k);
+        if (!l) continue;
+        if (typeof v === "number") gl.uniform1f(l, v);
+        else gl.uniform3f(l, v[0], v[1], v[2]);
+      }
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      return true;
+    },
+  };
+}
+
+/**
  * A ≤ 30 fps animation loop over a renderer (or one still frame for reduced motion). `schedule` is the host's
  * frame callback — `requestAnimationFrame` on the page and in workers that have it, a 33 ms timer otherwise.
  */

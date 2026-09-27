@@ -8,6 +8,9 @@ export const boardDiag: {
     variant?: string;
     width?: number;
     height?: number;
+    /** The map's size on the table in feet (1 unit = 1 ft, AC-BRD-01). */
+    worldW?: number;
+    worldH?: number;
     style?: string;
   } | null;
   postfx: { bloom: boolean; ao: boolean; smaa: boolean; composer: boolean };

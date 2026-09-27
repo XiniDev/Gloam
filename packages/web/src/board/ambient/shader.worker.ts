@@ -1,81 +1,124 @@
 /**
- * Renders an ambient `ShaderCanvas` off the main thread (OffscreenCanvas): context creation, shader compilation,
- * every frame and the final context release happen here, so the page's text and inputs never wait on GL work —
- * which on software GL (no GPU acceleration) cost hundreds of milliseconds per screen change.
+ * The shared ambient renderer (SPEC §29.2 backdrops, §8.4 first-load candle): one worker and one WebGL context on
+ * an OffscreenCanvas for the page's whole lifetime. Every `ShaderCanvas` on screen is a view: the worker draws its
+ * shader at ≤ 30 fps (or one still frame under reduced motion) and hands the frame back as a transferable
+ * ImageBitmap, which the page shows through a `bitmaprenderer` canvas — no copy, no GL work on the main thread.
+ *
+ * Contexts are never created or released per screen: on software GL (no GPU acceleration), releasing a context froze
+ * every other context in the page — the board included — for seconds.
  */
-import { createShaderRenderer, runLoop, type Uniforms } from "./renderer.ts";
+import { createMultiShaderGl, type MultiShaderGl, type Uniforms } from "./renderer.ts";
 
 export type ShaderWorkerIn =
-  | {
-      type: "init";
-      canvas: OffscreenCanvas;
-      frag: string;
-      still: boolean;
-      preserve: boolean;
-      uniforms: Uniforms;
-    }
-  | { type: "size"; w: number; h: number }
-  | { type: "uniforms"; uniforms: Uniforms }
-  | { type: "visible"; visible: boolean }
-  | { type: "dispose" };
-export type ShaderWorkerOut = { type: "lit" } | { type: "failed" };
+  | { type: "add"; id: number; frag: string; still: boolean; uniforms: Uniforms; w: number; h: number }
+  | { type: "size"; id: number; w: number; h: number }
+  | { type: "uniforms"; id: number; uniforms: Uniforms }
+  | { type: "remove"; id: number }
+  | { type: "visible"; visible: boolean };
+export type ShaderWorkerOut =
+  | { type: "frame"; id: number; bitmap: ImageBitmap }
+  | { type: "failed"; id: number }
+  | { type: "unavailable" };
 
 /** The parts of DedicatedWorkerGlobalScope used here (the project compiles against the DOM lib). */
 interface WorkerScope {
   onmessage: ((e: MessageEvent<ShaderWorkerIn>) => void) | null;
-  postMessage(m: ShaderWorkerOut): void;
-  close(): void;
+  postMessage(m: ShaderWorkerOut, transfer?: Transferable[]): void;
   requestAnimationFrame?: (fn: (now: number) => void) => number;
-  cancelAnimationFrame?: (id: number) => void;
 }
 const scope = self as unknown as WorkerScope;
-let size = { w: 0, h: 0 };
-let uniforms: Uniforms = {};
-let loop: ReturnType<typeof runLoop> | null = null;
-let dispose: (() => void) | null = null;
 
-const schedule = (fn: (now: number) => void): (() => void) => {
-  const raf = scope.requestAnimationFrame;
-  const caf = scope.cancelAnimationFrame;
-  if (raf && caf) {
-    const id = raf.call(scope, fn);
-    return () => caf.call(scope, id);
-  }
-  const id = setTimeout(() => fn(performance.now()), 33);
-  return () => clearTimeout(id);
+interface View {
+  frag: string;
+  still: boolean;
+  uniforms: Uniforms;
+  w: number;
+  h: number;
+  t0: number;
+  last: number;
+  /** A still view (reduced motion) draws once per change. */
+  dirty: boolean;
+}
+
+const views = new Map<number, View>();
+let gl: MultiShaderGl | null | undefined;
+let canvas: OffscreenCanvas | null = null;
+let visible = true;
+let scheduled = false;
+
+function ensureGl(): MultiShaderGl | null {
+  if (gl !== undefined) return gl;
+  canvas = new OffscreenCanvas(1, 1);
+  gl = createMultiShaderGl(canvas);
+  return gl;
+}
+
+const next = (fn: (now: number) => void) => {
+  if (scope.requestAnimationFrame) scope.requestAnimationFrame.call(scope, fn);
+  else setTimeout(() => fn(performance.now()), 33);
 };
+
+function wake(): void {
+  if (scheduled || !visible) return;
+  scheduled = true;
+  next(frame);
+}
+
+function frame(now: number): void {
+  scheduled = false;
+  const g = gl;
+  if (!g || !canvas || !visible) return;
+  let animating = false;
+  for (const [id, v] of views) {
+    if (v.w < 1 || v.h < 1) continue;
+    if (!v.still) animating = true;
+    const due = v.still ? v.dirty : now - v.last >= 33;
+    if (!due) continue;
+    v.last = now;
+    v.dirty = false;
+    if (!g.draw(v.frag, v.still ? 12 : (now - v.t0) / 1000, v.w, v.h, v.uniforms)) {
+      views.delete(id);
+      scope.postMessage({ type: "failed", id });
+      continue;
+    }
+    const bitmap = canvas.transferToImageBitmap();
+    scope.postMessage({ type: "frame", id, bitmap }, [bitmap]);
+  }
+  if (animating) wake();
+}
 
 scope.onmessage = (e) => {
   const m = e.data;
-  if (m.type === "init") {
-    uniforms = m.uniforms;
-    const renderer = createShaderRenderer(m.canvas, m.frag, m.preserve);
-    if (!renderer) {
-      scope.postMessage({ type: "failed" } satisfies ShaderWorkerOut);
-      scope.close();
+  if (m.type === "add") {
+    if (!ensureGl()) {
+      scope.postMessage({ type: "unavailable" });
       return;
     }
-    loop = runLoop({
-      renderer,
+    views.set(m.id, {
+      frag: m.frag,
       still: m.still,
-      size: () => size,
-      uniforms: () => uniforms,
-      schedule,
-      onFirstFrame: () => scope.postMessage({ type: "lit" } satisfies ShaderWorkerOut),
+      uniforms: m.uniforms,
+      w: m.w,
+      h: m.h,
+      t0: performance.now(),
+      last: 0,
+      dirty: true,
     });
-    dispose = () => renderer.dispose();
-  } else if (m.type === "size") {
-    size = { w: m.w, h: m.h };
-    loop?.resume();
-  } else if (m.type === "uniforms") {
-    uniforms = m.uniforms;
+    wake();
+  } else if (m.type === "size" || m.type === "uniforms") {
+    const v = views.get(m.id);
+    if (!v) return;
+    if (m.type === "size") {
+      v.w = m.w;
+      v.h = m.h;
+    } else v.uniforms = m.uniforms;
+    v.dirty = true;
+    wake();
+  } else if (m.type === "remove") {
+    views.delete(m.id);
   } else if (m.type === "visible") {
-    if (m.visible) loop?.resume();
-    else loop?.pause();
-  } else if (m.type === "dispose") {
-    loop?.stop();
-    // Blocks only this worker while queued frames drain; the page has already moved on.
-    dispose?.();
-    scope.close();
+    visible = m.visible;
+    for (const v of views.values()) v.dirty = true;
+    wake();
   }
 };

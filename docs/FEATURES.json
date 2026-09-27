@@ -294,10 +294,10 @@
       "code": "SCN",
       "phase": "P2",
       "text": "Recalibrating an image map rescales walls, zones, lights and tokens so that they stay aligned with the map art.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/assets.test.ts › AC-SCN-08: an uploaded 1400×700 image map recalibrated from 70 to 100 px per 5 ft scales scene bounds, a wall, a rect and a polygon zone, a light's position and a token's position by 0.7 exactly (light radii and the token's 10-ft space unchanged); one undo restores all",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T14:54:38.021Z"
     },
     {
       "id": "AC-BRD-01",
@@ -305,10 +305,10 @@
       "code": "BRD",
       "phase": "P2",
       "text": "The board renders the table environment and map at 1 unit = 1 ft, and loads nothing from outside the server (zero CSP violations and zero non-origin requests in the E2E network log).",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p2-first-load.spec.ts › AC-BRD-01: the oak table renders; a 1400×700 px map at 70 px/5 ft lies 100 × 50 units on the table (stats.map.worldW/H); Medium and Large bases measure 5 and 10 units; the guard fixture records zero CSP violations and zero non-origin requests across all E2E journeys",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T15:15:10.242Z"
     },
     {
       "id": "AC-BRD-02",
@@ -2439,10 +2439,10 @@
       "code": "DS",
       "phase": "P2",
       "text": "The first-load sequence (candle ignition → board fade-in → staggered HUD) runs once per load and respects reduced motion.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p2-first-load.spec.ts › AC-DS-04: intro hook timeline ignite ≥ 400 ms → board fade 900 ms → HUD groups rise-in with computed animation-delay 0/60/120/180 ms; returning to the table in the same load shows no intro (marks unchanged); a reload with prefers-reduced-motion runs short fades (200/120 ms) with no stagger",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T15:15:10.175Z"
     },
     {
       "id": "AC-DS-05",
@@ -2461,10 +2461,10 @@
       "code": "DS",
       "phase": "P2",
       "text": "Fonts are self-hosted from `@fontsource` packages; no font request leaves the origin.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p2-first-load.spec.ts › AC-DS-06: Fraunces Variable, Alegreya Sans, Cinzel and JetBrains Mono Variable are loaded (document.fonts) and every font file in the resource timeline is same-origin (@fontsource bundled by Vite); troika's 3D text uses the local Cinzel .woff via /fonts/ufr; no request left the origin (guard)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T15:15:10.310Z"
     }
   ]
 }

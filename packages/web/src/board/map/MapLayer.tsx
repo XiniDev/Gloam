@@ -66,6 +66,10 @@ function ImageMap({ assetId, calib, bounds }: { assetId: string; calib: Calibrat
   const ftPerPx = calib.ftPerPx ?? 5 / 70;
   const w = (calib.imageW ?? bounds.maxX / ftPerPx) * ftPerPx;
   const h = (calib.imageH ?? bounds.maxY / ftPerPx) * ftPerPx;
+  // The plane's size on the table, in feet (1 unit = 1 ft, AC-BRD-01), for the test hooks and perf overlay.
+  useEffect(() => {
+    if (tex && boardDiag.map?.assetId === assetId) Object.assign(boardDiag.map, { worldW: w, worldH: h });
+  }, [tex, assetId, w, h]);
   const material = useMemo(() => new MeshBasicMaterial(), []);
   useEffect(() => {
     material.map = tex;

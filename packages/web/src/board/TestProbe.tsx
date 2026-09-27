@@ -4,7 +4,7 @@ import { Vector3 } from "three";
 import { boardData, useEntities } from "../state/entities.ts";
 import { provideTestHook } from "../test/hooks.ts";
 import { cameraRig } from "./CameraRig.tsx";
-import { boardDiag } from "./diag.ts";
+import { boardDiag, useLoading } from "./diag.ts";
 import { resourceStats } from "./resources.ts";
 import { TIERS, TierGovernor, useTier } from "./tiers.ts";
 import { hpBarState } from "./tokens/TokenObject.tsx";
@@ -56,6 +56,16 @@ export function TestProbe() {
         programs: gl.info.programs?.length ?? 0,
         resources: resourceStats(),
         firstFrameAt: boardDiag.firstFrameAt,
+      };
+    });
+    provideTestHook("boardScene", () => {
+      const e = useEntities.getState();
+      return {
+        shown: boardData(e).scene?.id ?? null,
+        live: e.live.scene?.id ?? null,
+        prep: e.prep?.scene?.id ?? null,
+        travelling: e.travel !== null,
+        loading: useLoading.getState().pending,
       };
     });
     provideTestHook("visibleTokenIds", () => [...boardData(useEntities.getState()).tokens.keys()].sort());
