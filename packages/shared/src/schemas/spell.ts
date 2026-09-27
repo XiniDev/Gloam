@@ -49,6 +49,9 @@ export const SpellArea = z.discriminatedUnion("shape", [
       height: Ft,
       thickness: Ft,
       ring: Ft.optional().describe("Diameter in feet when the wall can be shaped as a ring"),
+      ringHeight: Ft.optional().describe(
+        "Height in feet of the ring form when it differs from `height` (Wall of Thorns: 10 ft straight, 20 ft ring)",
+      ),
       opaque: z.boolean().default(false),
       blocksMove: z.boolean().default(false),
       damagingSide: z.enum(["left", "right", "both"]).optional(),
@@ -70,7 +73,19 @@ export const DamageScaling = z.discriminatedUnion("mode", [
 export type DamageScaling = z.infer<typeof DamageScaling>;
 
 export const SpellDamage = z
-  .object({ formula: Formula, type: DamageType, scaling: DamageScaling.optional() })
+  .object({
+    formula: Formula,
+    type: DamageType,
+    typeOptions: z
+      .array(DamageType)
+      .min(2)
+      .max(13)
+      .optional()
+      .describe(
+        "The damage is one of these types, chosen when casting or determined as the text says (Chromatic Orb, Dragon's Breath, Prismatic Spray's ray roll); `type` is the default",
+      ),
+    scaling: DamageScaling.optional(),
+  })
   .strict();
 
 export const SpellHealing = z.object({ formula: Formula, scaling: DamageScaling.optional() }).strict();
@@ -152,6 +167,12 @@ export const EffectPropsTemplate = z
       .boolean()
       .optional()
       .describe("Creatures inside are outlined (Faerie Fire): can't benefit from Invisible"),
+    speedHalved: z
+      .boolean()
+      .optional()
+      .describe(
+        "A creature's Speed is halved while it is inside (Spirit Guardians); distinct from Difficult Terrain",
+      ),
   })
   .strict();
 
@@ -176,6 +197,18 @@ export const EffectTemplate = z
   .strict();
 export type EffectTemplate = z.infer<typeof EffectTemplate>;
 
+/**
+ * An alternative form the caster can choose instead of `area`, e.g. Darkness cast on an object fills a
+ * 15-ft Emanation that moves with the object instead of a 15-ft-radius Sphere (SPEC §33.4).
+ */
+export const SpellAreaAlternative = z
+  .object({
+    label: ShortText,
+    area: SpellArea,
+    attach: z.enum(["caster", "object", "point", "target"]).optional(),
+  })
+  .strict();
+
 export const SpellSchema = z
   .object({
     id: Slug,
@@ -188,6 +221,9 @@ export const SpellSchema = z
         amount: z.number().int().min(1).max(1000),
         unit: z.enum(["action", "bonus", "reaction", "minute", "hour"]),
         reactionTrigger: ShortText.optional(),
+        text: ShortText.optional().describe(
+          "Printed casting time, only when amount/unit can't express it (Plant Growth: 'Action (Overgrowth) or 8 hours (Enrichment)')",
+        ),
       })
       .strict(),
     ritual: z.boolean().default(false),
@@ -195,6 +231,9 @@ export const SpellSchema = z
       .object({
         kind: z.enum(["self", "touch", "ranged", "sight", "unlimited", "special"]),
         ft: Ft.optional(),
+        text: ShortText.optional().describe(
+          "Printed range, only when `ft` can't express it (Project Image: '500 miles', beyond the Ft bound)",
+        ),
       })
       .strict(),
     components: z
@@ -213,6 +252,9 @@ export const SpellSchema = z
         amount: z.number().int().min(1).max(100_000).optional(),
         unit: z.enum(["round", "minute", "hour", "day"]).optional(),
         concentration: z.boolean().default(false),
+        text: ShortText.optional().describe(
+          "Printed duration, only when kind/amount/unit can't express it ('Until dispelled or triggered', 'Up to 8 hours')",
+        ),
       })
       .strict(),
     text: LongText,
@@ -227,6 +269,7 @@ export const SpellSchema = z
       .strict()
       .optional(),
     area: SpellArea.nullable().optional(),
+    areaAlternatives: z.array(SpellAreaAlternative).max(4).optional(),
     attack: z
       .object({ kind: z.enum(["melee", "ranged"]) })
       .strict()

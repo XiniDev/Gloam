@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Stop hook (SPEC Appendix D): unless a stop hook is already active, runs `pnpm -s check:fast` and
+// Stop hook (SPEC Appendix D): unless a stop hook is already active, runs `pnpm --silent check:fast` and
 // `node tools/features-status.mjs --verify`. On failure prints the first 40 lines of errors to stderr and
 // exits 2 so the turn continues and the errors get fixed. Node only; works on Windows, macOS and Linux.
 import { spawnSync } from "node:child_process";
@@ -40,7 +40,7 @@ function run(cmd, args) {
 }
 
 const failures = [];
-const check = run(isWin ? "pnpm.cmd" : "pnpm", ["-s", "check:fast"]);
+const check = run(isWin ? "pnpm.cmd" : "pnpm", ["--silent", "check:fast"]);
 if (!check.ok) failures.push(["pnpm -s check:fast", check.out]);
 const status = run(process.execPath, [resolve(root, "tools/features-status.mjs"), "--verify"]);
 if (!status.ok) failures.push(["features-status --verify", status.out]);

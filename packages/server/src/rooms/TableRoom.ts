@@ -1,0 +1,358 @@
+import { type AuthContext, type Client, Room, ServerError } from "@colyseus/core";
+import { StateView } from "@colyseus/schema";
+import {
+  AdminBan,
+  AdminUnban,
+  ClockSync,
+  GloamError,
+  HandToggle,
+  LobbyDecide,
+  MESSAGE_RATES,
+  TableKick,
+} from "@gloam/shared/protocol";
+import { Presence, Table, type TableState } from "@gloam/shared/state";
+import { z } from "zod";
+import { type CommandActor, CommandBus, type CommitInfo } from "../engine/commandBus.ts";
+import { CampaignModel } from "../engine/model.ts";
+import { ALL_COMMANDS, COMMAND_RATES, registerCommands } from "../engine/registry.ts";
+import {
+  buildHandlers,
+  type ClientAuth,
+  def,
+  type MessageDef,
+  isSameOrigin,
+  parseCookies,
+} from "./dispatch.ts";
+import { CLOSE, type TableRoomApi } from "./registry.ts";
+import { roomCtx } from "./roomContext.ts";
+
+export interface TableRoomOptions {
+  campaignId: string;
+}
+
+/**
+ * The game room for one campaign (SPEC §13.1): `roomId = campaignId`, never auto-disposed. All play happens
+ * here; every mutation goes through the command bus; per-client StateViews decide what each client receives.
+ */
+export class TableRoom extends Room<{ state: TableState }> implements TableRoomApi {
+  campaignId = "";
+  private readonly clientsByUser = new Map<string, Set<Client>>();
+  private readonly closing = new WeakSet<Client>();
+  model!: CampaignModel;
+  bus!: CommandBus;
+  /** Test probe (AC-PER-01): runs right before Colyseus encodes and sends a state patch. */
+  beforePatchProbe: (() => void) | null = null;
+
+  /**
+   * Colyseus 0.18 only calls the STATIC onAuth during matchmaking (an instance-level one is ignored), so the
+   * campaign id comes from the matchmaking URL (/matchmake/joinById/<campaignId>). onJoin re-checks it.
+   */
+  static override async onAuth(
+    _token: string | undefined,
+    _options: unknown,
+    context: AuthContext,
+  ): Promise<ClientAuth> {
+    const ctx = roomCtx();
+    if (!isSameOrigin(context.headers)) throw new ServerError(403, "FORBIDDEN");
+    const url = (context.req as { url?: string } | undefined)?.url ?? "";
+    const campaignId = /\/matchmake\/joinById\/([A-Za-z0-9_-]+)/.exec(url)?.[1];
+    if (!campaignId) throw new ServerError(403, "FORBIDDEN");
+    const sid = parseCookies(context.headers.get("cookie")).gloam_sid;
+    const v = ctx.sessions.verify(sid);
+    if (!v) throw new ServerError(401, "UNAUTHENTICATED");
+    if (!ctx.limits.matchmake.take(`table:${v.session.id}`)) throw new ServerError(429, "RATE_LIMITED");
+    const base = {
+      userId: v.user.id,
+      authSessionId: v.session.id,
+      name: v.user.displayName,
+      color: v.user.color,
+      campaignId,
+    };
+    if (v.session.kind === "admin") return { ...base, role: "admin", ip: v.session.ip ?? "" };
+    if (!ctx.table.isOpen || ctx.table.campaignId !== campaignId) throw new ServerError(403, "TABLE_CLOSED");
+    if (v.session.status !== "admitted" || v.session.tableSessionNo !== ctx.table.sessionNo) {
+      throw new ServerError(403, "FORBIDDEN");
+    }
+    const role = ctx.campaigns.membership(campaignId, v.user.id);
+    if (!role) throw new ServerError(403, "FORBIDDEN");
+    return { ...base, role, ip: v.session.ip ?? "" };
+  }
+
+  override messages = buildHandlers(
+    {
+      "lobby.decide": def(LobbyDecide, MESSAGE_RATES["lobby.decide"], ({ auth }, p) => {
+        roomCtx().people.decide({ userId: auth.userId, role: auth.role, ip: auth.ip }, p);
+      }),
+      "lobby.list": def(z.strictObject({}), { capacity: 2, perSecond: 1 }, ({ auth }) => {
+        if (auth.role !== "admin" && auth.role !== "dm") throw new GloamError("FORBIDDEN");
+        return roomCtx().people.pending();
+      }),
+      "table.kick": def(TableKick, MESSAGE_RATES["table.kick"], ({ auth }, p) => {
+        roomCtx().people.kick(p.userId, { userId: auth.userId, role: auth.role, ip: auth.ip });
+      }),
+      "admin.ban": def(AdminBan, MESSAGE_RATES["admin.ban"], ({ auth }, p) => {
+        roomCtx().people.ban(
+          p.userId,
+          { userId: auth.userId, role: auth.role, ip: auth.ip },
+          p.reason ?? null,
+        );
+      }),
+      "admin.unban": def(AdminUnban, MESSAGE_RATES["admin.unban"], ({ auth }, p) => {
+        roomCtx().people.unban(p.userId, { userId: auth.userId, role: auth.role, ip: auth.ip });
+      }),
+      "clock.sync": def(ClockSync, MESSAGE_RATES["clock.sync"], (_c, p) => ({
+        t0: p.t0,
+        serverNow: Date.now(),
+      })),
+      "hand.toggle": def(HandToggle, MESSAGE_RATES["hand.toggle"], ({ auth }, p) => {
+        const pr = this.state.presence.get(auth.userId);
+        if (!pr) throw new GloamError("NOT_FOUND");
+        if (auth.role === "spectator") throw new GloamError("FORBIDDEN");
+        const raised = p.raised ?? !pr.handRaised;
+        pr.handRaised = raised;
+        if (raised) this.toDms("hand.raised", { userId: auth.userId, name: auth.name });
+        return { raised };
+      }),
+      ...this.commandHandlers(),
+      "history.undo": def(
+        z.strictObject({ force: z.boolean().optional() }),
+        { capacity: 5, perSecond: 5 },
+        ({ auth }, p) => {
+          const e = this.bus.undo(this.actorFor(auth), { force: p.force });
+          return { entryId: e.id };
+        },
+      ),
+      "history.redo": def(z.strictObject({}), { capacity: 5, perSecond: 5 }, ({ auth }) => {
+        const e = this.bus.redo(this.actorFor(auth));
+        return { entryId: e.id };
+      }),
+    },
+    roomCtx().log,
+    (client, type) => {
+      const auth = client.auth as ClientAuth | undefined;
+      roomCtx().security.record("ws.ratelimited", { userId: auth?.userId ?? null, detail: { type } });
+    },
+  );
+
+  override onCreate(options: TableRoomOptions): void {
+    if (!/^[A-Za-z0-9_-]+$/.test(options.campaignId)) throw new Error("invalid campaign id");
+    this.campaignId = options.campaignId;
+    this.roomId = options.campaignId;
+    this.autoDispose = false;
+    const state = new Table();
+    this.setState(state);
+    this.loadModel();
+    roomCtx().rooms.tables.set(this.campaignId, this);
+  }
+
+  /** (Re)loads the campaign into memory and builds the command bus around it. */
+  private loadModel(): void {
+    const ctx = roomCtx();
+    const model = CampaignModel.load(ctx.db, this.campaignId);
+    if (!model) throw new Error(`campaign ${this.campaignId} not found`);
+    this.model = model;
+    this.bus = new CommandBus(ctx, model, { onCommitted: (info) => this.onCommitted(info) });
+    registerCommands(this.bus);
+    this.syncCampaign();
+  }
+
+  /** Projects the campaign document into the synchronised state. */
+  private syncCampaign(): void {
+    const c = this.model.campaign;
+    this.state.campaignId = c.id;
+    this.state.campaignName = c.name;
+    this.state.units = c.units;
+    this.state.rulesPack = c.rulesPack;
+    this.state.sessionNo = c.sessionNo;
+    this.state.houseRulesJson = JSON.stringify(c.houseRules);
+    this.state.settingsJson = JSON.stringify(c.settings);
+  }
+
+  /** Post-commit (§14.1 step 5–6): mirror changed entities into the Colyseus state. */
+  private onCommitted(info: CommitInfo): void {
+    if (info.ops.some((o) => (o.k === "set" || o.k === "create") && o.e === "campaign")) this.syncCampaign();
+  }
+
+  actorFor(auth: ClientAuth): CommandActor {
+    return { userId: auth.userId, role: auth.role, name: auth.name, actingAs: null };
+  }
+
+  /** One room message per command type; the bus parses, authorizes, plans and commits. */
+  private commandHandlers(): Record<string, MessageDef<z.ZodType>> {
+    const out: Record<string, MessageDef<z.ZodType>> = {};
+    for (const d of ALL_COMMANDS) {
+      out[d.type] = def(
+        z.unknown(),
+        COMMAND_RATES[d.type] ?? { capacity: 10, perSecond: 10 },
+        ({ auth }, raw) => {
+          const payload = raw && typeof raw === "object" ? { ...(raw as Record<string, unknown>) } : raw;
+          let cid: string | undefined;
+          if (payload && typeof payload === "object" && "cid" in payload) {
+            const c = (payload as { cid?: unknown }).cid;
+            if (typeof c === "string" && /^[A-Za-z0-9_-]{8,40}$/.test(c)) cid = c;
+            delete (payload as { cid?: unknown }).cid;
+          }
+          return this.bus.execute(d.type, payload, this.actorFor(auth), { cid });
+        },
+      );
+    }
+    return out;
+  }
+
+  override onJoin(client: Client): void {
+    const ctx = roomCtx();
+    const auth = client.auth as ClientAuth;
+    if (!auth || auth.campaignId !== this.campaignId) {
+      client.leave(CLOSE.revoked);
+      return;
+    }
+    client.view = new StateView();
+    const set = this.clientsByUser.get(auth.userId) ?? new Set<Client>();
+    set.add(client);
+    this.clientsByUser.set(auth.userId, set);
+    this.upsertPresence(auth, true);
+    this.syncCampaign();
+    client.send("welcome", {
+      userId: auth.userId,
+      role: auth.role,
+      name: auth.name,
+      color: auth.color,
+      campaignId: this.campaignId,
+      serverNow: Date.now(),
+    });
+    if (auth.role === "admin" || auth.role === "dm") client.send("knocks", ctx.people.pending());
+    ctx.table.changed();
+  }
+
+  private upsertPresence(auth: ClientAuth, online: boolean): void {
+    let p = this.state.presence.get(auth.userId);
+    if (!p) {
+      p = new Presence();
+      p.userId = auth.userId;
+      p.handRaised = false;
+      this.state.presence.set(auth.userId, p);
+    }
+    const user = roomCtx().profiles.get(auth.userId);
+    p.name = user?.displayName ?? auth.name;
+    p.color = user?.color ?? auth.color;
+    p.role = auth.role;
+    p.spectator = auth.role === "spectator";
+    p.diceSkin = user?.diceSkinJson ?? "{}";
+    p.online = online;
+  }
+
+  override async onDrop(client: Client): Promise<void> {
+    if (this.closing.has(client)) return;
+    const auth = client.auth as ClientAuth;
+    const p = this.state.presence.get(auth.userId);
+    if (p && (this.clientsByUser.get(auth.userId)?.size ?? 0) <= 1) p.online = false;
+    try {
+      // A dropped socket reconnects within 60 s without re-approval (AC-AUTH-07).
+      await this.allowReconnection(client, 60);
+    } catch {
+      // window expired → onLeave follows
+    }
+  }
+
+  override onReconnect(client: Client): void {
+    const ctx = roomCtx();
+    const auth = client.auth as ClientAuth;
+    const s = ctx.sessions.get(auth.authSessionId);
+    const user = ctx.profiles.get(auth.userId);
+    const valid =
+      s &&
+      s.revokedAt === null &&
+      user &&
+      !user.bannedAt &&
+      (s.kind === "admin" ||
+        (s.status === "admitted" && ctx.table.isOpen && s.tableSessionNo === ctx.table.sessionNo));
+    if (!valid) {
+      client.leave(CLOSE.revoked);
+      return;
+    }
+    const p = this.state.presence.get(auth.userId);
+    if (p) p.online = true;
+  }
+
+  override onLeave(client: Client): void {
+    const auth = client.auth as ClientAuth | undefined;
+    client.view?.dispose();
+    if (!auth) return;
+    const set = this.clientsByUser.get(auth.userId);
+    set?.delete(client);
+    if (!set || set.size === 0) {
+      this.clientsByUser.delete(auth.userId);
+      const p = this.state.presence.get(auth.userId);
+      if (p) {
+        p.online = false;
+        p.handRaised = false;
+      }
+    }
+    roomCtx().table.changed();
+  }
+
+  override onBeforePatch(): void {
+    this.beforePatchProbe?.();
+  }
+
+  override onDispose(): void {
+    const ctx = roomCtx();
+    if (ctx.rooms.tables.get(this.campaignId) === this) ctx.rooms.tables.delete(this.campaignId);
+  }
+
+  // ── TableRoomApi ──────────────────────────────────────────────────────────────────────────────────────
+
+  toDms(type: string, payload: unknown): void {
+    for (const c of this.clients) {
+      const role = (c.auth as ClientAuth | undefined)?.role;
+      if (role === "admin" || role === "dm") c.send(type, payload);
+    }
+  }
+
+  broadcastAll(type: string, payload: unknown): void {
+    for (const c of this.clients) c.send(type, payload);
+  }
+
+  disconnectUser(userId: string, type: string, payload: unknown, code: number): void {
+    for (const c of this.clientsByUser.get(userId) ?? []) {
+      this.closing.add(c);
+      c.send(type, payload);
+      setTimeout(() => c.leave(code), 30);
+    }
+  }
+
+  disconnectNonAdmins(type: string, payload: unknown, code: number): void {
+    for (const c of this.clients) {
+      const role = (c.auth as ClientAuth | undefined)?.role;
+      if (role === "admin") continue;
+      this.closing.add(c);
+      c.send(type, payload);
+      setTimeout(() => c.leave(code), 30);
+    }
+  }
+
+  counts(): { admitted: number; spectators: number } {
+    let admitted = 0;
+    let spectators = 0;
+    for (const [userId] of this.clientsByUser) {
+      const p = this.state.presence.get(userId);
+      if (!p || p.role === "admin") continue;
+      if (p.role === "spectator") spectators++;
+      else admitted++;
+    }
+    return { admitted, spectators };
+  }
+
+  onlineUserIds(): Set<string> {
+    return new Set(this.clientsByUser.keys());
+  }
+
+  async reloadFromDatabase(): Promise<void> {
+    this.loadModel();
+    this.broadcastAll("table.resync", {});
+  }
+
+  flushFog(): void {
+    // Explored memory is written by the vision service (Phase 4); nothing buffered yet.
+  }
+}

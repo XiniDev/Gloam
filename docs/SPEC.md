@@ -3722,3 +3722,8 @@ UI-managed settings (table `settings`): tunnel mode, named-tunnel token (encrypt
 ### Errata
 
 Clarifications discovered during the build are appended here by the builder (date, section, clarification), mirrored in `docs/DECISIONS.md`.
+
+- 2026-09-27 · §34.4, §33.4 · Shining Smite: Concentration (up to 1 minute); attack rolls against the target have Advantage (SRD p. 162). Conjure Celestial: p. 118, up to 10 minutes. Incendiary Cloud drifts away from the caster. Insect Plague is also Difficult Terrain. Flaming Sphere is 5 ft in diameter. (R1)
+- 2026-09-27 · §34.2, §19.3 · Short Rest p. 187, Long Rest p. 185 (Short Rest: at least 1 HP per Hit Die; Long Rest also restores lowered ability scores); revival rules p. 180; Incapacitated creatures can't speak; Petrified creatures are immune to Poisoned; Grappled escape DC 8 + Str mod + PB applies to Unarmed Strike grapples; SRD 5.1 concentration DC has no cap of 30. (R1)
+- 2026-09-27 · §19.4 · A Speed of 0 can't be increased: speed-zero conditions zero the whole turn budget, including bonus movement, unless the DM overrides. (R1)
+- 2026-09-27 · Appendix D · pnpm 12 rejects `-s`; the Stop hook uses `pnpm --silent check:fast`.
