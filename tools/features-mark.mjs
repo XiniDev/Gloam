@@ -10,7 +10,9 @@ const dispute = args[0] === "--dispute";
 if (dispute) args.shift();
 const [ids, text] = args;
 if (!ids || !text || text.trim().length < 8) {
-  console.error('usage: node tools/features-mark.mjs AC-A-01[,AC-B-02] "evidence (test file › name, or screenshot path)"');
+  console.error(
+    'usage: node tools/features-mark.mjs AC-A-01[,AC-B-02] "evidence (test file › name, or screenshot path)"',
+  );
   process.exit(2);
 }
 const doc = JSON.parse(readFileSync(FEATURES_PATH, "utf8"));

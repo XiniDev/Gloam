@@ -19,10 +19,10 @@
       "code": "HOST",
       "phase": "P1",
       "text": "The server binds `127.0.0.1` by default; LAN mode binds `0.0.0.0` only after explicit confirmation and shows a warning badge while active.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/host.test.ts › AC-HOST-02 (bind 127.0.0.1 default; 0.0.0.0 only with confirmLan; lanActive flag) + e2e/journeys/p1-doorway.spec.ts › AC-HOST-02 (confirmation dialog, Cancel keeps Closed, warning badge while active, gone after close)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T12:47:01.057Z"
     },
     {
       "id": "AC-HOST-03",
@@ -30,10 +30,10 @@
       "code": "HOST",
       "phase": "P1",
       "text": "Open table (quick) spawns cloudflared, obtains the `trycloudflare.com` hostname within 30 s, and shows status `Open` only after the metrics `/ready` endpoint returns 200.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/host.test.ts › AC-HOST-03 (fake cloudflared, hostname via /quicktunnel, Open only after /ready 200) + e2e/journeys/p1-doorway.spec.ts › AC-HOST-03 / AC-HOST-05 (status Open with the trycloudflare link)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T12:47:01.127Z"
     },
     {
       "id": "AC-HOST-04",
@@ -41,10 +41,10 @@
       "code": "HOST",
       "phase": "P1",
       "text": "Close table stops cloudflared, revokes all invite codes, shows every non-admin client a \"table closed\" screen, disconnects them, and writes a `close` snapshot.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/host.test.ts › AC-HOST-04 (cloudflared stopped, codes revoked, clients closed 4005, close snapshot) + e2e/journeys/p1-doorway.spec.ts › AC-HOST-04 (player sees 'The table is closed — thanks for playing'; cloudflared pid gone)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T12:47:01.198Z"
     },
     {
       "id": "AC-HOST-05",
@@ -52,10 +52,10 @@
       "code": "HOST",
       "phase": "P1",
       "text": "**Copy Discord message** copies text containing the public URL and the invite code, for example: `🎲 The table is open! Join: https://calm-river-1234.trycloudflare.com — code 7K2QH-9XM4D (works until the table closes)`.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p1-doorway.spec.ts › AC-HOST-03 / AC-HOST-05: clipboard text equals '🎲 The table is open! Join: https://calm-river-1234.trycloudflare.com — code XXXXX-XXXXX (works until the table closes)'",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T12:47:01.269Z"
     },
     {
       "id": "AC-HOST-06",
@@ -63,10 +63,10 @@
       "code": "HOST",
       "phase": "P1",
       "text": "With cloudflared missing, the Table page shows OS-specific install instructions and a Re-check button, and Local/LAN modes still work.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/host.test.ts › AC-HOST-06 (install info per OS; Local and LAN open) + e2e/journeys/p1-doorway.spec.ts › AC-HOST-06 (install heading + OS command + Re-check; Open disabled for tunnels; Local opens)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T12:47:01.339Z"
     },
     {
       "id": "AC-HOST-07",
@@ -96,10 +96,10 @@
       "code": "HOST",
       "phase": "P1",
       "text": "If cloudflared crashes while open, it is restarted up to 3 times, the status shows `Doorway reconnecting…`, and a changed hostname is highlighted.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/host.test.ts › AC-HOST-09 (restarts ≤ 3 with backoff, reconnecting status, hostnameChanged) + e2e/journeys/p1-doorway.spec.ts › AC-HOST-09 (SIGKILL fake cloudflared → 'Doorway reconnecting…' → changed-address highlight, dismissable)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T12:47:01.411Z"
     },
     {
       "id": "AC-AUTH-01",
@@ -118,10 +118,10 @@
       "code": "AUTH",
       "phase": "P1",
       "text": "A valid code plus identity puts the person in the waiting room within 1 s, and the Admin/DMs receive a knock card with sound.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/auth.test.ts › AC-AUTH-02 + e2e/journeys/p1-lobby.spec.ts › AC-AUTH-02 / AC-AUTH-03: identity → waiting room measured in-page at 132 ms (≤ 1000 asserted); knock card on the Admin page with the knock sound logged as actually played (real autoplay policy, software GL)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T12:47:01.481Z"
     },
     {
       "id": "AC-AUTH-03",
@@ -129,10 +129,10 @@
       "code": "AUTH",
       "phase": "P1",
       "text": "Admit moves the person from the waiting room to the table without a reload within 1 s; Deny shows \"The DM couldn't let you in right now\"; Ban auto-denies all future knocks from that profile and its devices.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/auth.test.ts › AC-AUTH-03 + e2e/journeys/p1-lobby.spec.ts › AC-AUTH-02 / AC-AUTH-03 (admit → table heading measured in-page at 513 ms incl. the 450 ms dissolve, ≤ 1000 asserted; same JS realm = no reload) and › AC-AUTH-03 Deny/Ban (friendly deny text; banned profile's device auto-denied under a new name)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-27T12:47:01.551Z"
     },
     {
       "id": "AC-AUTH-04",

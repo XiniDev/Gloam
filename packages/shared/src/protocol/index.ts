@@ -122,3 +122,5 @@ export const MESSAGE_RATES = {
   "clock.sync": rate(1, 6),
   "hand.toggle": rate(1),
 } as const satisfies Record<string, RateSpec>;
+
+export * from "./commands.ts";

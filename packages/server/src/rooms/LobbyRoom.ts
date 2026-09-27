@@ -14,6 +14,7 @@ export class LobbyRoom extends Room<{ state: LobbyStateT }> implements LobbyRoom
   private readonly bySession = new Map<string, Set<Client>>();
   private readonly watchers = new Set<Client>();
   private readonly leaveTimers = new Map<string, NodeJS.Timeout>();
+  private onStatus: ((dto: unknown) => void) | null = null;
 
   static override async onAuth(
     _token: string | undefined,
@@ -61,6 +62,9 @@ export class LobbyRoom extends Room<{ state: LobbyStateT }> implements LobbyRoom
     this.autoDispose = false;
     this.setState(new LobbyState());
     roomCtx().rooms.lobby = this;
+    // Live table status for the Admin console (invite codes and the doorway are Admin-only, SPEC §6).
+    this.onStatus = (dto: unknown) => this.broadcastToAdmins("table.status", dto);
+    roomCtx().table.on("status", this.onStatus);
   }
 
   override onJoin(client: Client): void {
@@ -70,7 +74,7 @@ export class LobbyRoom extends Room<{ state: LobbyStateT }> implements LobbyRoom
     if (auth.watcher) {
       this.watchers.add(client);
       for (const k of this.state.knocks.values()) client.view.add(k);
-      client.send("table.status", ctx.table.dto());
+      if (auth.role === "admin") client.send("table.status", ctx.table.dto());
       return;
     }
     const sid = auth.authSessionId;
@@ -147,6 +151,7 @@ export class LobbyRoom extends Room<{ state: LobbyStateT }> implements LobbyRoom
 
   override onDispose(): void {
     const ctx = roomCtx();
+    if (this.onStatus) ctx.table.off("status", this.onStatus);
     if (ctx.rooms.lobby === this) ctx.rooms.lobby = null;
   }
 
@@ -193,6 +198,11 @@ export class LobbyRoom extends Room<{ state: LobbyStateT }> implements LobbyRoom
 
   broadcastToWatchers(type: string, payload: unknown): void {
     for (const w of this.watchers) w.send(type, payload);
+  }
+
+  broadcastToAdmins(type: string, payload: unknown): void {
+    for (const w of this.watchers)
+      if ((w.auth as ClientAuth | undefined)?.role === "admin") w.send(type, payload);
   }
 
   closeAllPending(code: number, type: string, payload: unknown): void {

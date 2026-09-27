@@ -20,7 +20,8 @@
       "!packages/server/drizzle",
       "!test-results",
       "!playwright-report",
-      "!**/spikes"
+      "!**/spikes",
+      "!packages/web/src/styles/tokens.css"
     ]
   },
   "formatter": {
@@ -63,11 +64,24 @@
       },
       "a11y": {
         "noStaticElementInteractions": "off",
-        "useKeyWithClickEvents": "off"
+        "useKeyWithClickEvents": "off",
+        "useSemanticElements": "off"
       },
       "complexity": {
         "noForEach": "off"
       }
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["packages/web/src/styles/globals.css"],
+      "linter": {
+        "rules": {
+          "complexity": {
+            "noImportantStyles": "off"
+          }
+        }
+      }
+    }
+  ]
 }

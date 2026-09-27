@@ -1,0 +1,232 @@
+import { Callbacks, type Room } from "@colyseus/sdk";
+import type { KnockCard } from "@gloam/shared/protocol";
+import { Table, type TableState } from "@gloam/shared/state";
+import { create } from "zustand";
+import { colyseus, leaveRoom, rejectionMessage } from "./colyseus.ts";
+
+export interface PresenceView {
+  userId: string;
+  name: string;
+  color: string;
+  role: string;
+  online: boolean;
+  handRaised: boolean;
+  spectator: boolean;
+}
+
+export type Connection = "connecting" | "open" | "dropped" | "closed";
+
+interface TableStore {
+  room: Room<unknown, TableState> | null;
+  connection: Connection;
+  me: { userId: string; role: "admin" | "dm" | "player" | "spectator"; name: string; color: string } | null;
+  campaignId: string | null;
+  campaignName: string;
+  units: "ft" | "m";
+  sessionNo: number;
+  presence: PresenceView[];
+  knocks: KnockCard[];
+  set(p: Partial<TableStore>): void;
+}
+
+/** Live table connection state (SPEC §23.2 `entities`/`session` subset for Phase 1). */
+export const useTable = create<TableStore>((set) => ({
+  room: null,
+  connection: "connecting",
+  me: null,
+  campaignId: null,
+  campaignName: "",
+  units: "ft",
+  sessionNo: 0,
+  presence: [],
+  knocks: [],
+  set: (p) => set(p),
+}));
+
+/** One-shot table events the UI reacts to (navigation, toasts, knock cards). */
+export interface TableEventMap {
+  kicked: { message: string };
+  banned: { message: string };
+  closing: Record<string, never>;
+  knock: KnockCard;
+  "knock.resolved": { sessionId: string; decision: string };
+  toast: { kind: string; message: string };
+  "hand.raised": { userId: string; name: string };
+  left: { code: number };
+  message: { type: string; payload: unknown };
+}
+type EventName = keyof TableEventMap;
+type Listener<K extends EventName> = (payload: TableEventMap[K]) => void;
+
+/**
+ * Table events with a replay buffer: the connection starts before the table screen mounts (during the waiting
+ * room's dissolve, AC-AUTH-03), so an event emitted while nobody listens is kept and delivered to the first
+ * listener of its type. Bounded, so an unobserved type can't grow without limit.
+ */
+class TableEventBus {
+  private listeners = new Map<EventName, Set<Listener<EventName>>>();
+  private pending: { type: EventName; payload: unknown }[] = [];
+
+  on<K extends EventName>(type: K, fn: Listener<K>): () => void {
+    const set = this.listeners.get(type) ?? new Set();
+    set.add(fn as Listener<EventName>);
+    this.listeners.set(type, set);
+    const replay = this.pending.filter((e) => e.type === type);
+    this.pending = this.pending.filter((e) => e.type !== type);
+    for (const e of replay) fn(e.payload as TableEventMap[K]);
+    return () => set.delete(fn as Listener<EventName>);
+  }
+
+  emit<K extends EventName>(type: K, payload: TableEventMap[K]): void {
+    const set = this.listeners.get(type);
+    if (set?.size) for (const fn of [...set]) fn(payload);
+    else {
+      this.pending.push({ type, payload });
+      if (this.pending.length > 100) this.pending.shift();
+    }
+  }
+
+  reset(): void {
+    this.pending = [];
+  }
+}
+export const tableEvents = new TableEventBus();
+
+let current: { campaignId: string; joining: Promise<Room<unknown, TableState>> } | null = null;
+
+/**
+ * Joins the table room with the shared `Table` schema (SPEC §13.6), mirrors presence and campaign fields into the
+ * store and forwards one-shot messages to `tableEvents` — all wired at join time, so nothing sent on join (the
+ * `welcome`, pending knocks) is dropped. Idempotent per campaign: the waiting room starts the connection during
+ * its dissolve and the table screen picks up the same one. Reconnection: the SDK retries within the server's
+ * 60-s window; the UI shows the reconnecting banner meanwhile.
+ */
+export function connectTable(campaignId: string): Promise<Room<unknown, TableState>> {
+  if (current?.campaignId === campaignId) return current.joining;
+  disconnectTable();
+  const joining = join(campaignId);
+  const entry = { campaignId, joining };
+  current = entry;
+  // A failed join must not be reused by the next caller.
+  joining.catch(() => {
+    if (current === entry) current = null;
+  });
+  return joining;
+}
+
+/** Leaves the table room (if any) and clears the table state. */
+export function disconnectTable(): void {
+  const prev = current;
+  current = null;
+  tableEvents.reset();
+  if (prev) void prev.joining.then((room) => leaveRoom(room)).catch(() => {});
+  useTable.getState().set({ room: null, me: null, presence: [], knocks: [], connection: "connecting" });
+}
+
+async function join(campaignId: string): Promise<Room<unknown, TableState>> {
+  useTable.getState().set({ connection: "connecting", campaignId });
+  const room = (await colyseus().joinById(campaignId, {}, Table)) as unknown as Room<unknown, TableState>;
+  const cb = Callbacks.get<TableState>(room as never);
+  const presence = new Map<string, PresenceView>();
+  const push = () =>
+    useTable
+      .getState()
+      .set({ presence: [...presence.values()].sort((a, b) => a.name.localeCompare(b.name)) });
+  cb.onAdd("presence", (p, key) => {
+    const snap = () => {
+      presence.set(key as string, {
+        userId: p.userId,
+        name: p.name,
+        color: p.color,
+        role: p.role,
+        online: p.online,
+        handRaised: p.handRaised,
+        spectator: p.spectator,
+      });
+      push();
+    };
+    snap();
+    cb.onChange(p, snap);
+  });
+  cb.onRemove("presence", (_p, key) => {
+    presence.delete(key as string);
+    push();
+  });
+  const syncCampaign = () =>
+    useTable.getState().set({
+      campaignName: room.state.campaignName,
+      units: (room.state.units as "ft" | "m") || "ft",
+      sessionNo: room.state.sessionNo,
+    });
+  cb.listen("campaignName", syncCampaign);
+  cb.listen("units", syncCampaign);
+  cb.listen("sessionNo", syncCampaign);
+
+  room.onMessage(
+    "welcome",
+    (w: { userId: string; role: "admin" | "dm" | "player" | "spectator"; name: string; color: string }) => {
+      useTable
+        .getState()
+        .set({ me: { userId: w.userId, role: w.role, name: w.name, color: w.color }, connection: "open" });
+    },
+  );
+  room.onMessage("knocks", (list: KnockCard[]) => useTable.getState().set({ knocks: list }));
+  room.onMessage("knock", (k: KnockCard) => {
+    const cur = useTable.getState().knocks.filter((x) => x.sessionId !== k.sessionId);
+    useTable.getState().set({ knocks: [...cur, k] });
+    tableEvents.emit("knock", k);
+  });
+  room.onMessage("knock.resolved", (r: { sessionId: string; decision: string }) => {
+    useTable
+      .getState()
+      .set({ knocks: useTable.getState().knocks.filter((x) => x.sessionId !== r.sessionId) });
+    tableEvents.emit("knock.resolved", r);
+  });
+  room.onMessage("kicked", (m: { message: string }) => tableEvents.emit("kicked", m));
+  room.onMessage("banned", (m: { message: string }) => tableEvents.emit("banned", m));
+  room.onMessage("table.closing", () => tableEvents.emit("closing", {}));
+  room.onMessage("toast", (t: { kind: string; message: string }) => tableEvents.emit("toast", t));
+  room.onMessage("hand.raised", (p: { userId: string; name: string }) => tableEvents.emit("hand.raised", p));
+  room.onMessage("*", (type, payload) => tableEvents.emit("message", { type: String(type), payload }));
+  room.onDrop(() => useTable.getState().set({ connection: "dropped" }));
+  room.onReconnect(() => useTable.getState().set({ connection: "open" }));
+  room.onLeave((code) => {
+    if (current?.campaignId === campaignId) current = null;
+    useTable.getState().set({ connection: "closed", room: null });
+    tableEvents.emit("left", { code });
+  });
+  useTable.getState().set({ room });
+  return room;
+}
+
+/** Typed request with friendly errors (SPEC §23.3). */
+export async function request<T = unknown>(type: string, payload: unknown = {}): Promise<T> {
+  const room = useTable.getState().room;
+  if (!room) throw new Error("Not connected to the table.");
+  try {
+    return (await room.request(type, payload, { timeout: 8000 })) as T;
+  } catch (err) {
+    const r = rejectionMessage(err);
+    throw Object.assign(new Error(r.message), { code: r.code });
+  }
+}
+
+/**
+ * Resolves once the table connection for `campaignId` is joined and its `welcome` has arrived (the table screen can
+ * render without a loader), or after `timeoutMs` either way — the table screen handles a slow or failed join.
+ */
+export async function tableReady(campaignId: string, timeoutMs: number): Promise<void> {
+  const joined = connectTable(campaignId).then(
+    () =>
+      new Promise<void>((resolve) => {
+        if (useTable.getState().me) return resolve();
+        const off = useTable.subscribe((s) => {
+          if (s.me) {
+            off();
+            resolve();
+          }
+        });
+      }),
+  );
+  await Promise.race([joined.catch(() => {}), new Promise((r) => setTimeout(r, timeoutMs))]);
+}

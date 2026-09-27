@@ -1,0 +1,235 @@
+@import "tailwindcss";
+@import "./tokens.css";
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+  html {
+    font-size: calc(16px * var(--ui-scale));
+    -webkit-text-size-adjust: 100%;
+    background: var(--bg);
+    color-scheme: dark;
+  }
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    margin: 0;
+    min-height: 100dvh;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-ui);
+    font-size: var(--text-16);
+    line-height: var(--leading-body);
+    font-feature-settings: "kern", "liga", "onum";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overscroll-behavior: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-display);
+    font-variation-settings:
+      "SOFT" 50,
+      "opsz" 72;
+    font-weight: 650;
+    line-height: var(--leading-display);
+    margin: 0;
+    letter-spacing: -0.01em;
+  }
+  p {
+    margin: 0;
+  }
+  a {
+    color: var(--accent-strong);
+    text-decoration-thickness: 1px;
+    text-underline-offset: 3px;
+  }
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+    color: inherit;
+  }
+  button {
+    cursor: pointer;
+  }
+  button:disabled {
+    cursor: not-allowed;
+  }
+  ::selection {
+    background: var(--brass-800);
+    color: var(--bone-100);
+  }
+  :focus {
+    outline: none;
+  }
+  :focus-visible {
+    outline: none;
+    box-shadow: var(--ring-focus);
+    border-radius: var(--radius-control);
+  }
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--text-faint);
+  }
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--ink-700);
+    border-radius: 10px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  * {
+    scrollbar-color: var(--ink-700) transparent;
+    scrollbar-width: thin;
+  }
+}
+
+@layer components {
+  .tabular {
+    font-variant-numeric: tabular-nums lining-nums;
+  }
+  .caps {
+    font-family: var(--font-caps);
+    letter-spacing: var(--tracking-caps);
+    text-transform: uppercase;
+    font-weight: 600;
+  }
+  .display {
+    font-family: var(--font-display);
+    font-variation-settings:
+      "SOFT" 50,
+      "opsz" 72;
+  }
+  .mono {
+    font-family: var(--font-mono);
+    font-variant-ligatures: none;
+  }
+  /* Chrome panel: dark ink with a faint noise and an inner highlight. */
+  .panel {
+    background-color: var(--panel);
+    background-image: url("../assets/noise.png");
+    background-blend-mode: soft-light;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-panel);
+    box-shadow: var(--shadow-panel);
+  }
+  .panel-raised {
+    background-color: var(--raised);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-panel);
+  }
+  /* Document surface: parchment laid on the table. */
+  .parchment {
+    background-color: var(--parchment-100);
+    background-image:
+      var(--parchment-fibre), radial-gradient(ellipse at 50% 40%, transparent 55%, var(--paper-shadow));
+    color: var(--parchment-ink);
+    border-radius: var(--radius-panel);
+    box-shadow: var(--shadow-paper);
+  }
+  .engraved-divider {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--brass-600) 20%, var(--brass-600) 80%, transparent);
+    position: relative;
+  }
+  .engraved-divider::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 7px;
+    height: 7px;
+    transform: translate(-50%, -50%) rotate(45deg);
+    background: var(--panel);
+    border: 1px solid var(--brass-600);
+  }
+  .skeleton {
+    background: linear-gradient(
+      100deg,
+      var(--ink-800) 30%,
+      var(--ink-700) 45%,
+      var(--glow-candle) 50%,
+      var(--ink-700) 55%,
+      var(--ink-800) 70%
+    );
+    background-size: 300% 100%;
+    animation: candle-sweep 1.8s var(--ease-in-out) infinite;
+    border-radius: var(--radius-chip);
+  }
+  .vignette {
+    background: radial-gradient(ellipse at 50% 45%, transparent 35%, var(--scrim) 100%);
+  }
+  .hit {
+    min-width: var(--hit-target);
+    min-height: var(--hit-target);
+  }
+}
+
+@keyframes candle-sweep {
+  0% {
+    background-position: 120% 0;
+  }
+  100% {
+    background-position: -20% 0;
+  }
+}
+@keyframes d20-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes soft-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Reduced motion (SPEC §8.22): short fades instead of flights, shakes and tumbles. */
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-motion="full"]) *,
+  :root:not([data-motion="full"]) *::before,
+  :root:not([data-motion="full"]) *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 80ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+:root[data-motion="reduced"] *,
+:root[data-motion="reduced"] *::before,
+:root[data-motion="reduced"] *::after {
+  animation-duration: 1ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 80ms !important;
+}

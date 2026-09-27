@@ -15,6 +15,8 @@ const EnvSchema = z.object({
   GLOAM_TEST_SEED: z.coerce.number().int().min(0).max(0xffffffff).optional(),
   /** Test builds only: run CLOUDFLARED_PATH with this script as its first argument (the fake cloudflared). */
   GLOAM_TEST_CLOUDFLARED_SCRIPT: z.string().optional(),
+  /** Test builds only: serve this built SPA (the test-mode build with test hooks) instead of packages/web/dist. */
+  GLOAM_TEST_WEB_DIST: z.string().optional(),
 });
 
 export type NodeEnv = "development" | "production" | "test";
@@ -79,7 +81,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, overrides: Part
     nodeEnv: e.NODE_ENV,
     testSeed: e.NODE_ENV === "test" ? e.GLOAM_TEST_SEED : undefined,
     webRoot: resolve(repoRoot, "packages", "web"),
-    webDist: resolve(repoRoot, "packages", "web", "dist"),
+    webDist:
+      e.NODE_ENV === "test" && e.GLOAM_TEST_WEB_DIST
+        ? resolve(e.GLOAM_TEST_WEB_DIST)
+        : resolve(repoRoot, "packages", "web", "dist"),
     printBanner: e.NODE_ENV !== "test",
     consoleLog: e.NODE_ENV !== "test",
     tunnel: {},

@@ -1,0 +1,88 @@
+import { create } from "zustand";
+
+/** Per-device preferences (SPEC §8.22), persisted to localStorage (wrapped in try/catch: storage may be blocked). */
+export interface DeviceSettings {
+  volumes: Record<"master" | "dice" | "effects" | "ui" | "music" | "ambience", number>;
+  channelMuted: Record<"master" | "dice" | "effects" | "ui" | "music" | "ambience", boolean>;
+  muted: boolean;
+  tier: "auto" | "ultra" | "high" | "medium" | "low";
+  uiScale: number;
+  motion: "system" | "full" | "reduced";
+  colorBlind: boolean;
+  dmCanMoveCamera: boolean;
+  focusOnMyTurn: boolean;
+  shareRulers: boolean | null;
+  diceAnimation: boolean;
+  units: "campaign" | "ft" | "m";
+}
+
+const KEY = "gloam.settings.v1";
+
+export const DEFAULT_SETTINGS: DeviceSettings = {
+  volumes: { master: 0.9, dice: 0.85, effects: 0.8, ui: 0.7, music: 0.55, ambience: 0.55 },
+  channelMuted: { master: false, dice: false, effects: false, ui: false, music: false, ambience: false },
+  muted: false,
+  tier: "auto",
+  uiScale: 1,
+  motion: "system",
+  colorBlind: false,
+  dmCanMoveCamera: true,
+  focusOnMyTurn: true,
+  shareRulers: null,
+  diceAnimation: true,
+  units: "campaign",
+};
+
+function load(): DeviceSettings {
+  try {
+    const raw = globalThis.localStorage?.getItem(KEY);
+    if (!raw) return DEFAULT_SETTINGS;
+    const parsed = JSON.parse(raw) as Partial<DeviceSettings>;
+    return {
+      ...DEFAULT_SETTINGS,
+      ...parsed,
+      volumes: { ...DEFAULT_SETTINGS.volumes, ...parsed.volumes },
+      channelMuted: { ...DEFAULT_SETTINGS.channelMuted, ...parsed.channelMuted },
+    };
+  } catch {
+    return DEFAULT_SETTINGS;
+  }
+}
+
+interface SettingsStore extends DeviceSettings {
+  update(patch: Partial<DeviceSettings>): void;
+}
+
+export const useSettings = create<SettingsStore>((set, get) => ({
+  ...load(),
+  update(patch) {
+    set(patch);
+    const { update: _u, ...rest } = get();
+    try {
+      globalThis.localStorage?.setItem(KEY, JSON.stringify(rest));
+    } catch {
+      // private window or blocked storage: settings last for this page only
+    }
+    applyDocumentSettings();
+  },
+}));
+
+/** Reflects scale, motion and colour-blind choices on <html> so CSS tokens respond. */
+export function applyDocumentSettings(): void {
+  if (typeof document === "undefined") return;
+  const s = useSettings.getState();
+  const root = document.documentElement;
+  root.style.setProperty("--ui-scale", String(Math.min(1.3, Math.max(0.9, s.uiScale))));
+  if (s.motion === "system") delete root.dataset.motion;
+  else root.dataset.motion = s.motion;
+  if (s.colorBlind) root.dataset.cb = "1";
+  else delete root.dataset.cb;
+}
+
+/** True when animations should be reduced (setting, or the OS preference when set to "system"). */
+export function prefersReducedMotion(): boolean {
+  const s = useSettings.getState();
+  if (s.motion === "reduced") return true;
+  if (s.motion === "full") return false;
+  return typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+}

@@ -148,6 +148,16 @@ export async function buildHttpApp(
           blocked: String(r?.["blocked-uri"] ?? r?.blockedURL ?? ""),
         },
       });
+      // Test builds: E2E journeys fail on any report the browser sent, not only ones it logged (SPEC §36.1).
+      if (ctx.config.nodeEnv === "test" && typeof process.send === "function") {
+        process.send({
+          type: "gloam:csp",
+          directive: String(r?.["violated-directive"] ?? r?.effectiveDirective ?? ""),
+          blocked: String(r?.["blocked-uri"] ?? r?.blockedURL ?? ""),
+          source: String(r?.["source-file"] ?? r?.sourceFile ?? ""),
+          sample: String(r?.["script-sample"] ?? r?.sample ?? ""),
+        });
+      }
     }
     res.status(204).end();
   });

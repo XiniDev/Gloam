@@ -1,0 +1,258 @@
+import { SIZE_BASE_FT, type Size } from "@gloam/shared";
+import {
+  GloamError,
+  TokenCreate,
+  TokenDelete,
+  TokenDuplicate,
+  TokenPlace,
+  TokenUpdate,
+} from "@gloam/shared/protocol";
+import { controlsToken, isDm } from "@gloam/shared/rules";
+import { DEFAULT_SPEEDS, EMPTY_STATUS, type TokenEntity, type TokenStats } from "@gloam/shared/schemas";
+import { and, eq, isNull } from "drizzle-orm";
+import type { z } from "zod";
+import { assets } from "../../db/schema.ts";
+import { newId } from "../../ids.ts";
+import type { CommandCtx, CommandDef } from "../commandBus.ts";
+import { clone, type Op } from "../ops.ts";
+import { createOp, deleteOp, mustGet, requireDm, setOps } from "../plan.ts";
+
+/** An asset reference usable on this campaign's board (approved, or the uploader's own pending upload for DMs). */
+export function assertAsset(ctx: CommandCtx, assetId: string | undefined): void {
+  if (!assetId) return;
+  const a = ctx.app.db
+    .select()
+    .from(assets)
+    .where(
+      and(eq(assets.id, assetId), eq(assets.campaignId, ctx.model.campaign.id), isNull(assets.deletedAt)),
+    )
+    .get();
+  if (!a) throw new GloamError("NOT_FOUND", "That image or model isn't in this campaign's library.");
+  if (a.status !== "approved" && !isDm(ctx.actor.role))
+    throw new GloamError("FORBIDDEN", "That upload hasn't been approved yet.");
+  if (a.status === "rejected") throw new GloamError("INVALID", "That upload was rejected.");
+}
+
+function defaultStats(size: Size): TokenStats {
+  return {
+    hp: 10,
+    hpMax: 10,
+    hpTemp: 0,
+    ac: 10,
+    speeds: { ...DEFAULT_SPEEDS },
+    senses: { darkvision: 0, blindsight: 0, tremorsense: 0, truesight: 0 },
+    saves: {},
+    dexMod: 0,
+    initBonus: 0,
+    resist: [],
+    immune: [],
+    vuln: [],
+    conditionImmune: [],
+    reachFt: 5,
+    size,
+    isPC: false,
+  };
+}
+
+function inBounds(ctx: CommandCtx, sceneId: string, pos: { x: number; y: number }): { x: number; y: number } {
+  const s = mustGet(ctx, "scene", sceneId);
+  const pad = 20;
+  return {
+    x: Math.min(s.bounds.maxX + pad, Math.max(s.bounds.minX - pad, pos.x)),
+    y: Math.min(s.bounds.maxY + pad, Math.max(s.bounds.minY - pad, pos.y)),
+  };
+}
+
+/** `token.create` — DM places any unit with any values (SPEC §8.5 Creation; Quick Unit, AC-TOK-09). */
+export const tokenCreate: CommandDef<z.infer<typeof TokenCreate>, { tokenId: string }> = {
+  type: "token.create",
+  schema: TokenCreate,
+  undoable: true,
+  authorize: requireDm,
+  plan(ctx, p) {
+    mustGet(ctx, "scene", p.sceneId);
+    assertAsset(ctx, p.appearance.assetId);
+    assertAsset(ctx, p.appearance.portraitAssetId);
+    const actor = p.actorId ? mustGet(ctx, "actor", p.actorId) : null;
+    const isCharacter = actor?.kind === "character";
+    const link = p.link ?? (isCharacter ? "linked" : "unlinked");
+    const size = p.stats?.size ?? p.size;
+    const stats: TokenStats | null =
+      link === "linked"
+        ? null
+        : ({ ...defaultStats(size), ...(p.stats ? clone(p.stats) : {}), size } as TokenStats);
+    const hr = ctx.model.campaign.houseRules;
+    const token: TokenEntity = {
+      id: newId("tok"),
+      sceneId: p.sceneId,
+      actorId: actor?.id ?? null,
+      link,
+      name: p.name,
+      pos: inBounds(ctx, p.sceneId, p.pos),
+      elevation: p.elevation,
+      rotationDeg: 0,
+      sizeFt: p.sizeFt ?? SIZE_BASE_FT[size],
+      appearance: { ...p.appearance },
+      ownerIds: p.ownerIds,
+      disposition: p.disposition,
+      hidden: p.hidden,
+      revealTo: "vision",
+      hpDisplay: p.hpDisplay ?? (isCharacter || p.stats?.isPC ? "exact" : hr.npcHpDisplay),
+      stats,
+      status: link === "linked" ? null : clone(EMPTY_STATUS),
+      overrides: {},
+      lightId: null,
+      locked: false,
+      dmNote: "",
+      moveMode: "walk",
+      createdAt: ctx.now,
+      updatedAt: ctx.now,
+    };
+    return {
+      ops: [createOp("token", token)],
+      summary: `Placed ${token.name}`,
+      sceneId: p.sceneId,
+      result: { tokenId: token.id },
+    };
+  },
+};
+
+const OWNER_FIELDS = new Set(["appearance", "name"]);
+
+/** `token.update` — DMs change anything; a token's owners may change its appearance and name. */
+export const tokenUpdate: CommandDef<z.infer<typeof TokenUpdate>> = {
+  type: "token.update",
+  schema: TokenUpdate,
+  undoable: true,
+  authorize(ctx, p) {
+    const t = mustGet(ctx, "token", p.tokenId);
+    if (isDm(ctx.actor.role)) return;
+    const keys = Object.keys(p).filter((k) => k !== "tokenId");
+    if (!controlsToken(ctx.actor.role, ctx.actor.userId, t) || keys.some((k) => !OWNER_FIELDS.has(k))) {
+      throw new GloamError("FORBIDDEN");
+    }
+  },
+  plan(ctx, p) {
+    const t = mustGet(ctx, "token", p.tokenId);
+    if (p.appearance) {
+      assertAsset(ctx, p.appearance.assetId);
+      assertAsset(ctx, p.appearance.portraitAssetId);
+    }
+    const patch: Partial<TokenEntity> = {};
+    if (p.name !== undefined) patch.name = p.name;
+    if (p.elevation !== undefined) patch.elevation = p.elevation;
+    if (p.rotationDeg !== undefined) patch.rotationDeg = ((p.rotationDeg % 360) + 360) % 360;
+    if (p.disposition !== undefined) patch.disposition = p.disposition;
+    if (p.hpDisplay !== undefined) patch.hpDisplay = p.hpDisplay;
+    if (p.ownerIds !== undefined) patch.ownerIds = p.ownerIds;
+    if (p.hidden !== undefined) patch.hidden = p.hidden;
+    if (p.revealTo !== undefined) patch.revealTo = p.revealTo;
+    if (p.locked !== undefined) patch.locked = p.locked;
+    if (p.dmNote !== undefined) patch.dmNote = p.dmNote;
+    if (p.appearance) patch.appearance = { ...t.appearance, ...p.appearance };
+    if (p.size !== undefined) {
+      patch.sizeFt = SIZE_BASE_FT[p.size];
+      if (t.stats) patch.stats = { ...(patch.stats ?? t.stats), size: p.size };
+    }
+    if (p.sizeFt !== undefined) patch.sizeFt = p.sizeFt;
+    if (p.stats) {
+      if (!t.stats) throw new GloamError("INVALID", "A linked token's numbers live on its character sheet.");
+      patch.stats = { ...(patch.stats ?? t.stats), ...clone(p.stats) } as TokenStats;
+    }
+    const ops = setOps("token", t, patch);
+    if (ops.length)
+      ops.push({ k: "set", e: "token", id: t.id, path: ["updatedAt"], value: ctx.now, prev: t.updatedAt });
+    return { ops, summary: `Updated ${t.name}`, sceneId: t.sceneId };
+  },
+};
+
+/** `token.place` — DM teleport / paste (no path, ignores budgets and blocking; SPEC §8.6 DM moves). */
+export const tokenPlace: CommandDef<z.infer<typeof TokenPlace>> = {
+  type: "token.place",
+  schema: TokenPlace,
+  undoable: true,
+  authorize: requireDm,
+  plan(ctx, p) {
+    const t = mustGet(ctx, "token", p.tokenId);
+    const patch: Partial<TokenEntity> = { pos: inBounds(ctx, t.sceneId, p.pos) };
+    if (p.elevation !== undefined) patch.elevation = p.elevation;
+    const ops = setOps("token", t, patch);
+    const light = t.lightId ? ctx.model.get("light", t.lightId) : undefined;
+    if (light && patch.pos) ops.push(...setOps("light", light, { pos: patch.pos }));
+    return { ops, summary: `Moved ${t.name}`, sceneId: t.sceneId };
+  },
+};
+
+/** `token.delete` — removes tokens and the lights they carry (undoable). */
+export const tokenDelete: CommandDef<z.infer<typeof TokenDelete>> = {
+  type: "token.delete",
+  schema: TokenDelete,
+  undoable: true,
+  authorize: requireDm,
+  plan(ctx, p) {
+    const ops: Op[] = [];
+    let sceneId: string | null = null;
+    for (const id of p.tokenIds) {
+      const t = ctx.model.get("token", id);
+      if (!t) continue;
+      sceneId = t.sceneId;
+      const light = t.lightId ? ctx.model.get("light", t.lightId) : undefined;
+      if (light) ops.push(deleteOp("light", light));
+      ops.push(deleteOp("token", t));
+    }
+    const n = p.tokenIds.length;
+    return {
+      ops,
+      summary:
+        n === 1
+          ? `Deleted ${ctx.model.get("token", p.tokenIds[0] as string)?.name ?? "a token"}`
+          : `Deleted ${n} tokens`,
+      sceneId,
+    };
+  },
+};
+
+/** `token.duplicate` — copies tokens (with their own stats) at an offset or at the cursor (Ctrl/Cmd+V). */
+export const tokenDuplicate: CommandDef<z.infer<typeof TokenDuplicate>, { tokenIds: string[] }> = {
+  type: "token.duplicate",
+  schema: TokenDuplicate,
+  undoable: true,
+  authorize: requireDm,
+  plan(ctx, p) {
+    const src = p.tokenIds.map((id) => mustGet(ctx, "token", id));
+    const first = src[0] as TokenEntity;
+    const off = p.at ? { x: p.at.x - first.pos.x, y: p.at.y - first.pos.y } : (p.offset ?? { x: 5, y: 5 });
+    const ops: Op[] = [];
+    const ids: string[] = [];
+    for (const t of src) {
+      const copy: TokenEntity = {
+        ...clone(t),
+        id: newId("tok"),
+        link: "unlinked",
+        stats: t.stats ? clone(t.stats) : null,
+        status: t.status ? clone(t.status) : clone(EMPTY_STATUS),
+        pos: inBounds(ctx, t.sceneId, { x: t.pos.x + off.x, y: t.pos.y + off.y }),
+        lightId: null,
+        createdAt: ctx.now,
+        updatedAt: ctx.now,
+      };
+      if (t.link === "linked") continue;
+      ids.push(copy.id);
+      ops.push(createOp("token", copy));
+    }
+    return {
+      ops,
+      summary: `Duplicated ${ids.length} token${ids.length === 1 ? "" : "s"}`,
+      sceneId: first.sceneId,
+      result: { tokenIds: ids },
+    };
+  },
+};
+
+export const TOKEN_COMMANDS = [
+  tokenCreate,
+  tokenUpdate,
+  tokenPlace,
+  tokenDelete,
+  tokenDuplicate,
+] as CommandDef<never, unknown>[];

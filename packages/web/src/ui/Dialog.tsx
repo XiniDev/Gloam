@@ -1,0 +1,139 @@
+import { X } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
+import { type ReactNode, useEffect, useId, useRef } from "react";
+import { createPortal } from "react-dom";
+import { IconButton } from "./Button.tsx";
+import { Filigree } from "./ornaments.tsx";
+
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+/**
+ * SPEC §28 Dialog: ink or parchment variant, corner filigree, focus trap, Esc closes, focus returns to the
+ * opener. Used only for things that can't be done inline (§27.6).
+ */
+export function Dialog({
+  open,
+  onClose,
+  title,
+  description,
+  children,
+  footer,
+  variant = "ink",
+  width = 520,
+  dismissible = true,
+}: {
+  open: boolean;
+  onClose: () => void;
+  title: ReactNode;
+  description?: ReactNode;
+  children?: ReactNode;
+  footer?: ReactNode;
+  variant?: "ink" | "parchment";
+  width?: number;
+  dismissible?: boolean;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const titleId = useId();
+  const descId = useId();
+  const opener = useRef<Element | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    opener.current = document.activeElement;
+    const t = window.setTimeout(() => {
+      const first =
+        ref.current?.querySelector<HTMLElement>("[data-autofocus]") ??
+        ref.current?.querySelector<HTMLElement>(FOCUSABLE);
+      first?.focus();
+    }, 20);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && dismissible) {
+        e.stopPropagation();
+        onClose();
+      }
+      if (e.key === "Tab" && ref.current) {
+        const items = [...ref.current.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
+          (el) => el.offsetParent !== null,
+        );
+        if (items.length === 0) return;
+        const first = items[0] as HTMLElement;
+        const last = items[items.length - 1] as HTMLElement;
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => {
+      window.clearTimeout(t);
+      window.removeEventListener("keydown", onKey, true);
+      (opener.current as HTMLElement | null)?.focus?.();
+    };
+  }, [open, onClose, dismissible]);
+
+  const parchment = variant === "parchment";
+  return createPortal(
+    <AnimatePresence>
+      {open ? (
+        <motion.div
+          className="fixed inset-0 z-[900] grid place-items-center p-4"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.18 }}
+        >
+          <div
+            className="absolute inset-0 bg-[var(--scrim)] backdrop-blur-[2px]"
+            onClick={dismissible ? onClose : undefined}
+            aria-hidden
+          />
+          <motion.div
+            ref={ref}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={titleId}
+            aria-describedby={description ? descId : undefined}
+            className={`relative w-full max-w-[calc(100vw-32px)] overflow-hidden ${parchment ? "parchment" : "panel"}`}
+            style={{ width }}
+            initial={{ y: 14, scale: 0.98, opacity: 0 }}
+            animate={{ y: 0, scale: 1, opacity: 1 }}
+            exit={{ y: 8, scale: 0.99, opacity: 0 }}
+            transition={{ type: "spring", stiffness: 380, damping: 34 }}
+          >
+            <Filigree tone={parchment ? "ink" : "brass"} />
+            <div className="flex items-start justify-between gap-4 px-6 pt-6">
+              <div className="min-w-0">
+                <h2 id={titleId} className={`text-22 ${parchment ? "text-paper-ink" : "text-bone"}`}>
+                  {title}
+                </h2>
+                {description ? (
+                  <p
+                    id={descId}
+                    className={`mt-1.5 text-14 ${parchment ? "text-paper-muted" : "text-muted"}`}
+                  >
+                    {description}
+                  </p>
+                ) : null}
+              </div>
+              {dismissible ? (
+                <IconButton label="Close" shortcut="Esc" onClick={onClose} className="-mr-2 -mt-2">
+                  <X size={18} />
+                </IconButton>
+              ) : null}
+            </div>
+            {children ? <div className="px-6 pb-2 pt-4">{children}</div> : null}
+            {footer ? (
+              <div className="flex flex-wrap items-center justify-end gap-2 px-6 pb-6 pt-4">{footer}</div>
+            ) : null}
+          </motion.div>
+        </motion.div>
+      ) : null}
+    </AnimatePresence>,
+    document.body,
+  );
+}

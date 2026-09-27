@@ -1,0 +1,90 @@
+import { useEffect } from "react";
+import { useNavigate } from "react-router";
+import { dismissKnockCard, showKnockCard } from "../hud/KnockCards.tsx";
+import { TopBar } from "../hud/TopBar.tsx";
+import { joinErrorCode } from "../net/colyseus.ts";
+import { connectTable, disconnectTable, request, tableEvents, useTable } from "../net/table.ts";
+import { useSession } from "../state/session.ts";
+import { ConnectionBanner } from "../ui/ConnectionBanner.tsx";
+import { FullScreenLoader } from "../ui/FullScreenLoader.tsx";
+import { toast } from "../ui/Toast.tsx";
+import { TableStage } from "./TableStage.tsx";
+
+/** `/table` — the board and HUD for admitted players, DMs and the Admin (SPEC §23.1, §29.3). */
+export default function TableRoute() {
+  const navigate = useNavigate();
+  const refresh = useSession((s) => s.refresh);
+  const connection = useTable((s) => s.connection);
+  const me = useTable((s) => s.me);
+  useEffect(() => {
+    let cancelled = false;
+    const offs: (() => void)[] = [];
+    void (async () => {
+      const m = await refresh();
+      if (cancelled) return;
+      if (!m?.authenticated) return navigate("/join", { replace: true });
+      const campaignId = m.table.campaignId ?? m.campaignId;
+      if (!campaignId) return navigate(m.session?.kind === "admin" ? "/admin" : "/join", { replace: true });
+      if (m.session?.kind === "player" && m.session.status !== "admitted")
+        return navigate("/wait", { replace: true });
+      // Subscribed before (re)joining; events that arrived during the waiting room's dissolve are replayed.
+      offs.push(
+        tableEvents.on("knock", (k) => {
+          const role = useTable.getState().me?.role;
+          showKnockCard(
+            k,
+            async (sessionId, decision) => {
+              try {
+                await request("lobby.decide", { sessionId, decision });
+              } catch (e) {
+                toast.danger("Couldn't do that", (e as Error).message);
+              }
+            },
+            role === "admin",
+          );
+        }),
+        tableEvents.on("knock.resolved", (r) => dismissKnockCard(r.sessionId)),
+        tableEvents.on("kicked", (k) => {
+          toast.warning("Back to the waiting room", k.message);
+          navigate("/wait", { replace: true });
+        }),
+        tableEvents.on("banned", () => navigate("/closed", { replace: true })),
+        tableEvents.on("closing", () => {
+          if (useTable.getState().me?.role !== "admin") navigate("/closed", { replace: true });
+          else toast.info("The table is closed", "Players have been shown the closed screen.");
+        }),
+        tableEvents.on("toast", (t) =>
+          t.kind === "warning" ? toast.warning(t.message) : toast.info(t.message),
+        ),
+        tableEvents.on("hand.raised", (p) => toast.info(`${p.name} raised a hand`)),
+        tableEvents.on("left", ({ code }) => {
+          if (code === 4005) navigate("/closed", { replace: true });
+          else if (code === 4401) navigate("/join", { replace: true });
+        }),
+      );
+      try {
+        await connectTable(campaignId);
+      } catch (err) {
+        if (cancelled) return;
+        const code = joinErrorCode(err);
+        if (code === "TABLE_CLOSED") navigate("/closed", { replace: true });
+        else if (code === "FORBIDDEN" || code === "UNAUTHENTICATED") navigate("/", { replace: true });
+        else toast.danger("Couldn't reach the table", "Check your connection and reload.");
+      }
+    })();
+    return () => {
+      cancelled = true;
+      for (const off of offs) off();
+      disconnectTable();
+    };
+  }, [navigate, refresh]);
+
+  if (!me) return <FullScreenLoader label="Opening the door…" />;
+  return (
+    <div className="relative h-[100dvh] w-full overflow-hidden bg-bg">
+      <TableStage />
+      <TopBar />
+      <ConnectionBanner connection={connection} />
+    </div>
+  );
+}

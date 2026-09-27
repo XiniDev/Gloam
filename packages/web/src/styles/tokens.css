@@ -1,0 +1,265 @@
+/*
+ * Gloam design tokens (SPEC §27). This is the ONLY web file allowed to contain raw colour values
+ * (enforced by tools/check-tokens.mjs). Board shaders read the mirrored values in @gloam/shared/constants.
+ * Direction: "the candlelit war table" — ink and brass chrome, bone-white type, parchment documents.
+ */
+
+:root {
+  /* ink — chrome surfaces */
+  --ink-950: #07090c;
+  --ink-900: #0d1117;
+  --ink-850: #121821;
+  --ink-800: #18202b;
+  --ink-700: #243041;
+  --ink-600: #334155;
+  --ink-500: #4a5a70;
+  /* type */
+  --bone-100: #ede6d6;
+  --fog-300: #a9b4c2;
+  --fog-400: #8492a6;
+  /* accents */
+  --brass-300: #e6c98b;
+  --brass-400: #d4af6a;
+  --brass-600: #9c7a3c;
+  --brass-800: #5e4822;
+  --ember-400: #f08a4b;
+  --blood-500: #c8413b;
+  --verdigris-400: #5fbf9a;
+  --arcane-400: #7fa7e8;
+  --hex-400: #b07fe0;
+  --ice-300: #9fdcf0;
+  /* documents */
+  --parchment-100: #efe5cc;
+  --parchment-200: #e3d5b3;
+  --parchment-400: #c4ae7e;
+  --parchment-ink: #2b2118;
+  --parchment-ink-muted: #6b5a45;
+  --wax-500: #9e2b25;
+
+  /* semantic */
+  --bg: var(--ink-950);
+  --surface: var(--ink-900);
+  --panel: var(--ink-850);
+  --raised: var(--ink-800);
+  --border: var(--ink-700);
+  --border-strong: var(--ink-600);
+  --text: var(--bone-100);
+  --text-muted: var(--fog-300);
+  --text-faint: var(--fog-400);
+  --accent: var(--brass-400);
+  --accent-strong: var(--brass-300);
+  --accent-deep: var(--brass-600);
+  --focus: var(--brass-300);
+  --danger: var(--blood-500);
+  --warning: var(--ember-400);
+  --success: var(--verdigris-400);
+  --magic: var(--arcane-400);
+  --mental: var(--hex-400);
+  --path-ok: var(--verdigris-400);
+  --path-over: var(--blood-500);
+  --hp-high: var(--verdigris-400);
+  --hp-mid: var(--brass-400);
+  --hp-low: var(--ember-400);
+  --hp-temp: var(--ice-300);
+  --hp-ghost: #f4e9d8;
+  --on-accent: var(--ink-950);
+
+  /* dispositions (party = the owner's player colour) */
+  --disp-friendly: #5fbf9a;
+  --disp-neutral: #d4af6a;
+  --disp-hostile: #e0584b;
+
+  /* player colours (SPEC §27.2) */
+  --player-amber: #e6b450;
+  --player-sky: #5fb3e6;
+  --player-coral: #e0605c;
+  --player-mint: #6cc98a;
+  --player-orchid: #c77ddb;
+  --player-citrine: #f2e266;
+  --player-teal: #4fd1c5;
+  --player-rose: #f08fb0;
+  --player-periwinkle: #9aa7ff;
+  --player-copper: #d08b4f;
+  --player-lime: #b5d264;
+  --player-silver: #d9dee6;
+
+  /* damage types */
+  --dmg-acid: #b5d33d;
+  --dmg-bludgeoning: #b8b2a7;
+  --dmg-cold: #7fd3f5;
+  --dmg-fire: #ff7a2f;
+  --dmg-force: #8fa8ff;
+  --dmg-lightning: #f5e663;
+  --dmg-necrotic: #8c6bb1;
+  --dmg-piercing: #d9d3c7;
+  --dmg-poison: #5fae6b;
+  --dmg-psychic: #f07bc8;
+  --dmg-radiant: #ffd66b;
+  --dmg-slashing: #e4e6ea;
+  --dmg-thunder: #6fa3c9;
+  --dmg-healing: #5fbf9a;
+
+  /* icon badge categories */
+  --badge-senses: #4e7bc4;
+  --badge-mind: #8e5cc8;
+  --badge-body: #a67c3d;
+  --badge-incapacity: #c8643b;
+  --badge-affliction: #5e9a4e;
+  --badge-vital: #b43a36;
+  --badge-boon: #3f9c78;
+  --badge-tactical: #56657a;
+
+  /* translucent tones (derived) */
+  --scrim: rgba(7, 9, 12, 0.72);
+  --scrim-soft: rgba(7, 9, 12, 0.45);
+  --glow-brass: rgba(212, 175, 106, 0.35);
+  --glow-brass-soft: rgba(212, 175, 106, 0.14);
+  --glow-ember: rgba(240, 138, 75, 0.32);
+  --glow-candle: rgba(255, 196, 120, 0.22);
+  --line-faint: rgba(237, 230, 214, 0.06);
+  --line-soft: rgba(237, 230, 214, 0.1);
+  --danger-soft: rgba(200, 65, 59, 0.16);
+  --success-soft: rgba(95, 191, 154, 0.14);
+  --warning-soft: rgba(240, 138, 75, 0.14);
+  --magic-soft: rgba(127, 167, 232, 0.14);
+  --paper-shadow: rgba(43, 33, 24, 0.18);
+
+  /* type (SPEC §27.3) */
+  --font-display: "Fraunces Variable", serif;
+  --font-ui: "Alegreya Sans", sans-serif;
+  --font-caps: "Cinzel", serif;
+  --font-mono: "JetBrains Mono Variable", monospace;
+  --text-12: 12px;
+  --text-13: 13px;
+  --text-14: 14px;
+  --text-16: 16px;
+  --text-18: 18px;
+  --text-22: 22px;
+  --text-28: 28px;
+  --text-36: 36px;
+  --text-48: 48px;
+  --text-64: 64px;
+  --leading-display: 1.25;
+  --leading-body: 1.45;
+  --tracking-caps: 0.08em;
+
+  /* space (4-px grid), shape, depth */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --radius-chip: 4px;
+  --radius-control: 6px;
+  --radius-panel: 10px;
+  --shadow-panel: 0 12px 32px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  --shadow-float: 0 18px 48px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.4);
+  --shadow-paper: 0 14px 36px rgba(0, 0, 0, 0.5), 0 1px 0 rgba(255, 255, 255, 0.35) inset;
+  --ring-focus: 0 0 0 1px var(--focus), 0 0 0 3px var(--glow-brass);
+  --shadow-inset: inset 0 1px 2px rgba(0, 0, 0, 0.35);
+  --hit-target: 36px;
+
+  /* motion (SPEC §27.5) */
+  --dur-instant: 80ms;
+  --dur-fast: 140ms;
+  --dur-base: 220ms;
+  --dur-panel: 320ms;
+  --dur-scene: 600ms;
+  --dur-cinematic: 1200ms;
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-in-out: cubic-bezier(0.6, 0, 0.2, 1);
+
+  /* UI scale (settings: 90–130%) */
+  --ui-scale: 1;
+
+  /* textures: parchment fibre (baked feTurbulence) */
+  --parchment-fibre: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='f'><feTurbulence type='fractalNoise' baseFrequency='.9 .06' numOctaves='3' seed='7'/><feColorMatrix values='0 0 0 0 .17 0 0 0 0 .13 0 0 0 0 .09 0 0 0 .09 0'/></filter><rect width='100%' height='100%' filter='url(%23f)'/></svg>");
+}
+
+@media (pointer: coarse) {
+  :root {
+    --hit-target: 44px;
+  }
+}
+
+/* Colour-blind palette (SPEC §27.2, AC-A11Y-03) — Okabe–Ito derived. */
+:root[data-cb="1"] {
+  --path-ok: #56b4e9;
+  --path-over: #e69f00;
+  --hp-high: #009e73;
+  --hp-mid: #f0e442;
+  --hp-low: #d55e00;
+  --disp-hostile: #d55e00;
+  --disp-friendly: #009e73;
+  --disp-neutral: #f0e442;
+}
+
+/* Tailwind 4 theme: utilities resolve to the tokens above (static: always emitted). */
+@theme inline static {
+  --color-ink-950: var(--ink-950);
+  --color-ink-900: var(--ink-900);
+  --color-ink-850: var(--ink-850);
+  --color-ink-800: var(--ink-800);
+  --color-ink-700: var(--ink-700);
+  --color-ink-600: var(--ink-600);
+  --color-ink-500: var(--ink-500);
+  --color-bone: var(--bone-100);
+  --color-fog: var(--fog-300);
+  --color-fog-dim: var(--fog-400);
+  --color-brass: var(--brass-400);
+  --color-brass-bright: var(--brass-300);
+  --color-brass-deep: var(--brass-600);
+  --color-brass-dark: var(--brass-800);
+  --color-ember: var(--ember-400);
+  --color-blood: var(--blood-500);
+  --color-verdigris: var(--verdigris-400);
+  --color-arcane: var(--arcane-400);
+  --color-hex: var(--hex-400);
+  --color-ice: var(--ice-300);
+  --color-parchment: var(--parchment-100);
+  --color-parchment-deep: var(--parchment-200);
+  --color-parchment-edge: var(--parchment-400);
+  --color-paper-ink: var(--parchment-ink);
+  --color-paper-muted: var(--parchment-ink-muted);
+  --color-wax: var(--wax-500);
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-panel: var(--panel);
+  --color-raised: var(--raised);
+  --color-line: var(--border);
+  --color-line-strong: var(--border-strong);
+  --color-text: var(--text);
+  --color-muted: var(--text-muted);
+  --color-faint: var(--text-faint);
+  --color-accent: var(--accent);
+  --color-danger: var(--danger);
+  --color-warning: var(--warning);
+  --color-success: var(--success);
+  --color-magic: var(--magic);
+  --font-display: var(--font-display);
+  --font-ui: var(--font-ui);
+  --font-caps: var(--font-caps);
+  --font-mono: var(--font-mono);
+  --text-12: var(--text-12);
+  --text-13: var(--text-13);
+  --text-14: var(--text-14);
+  --text-16: var(--text-16);
+  --text-18: var(--text-18);
+  --text-22: var(--text-22);
+  --text-28: var(--text-28);
+  --text-36: var(--text-36);
+  --text-48: var(--text-48);
+  --text-64: var(--text-64);
+  --radius-chip: var(--radius-chip);
+  --radius-control: var(--radius-control);
+  --radius-panel: var(--radius-panel);
+  --shadow-panel: var(--shadow-panel);
+  --shadow-float: var(--shadow-float);
+  --ease-out: var(--ease-out);
+  --ease-in-out: var(--ease-in-out);
+}
