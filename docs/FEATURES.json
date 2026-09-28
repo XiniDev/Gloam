@@ -283,10 +283,10 @@
       "code": "SCN",
       "phase": "P4",
       "text": "Changing a scene's ambient light or fog mode applies live for all clients within 500 ms.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p4-light-fog.spec.ts › AC-VIS-03 / AC-SCN-07 / AC-VIS-01 @timing (the DM's Bright/Dark ambient and Painted mode reach both players' boards, measured < 500 ms in-page); packages/server/src/test/vision.test.ts › AC-SCN-07 (server): ambient light and fog mode apply to every client at once (< 500 ms)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-28T07:15:46.008Z"
     },
     {
       "id": "AC-SCN-08",
@@ -734,10 +734,10 @@
       "code": "WAL",
       "phase": "P3",
       "text": "Players can open/close unlocked doors within 5 ft; locked doors refuse with a lock indicator; DMs can toggle any door; paths and vision update within 200 ms.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p3-movement.spec.ts › AC-WAL-03 / AC-WAL-04: door handles (within 5 ft, locked refuses and rattles, DM anywhere, path through within 200 ms); packages/server/src/test/movement.test.ts › AC-WAL-03; e2e/journeys/p4-vision.spec.ts › AC-VIS-02 / 04 / 05 / 09 / 11 / 13 / 14 / AC-WAL-03 / AC-VIS-12 (client) @timing (a door shows the closet — vision computed within 200 ms of the DM's send, 23–64 ms measured); packages/server/src/test/vision.test.ts › AC-VIS-11 / AC-WAL-03 (vision): a door shuts the goblin out within 200 ms",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-28T07:15:46.090Z"
     },
     {
       "id": "AC-WAL-04",
@@ -789,10 +789,10 @@
       "code": "VIS",
       "phase": "P4",
       "text": "Painted mode: brush/rectangle/polygon reveal and hide work (for all players or chosen players); Reveal room fills the wall-enclosed region under the cursor; players see only their revealed areas and the tokens inside them. (Undo of fog operations is covered by AC-UNDO-01.)",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p4-light-fog.spec.ts › AC-VIS-03 / AC-SCN-07 / AC-VIS-01 @timing (painted: rectangle, brush, polygon, reveal room, one player or all, Reveal all / Hide all; the ghoul appears only when revealed); packages/server/src/test/vision.test.ts › AC-VIS-01 (server): painted fog — reveal and hide for everyone or one player, reveal room, players get only their layers",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-28T07:15:46.155Z"
     },
     {
       "id": "AC-VIS-02",
@@ -800,10 +800,10 @@
       "code": "VIS",
       "phase": "P4",
       "text": "Dynamic mode: each player sees only what their own character(s) can currently perceive; previously seen areas remain as desaturated memory without creatures.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p4-vision.spec.ts › AC-VIS-02 / 04 / 05 / 09 / 11 / 13 / 14 / AC-WAL-03 / AC-VIS-12 (client) @timing (each player sees what their character perceives; remembered ground desaturated without creatures); packages/server/src/test/vision.test.ts › AC-VIS-05 (raw frames)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-28T07:15:46.217Z"
     },
     {
       "id": "AC-VIS-03",
@@ -811,10 +811,10 @@
       "code": "VIS",
       "phase": "P4",
       "text": "A token carrying a torch lights 20 ft bright plus 20 ft dim, blocked by walls, with flicker; owners can toggle their token's light.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p4-light-fog.spec.ts › AC-VIS-03 / AC-SCN-07 / AC-VIS-01 @timing (Light → Torch from the token menu: 20 ft bright, 20 ft dim, stopped by the wall, flicker, owner puts it out); packages/server/src/test/vision.test.ts › AC-VIS-03 (server): only its owners and the DM douse it; packages/shared/src/vision/vision.test.ts › a torch lights 20 ft bright plus 20 ft dim, blocked by walls",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-28T07:15:46.272Z"
     },
     {
       "id": "AC-VIS-04",
@@ -822,10 +822,10 @@
       "code": "VIS",
       "phase": "P4",
       "text": "In darkness, a character with 60 ft darkvision sees within 60 ft rendered in greyscale; dim light within range renders as bright; unlit areas beyond range are not visible.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p4-vision.spec.ts › AC-VIS-02 / 04 / 05 / 09 / 11 / 13 / 14 / AC-WAL-03 / AC-VIS-12 (client) @timing (darkvision in grey within 60 ft, dim as bright within it, war fog beyond); packages/shared/src/vision/vision.test.ts › AC-VIS-04: darkvision 60 sees darkness within 60 ft as grey, dim light as bright; beyond range nothing",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-28T07:15:46.330Z"
     },
     {
       "id": "AC-VIS-05",
@@ -833,10 +833,10 @@
       "code": "VIS",
       "phase": "P4",
       "text": "Two players in the same dark room: A (darkvision) sees goblin G, B (no darkvision, no light) does not; B's client state never contains G (asserted via the test hook and by inspecting WebSocket frames).",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/vision.test.ts › AC-VIS-05: Anna's elf sees the goblin; Bob's human doesn't — his state and raw WebSocket frames never hold it; e2e/journeys/p4-vision.spec.ts › AC-VIS-02 / 04 / 05 / 09 / 11 / 13 / 14 / AC-WAL-03 / AC-VIS-12 (client) @timing (the goblin never reaches the blind player, test hook); packages/shared/src/vision/vision.test.ts › AC-VIS-05",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-28T07:15:46.391Z"
     },
     {
       "id": "AC-VIS-06",
@@ -877,10 +877,10 @@
       "code": "VIS",
       "phase": "P4",
       "text": "Tremorsense shows a sensed marker (no name, appearance or HP) for grounded creatures in range that are not otherwise seen.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/vision.test.ts › AC-VIS-09 (server): tremorsense gives a sensed marker — an opaque id and a position to 1 ft, nothing else — for grounded creatures only; e2e/journeys/p4-vision.spec.ts › AC-VIS-02 / 04 / 05 / 09 / 11 / 13 / 14 / AC-WAL-03 / AC-VIS-12 (client) @timing (marker drawn, no name); packages/shared/src/vision/vision.test.ts › AC-VIS-09 and rules audit: both on the same surface",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-28T07:15:46.458Z"
     },
     {
       "id": "AC-VIS-10",
@@ -888,10 +888,10 @@
       "code": "VIS",
       "phase": "P4",
       "text": "DMs see all with a hatched fog overlay; **View as** reproduces a player's rendering exactly and changes nothing for other clients.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p4-dm-view.spec.ts › AC-VIS-10: the DM sees everything with the players' fog hatched; View as draws the board as that player's own screen (pixel diff mean 0.000), changes nothing for anyone; packages/server/src/test/vision.test.ts › AC-VIS-10 (server)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-28T07:15:46.531Z"
     },
     {
       "id": "AC-VIS-11",
@@ -899,10 +899,10 @@
       "code": "VIS",
       "phase": "P4",
       "text": "A viewer who loses sight of a creature mid-move sees it travel only to the last visible point on the path and never receives its destination.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/vision.test.ts › AC-VIS-11 / AC-WAL-03 (vision): seen only to where it vanished, never its destination; packages/server/src/test/vision.test.ts › AC-VIS-11 (previews): drag previews clipped per viewer; e2e/journeys/p4-vision.spec.ts › AC-VIS-02 / 04 / 05 / 09 / 11 / 13 / 14 / AC-WAL-03 / AC-VIS-12 (client) @timing (moves seen partway)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-28T07:15:46.600Z"
     },
     {
       "id": "AC-VIS-12",
@@ -910,10 +910,10 @@
       "code": "VIS",
       "phase": "P4",
       "text": "Server vision recomputation for 8 viewers, 500 walls and 50 lights takes under 10 ms at p95 on the host; client fog reveals animate over 300 ms.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "pnpm bench (packages/server/src/bench/vision.ts: 500 walls, 50 lights, 8 viewers, 400 events — p95 ≈ 5 ms < 10 ms on an i7-10700K; artifacts/bench/report.json); packages/server/src/test/visionIncremental.test.ts (incremental = from scratch after 160 events); e2e/journeys/p4-vision.spec.ts › AC-VIS-02 / 04 / 05 / 09 / 11 / 13 / 14 / AC-WAL-03 / AC-VIS-12 (client) @timing (fog reveals animate over 300 ms)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-28T07:15:46.662Z"
     },
     {
       "id": "AC-VIS-13",
@@ -921,10 +921,10 @@
       "code": "VIS",
       "phase": "P4",
       "text": "Vision sharing is off by default; the DM can share a token's vision with chosen players or enable party vision.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/vision.test.ts › AC-VIS-13 (server): vision sharing is off by default; the DM shares a token's vision with a player, or turns on party vision; e2e/journeys/p4-vision.spec.ts › AC-VIS-02 / 04 / 05 / 09 / 11 / 13 / 14 / AC-WAL-03 / AC-VIS-12 (client) @timing (sharing)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-28T07:15:46.720Z"
     },
     {
       "id": "AC-VIS-14",
@@ -932,10 +932,10 @@
       "code": "VIS",
       "phase": "P4",
       "text": "Explored memory persists across server restarts per player and scene; the DM can reset it per player or for everyone.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/vision.test.ts › AC-VIS-14 (server): explored memory is kept per player and scene across a restart; the DM resets it for one player or everyone; e2e/journeys/p4-vision.spec.ts › AC-VIS-02 / 04 / 05 / 09 / 11 / 13 / 14 / AC-WAL-03 / AC-VIS-12 (client) @timing (explored memory kept and reset)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-28T07:15:46.779Z"
     },
     {
       "id": "AC-VIS-15",

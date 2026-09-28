@@ -193,3 +193,17 @@ PASSING 28/224 · DISPUTED 0 · FAILING 196
 - Last full E2E (before these fixes) had 6 failures: stone program key (now includes the fog variant), a fog noise
   texture uploaded on the first scene (now with the renderer), the Light slice on a locked token (now hidden); the
   reconnect and two P4 journeys are being re-run.
+
+## 2026-09-28 — P4 closed: reviews fixed, ACs proven; P5 under way
+
+- End-of-P4 security review (2 HIGH, 3 MEDIUM, 5 LOW) and rules audit (12 items): all fixed with tests — the dev
+  server lockdown, bounded move clipping, per-viewer preview clipping, glow stand-ins, re-authorised undo, cached fog
+  snapshots, scanline brush; blindsight/tremorsense/obscurement/explored/emanation/swimming/flight fixes, 3-D light
+  spheres, no light in magical darkness (details in DECISIONS).
+- A board-wide bug found through four "flaky" journeys: a suspension in the canvas (the first label per font) hid the
+  whole board; now contained, and every journey fails if the board is ever hidden.
+- Full E2E green (31 + 9 timing, the token crossfade journey moved to the timing part), `pnpm check` 277 tests,
+  `pnpm bench` p95 ≈ 5 ms. FEATURES: P4 12/12 and WAL-03 marked with evidence (89/224 overall).
+- P5 (dice): the formula grammar, evaluator and seeded generator (shared); dice solids with their rotation groups and
+  the symmetry remap; deterministic Rapier throws (1.1–1.8 s to rest, always showing the server's number); the
+  server dice service and the client worker, store and face atlas in progress.
