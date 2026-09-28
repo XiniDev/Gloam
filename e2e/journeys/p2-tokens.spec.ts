@@ -157,8 +157,17 @@ test.describe("P2 — tokens (TOK)", () => {
     expect(await tokenView(dave, lurker)).toBeNull();
 
     // The DM: everything this phase offers — the DM's own actions under one "DM" slice (§8.19; §28's 6–8 slices).
-    // (Light arrived with P4 — SPEC §8.8; Request a roll with P6 — §8.9; the other phases add theirs.)
-    expect(labels(await openRadial(admin, goblin))).toEqual(["Elevation", "Facing", "Look", "Light", "DM"]);
+    // (Light arrived with P4 — SPEC §8.8; Request a roll with P6 — §8.9; HP and Conditions with P7 — §8.11; the other
+    // phases add theirs.)
+    expect(labels(await openRadial(admin, goblin))).toEqual([
+      "Elevation",
+      "Facing",
+      "Look",
+      "Light",
+      "HP",
+      "Conditions",
+      "DM",
+    ]);
     await admin.getByRole("menuitem", { name: "DM" }).click();
     await expect(admin.getByRole("menuitem", { name: "Delete" })).toBeVisible();
     expect(labels(await admin.getByRole("menu").getByRole("menuitem").allInnerTexts())).toEqual([
@@ -174,7 +183,14 @@ test.describe("P2 — tokens (TOK)", () => {
     await expect(admin.getByRole("menuitem", { name: "Reveal" })).toBeVisible();
     await closeRadial(admin);
     // The owner: only their own token's controls.
-    expect(labels(await openRadial(dave, hero))).toEqual(["Elevation", "Facing", "Look", "Light"]);
+    expect(labels(await openRadial(dave, hero))).toEqual([
+      "Elevation",
+      "Facing",
+      "Look",
+      "Light",
+      "HP",
+      "Conditions",
+    ]);
     // Number keys pick a slice; the Elevation ring raises the token 5 ft.
     await dave.keyboard.press("1");
     await expect(dave.getByRole("menuitem", { name: "Up 5 ft" })).toBeVisible();
@@ -183,12 +199,14 @@ test.describe("P2 — tokens (TOK)", () => {
       .poll(async () => ((await tokenView(admin, hero)) as { elevation: number }).elevation)
       .toBe(5);
     await expect(dave.getByRole("menu")).toHaveCount(0);
-    // Someone else's token: no menu at all.
-    expect(await openRadial(dave, goblin)).toBeNull();
-    // Locked by the DM: the owner keeps only Look.
+    // Someone else's token: only HP — a player's damage to it goes to the DM first (§8.11, house rule).
+    expect(labels(await openRadial(dave, goblin))).toEqual(["HP"]);
+    await closeRadial(dave);
+    // Locked by the DM: the owner keeps only Look of the token's own controls (its HP and conditions are the
+    // creature's, not the token's).
     await req(admin, "token.update", { tokenId: hero, locked: true });
     await expect.poll(async () => ((await tokenView(dave, hero)) as { locked: boolean }).locked).toBe(true);
-    expect(labels(await openRadial(dave, hero))).toEqual(["Look"]);
+    expect(labels(await openRadial(dave, hero))).toEqual(["Look", "HP", "Conditions"]);
     await closeRadial(dave);
 
     // Long-press (touch) opens it too.

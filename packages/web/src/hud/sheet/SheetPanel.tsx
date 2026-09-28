@@ -1,4 +1,3 @@
-import { CONDITION_IDS } from "@gloam/shared";
 import type { ActorView } from "@gloam/shared/protocol";
 import { statusName, statusSummary } from "@gloam/shared/rules";
 import {
@@ -16,6 +15,7 @@ import {
 } from "lucide-react";
 import { useLayoutEffect, useRef, useState } from "react";
 import { StatusIcon } from "../../icons/status.tsx";
+import { changeStatus } from "../../net/health.ts";
 import { useSheets } from "../../net/sheets.ts";
 import { request, useTable } from "../../net/table.ts";
 import { useBoard } from "../../state/entities.ts";
@@ -292,19 +292,18 @@ function SheetHeader({ ctx, onImport }: { ctx: SheetCtx; onImport: (m: "json" | 
   const d = ctx.derived.values;
   const portrait = useAssetImage(c.portraitAssetId, 128);
   const [amount, setAmount] = useState("");
+  const target = useSheetTarget(ctx.actor.id);
+  // Damage and healing go through the HP pipeline (§8.11): the dialog shows its preview before applying.
   const dmg = (heal: boolean) => {
     const n = Math.max(0, Math.floor(Number(amount)));
-    if (!n) return;
     setAmount("");
-    // P6's arithmetic (P7 brings the damage pipeline): temporary HP take damage first; healing stops at the maximum.
-    if (heal) void ctx.set(["core", "hp", "current"], Math.min(c.hp.max, Math.max(0, c.hp.current) + n));
-    else {
-      const fromTemp = Math.min(c.hp.temp, n);
-      void ctx.edit([
-        { path: ["core", "hp", "temp"], after: c.hp.temp - fromTemp },
-        { path: ["core", "hp", "current"], after: Math.max(0, c.hp.current - (n - fromTemp)) },
-      ]);
-    }
+    useUi.getState().set({
+      hpDialog: {
+        targets: [target.tokenId ?? ctx.actor.id],
+        kind: heal ? "heal" : "damage",
+        ...(n ? { amount: n } : {}),
+      },
+    });
   };
   const lockLabel = { unlocked: "Unlocked", core: "Core locked", full: "Fully locked" }[ctx.actor.lockLevel];
   const exportJson = () => {
@@ -601,9 +600,24 @@ function NameField({ ctx }: { ctx: SheetCtx }) {
   );
 }
 
+/** Where a sheet's character stands on the board now (its linked token), for the HP and condition commands. */
+function useSheetTarget(actorId: string): { tokenId?: string; actorId?: string } {
+  const tokenId = useBoard((d) => {
+    for (const t of d.tokens.values())
+      if (t.actorId === actorId && (!t.dm || t.dm.link === "linked")) return t.id;
+    return undefined;
+  });
+  return tokenId ? { tokenId } : { actorId };
+}
+
 function Conditions({ ctx }: { ctx: SheetCtx }) {
   const c = ctx.sheet.core;
-  const setConditions = (next: string[]) => void ctx.set(["core", "conditions"], next);
+  const target = useSheetTarget(ctx.actor.id);
+  // Through the conditions command (§8.11): what follows (concentration ending on Incapacitated) follows.
+  const remove = (id: string) =>
+    void changeStatus({ ...target, remove: [id] }).catch((e: Error) =>
+      toast.danger("Couldn't remove it", e.message),
+    );
   return (
     <div className="mt-2 flex flex-wrap items-center gap-1.5" data-testid="sheet-conditions">
       <span className="caps text-12 text-paper-muted">Conditions</span>
@@ -619,7 +633,7 @@ function Conditions({ ctx }: { ctx: SheetCtx }) {
             <button
               type="button"
               aria-label={`Remove ${statusName(id)}`}
-              onClick={() => setConditions(c.conditions.filter((x) => x !== id))}
+              onClick={() => remove(id)}
               className="grid h-7 w-6 place-items-center text-paper-muted hover:text-wax pointer-coarse:h-[var(--touch-min)] pointer-coarse:w-[var(--touch-min)]"
             >
               <X size={12} />
@@ -630,19 +644,15 @@ function Conditions({ ctx }: { ctx: SheetCtx }) {
         </span>
       ))}
       {ctx.canEdit ? (
-        <select
+        <button
+          type="button"
           aria-label="Add a condition"
-          value=""
-          onChange={(e) => e.target.value && setConditions([...c.conditions, e.target.value])}
-          className="h-7 min-h-[var(--touch-min)] rounded-chip border border-dashed border-paper-muted bg-transparent px-1 text-13 text-paper-muted"
+          onClick={() => useUi.getState().set({ statusPicker: target })}
+          className="inline-flex h-7 min-h-[var(--touch-min)] items-center gap-1 rounded-chip border border-dashed border-paper-muted px-2 text-13 text-paper-muted hover:border-paper-ink hover:text-paper-ink"
         >
-          <option value="">+ add</option>
-          {CONDITION_IDS.filter((id) => !c.conditions.includes(id)).map((id) => (
-            <option key={id} value={id}>
-              {statusName(id)}
-            </option>
-          ))}
-        </select>
+          <Plus size={13} aria-hidden />
+          add
+        </button>
       ) : null}
     </div>
   );

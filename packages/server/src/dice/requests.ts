@@ -24,8 +24,12 @@ export interface RequestTarget {
   name: string;
   /** Who answers for it (players); none → the DM rolls it. */
   controllers: string[];
-  /** Its formula as asked, the sheet's modifiers already in (e.g. "1d20 + 5 adv"). */
+  /** Its formula as asked, the sheet's modifiers already in (e.g. "1d20 + 5 adv"), Exhaustion's penalty too. */
   formula: string;
+  /** What its conditions suggest (applied unless the roller sets it aside, AC-DICE-11). */
+  hint?: { mode: "adv" | "dis"; from: string[] };
+  /** Conditions that fail this save outright. */
+  autoFail?: string[];
 }
 
 export interface RequestResponse {
@@ -203,6 +207,8 @@ export function cardFor(r: RollRequest, t: RequestTarget, extra: Partial<Request
     state: res.state,
     ...(!blind && res.total !== undefined ? { total: res.total } : {}),
     ...(!blind && r.showDc && res.success !== undefined ? { success: res.success } : {}),
+    ...(t.hint ? { hint: t.hint } : {}),
+    ...(t.autoFail?.length ? { autoFail: t.autoFail } : {}),
     open: r.status === "open",
     ...extra,
   };

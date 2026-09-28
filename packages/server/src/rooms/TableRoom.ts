@@ -1,6 +1,7 @@
 import { type AuthContext, type Client, Room, ServerError } from "@colyseus/core";
 import { StateView } from "@colyseus/schema";
-import { DiceError, parseFormula } from "@gloam/shared/dice";
+import { SKILLS, type SkillId } from "@gloam/shared";
+import { DiceError, isD20Test, parseFormula, withHint, withPenalty } from "@gloam/shared/dice";
 import type { P } from "@gloam/shared/geometry";
 import {
   ActorPropose,
@@ -13,6 +14,7 @@ import {
   DiceRoll,
   GloamError,
   HandToggle,
+  HpApply,
   LobbyDecide,
   MESSAGE_RATES,
   MeasureShare,
@@ -28,8 +30,19 @@ import {
   SceneRef,
   TableKick,
 } from "@gloam/shared/protocol";
-import { applyChanges, applyPatch, controlsToken, diffSheet, type SheetChange } from "@gloam/shared/rules";
-import type { Sheet, TokenEntity } from "@gloam/shared/schemas";
+import {
+  applyChanges,
+  applyPatch,
+  controlsToken,
+  diffSheet,
+  effectiveTokenState,
+  hintedMode,
+  type RollKind,
+  rollHints,
+  type SheetChange,
+  statusFromActor,
+} from "@gloam/shared/rules";
+import type { Sheet, TokenEntity, TokenStatusT } from "@gloam/shared/schemas";
 import { type PrepSnapshot, Presence, Sensed, Table, type TableState, V2 } from "@gloam/shared/state";
 import { z } from "zod";
 import { renderDto } from "../assets/service.ts";
@@ -53,9 +66,15 @@ import {
   viewOfRoll,
 } from "../dice/service.ts";
 import type { ActorEntity } from "../engine/codecs.ts";
-import { type CommandActor, CommandBus, type CommitInfo, type RoomEvent } from "../engine/commandBus.ts";
+import {
+  type CommandActor,
+  CommandBus,
+  type CommandCtx,
+  type CommitInfo,
+  type RoomEvent,
+} from "../engine/commandBus.ts";
 import { checkSheet, readSheet } from "../engine/commands/actor.ts";
-import { FOLLOWUPS, type Followups } from "../engine/commands/health.ts";
+import { FOLLOWUPS, type Followups, hpApply, previewHp } from "../engine/commands/health.ts";
 import { SYSTEM_ACTOR } from "../engine/commands/party.ts";
 import { CampaignModel } from "../engine/model.ts";
 import { ALL_COMMANDS, COMMAND_RATES, registerCommands } from "../engine/registry.ts";
@@ -255,8 +274,16 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
         )
           throw new GloamError("FORBIDDEN", "That isn't your sheet.");
         const sheet = actor && actor.deletedAt === null ? readSheet(actor) : undefined;
+        // A creature's D20 Tests lose 2 × its Exhaustion level (AC-HP-05), whoever rolls them.
+        const live = actor && actor.deletedAt === null ? actor : undefined;
+        const status = token
+          ? effectiveTokenState(token, token.link === "linked" ? live : undefined).status
+          : live
+            ? statusFromActor(live.status)
+            : null;
+        const formula = status?.exhaustion ? withPenalty(p.formula, -2 * status.exhaustion) : p.formula;
         const r = this.dice.roll(this.campaignId, this.projector.activeSceneId || null, this.rollerOf(auth), {
-          formula: p.formula,
+          formula,
           visibility: p.visibility,
           ...(p.label ? { label: p.label } : {}),
           ...(p.purpose ? { purpose: p.purpose } : {}),
@@ -365,7 +392,7 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
         else {
           const x = this.requestTarget(target.id);
           const opts = {
-            formula: target.formula,
+            formula: hinted(target, p.ignoreHints),
             visibility: r.visibility,
             label: `${r.label} · ${target.name}`,
           };
@@ -418,7 +445,7 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
             this.projector.activeSceneId || null,
             this.rollerOf(auth),
             {
-              formula: target.formula,
+              formula: hinted(target, p.ignoreHints),
               visibility: r.visibility === "public" ? "public" : "dm",
               label: `${r.label} · ${target.name}`,
               purpose: "request",
@@ -468,6 +495,17 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
       "prompt.resolve": def(PromptResolve, MESSAGE_RATES["prompt.resolve"], ({ auth }, p) => {
         this.requireDm(auth);
         return this.health.resolve(this.actorFor(auth), p);
+      }),
+      // A damage / heal dialog's preview: what applying it would do (numbers only where the caller may see them).
+      "hp.preview": def(HpApply, MESSAGE_RATES["hp.preview"], ({ auth }, p) => {
+        const ctx: CommandCtx = {
+          actor: this.actorFor(auth),
+          model: this.model,
+          app: roomCtx(),
+          now: Date.now(),
+        };
+        hpApply.authorize(ctx, p);
+        return previewHp(ctx, p);
       }),
       // Outside combat, the DM asks the dying for death saving throws.
       "death.request": def(DeathSaveRequest, MESSAGE_RATES["death.request"], ({ auth }, p) => {
@@ -730,16 +768,37 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
     },
   ): RollRequest {
     const base = requestFormula(p as Parameters<typeof requestFormula>[0]);
+    // What kind of D20 Test it is, for the hints its conditions give (a death save is a saving throw).
+    const kind: RollKind | null =
+      p.type === "attack"
+        ? "attack"
+        : p.type === "custom"
+          ? p.purpose?.kind === "deathSave"
+            ? "save"
+            : null
+          : p.type;
+    const ability = p.type === "check" && p.skill ? SKILLS[p.skill as SkillId] : p.ability;
     const targets: RequestTarget[] = [...new Set(p.targets)].map((id) => {
       const x = this.requestTarget(id);
-      const formula = targetFormula(base, creatureRefs(x.token, x.sheet), p.adv);
+      const conds = x.status.conditions.map((c) => c.id as string);
+      const h = rollHints(conds, x.status.exhaustion, kind ?? "check", ability);
+      // Exhaustion takes 2 × its level off every D20 Test (AC-HP-05), in the formula for everyone to see.
+      const formula = withPenalty(targetFormula(base, creatureRefs(x.token, x.sheet), p.adv), h.penalty);
       try {
         parseFormula(formula);
       } catch (e) {
         if (e instanceof DiceError) throw new GloamError("INVALID", e.message);
         throw e;
       }
-      return { ...x.target, formula };
+      const mode = kind && isD20Test(formula) ? hintedMode(h) : "normal";
+      return {
+        ...x.target,
+        formula,
+        ...(mode !== "normal"
+          ? { hint: { mode, from: (mode === "adv" ? h.adv : h.dis).map((x) => x.from) } }
+          : {}),
+        ...(kind === "save" && h.autoFail.length ? { autoFail: h.autoFail } : {}),
+      };
     });
     const r = this.requests.create({
       campaignId: this.campaignId,
@@ -802,15 +861,19 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
     target: Omit<RequestTarget, "formula">;
     token?: TokenEntity;
     sheet?: Sheet;
+    /** Its conditions and exhaustion now (hints and penalties for its rolls). */
+    status: TokenStatusT;
   } {
     const token = this.model.get("token", id);
     if (token) {
       const actor = token.actorId ? this.model.get("actor", token.actorId) : undefined;
       const sheet = actor && actor.deletedAt === null ? readSheet(actor) : undefined;
+      const linked = actor && actor.deletedAt === null && token.link === "linked" ? actor : undefined;
       return {
         target: { id, kind: "token", name: token.name, controllers: this.playersAmong(token.ownerIds) },
         token,
         ...(sheet ? { sheet } : {}),
+        status: effectiveTokenState(token, linked).status,
       };
     }
     const actor = this.model.get("actor", id);
@@ -824,6 +887,7 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
           controllers: this.playersAmong(actor.ownerUserId ? [actor.ownerUserId] : []),
         },
         sheet,
+        status: statusFromActor(actor.status),
       };
     }
     throw new GloamError("NOT_FOUND", "That creature isn't here.");
@@ -1426,4 +1490,9 @@ function ghostOf(v: ReturnType<typeof tokenView>) {
     ringColor: v.ringColor,
     disposition: v.disposition,
   };
+}
+
+/** A request target's formula with the hint its conditions give — unless the roller set it aside (AC-DICE-11). */
+function hinted(t: RequestTarget, ignore: boolean | undefined): string {
+  return t.hint && !ignore ? withHint(t.formula, t.hint.mode) : t.formula;
 }

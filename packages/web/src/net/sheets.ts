@@ -223,12 +223,15 @@ export const respondRequest = (
   target: string,
   action: "roll" | "manual" | "skip",
   total?: number,
+  /** The roller sets aside the advantage or disadvantage their conditions suggest (AC-DICE-11). */
+  ignoreHints?: boolean,
 ) =>
   request<RequestCard>("request.respond", {
     requestId,
     target,
     action,
     ...(total !== undefined ? { total } : {}),
+    ...(ignoreHints ? { ignoreHints: true } : {}),
   });
 export const answerRequest = (
   requestId: string,

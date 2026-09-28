@@ -347,6 +347,15 @@ export function shownOverlayRects(): Placed[] {
   return out;
 }
 
+/** Where a token's plate is on screen now (canvas px), when it shows one — what floating numbers rise above. */
+export function plateRectOf(id: string): Placed | null {
+  const e = entries.get(id);
+  return e && e.clear === 1 && e.rect && e.group.parent ? e.rect : null;
+}
+
+/** Where a token's body is on screen now (canvas px), when known. */
+export const bodyRectOf = (id: string): Placed | null => entries.get(id)?.body ?? null;
+
 /** Overlay priorities (higher wins a spot on screen). */
 export const PRIORITY = { hovered: 5, selected: 4, own: 3, party: 2, other: 1 } as const;
 

@@ -5,6 +5,7 @@ import { Billboard, Html } from "@react-three/drei";
 import { type ThreeEvent, useFrame } from "@react-three/fiber";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import {
+  AdditiveBlending,
   AnimationMixer,
   type Camera,
   CanvasTexture,
@@ -33,7 +34,7 @@ import { C, col, ringColorOf } from "../colors.ts";
 import { boardDiag } from "../diag.ts";
 import { disposeLater } from "../dispose.ts";
 import { CAPS_FONT, NUMBER_FONT } from "../fonts.ts";
-import { again, frameDelta, setAnimating } from "../frames.ts";
+import { again, frameDelta, setAmbient } from "../frames.ts";
 import { moveAnimAt, moveAnimFade } from "../move/anims.ts";
 import { pressToken } from "../move/input.ts";
 import { TIERS, useTier } from "../tiers.ts";
@@ -59,6 +60,7 @@ import {
   setGauge,
   setHpBar,
 } from "./hpBar.ts";
+import { lieOf, tokenFx } from "./hpFx.tsx";
 import { CHIP_GEOMETRY, createChipMaterial, setChip } from "./plateChip.ts";
 import { atlasCell, statusAtlas } from "./statusAtlas.ts";
 
@@ -115,6 +117,8 @@ const TOKEN_FRAME_PRIORITY = -0.5;
 
 /** How far a prone or dead mini tips over (SPEC §8.5). */
 const TIP = (80 * Math.PI) / 180;
+/** The HP feedback's disc of light (a unit circle, scaled to the token). */
+const FX_DISC = new CircleGeometry(1, 48);
 const ORIGIN: [number, number, number] = [0, 0, 0];
 
 /** Gap between a token's highest point on screen and its plate's lowest edge, in plate units. */
@@ -270,6 +274,23 @@ export const TokenObject = memo(function TokenObject({
   // The selection's brass ring (§8.5): unlit and outside tone mapping — a lit, emissive ring came out bone-white.
   const selMat = useMemo(() => new MeshBasicMaterial({ color: C.brass400, toneMapped: false }), []);
   useEffect(() => () => disposeLater(selMat), [selMat]);
+  // HP feedback (AC-HP-11): a red flash on a hit, a warm verdigris glow on healing — a disc of light at its feet.
+  const fxMat = useMemo(
+    () =>
+      new MeshBasicMaterial({
+        color: C.blood500,
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+        blending: AdditiveBlending,
+        toneMapped: false,
+      }),
+    [],
+  );
+  useEffect(() => () => disposeLater(fxMat), [fxMat]);
+  const fxDisc = useRef<Mesh>(null);
+  // The fall (prone or dead) plays over half a second (0 standing, 1 lying); already lying when it mounts.
+  const lie = useRef<number | null>(null);
   const hoverMat = useTransparentMaterial(
     () => new MeshStandardMaterial({ color: C.hoverRing, emissive: C.hoverRing, emissiveIntensity: 0.35 }),
     [],
@@ -311,7 +332,8 @@ export const TokenObject = memo(function TokenObject({
   }, [mini]);
   useEffect(() => () => void mixer?.stopAllAction(), [mixer]);
 
-  const lying = token.prone || token.dead;
+  // Prone, dead, or Unconscious (which is prone too — SRD 5.2.1): lying down.
+  const lying = token.prone || token.dead || token.conditions.includes("unconscious");
   // Lying down: the mini's pose centred on its base, and a flat card no longer than the base is wide.
   const tipped = useMemo(() => {
     if (!mini) return { offset: ORIGIN, height: 0 };
@@ -467,6 +489,54 @@ export const TokenObject = memo(function TokenObject({
       standee: mode === "model" ? 0 : 1 - cw,
     });
     if (selRing.current) selRing.current.scale.setScalar(1 + 0.035 * Math.sin(state.clock.elapsedTime * 3.2));
+    // The fall (§8.11 "the death lie-down animation"): tipping over, gathering speed; getting up, easing out.
+    const wantLie = lying ? 1 : 0;
+    if (lie.current === null) lie.current = wantLie;
+    if (lie.current !== wantLie) {
+      const reduced = useSettings.getState().motion === "reduced";
+      lie.current = reduced
+        ? wantLie
+        : wantLie > lie.current
+          ? Math.min(1, lie.current + dt / 0.55)
+          : Math.max(0, lie.current - dt / 0.45);
+      again();
+    }
+    const e = wantLie ? lie.current * lie.current : 1 - (1 - lie.current) * (1 - lie.current);
+    lieOf.set(token.id, e);
+    if (miniGroup.current) {
+      miniGroup.current.rotation.z = TIP * e;
+      miniGroup.current.position.set(tipped.offset[0] * e, tipped.offset[1] * e, tipped.offset[2] * e);
+    }
+    if (standeeCard.current) {
+      standeeCard.current.rotation.x = (-Math.PI / 2) * e;
+      standeeCard.current.position.set(0, (BASE_H + 0.05) * e, (BASE_H + standeeH / 2) * flatScale * e);
+      standeeCard.current.scale.setScalar(1 + (flatScale - 1) * e);
+    }
+    // A hit's shake and red flash; a heal's glow (hpFx.tsx starts them).
+    const fx = tokenFx.get(token.id);
+    if (fx && body.current && fxDisc.current) {
+      const el = performance.now() - fx.at;
+      const reduced = useSettings.getState().motion === "reduced";
+      if (fx.kind === "hit") {
+        const k = Math.max(0, 1 - el / 280);
+        body.current.position.x = reduced ? 0 : Math.sin(el * 0.075) * 0.28 * k;
+        fxMat.color.set(C.blood500);
+        fxMat.opacity = 0.6 * Math.max(0, 1 - el / 400);
+        fxDisc.current.scale.setScalar(R * 1.3);
+      } else {
+        const u = Math.min(1, el / 900);
+        fxMat.color.set(C.verdigris400);
+        fxMat.opacity = 0.5 * Math.sin(Math.PI * u);
+        fxDisc.current.scale.setScalar(R * (1.05 + 0.4 * u));
+      }
+      fxDisc.current.visible = fxMat.opacity > 0.01;
+      if (el > 900) {
+        tokenFx.delete(token.id);
+        body.current.position.x = 0;
+        fxMat.opacity = 0;
+        fxDisc.current.visible = false;
+      } else again();
+    }
     mixer?.update(dt);
     // On-demand rendering: keep drawing while this token is still gliding or crossfading.
     if (
@@ -475,14 +545,16 @@ export const TokenObject = memo(function TokenObject({
     )
       again();
   }, TOKEN_FRAME_PRIORITY);
-  // The selection pulse and a mini's idle animation run continuously while they're on.
+  // The selection pulse and a mini's idle animation run while they're on — as ambient motion, paced (a slow pulse
+  // needs no more than 24 frames a second; drawing it as fast as the screen allows kept a whole board rendering
+  // flat out for as long as anything was selected, which software GL and a laptop's battery both pay for).
   useEffect(() => {
-    setAnimating(`sel:${token.id}`, selected);
-    return () => setAnimating(`sel:${token.id}`, false);
+    setAmbient(`sel:${token.id}`, selected, 24);
+    return () => setAmbient(`sel:${token.id}`, false);
   }, [selected, token.id]);
   useEffect(() => {
-    setAnimating(`mix:${token.id}`, mixer !== null);
-    return () => setAnimating(`mix:${token.id}`, false);
+    setAmbient(`mix:${token.id}`, mixer !== null, 30);
+    return () => setAmbient(`mix:${token.id}`, false);
   }, [mixer, token.id]);
   useEffect(() => () => void boardDiag.tokenModes.delete(token.id), [token.id]);
 
@@ -602,7 +674,7 @@ export const TokenObject = memo(function TokenObject({
             scale={miniScale}
           >
             {/* Prone or dead: tipped 80° onto its side, lying centred on its base (not thrown off it). */}
-            <group ref={miniGroup} rotation-z={lying ? TIP : 0} position={lying ? tipped.offset : ORIGIN}>
+            <group ref={miniGroup}>
               <primitive object={mini.root} position={mini.offset} dispose={null} />
             </group>
           </group>
@@ -632,12 +704,7 @@ export const TokenObject = memo(function TokenObject({
             <group ref={standeeGroup} userData={{ part: "standee" }}>
               {/* Prone or dead: the card lies flat (face up, its top away from the camera), centred on the base and
                   no longer than the base is wide. Nested so the tip happens before the camera-facing turn. */}
-              <group
-                ref={standeeCard}
-                rotation-x={lying ? -Math.PI / 2 : 0}
-                position={lying ? [0, BASE_H + 0.05, (BASE_H + standeeH / 2) * flatScale] : ORIGIN}
-                scale={lying ? flatScale : 1}
-              >
+              <group ref={standeeCard}>
                 <mesh
                   position={[0, BASE_H + standeeH / 2, 0.03]}
                   material={standeeFront}
@@ -657,6 +724,17 @@ export const TokenObject = memo(function TokenObject({
             </group>
           </>
         ) : null}
+        <mesh
+          ref={fxDisc}
+          position-y={0.06}
+          rotation-x={-Math.PI / 2}
+          geometry={FX_DISC}
+          material={fxMat}
+          visible={false}
+          renderOrder={4}
+          raycast={() => null}
+          dispose={null}
+        />
         {selected ? (
           <mesh
             ref={selRing}
@@ -1379,6 +1457,7 @@ function Overlay({
           {moreIcons > 0 ? (
             <BoardText
               ref={moreText}
+              userData={{ part: "status:more", status: `+${moreIcons}` }}
               font={NUMBER_FONT}
               fontSize={NUM_SIZE}
               color={C.bone100}

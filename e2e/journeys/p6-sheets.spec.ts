@@ -748,7 +748,13 @@ ${JSON.stringify({ core: { name: "Wren", hp: { max: 9, current: 9 } } })}
     await openDock(admin, "Sheet");
     await expect(dmSheet).toHaveAttribute("aria-label", "Mira Vell's sheet");
     await sheetTab(admin, "Overview");
-    await dmSheet.getByLabel("Add a condition").selectOption({ label: "Prone" });
+    // (P7: conditions are added from the condition picker, the sheet's "add" opens it.)
+    await dmSheet.getByRole("button", { name: "Add a condition" }).click();
+    await admin.getByTestId("status-picker").getByRole("button", { name: "Prone", exact: true }).click();
+    await expect(
+      admin.getByTestId("status-picker").getByRole("button", { name: "Prone", exact: true }),
+    ).toHaveAttribute("aria-pressed", "true");
+    await admin.getByRole("dialog").getByRole("button", { name: "Done" }).click();
     await expect
       .poll(async () => (await hook<Token>(admin, "token", miraToken)).conditions)
       .toEqual(["prone"]);
@@ -832,7 +838,11 @@ ${JSON.stringify({ core: { name: "Wren", hp: { max: 9, current: 9 } } })}
               .filter(
                 (o) => o.id !== d.id && o.token && share(d.rect as Rect, o.token) > (d.leader ? 0.25 : 0.5),
               )
-              .map((o) => `${d.id} over ${o.id}`),
+              // (With the share and whether it points back, so a failure says why.)
+              .map(
+                (o) =>
+                  `${d.id} over ${o.id} (${share(d.rect as Rect, o.token as Rect).toFixed(2)} of it, leader ${d.leader})`,
+              ),
           );
         return { hidden, onTokens };
       })

@@ -1,6 +1,6 @@
 import { X } from "lucide-react";
-import { AnimatePresence, motion } from "motion/react";
-import { type ReactNode, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { AnimatePresence, motion, useIsPresent } from "motion/react";
+import { type ReactNode, type RefObject, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { IconButton } from "./Button.tsx";
 import { Filigree } from "./ornaments.tsx";
@@ -80,70 +80,125 @@ export function Dialog({
   return createPortal(
     <AnimatePresence>
       {open ? (
-        <motion.div
-          className="fixed inset-0 z-[900] grid place-items-center p-4"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.18 }}
-        >
+        <DialogLayer>
           <div
             className="absolute inset-0 bg-[var(--scrim)] backdrop-blur-[2px]"
             onClick={dismissible ? onClose : undefined}
             aria-hidden
           />
-          <motion.div
-            ref={ref}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby={titleId}
-            aria-describedby={description ? descId : undefined}
-            // Keys pressed in a modal stay in it: the table's shortcuts (undo, tools, the camera, Delete) never act
-            // behind it. (A dialog that wants a key of its own listens in the capture phase.)
-            onKeyDown={(e) => e.stopPropagation()}
-            // Never taller than the screen: the title and the buttons stay put and the body scrolls (short
-            // laptop screens, phones in landscape).
-            className={`relative flex max-h-[calc(100dvh-32px)] w-full max-w-[calc(100vw-32px)] flex-col overflow-hidden ${parchment ? "parchment" : "panel"}`}
-            style={{ width }}
-            initial={{ y: 14, scale: 0.98, opacity: 0 }}
-            animate={{ y: 0, scale: 1, opacity: 1 }}
-            exit={{ y: 8, scale: 0.99, opacity: 0 }}
-            transition={{ type: "spring", stiffness: 380, damping: 34 }}
+          <DialogCard
+            cardRef={ref}
+            titleId={titleId}
+            descId={descId}
+            parchment={parchment}
+            width={width}
+            title={title}
+            description={description}
+            footer={footer}
+            dismissible={dismissible}
+            onClose={onClose}
           >
-            <Filigree tone={parchment ? "ink" : "brass"} />
-            <div className="flex shrink-0 items-start justify-between gap-4 px-6 pt-6">
-              <div className="min-w-0">
-                <h2 id={titleId} className={`text-22 ${parchment ? "text-paper-ink" : "text-bone"}`}>
-                  {title}
-                </h2>
-                {description ? (
-                  <p
-                    id={descId}
-                    className={`mt-1.5 text-14 ${parchment ? "text-paper-muted" : "text-muted"}`}
-                  >
-                    {description}
-                  </p>
-                ) : null}
-              </div>
-              {dismissible ? (
-                <IconButton label="Close" shortcut="Esc" onClick={onClose} className="-mr-2 -mt-2">
-                  <X size={18} />
-                </IconButton>
-              ) : null}
-            </div>
-            {children ? <DialogBody>{children}</DialogBody> : null}
-            {footer ? (
-              // On a phone the actions stack full-width, the main one on top (a ragged right-aligned wrap
-              // otherwise).
-              <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 px-6 pb-6 pt-4 max-sm:[&>div]:w-full max-sm:[&>div]:flex-col-reverse max-sm:[&_button]:w-full">
-                {footer}
-              </div>
-            ) : null}
-          </motion.div>
-        </motion.div>
+            {children}
+          </DialogCard>
+        </DialogLayer>
       ) : null}
     </AnimatePresence>,
     document.body,
+  );
+}
+
+/** The scrim and the layer the dialog sits in: nothing under it is clickable — until it starts to leave. */
+function DialogLayer({ children }: { children: ReactNode }) {
+  const present = useIsPresent();
+  return (
+    <motion.div
+      className={`fixed inset-0 z-[900] grid place-items-center p-4 ${present ? "" : "pointer-events-none"}`}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.18 }}
+    >
+      {children}
+    </motion.div>
+  );
+}
+
+/** The dialog itself (inside the presence so it knows when it's leaving). */
+function DialogCard({
+  cardRef,
+  titleId,
+  descId,
+  parchment,
+  width,
+  title,
+  description,
+  footer,
+  dismissible,
+  onClose,
+  children,
+}: {
+  cardRef: RefObject<HTMLDivElement | null>;
+  titleId: string;
+  descId: string;
+  parchment: boolean;
+  width: number;
+  title: ReactNode;
+  description?: ReactNode;
+  footer?: ReactNode;
+  dismissible: boolean;
+  onClose: () => void;
+  children?: ReactNode;
+}) {
+  const present = useIsPresent();
+  return (
+    <motion.div
+      ref={cardRef}
+      // Closing (its exit still playing): no longer a dialog — not announced, not in the way, not clickable.
+      role={present ? "dialog" : undefined}
+      aria-modal={present ? "true" : undefined}
+      aria-hidden={present ? undefined : true}
+      inert={!present}
+      aria-labelledby={titleId}
+      aria-describedby={description ? descId : undefined}
+      // Keys pressed in a modal stay in it: the table's shortcuts (undo, tools, the camera, Delete) never act
+      // behind it. (A dialog that wants a key of its own listens in the capture phase.)
+      onKeyDown={(e) => e.stopPropagation()}
+      // Never taller than the screen: the title and the buttons stay put and the body scrolls (short
+      // laptop screens, phones in landscape).
+      className={`relative flex max-h-[calc(100dvh-32px)] w-full max-w-[calc(100vw-32px)] flex-col overflow-hidden ${parchment ? "parchment" : "panel"}`}
+      style={{ width }}
+      initial={{ y: 14, scale: 0.98, opacity: 0 }}
+      animate={{ y: 0, scale: 1, opacity: 1 }}
+      exit={{ y: 8, scale: 0.99, opacity: 0 }}
+      transition={{ type: "spring", stiffness: 380, damping: 34 }}
+    >
+      <Filigree tone={parchment ? "ink" : "brass"} />
+      <div className="flex shrink-0 items-start justify-between gap-4 px-6 pt-6">
+        <div className="min-w-0">
+          <h2 id={titleId} className={`text-22 ${parchment ? "text-paper-ink" : "text-bone"}`}>
+            {title}
+          </h2>
+          {description ? (
+            <p id={descId} className={`mt-1.5 text-14 ${parchment ? "text-paper-muted" : "text-muted"}`}>
+              {description}
+            </p>
+          ) : null}
+        </div>
+        {dismissible ? (
+          <IconButton label="Close" shortcut="Esc" onClick={onClose} className="-mr-2 -mt-2">
+            <X size={18} />
+          </IconButton>
+        ) : null}
+      </div>
+      {children ? <DialogBody>{children}</DialogBody> : null}
+      {footer ? (
+        // On a phone the actions stack full-width, the main one on top (a ragged right-aligned wrap
+        // otherwise).
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 px-6 pb-6 pt-4 max-sm:[&>div]:w-full max-sm:[&>div]:flex-col-reverse max-sm:[&_button]:w-full">
+          {footer}
+        </div>
+      ) : null}
+    </motion.div>
   );
 }
 

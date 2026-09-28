@@ -345,3 +345,19 @@ PASSING 112/224
 PASSING 113/224 · DISPUTED 0 · FAILING 111
 P1 28/28 · P2 32/32 · P3 16/17 · P4 12/12 · P5 9/9 · P6 14/14 · P7 1/17 · P9 1/16
 ```
+
+## 2026-09-29 — P7: HP, conditions and death — server, UI, journeys
+
+- Server: `hp.apply` / `hp.preview` / `status.change` / `health.consequences`, the DM's prompts (stored), player damage via the
+  DM, concentration and death saves as requests with their outcomes, Exhaustion's penalty and condition hints on rolls,
+  speed after conditions, custom markers to clients, a token dead only when marked (DECISIONS, 2026-09-29).
+- UI: the damage / heal / temp-HP dialog with the server's preview and the DM's decisions; the condition picker (token menu,
+  sheet, DM panel → Health); the DM's prompt cards; request cards with hints, auto-fail notes and death-save pips; sheet
+  rolls with hints; floating numbers, shake / flash / glow, the fall and sounds; the hover card; the DM panel's Health tab.
+- Tests: `health.test.ts` (16 server tests), vision AC-VIS-15, `d20tests.test.ts`, consequences (+3), `HpNumbers.test.ts`,
+  rollMode (+2); `p7-health.spec.ts` (2 journeys: the DM's tools; players). p2-tokens' radial expectations now include HP and
+  Conditions; p6-sheets adds conditions through the picker. Found on the way: an Unconscious creature didn't lie down; a
+  fast first keystroke in the damage dialog could be wiped (each opening is a fresh form now); a selected token kept the
+  board rendering flat out (paced now) — under software GL, pages starved each other until dialogs never closed.
+- `pnpm check`: 455 tests. Journeys run together (p7-health, p6-sheets, p6-requests, p2-tokens): 11 pass.
+- ACs: HP-01/02/03/04/05/06/07/09/10/11/12, TOK-04, TOK-12, VIS-15, DICE-11 pass. Left in P7: HP-13 (rests), DS-03.

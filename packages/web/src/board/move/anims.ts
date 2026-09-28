@@ -146,6 +146,7 @@ function ghostView(id: string, g: GhostLooks, at: P): TokenView {
     locked: false,
     moveSeq: 0,
     pinnedBars: [],
+    customMarkers: [],
   };
 }
 

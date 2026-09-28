@@ -3,6 +3,7 @@ import { pendingCount, useLibrary } from "../../state/library.ts";
 import { type DmSection, useUi } from "../../state/ui.ts";
 import { WaxSeal } from "../../ui/ornaments.tsx";
 import { ApprovalsPanel } from "./ApprovalsPanel.tsx";
+import { HealthPanel } from "./HealthPanel.tsx";
 import { LibraryPanel } from "./LibraryPanel.tsx";
 import { RequestsPanel } from "./RequestsPanel.tsx";
 import { ScenesPanel } from "./ScenesPanel.tsx";
@@ -11,6 +12,7 @@ const SECTIONS: { id: DmSection; label: string }[] = [
   { id: "scenes", label: "Scenes" },
   { id: "library", label: "Library" },
   { id: "requests", label: "Requests" },
+  { id: "health", label: "Health" },
   { id: "approvals", label: "Approvals" },
 ];
 
@@ -58,6 +60,7 @@ export default function DmPanel() {
         {section === "scenes" ? <ScenesPanel /> : null}
         {section === "library" ? <LibraryPanel /> : null}
         {section === "requests" ? <RequestsPanel /> : null}
+        {section === "health" ? <HealthPanel /> : null}
         {section === "approvals" ? <ApprovalsPanel /> : null}
       </div>
     </div>

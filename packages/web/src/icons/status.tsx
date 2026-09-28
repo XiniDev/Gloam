@@ -22,16 +22,21 @@ export function StatusIcon({
   badge = false,
   label,
   className = "",
+  glyph: glyphId,
+  color,
 }: {
   id: string;
   size?: number;
   badge?: boolean;
+  /** A DM's custom marker: the icon it borrows and its own badge colour. */
+  glyph?: string | undefined;
+  color?: string | undefined;
   /** Its accessible name; defaults to the icon's name. Pass "" when a text label sits beside it. */
   label?: string;
   className?: string;
 }) {
   const uid = useId().replace(/[^a-zA-Z0-9]/g, "");
-  const src = statusIcon(id);
+  const src = statusIcon(glyphId || id);
   const glyph = badge ? Math.round(size * 0.78) : size;
   const svg = src.svg
     .replaceAll('id="gx-', `id="gx-${uid}-`)
@@ -40,10 +45,10 @@ export function StatusIcon({
       'width="24" height="24"',
       `width="${glyph}" height="${glyph}" aria-hidden="true" focusable="false"`,
     );
-  const name = label ?? src.name;
+  const name = label ?? (id.startsWith("custom:") ? id.slice(7).replaceAll("-", " ") : src.name);
   const cls = `inline-grid shrink-0 place-items-center ${badge ? "rounded-chip text-bone" : ""} ${className}`;
   const style = badge
-    ? { width: size, height: size, background: badgeColour(src.category) }
+    ? { width: size, height: size, background: color || badgeColour(src.category) }
     : { width: size, height: size };
   return name ? (
     <span role="img" aria-label={name} data-icon={src.id} className={cls} style={style}>

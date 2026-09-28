@@ -32,6 +32,7 @@ import { resourceStats } from "./resources.ts";
 import { TIERS, TierGovernor, useTier } from "./tiers.ts";
 import { overlayDiagnostics, plateCovers } from "./tokens/declutter.ts";
 import { createHpBarMaterial, setHpBar } from "./tokens/hpBar.ts";
+import { fxPlayed, lieOf } from "./tokens/hpFx.tsx";
 import { hpBarState, overlayFade } from "./tokens/TokenObject.tsx";
 import { current as currentMeasure, measuredFt, useMeasure } from "./tools/measure.ts";
 import { useWallTool } from "./tools/walls.ts";
@@ -266,6 +267,8 @@ export function TestProbe() {
       }));
     });
     provideTestHook("plateCovers", () => plateCovers());
+    // The HP feedback each token played (AC-HP-11: a hit's shake and flash, a heal's glow).
+    provideTestHook("fxPlayed", () => fxPlayed.map((f) => ({ ...f })));
     provideTestHook("ui", () => {
       const u = useUi.getState();
       return { selection: u.selection, hover: u.hover, tool: u.tool, radial: u.radial };
@@ -421,6 +424,8 @@ export function TestProbe() {
         ring,
         opacity,
         position: obj.position.toArray(),
+        // How far it has fallen (0 standing … 1 lying: prone, unconscious or dead — AC-HP-11's fall).
+        lie: lieOf.get(id) ?? 0,
       };
     });
     /** Renders the real HP bar shader into a strip and reads its middle row back (AC-TOK-05). */

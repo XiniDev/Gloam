@@ -1,3 +1,4 @@
+export * from "./d20tests.ts";
 export * from "./evaluate.ts";
 export * from "./format.ts";
 export * from "./parse.ts";

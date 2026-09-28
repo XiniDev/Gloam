@@ -115,6 +115,7 @@ export const Token = schema(
     locked: t.boolean(),
     moveSeq: t.uint32(),
     pinnedBars: t.array("string"), // "label|value|max" for counters pinned to the token
+    customMarkers: t.array("string"), // "id|label|#colour|glyph" for the DM's custom markers (§8.11)
     hp: t.ref(TokenHp).view(TAG_HP),
     own: t.ref(TokenOwner).view(TAG_OWNER),
     vis: t.ref(TokenVision).view(TAG_VISION),

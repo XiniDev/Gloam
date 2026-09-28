@@ -5,6 +5,7 @@ import {
   HealthConsequences,
   HpApply,
   type HpFx,
+  type HpPreviewRow,
   type PromptItemView,
   StatusChange,
 } from "@gloam/shared/protocol";
@@ -21,6 +22,7 @@ import {
   healingConsequences,
   incapacitates,
   isDm,
+  type PartOutcome,
   projectSheet,
   sortConsequences,
   statsFromSheet,
@@ -113,6 +115,20 @@ export function holderOf(
   };
 }
 
+/** A target by id: a token, else a character. */
+export const refOf = (ctx: CommandCtx, id: string): { tokenId: string } | { actorId: string } =>
+  ctx.model.get("token", id) ? { tokenId: id } : { actorId: id };
+
+/** The tokens that show a holder: its own, or its character's linked tokens (every scene's). */
+export function tokensOf(ctx: CommandCtx, h: Holder): string[] {
+  if (h.token) return [h.token.id];
+  const actorId = h.actor?.id;
+  return ctx.model
+    .all("token")
+    .filter((t) => t.actorId === actorId && t.link === "linked")
+    .map((t) => t.id);
+}
+
 /** The ops that give a holder its new HP and status. */
 export function holderOps(
   ctx: CommandCtx,
@@ -186,6 +202,134 @@ const kills = (apply: readonly { consequence: Consequence; choice?: string }[]) 
       (c.kind === "npcAtZero" && (choice ?? c.choice) === "dead"),
   );
 
+/** What an HP change does to one creature: its new HP, what follows, the feedback and the words for it. */
+export interface HpOutcome {
+  hp: number;
+  hpTemp: number;
+  cons: Consequence[];
+  fx: HpFx;
+  detail: string;
+  line: string;
+  /** Damage: each instance and what happened to it, the total, what temp HP took, the overflow. */
+  damage?: { parts: PartOutcome[]; total: number; fromTemp: number; overflow: number };
+  /** Temporary HP when some are there already: the choice they don't stack into. */
+  temp?: { current: number; incoming: number; best: number };
+}
+
+export function outcomeFor(
+  h: Holder,
+  p: z.infer<typeof HpApply>,
+  id: string,
+  dm: boolean,
+  cRules: { bloodied: boolean; npcAtZero: "dead" | "unconscious" | "keep" },
+): HpOutcome {
+  if (p.kind === "damage") {
+    const total = dm ? p.totals?.[id] : undefined;
+    const parts =
+      total !== undefined
+        ? [{ amount: total, type: "untyped" as const }]
+        : (p.parts ?? [{ amount: p.amount ?? 0, type: "untyped" as const }]);
+    const preview = applyDamage(
+      {
+        hp: h.hp,
+        hpMax: h.hpMax,
+        hpTemp: h.hpTemp,
+        resistances: h.stats.resist,
+        immunities: h.stats.immune,
+        vulnerabilities: h.stats.vuln,
+        conditions: h.status.conditions.map((c) => c.id),
+        concentrating: Boolean(h.status.concentration),
+        isPC: h.isPC,
+      },
+      parts,
+      total !== undefined ? { crit: p.crit } : { halved: p.halved, crit: p.crit },
+    );
+    const byType = preview.parts
+      .filter((x) => x.applied > 0)
+      .map((x) => ({ type: x.type as DamageType | "untyped", amount: x.applied }))
+      .sort((a, b) => b.amount - a.amount);
+    return {
+      hp: preview.hp,
+      hpTemp: preview.hpTemp,
+      cons: damageConsequences({ hp: h.hp, hpMax: h.hpMax, isPC: h.isPC, status: h.status }, preview, cRules),
+      fx: {
+        tokenId: id,
+        kind: "damage",
+        amount: preview.total,
+        parts: byType,
+        ...(preview.fromTemp ? { fromTemp: preview.fromTemp } : {}),
+        ...(preview.down ? { down: true } : {}),
+      },
+      detail: `Took ${partsText(byType) || "0"} damage`,
+      line: `${h.name} took ${preview.total} damage${preview.hp === 0 ? " (0 HP)" : ""}`,
+      damage: {
+        parts: preview.parts,
+        total: preview.total,
+        fromTemp: preview.fromTemp,
+        overflow: preview.overflow,
+      },
+    };
+  }
+  if (p.kind === "heal") {
+    const out = applyHealing(h, p.amount ?? 0);
+    return {
+      hp: out.hp,
+      hpTemp: h.hpTemp,
+      cons: healingConsequences({ hp: h.hp, hpMax: h.hpMax, status: h.status }, out, cRules),
+      fx: { tokenId: id, kind: "heal", amount: out.gained, ...(out.revived ? { revived: true } : {}) },
+      detail: `Regained ${out.gained} HP`,
+      line: `${h.name} regained ${out.gained} HP`,
+    };
+  }
+  // Temporary HP don't stack: keep, replace or the higher (AC-HP-03).
+  const amount = p.amount ?? 0;
+  const choice = tempHpChoice(h.hpTemp, amount);
+  const hpTemp = choice ? choice[p.tempChoice] : Math.max(h.hpTemp, amount);
+  return {
+    hp: h.hp,
+    hpTemp,
+    cons: [],
+    fx: { tokenId: id, kind: "temp", amount: Math.max(0, hpTemp - h.hpTemp) },
+    detail: `${hpTemp} temporary HP`,
+    line: `${h.name}: ${hpTemp} temporary HP`,
+    ...(choice ? { temp: { current: h.hpTemp, incoming: amount, best: choice.best } } : {}),
+  };
+}
+
+/**
+ * What an `hp.apply` would do, for its dialog (§8.11: "sees a preview … and can edit it before applying"): per target,
+ * the numbers and what follows — only for creatures the caller may see the numbers of (the DM; a player their own).
+ * Others are named and marked as going to the DM (or applied directly, per house rule), nothing more (§13.4).
+ */
+export function previewHp(ctx: CommandCtx, p: z.infer<typeof HpApply>): HpPreviewRow[] {
+  const dm = isDm(ctx.actor.role);
+  const rules = ctx.model.campaign.houseRules;
+  const cRules = consequenceRules(ctx);
+  return [...new Set(p.targets)].map((id): HpPreviewRow => {
+    const h = holderOf(ctx, refOf(ctx, id));
+    if (!controls(ctx, h))
+      return {
+        tokenId: id,
+        name: h.name,
+        hidden: true,
+        viaDm: p.kind === "damage" && rules.playerDamage === "viaDm",
+      };
+    const o = outcomeFor(h, p, id, dm, cRules);
+    const { apply, ask } = sortConsequences(o.cons, rules.automation, dm ? p.decide?.[id] : undefined);
+    return {
+      tokenId: id,
+      name: h.name,
+      before: { hp: h.hp, hpMax: h.hpMax, hpTemp: h.hpTemp },
+      after: { hp: o.hp, hpTemp: o.hpTemp },
+      ...(o.damage ? { damage: o.damage } : {}),
+      ...(o.temp ? { temp: o.temp } : {}),
+      items: o.cons.map(itemOf),
+      now: apply.map((x) => x.consequence.kind),
+      asked: ask.map((c) => c.kind),
+    };
+  });
+}
+
 /**
  * `hp.apply` — damage, healing or temporary HP for one or more creatures (§8.11; AC-HP-01/02/03/06/07/09/10/12). A
  * player changes their own creatures directly; their damage to others goes to the DM first unless the campaign says
@@ -200,9 +344,16 @@ export const hpApply: CommandDef<z.infer<typeof HpApply>, { applied: number; sen
     if (p.kind === "damage" ? !p.parts && p.amount === undefined : p.amount === undefined)
       throw new GloamError("INVALID", "Give the amount.");
     for (const id of p.targets) {
-      mustGet(ctx, "token", id);
-      if (!isDm(ctx.actor.role) && ctx.actor.sees && !ctx.actor.sees(id))
-        throw new GloamError("NOT_FOUND", "That creature isn't here.");
+      if (ctx.model.get("token", id)) {
+        if (!isDm(ctx.actor.role) && ctx.actor.sees && !ctx.actor.sees(id))
+          throw new GloamError("NOT_FOUND", "That creature isn't here.");
+        continue;
+      }
+      // A character with no token here (its sheet's damage and healing): the DM's, or its player's own.
+      const actor = ctx.model.get("actor", id);
+      if (!actor || actor.deletedAt !== null) throw new GloamError("NOT_FOUND", "That creature isn't here.");
+      if (!isDm(ctx.actor.role) && actor.ownerUserId !== ctx.actor.userId)
+        throw new GloamError("FORBIDDEN", "That character isn't yours.");
     }
   },
   plan(ctx, p) {
@@ -216,7 +367,7 @@ export const hpApply: CommandDef<z.infer<typeof HpApply>, { applied: number; sen
     let applied = 0;
     let sent = 0;
     for (const id of [...new Set(p.targets)]) {
-      const h = holderOf(ctx, { tokenId: id });
+      const h = holderOf(ctx, refOf(ctx, id));
       // A player's damage to a creature they don't control: to the DM first (house rule "via DM confirmation").
       if (!controls(ctx, h) && p.kind === "damage" && rules.playerDamage === "viaDm") {
         const damage: NonNullable<DmPromptView["damage"]> = {
@@ -231,7 +382,7 @@ export const hpApply: CommandDef<z.infer<typeof HpApply>, { applied: number; sen
         };
         follow.prompts.push({
           kind: "playerDamage",
-          tokenId: id,
+          tokenId: h.token?.id ?? null,
           actorId: h.actor?.id ?? null,
           name: h.name,
           title: `${ctx.actor.name}'s damage to ${h.name}`,
@@ -243,76 +394,14 @@ export const hpApply: CommandDef<z.infer<typeof HpApply>, { applied: number; sen
         continue;
       }
       const decided = dm ? p.decide?.[id] : undefined;
-      let hp = h.hp;
-      let hpTemp = h.hpTemp;
-      let cons: Consequence[] = [];
-      let fx: HpFx;
-      let line: string;
-      let detail: string;
-      if (p.kind === "damage") {
-        const total = dm ? p.totals?.[id] : undefined;
-        const parts =
-          total !== undefined
-            ? [{ amount: total, type: "untyped" as const }]
-            : (p.parts ?? [{ amount: p.amount ?? 0, type: "untyped" as const }]);
-        const preview = applyDamage(
-          {
-            hp: h.hp,
-            hpMax: h.hpMax,
-            hpTemp: h.hpTemp,
-            resistances: h.stats.resist,
-            immunities: h.stats.immune,
-            vulnerabilities: h.stats.vuln,
-            conditions: h.status.conditions.map((c) => c.id),
-            concentrating: Boolean(h.status.concentration),
-            isPC: h.isPC,
-          },
-          parts,
-          total !== undefined ? { crit: p.crit } : { halved: p.halved, crit: p.crit },
-        );
-        hp = preview.hp;
-        hpTemp = preview.hpTemp;
-        cons = damageConsequences(
-          { hp: h.hp, hpMax: h.hpMax, isPC: h.isPC, status: h.status },
-          preview,
-          cRules,
-        );
-        const byType = preview.parts
-          .filter((x) => x.applied > 0)
-          .map((x) => ({ type: x.type as DamageType | "untyped", amount: x.applied }))
-          .sort((a, b) => b.amount - a.amount);
-        fx = {
-          tokenId: id,
-          kind: "damage",
-          amount: preview.total,
-          parts: byType,
-          ...(preview.fromTemp ? { fromTemp: preview.fromTemp } : {}),
-          ...(preview.down ? { down: true } : {}),
-        };
-        detail = `Took ${partsText(byType) || "0"} damage`;
-        line = `${h.name} took ${preview.total} damage${hp === 0 ? " (0 HP)" : ""}`;
-      } else if (p.kind === "heal") {
-        const out = applyHealing(h, p.amount ?? 0);
-        hp = out.hp;
-        cons = healingConsequences({ hp: h.hp, hpMax: h.hpMax, status: h.status }, out, cRules);
-        fx = { tokenId: id, kind: "heal", amount: out.gained, ...(out.revived ? { revived: true } : {}) };
-        detail = `Regained ${out.gained} HP`;
-        line = `${h.name} regained ${out.gained} HP`;
-      } else {
-        // Temporary HP don't stack: keep, replace or the higher (AC-HP-03).
-        const amount = p.amount ?? 0;
-        const choice = tempHpChoice(h.hpTemp, amount);
-        hpTemp = choice ? choice[p.tempChoice] : Math.max(h.hpTemp, amount);
-        fx = { tokenId: id, kind: "temp", amount: Math.max(0, hpTemp - h.hpTemp) };
-        detail = `${hpTemp} temporary HP`;
-        line = `${h.name}: ${hpTemp} temporary HP`;
-      }
+      const o = outcomeFor(h, p, id, dm, cRules);
+      const { hp, hpTemp, cons, fx, detail, line } = o;
       const { apply, ask } = sortConsequences(cons, rules.automation, decided);
       const status = fold(h.status, apply);
       for (const { consequence: c } of apply)
         if (c.kind === "concentrationSave")
           follow.concentration.push({
-            tokenId: id,
+            tokenId: h.token?.id ?? null,
             actorId: h.actor?.id ?? null,
             name: h.name,
             dc: c.dc,
@@ -321,7 +410,7 @@ export const hpApply: CommandDef<z.infer<typeof HpApply>, { applied: number; sen
       if (ask.length)
         follow.prompts.push({
           kind: "consequences",
-          tokenId: id,
+          tokenId: h.token?.id ?? null,
           actorId: h.actor?.id ?? null,
           name: h.name,
           title: promptTitle(h.name, ask),
@@ -330,7 +419,8 @@ export const hpApply: CommandDef<z.infer<typeof HpApply>, { applied: number; sen
         });
       if (kills(apply)) fx.dead = true;
       ops.push(...holderOps(ctx, h, { hp, hpTemp, status }));
-      events.push({ name: "hp.fx", payload: fx, to: { viewersOf: id } });
+      for (const tokenId of tokensOf(ctx, h))
+        events.push({ name: "hp.fx", payload: { ...fx, tokenId }, to: { viewersOf: tokenId } });
       lines.push(line);
       applied++;
     }

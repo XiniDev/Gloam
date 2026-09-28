@@ -8,12 +8,16 @@ import {
   EyeOff,
   Flame,
   FlameKindling,
+  Heart,
+  HeartCrack,
+  HeartPulse,
   Lamp,
   Lock,
   Palette,
   RotateCcw,
   RotateCw,
   ScrollText,
+  ShieldPlus,
   Trash2,
   Unlock,
 } from "lucide-react";
@@ -21,6 +25,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { type ReactElement, useEffect, useMemo, useRef, useState } from "react";
 import { D20Icon } from "../icons/dice.tsx";
 import { LightPresetIcon } from "../icons/lights.tsx";
+import { StatusIcon } from "../icons/status.tsx";
 import { request, useTable } from "../net/table.ts";
 import { boardData, useEntities } from "../state/entities.ts";
 import { useLibrary } from "../state/library.ts";
@@ -176,6 +181,40 @@ export function RadialMenu() {
       if (dm || !token.locked)
         out.push({ id: "light", label: "Light", icon: <Flame size={18} />, ring: lightRing.slice(0, 8) });
     }
+    // HP (§8.11): damage, healing and temporary HP — for this token, or the selection it's part of. Anyone at the table
+    // may aim damage (a player's at others goes to the DM first).
+    if (me.role !== "spectator") {
+      const targets = () => {
+        const sel = useUi.getState().selection;
+        return sel.includes(id) ? sel : [id];
+      };
+      const open = (kind: "damage" | "heal" | "temp") => () =>
+        useUi.getState().set({ hpDialog: { targets: targets(), kind } });
+      out.push({
+        id: "hp",
+        label: "HP",
+        icon: <HeartPulse size={18} />,
+        ring: [
+          { id: "hp-damage", label: "Damage…", icon: <HeartCrack size={18} />, run: open("damage") },
+          { id: "hp-heal", label: "Heal…", icon: <Heart size={18} />, run: open("heal") },
+          {
+            id: "hp-temp",
+            label: "Temporary HP…",
+            short: "Temp HP",
+            icon: <ShieldPlus size={18} />,
+            run: open("temp"),
+          },
+        ],
+      });
+    }
+    // Conditions and markers (§8.11; AC-HP-04): the picker, for those who control it.
+    if (controls)
+      out.push({
+        id: "conditions",
+        label: "Conditions",
+        icon: <StatusIcon id="poisoned" size={18} label="" />,
+        run: () => useUi.getState().set({ statusPicker: { tokenId: id } }),
+      });
     if (dm) {
       // The DM's own actions under one slice (§8.19 "token radial menu → DM"): the ring keeps to §28's 6–8 slices.
       const dmRing: Slice[] = [
@@ -220,6 +259,18 @@ export function RadialMenu() {
               icon: <Lock size={18} />,
               run: () => send("lock it", "token.update", { tokenId: id, locked: true }),
             },
+        // Dying (at 0 HP, death saves running): ask for a death saving throw, outside combat (§8.11).
+        ...(token.markers.includes("deathsaves") && !token.markers.includes("stable") && !token.dead
+          ? [
+              {
+                id: "deathsave",
+                label: "Request a death save",
+                short: "Death save",
+                icon: <StatusIcon id="deathsaves" size={18} label="" />,
+                run: () => send("ask for a death save", "death.request", { targets: [id] }),
+              },
+            ]
+          : []),
         {
           id: "duplicate",
           label: "Duplicate",

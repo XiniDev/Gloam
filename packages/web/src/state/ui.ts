@@ -5,7 +5,7 @@ import { create } from "zustand";
 export type Tool = "select" | "pan" | "measure" | "ping" | "target" | "walls" | "zones" | "lights" | "fog";
 export type WallDrawKind = "wall" | "door" | "window" | "curtain" | "invisible" | "secret";
 export type DockTab = "party" | "sheet" | "spells" | "log" | "dm";
-export type DmSection = "scenes" | "library" | "requests" | "approvals";
+export type DmSection = "scenes" | "library" | "requests" | "health" | "approvals";
 export type SheetTab =
   | "overview"
   | "abilities"
@@ -22,7 +22,7 @@ export interface CameraMemory {
   target: [number, number, number];
 }
 
-interface UiStore {
+export interface UiStore {
   tool: Tool;
   selection: string[];
   hover: string | null;
@@ -55,6 +55,10 @@ interface UiStore {
   sheetTab: SheetTab;
   /** Creatures to ask for a roll (the radial menu's Request a roll): the Requests form takes them, then clears it. */
   requestTargets: string[] | null;
+  /** The damage / healing dialog (§8.11): its creatures (tokens, or a character with none on the board) and mode. */
+  hpDialog: { targets: string[]; kind: "damage" | "heal" | "temp"; amount?: number } | null;
+  /** The condition picker (§8.11): the creature it edits (a token, or a character). */
+  statusPicker: { tokenId?: string; actorId?: string } | null;
   /** What's in the tray: kept while it's closed (a phone's tray closes to show the dice; it opens again as it was). */
   diceDraft: {
     formula: string;
@@ -119,6 +123,8 @@ export const useUi = create<UiStore>((set, get) => ({
   sheetActor: null,
   sheetTab: "overview",
   requestTargets: null,
+  hpDialog: null,
+  statusPicker: null,
   diceDraft: { formula: "1d20", label: "", visibility: "public" },
   set(p) {
     set(p);

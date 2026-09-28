@@ -363,6 +363,55 @@ export const RECIPES = {
       }
     },
   },
+  /** Damage taken (effects, sound.md §2.4): a crunch with a falling pitch — loss. */
+  damage: zzfx("damage", "effects", [
+    {
+      at: 0,
+      p: [0.971, 0, 360, 0, 0.03, 0.12, 2, 1, -2.2, 0, 0, 0, 0, 2.5, 0, 0.25, 0, 0.5, 0.02, 0, -1600],
+    },
+  ]),
+  /** Heal (effects, sound.md §2.4): rising, soft and tonal — restoration — with an octave shimmer and a sparkle. */
+  heal: zzfx("heal", "effects", [
+    { at: 0, p: [0.237, 0, 440, 0.06, 0.12, 0.35, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0.08, 0.8, 0.05, 0, 0] },
+    { at: 0, p: [0.071, 0, 880, 0.08, 0.1, 0.35, 0, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0.08, 0.8, 0.05, 0, 0] },
+    { at: 100, p: [0.024, 0, 2000, 0.06, 0.15, 0.4, 4, 1, 0, 0, 0, 0, 0.04, 0, 0, 0, 0, 1, 0, 0.8, 3500] },
+  ]),
+  /**
+   * Down (0 HP) or dead (effects, sound.md §2.4): the heaviest non-spell sound — a long sub drop (90 → 40 Hz) with an
+   * exciter so a laptop still hears it, its octave, and a brown-noise thud.
+   */
+  down: {
+    channel: "effects",
+    variation: 0.03,
+    play(ctx, dest, t, rate, engine) {
+      const out = outGain(ctx, dest, 0.315);
+      const low = ctx.createOscillator();
+      low.type = "sine";
+      low.frequency.setValueAtTime(90 * rate, t);
+      low.frequency.exponentialRampToValueAtTime(40 * rate, t + 0.35);
+      const lowEnv = env(ctx, t, 0.005, 1, 0.25);
+      low.connect(lowEnv).connect(out);
+      exciter(ctx, lowEnv, out, 4, 180, 1.4);
+      const oct = ctx.createOscillator();
+      oct.type = "sine";
+      oct.frequency.setValueAtTime(180 * rate, t);
+      oct.frequency.exponentialRampToValueAtTime(80 * rate, t + 0.35);
+      oct.connect(env(ctx, t, 0.005, 0.3, 0.25)).connect(out);
+      const lp = ctx.createBiquadFilter();
+      lp.type = "lowpass";
+      lp.frequency.value = 300;
+      lp.Q.value = -3;
+      noiseSrc(ctx, engine, "brown", t, 0.6)
+        .connect(lp)
+        .connect(env(ctx, t, 0.005, 1.5, 0.08))
+        .connect(out);
+      for (const o of [low, oct]) {
+        o.start(t);
+        o.stop(t + 1.8);
+        o.onended = () => o.disconnect();
+      }
+    },
+  },
   /** A muffled footstep thump (effects): one every 5 ft of a committed move (SPEC §31). */
   footstep: zzfx("footstep", "effects", [
     {

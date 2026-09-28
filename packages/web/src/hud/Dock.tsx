@@ -8,6 +8,7 @@ import { IconButton } from "../ui/Button.tsx";
 import { ErrorBoundary } from "../ui/ErrorBoundary.tsx";
 import { lazyPage } from "../ui/lazyPage.ts";
 import { Sparkle } from "../ui/ornaments.tsx";
+import { PromptCards } from "./health/PromptCards.tsx";
 import { hudOrder } from "./Intro.tsx";
 import { insetMeasures, useCover, useHudInsets, useIsPhone, useMeasuredInset } from "./insets.ts";
 import { PartyPanel } from "./PartyPanel.tsx";
@@ -128,6 +129,7 @@ export function Dock() {
             </nav>
           ) : null}
           {page ? <RequestCards inline /> : null}
+          {page ? <PromptCards inline /> : null}
           {/* Resize handle on the panel's left edge. */}
           <div
             hidden={page}

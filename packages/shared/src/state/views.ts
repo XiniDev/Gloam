@@ -96,6 +96,8 @@ export interface TokenView {
   locked: boolean;
   moveSeq: number;
   pinnedBars: string[];
+  /** The DM's custom markers on it: "id|label|#colour|glyph" (§8.11). */
+  customMarkers: string[];
   hp?: TokenHpView;
   own?: TokenOwnerView;
   vis?: TokenVisionView;

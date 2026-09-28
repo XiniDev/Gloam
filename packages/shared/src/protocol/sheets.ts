@@ -55,6 +55,16 @@ export interface RequestCard {
   open: boolean;
   /** A death saving throw's card: the successes and failures so far (hearts and skulls). */
   deathSaves?: { successes: number; failures: number };
+  /** What the creature's conditions suggest for this roll (AC-DICE-11): applied unless the roller sets it aside. */
+  hint?: RollHint;
+  /** Conditions that fail this save outright (Paralyzed, Stunned, Unconscious… — the DM may still let it roll). */
+  autoFail?: string[];
+}
+
+/** Advantage or disadvantage a creature's conditions suggest for a roll, and which conditions. */
+export interface RollHint {
+  mode: "adv" | "dis";
+  from: string[];
 }
 
 /** A request as the DM's live board has it. */
@@ -71,7 +81,15 @@ export interface RollRequestView {
   showDc: boolean;
   adv: "none" | "adv" | "dis";
   visibility: "public" | "dm" | "blind";
-  targets: { id: string; kind: "token" | "actor"; name: string; controllers: string[]; formula: string }[];
+  targets: {
+    id: string;
+    kind: "token" | "actor";
+    name: string;
+    controllers: string[];
+    formula: string;
+    hint?: RollHint;
+    autoFail?: string[];
+  }[];
   responses: Record<
     string,
     { state: RequestState; rollId?: string; total?: number; success?: boolean; by?: string }

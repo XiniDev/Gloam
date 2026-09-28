@@ -404,10 +404,10 @@
       "code": "TOK",
       "phase": "P7",
       "text": "The overlay shows the name, the HP bar, and up to 6 condition icons directly under the bar with \"+N\" overflow; HP display modes Exact/Bar/Descriptor/Hidden work per token.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p7-health.spec.ts › DM's tools (the plate's status icons from the atlas: unconscious, poisoned, blessed; with 8 statuses 6 icons then '+2'; HP display per token as a player's client holds it: Exact → numbers and fill, Bar → fill only, Descriptor → band 'Hurt' only, Hidden → nothing)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-28T23:35:27.332Z"
     },
     {
       "id": "AC-TOK-05",
@@ -492,10 +492,10 @@
       "code": "TOK",
       "phase": "P7",
       "text": "The hover card appears after 400 ms and shows AC only to the DM and the token's owners.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p7-health.spec.ts › DM's tools (the hover card shows after the pointer rests 400 ms — measured in the page, data-waited ≥ 400; AC 16 for the DM on Thorin and for Dave on his own Thorin; no AC for Dave on the DM's goblin — the server never sends it: TokenOwner view)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-28T23:32:08.426Z"
     },
     {
       "id": "AC-TOK-13",
@@ -943,10 +943,10 @@
       "code": "VIS",
       "phase": "P7",
       "text": "Blinded creatures provide no sight-based vision (blindsight and tremorsense still apply); Unconscious creatures provide no perception at all.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/vision.test.ts › 'AC-VIS-15 (server): Blinded, a creature gives no sight (blindsight still works); Unconscious, no perception at all' (conditions via P7 status.change: the player's view loses the goblin, blindsight 30 ft brings it back, Unconscious takes everything); packages/shared/src/vision/vision.test.ts (blinded + blindsight/tremorsense, unconscious → NONE)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-28T21:37:17.780Z"
     },
     {
       "id": "AC-DICE-01",
@@ -1064,10 +1064,10 @@
       "code": "DICE",
       "phase": "P7",
       "text": "Condition-derived advantage/disadvantage hints are applied to relevant rolls and can be removed by the roller before rolling.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p7-health.spec.ts › players (Poisoned: Dave's requested Wisdom check card shows 'Disadvantage · Poisoned', he sets it aside, the roll has no 'dis'); packages/server/src/test/health.test.ts › 'rolls: a condition's advantage or disadvantage comes on the card, applied unless the roller sets it aside…' (dis applied / set aside, Paralyzed Dex save fails outright); packages/web/src/hud/sheet/rollMode.test.ts (sheet rolls: Poisoned checks dis, Invisible initiative adv, right-click 'Normal (set aside …)')",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-28T23:32:08.511Z"
     },
     {
       "id": "AC-SHEET-01",
@@ -1218,10 +1218,10 @@
       "code": "HP",
       "phase": "P7",
       "text": "Gaining temp HP while having some offers keep or replace, defaulting to the higher value.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/health.test.ts › 'temporary HP don't stack: the higher by default, or keep / replace' + 'the dialog's preview…' (temp: current/incoming/best); e2e/journeys/p7-health.spec.ts › DM's tools (the Temp HP dialog offers Keep 5 / Take 8 with the higher preselected, applies it)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-28T23:28:31.734Z"
     },
     {
       "id": "AC-HP-04",
@@ -1229,10 +1229,10 @@
       "code": "HP",
       "phase": "P7",
       "text": "All 15 SRD conditions and all listed status markers can be added and removed from the token menu, the sheet and the DM panel, each with a unique icon, name and summary tooltip.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p7-health.spec.ts › 'the DM's tools…' — the condition picker (14 conditions + 16 markers, each with its Appendix G icon, name and summary on hover/focus; search) from the token menu (Conditions slice), the sheet (Add a condition) and the DM panel (Health → Conditions); on/off each an undoable status.change; packages/server/src/test/health.test.ts › 'conditions and markers on and off…' (incl. the DM's custom markers)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-28T23:28:31.813Z"
     },
     {
       "id": "AC-HP-05",
@@ -1240,10 +1240,10 @@
       "code": "HP",
       "phase": "P7",
       "text": "Exhaustion shows its level; −2 × level applies to d20 tests and −5 ft × level to speed; level 6 prompts the DM.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p7-health.spec.ts › DM's tools (Exhaustion 2 from the picker: level on the creature and its plate icon, budget 30 → 20 ft, '−4 to D20 Tests · −10 ft speed'; Exhaustion 6 → the DM's 'Dead? (Exhaustion 6)' prompt card); packages/server/src/test/health.test.ts › 'rolls: … Exhaustion takes 2 × its level off D20 Tests' (request formula '- 4', a sheet roll '1d20 + @dex - 4', damage untouched, speed −10) and 'conditions … Exhaustion 6 asks Dead?'",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-28T23:28:31.888Z"
     },
     {
       "id": "AC-HP-06",
@@ -1262,10 +1262,10 @@
       "code": "HP",
       "phase": "P7",
       "text": "Damage to a concentrating creature prompts a CON save with DC max(10, ⌊dmg/2⌋) capped at 30; failure ends concentration and linked effects, undoably.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p7-health.spec.ts › players (the DM's 12 damage → Dave's card 'Concentration · Bless', DC 10; he enters 4 → the DM's prompt 'Concentration ends (failed the DC 10 save)' → applied); packages/server/src/test/health.test.ts › 'damage to a concentrating creature asks its owner for a CON save at max(10, half); a failure ends it, undoably' (DC 10 and 12, Ctrl+Z restores it, Stunned ends it too). Linked effects arrive with P9's effects.",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-28T23:28:31.962Z"
     },
     {
       "id": "AC-HP-08",
@@ -1284,10 +1284,10 @@
       "code": "HP",
       "phase": "P7",
       "text": "Damage at 0 HP adds a failure (two on a critical hit); massive damage prompts the DM for instant death.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/health.test.ts › 'a PC at 0 HP: … damage at 0 adds failures; massive damage asks' (1 failure, 2 on a crit, the third asks 'Mark dead?', 45 on 20 HP → 'Instant death? (massive damage)'); rules: consequences.test.ts, damage.test.ts; e2e/journeys/p7-health.spec.ts › players (to 0 via the dialog: Unconscious and Prone, death saves)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-28T23:28:32.040Z"
     },
     {
       "id": "AC-HP-10",
@@ -1295,10 +1295,10 @@
       "code": "HP",
       "phase": "P7",
       "text": "An NPC reaching 0 HP prompts the DM with Dead / Unconscious / Keep at 0, defaulting to Dead.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p7-health.spec.ts › DM's tools (goblin to 0: 'At 0 HP' with Dead / Unconscious / Keep at 0, Dead preselected; the DM picks Unconscious in the preview); packages/server/src/test/health.test.ts › 'an NPC at 0 HP: the DM is asked Dead / Unconscious / Keep at 0, Dead preselected; nothing dies meanwhile' (unconscious, dead, skipped)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-28T23:28:32.113Z"
     },
     {
       "id": "AC-HP-11",
@@ -1306,10 +1306,10 @@
       "code": "HP",
       "phase": "P7",
       "text": "Floating typed damage numbers, hit shake/flash, heal glow and death animation play for everyone who can see the token.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p7-health.spec.ts › DM's tools (goblin damaged: hp.fx to the DM and to Dave, who both see it — a floating '−9' in slashing's colour on both screens, the hit's shake and red flash played on both boards, the fall to lying (lie 0 → 1)) and players (a natural 20's heal glow on both boards); HpNumbers.test.ts (colours by type, healing '+', temp); sounds damage/heal/down from docs/research/sound.md §2.4; the server sends hp.fx to a token's viewers only (packages/server/src/test/health.test.ts)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-28T23:32:08.206Z"
     },
     {
       "id": "AC-HP-12",
@@ -1317,10 +1317,10 @@
       "code": "HP",
       "phase": "P7",
       "text": "Every automatic consequence (damage, condition, concentration loss, death) can be edited or skipped by the DM before it applies.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p7-health.spec.ts › DM's tools (the NPC's fate chosen in the damage preview; 'Dead? (Exhaustion 6)' skipped from its prompt card) and players (the DM edits a player's damage 6 → 4 before it applies; concentration loss confirmed on its card); packages/server/src/test/health.test.ts › 'the DM decides in the preview…', 'an NPC at 0 HP…' (apply with a choice, skip), 'a PC at 0 HP…' (keep the failures, not the death), 'undoing the damage closes the prompt it raised'; Auto/Manual per §19.1",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-28T23:32:08.281Z"
     },
     {
       "id": "AC-HP-13",

@@ -178,6 +178,21 @@ describe("P4 — vision, light and fog on the server (VIS)", () => {
     expect(Boolean(dm.state.tokens.get(goblin))).toBe(true);
   });
 
+  it("AC-VIS-15 (server): Blinded, a creature gives no sight (blindsight still works); Unconscious, no perception at all", async () => {
+    expect(sees(anna, goblin)).toBe(true);
+    await rq(dm, "status.change", { tokenId: elf, add: [{ id: "blinded" }] });
+    await waitFor(() => !sees(anna, goblin));
+    // Blindsight 30 ft reaches the goblin (about 25 ft off) without eyes.
+    await rq(dm, "token.update", { tokenId: elf, stats: { senses: { darkvision: 60, blindsight: 30 } } });
+    await waitFor(() => sees(anna, goblin));
+    // Unconscious: nothing at all, blindsight or not.
+    await rq(dm, "status.change", { tokenId: elf, add: [{ id: "unconscious" }] });
+    await waitFor(() => !sees(anna, goblin));
+    await rq(dm, "status.change", { tokenId: elf, remove: ["blinded", "unconscious"] });
+    await rq(dm, "token.update", { tokenId: elf, stats: { senses: { darkvision: 60, blindsight: 0 } } });
+    await waitFor(() => sees(anna, goblin));
+  });
+
   it("AC-VIS-03 (server): a torch Bob lights shows him the goblin 25 ft off; only its owners and the DM douse it", async () => {
     const mark = bob.socket.frames.length;
     const { lightId } = await rq<{ lightId: string }>(bob.room, "light.carry", {

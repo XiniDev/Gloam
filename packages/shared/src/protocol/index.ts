@@ -152,6 +152,8 @@ export const MESSAGE_RATES = {
   "prompt.list": rate(1, 3),
   "prompt.resolve": rate(5, 10),
   "death.request": rate(2, 4),
+  // The damage dialog previews as the amount is typed.
+  "hp.preview": rate(8, 16),
 } as const satisfies Record<string, RateSpec>;
 
 export * from "./commands.ts";

@@ -6,6 +6,11 @@ import { Dock } from "../hud/Dock.tsx";
 import { MapToolsPanel } from "../hud/dm/MapToolsPanel.tsx";
 import { NewSceneWizard } from "../hud/dm/NewSceneWizard.tsx";
 import { FogPanel } from "../hud/FogPanel.tsx";
+import { HoverCard } from "../hud/HoverCard.tsx";
+import { HpNumbers } from "../hud/HpNumbers.tsx";
+import { HpDialog } from "../hud/health/HpDialog.tsx";
+import { PromptCards } from "../hud/health/PromptCards.tsx";
+import { StatusPicker } from "../hud/health/StatusPicker.tsx";
 import { Intro, useIntro } from "../hud/Intro.tsx";
 import { useHudInsets } from "../hud/insets.ts";
 import { dismissKnockCard, showKnockCard } from "../hud/KnockCards.tsx";
@@ -31,6 +36,7 @@ import { ZoneEditor, ZonesPanel } from "../hud/ZonesPanel.tsx";
 import { joinErrorCode } from "../net/colyseus.ts";
 import { watchDice } from "../net/dice.ts";
 import { watchFog } from "../net/fog.ts";
+import { watchHealth } from "../net/health.ts";
 import { watchSheets } from "../net/sheets.ts";
 import { connectTable, disconnectTable, request, tableEvents, useTable } from "../net/table.ts";
 import { useSession } from "../state/session.ts";
@@ -58,6 +64,7 @@ export default function TableRoute() {
   useEffect(() => watchFog(), []);
   useEffect(() => watchDice(), []);
   useEffect(() => watchSheets(), []);
+  useEffect(() => watchHealth(), []);
   useEffect(() => watchPendingArt(), []);
   useEffect(() => {
     let cancelled = false;
@@ -138,13 +145,18 @@ export default function TableRoute() {
       <MapToolsPanel />
       <LoadingBar />
       <RadialMenu />
+      <HoverCard />
+      <HpNumbers />
       <MoveLabel />
       <WallChips />
       <MeasureLabels />
       <ActionBar />
       <RollFeed />
       <RequestCards />
+      <PromptCards />
       <DiceTray />
+      <HpDialog />
+      <StatusPicker />
       <MeasurePanel />
       <WallsPanel />
       <ZonesPanel />

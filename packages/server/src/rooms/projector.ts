@@ -1,5 +1,5 @@
 import type { ArraySchema } from "@colyseus/schema";
-import { effectiveTokenState, HP_BAND_HIDDEN, hpBand } from "@gloam/shared/rules";
+import { effectiveSpeed, effectiveTokenState, HP_BAND_HIDDEN, hpBand } from "@gloam/shared/rules";
 import type {
   EffectEntity,
   LightEntity,
@@ -112,10 +112,21 @@ export function tokenView(t: TokenEntity, ctx: ProjectionCtx): TokenView {
     locked: t.locked,
     moveSeq: mv.segments ?? 0,
     pinnedBars: pinned,
+    customMarkers: status.markers
+      .filter((m) => m.id.startsWith("custom:"))
+      .map((m) =>
+        [m.id, m.label ?? "", m.color ?? "", m.glyph ?? ""].map((x) => x.replaceAll("|", "/")).join("|"),
+      ),
     hp: { hp: stats.hp, hpMax: stats.hpMax, hpTemp: stats.hpTemp },
     own: {
       ac: stats.ac,
-      budgetFt: t.overrides.speedOverride ?? speeds.walk,
+      // Its speed after conditions (Speed 0) and Exhaustion (−5 ft a level; §19.4, AC-HP-05).
+      budgetFt: effectiveSpeed(
+        t.overrides.speedOverride ?? speeds.walk,
+        conditions,
+        status.exhaustion,
+        t.overrides.ignoreConditionSpeed === true,
+      ),
       usedFt: 0,
       turnStart: { x: t.pos.x, y: t.pos.y },
       mode: t.moveMode,

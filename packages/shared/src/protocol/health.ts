@@ -62,3 +62,29 @@ export interface HpFx {
   dead?: boolean;
   revived?: boolean;
 }
+
+/**
+ * One target of a damage / heal dialog's preview (§8.11: "Goblin takes 7 → 0 HP; overflow 3"). A creature whose numbers
+ * the caller may not see (a player's aim at the DM's goblin) is named only.
+ */
+export interface HpPreviewRow {
+  tokenId: string;
+  name: string;
+  /** Not the caller's to see: no numbers. */
+  hidden?: boolean;
+  /** A player's damage that goes to the DM first (house rule). */
+  viaDm?: boolean;
+  before?: { hp: number; hpMax: number; hpTemp: number };
+  after?: { hp: number; hpTemp: number };
+  damage?: {
+    parts: { type: DamageType | "untyped"; amount: number; applied: number; steps: string[] }[];
+    total: number;
+    fromTemp: number;
+    overflow: number;
+  };
+  temp?: { current: number; incoming: number; best: number };
+  /** What follows, each with its words and choices; `now` applies at once, `asked` goes to the DM (§19.1). */
+  items?: PromptItemView[];
+  now?: string[];
+  asked?: string[];
+}

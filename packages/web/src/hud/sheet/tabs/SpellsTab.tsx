@@ -112,7 +112,13 @@ export function SpellsTab({ ctx }: { ctx: SheetCtx }) {
             </DerivedValue>
           </span>
         ))}
-        <RollButton actor={ctx.actor} formula="1d20 + @spellmod + @prof" label="Spell attack" text="Roll" />
+        <RollButton
+          actor={ctx.actor}
+          formula="1d20 + @spellmod + @prof"
+          label="Spell attack"
+          text="Roll"
+          test={{ kind: "attack" }}
+        />
       </div>
 
       {[...byLevel.keys()]

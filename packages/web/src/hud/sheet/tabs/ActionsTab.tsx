@@ -76,6 +76,7 @@ export function ActionsTab({ ctx }: { ctx: SheetCtx }) {
                 actor={ctx.actor}
                 formula={a.attack}
                 label={`${a.name} — attack`}
+                test={{ kind: "attack" }}
                 text={<span className="tabular">Attack {shown(a.attack, true)}</span>}
               />
             ) : null}
@@ -84,6 +85,7 @@ export function ActionsTab({ ctx }: { ctx: SheetCtx }) {
                 actor={ctx.actor}
                 formula={a.damage}
                 label={`${a.name} — damage`}
+                test={null}
                 text={<span className="tabular">{shown(a.damage, false)}</span>}
               />
             ) : null}

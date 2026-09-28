@@ -433,6 +433,8 @@ export const RequestRespond = z.strictObject({
   action: z.enum(["roll", "manual", "skip"]),
   values: z.array(z.number().int().min(1).max(1000)).min(1).max(40).optional(),
   total: z.number().int().min(-1000).max(1000).optional(),
+  /** The roller sets aside the advantage or disadvantage their conditions suggest (AC-DICE-11). */
+  ignoreHints: z.boolean().optional(),
 });
 /** The DM answers for a target: rolls with its modifiers, sets the result, or skips it. */
 export const RequestAnswer = z.strictObject({
@@ -440,6 +442,7 @@ export const RequestAnswer = z.strictObject({
   target: Id,
   action: z.enum(["roll", "set", "skip"]),
   total: z.number().int().min(-1000).max(1000).optional(),
+  ignoreHints: z.boolean().optional(),
 });
 export const RequestClose = z.strictObject({ requestId: Id });
 

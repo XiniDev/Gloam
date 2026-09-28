@@ -1,5 +1,5 @@
 import type { Room } from "@colyseus/sdk";
-import type { DmPromptView, HpFx, RequestCard } from "@gloam/shared/protocol";
+import type { DmPromptView, HpFx, HpPreviewRow, RequestCard } from "@gloam/shared/protocol";
 import { effectiveTokenState } from "@gloam/shared/rules";
 import { Table, type TableState } from "@gloam/shared/state";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -182,6 +182,57 @@ describe("P7 — HP, conditions and death on the server (§8.11)", () => {
         { type: "fire", amount: 4 },
       ],
     });
+  });
+
+  it("the dialog's preview: the DM sees what it does and what follows; a player only their own creatures' numbers (§8.11, §13.4)", async () => {
+    const ogre = await npc("Ogre", 30, { resist: ["fire"] });
+    const rows = await rq<HpPreviewRow[]>(dm, "hp.preview", {
+      targets: [ogre],
+      kind: "damage",
+      parts: [
+        { amount: 20, type: "fire" },
+        { amount: 25, type: "bludgeoning" },
+      ],
+    });
+    expect(rows[0]).toMatchObject({
+      name: "Ogre",
+      before: { hp: 30, hpMax: 30, hpTemp: 0 },
+      after: { hp: 0, hpTemp: 0 },
+      damage: { total: 35, overflow: 5 },
+      now: [],
+      asked: ["npcAtZero"],
+    });
+    expect(rows[0]?.damage?.parts[0]).toMatchObject({
+      type: "fire",
+      amount: 20,
+      applied: 10,
+      steps: ["resisted"],
+    });
+    // Nothing changed.
+    expect(state(ogre).stats.hp).toBe(30);
+    // Bob aims at it: named, no numbers, and his damage would go to the DM.
+    const his = await rq<HpPreviewRow[]>(bob().room, "hp.preview", {
+      targets: [ogre],
+      kind: "damage",
+      amount: 5,
+    });
+    expect(his).toEqual([{ tokenId: ogre, name: "Ogre", hidden: true, viaDm: true }]);
+    // Anna, her own character: the numbers.
+    await reset();
+    const hers = await rq<HpPreviewRow[]>(anna().room, "hp.preview", {
+      targets: [ilse],
+      kind: "heal",
+      amount: 5,
+    });
+    expect(hers[0]).toMatchObject({ before: { hp: 20, hpMax: 20 }, after: { hp: 20 } });
+    // Temporary HP on top of some: the choice, the higher first.
+    await hpApply(dm, { targets: [ilse], kind: "temp", amount: 4 });
+    const temp = await rq<HpPreviewRow[]>(anna().room, "hp.preview", {
+      targets: [ilse],
+      kind: "temp",
+      amount: 7,
+    });
+    expect(temp[0]?.temp).toEqual({ current: 4, incoming: 7, best: 7 });
   });
 
   it("temporary HP don't stack: the higher by default, or keep / replace (AC-HP-03)", async () => {
@@ -463,6 +514,81 @@ describe("P7 — HP, conditions and death on the server (§8.11)", () => {
     expect(state(kobold).stats.hp).toBe(5);
     await waitFor(() => prompts().find((x) => x.id === p.id)?.status === "skipped");
     await expect(rq(dm, "prompt.resolve", { promptId: p.id, apply: true })).rejects.toThrow(/CONFLICT/);
+  });
+
+  it("rolls: a condition's advantage or disadvantage comes on the card, applied unless the roller sets it aside; Exhaustion takes 2 × its level off D20 Tests (AC-DICE-11, AC-HP-05)", async () => {
+    await reset();
+    await statusChange(dm, { tokenId: ilse, add: [{ id: "poisoned" }] });
+    const n = cardsOf("Anna").length;
+    const { requestId } = await rq<{ requestId: string }>(dm, "request.create", {
+      targets: [ilse],
+      type: "check",
+      skill: "perception",
+    });
+    const card = (await waitFor(() =>
+      cardsOf("Anna")
+        .slice(n)
+        .find((c) => c.requestId === requestId),
+    )) as RequestCard;
+    expect(card.hint).toEqual({ mode: "dis", from: ["Poisoned"] });
+    // Rolled as hinted: the formula carries the disadvantage.
+    const rolls = () =>
+      anna()
+        .msgs.filter((m) => m.type === "roll.result")
+        .map((m) => m.payload as { formula: string });
+    const before = rolls().length;
+    await rq(anna().room, "request.respond", { requestId, target: ilse, action: "roll" });
+    expect((await waitFor(() => rolls()[before]))?.formula).toMatch(/ dis$/);
+    // Set aside: a plain roll.
+    const { requestId: r2 } = await rq<{ requestId: string }>(dm, "request.create", {
+      targets: [ilse],
+      type: "check",
+      skill: "perception",
+    });
+    await waitFor(() => cardsOf("Anna").find((c) => c.requestId === r2));
+    await rq(anna().room, "request.respond", {
+      requestId: r2,
+      target: ilse,
+      action: "roll",
+      ignoreHints: true,
+    });
+    expect((await waitFor(() => rolls()[before + 1]))?.formula).not.toMatch(/dis/);
+    // Paralyzed: Dexterity saves fail outright (the card says so).
+    await statusChange(dm, { tokenId: ilse, remove: ["poisoned"], add: [{ id: "paralyzed" }] });
+    const { requestId: r3 } = await rq<{ requestId: string }>(dm, "request.create", {
+      targets: [ilse],
+      type: "save",
+      ability: "dex",
+    });
+    const c3 = (await waitFor(() => cardsOf("Anna").find((c) => c.requestId === r3))) as RequestCard;
+    expect(c3.autoFail).toEqual(["Paralyzed"]);
+    await statusChange(dm, { tokenId: ilse, remove: ["paralyzed"] });
+    // Exhaustion 2: −4 on every D20 Test, whether asked for or rolled from the sheet.
+    await statusChange(dm, { tokenId: ilse, exhaustion: 2 });
+    const { requestId: r4 } = await rq<{ requestId: string }>(dm, "request.create", {
+      targets: [ilse],
+      type: "save",
+      ability: "con",
+    });
+    const c4 = (await waitFor(() => cardsOf("Anna").find((c) => c.requestId === r4))) as RequestCard;
+    expect(c4.formula).toMatch(/ - 4$/);
+    await sleep(250);
+    await rq(anna().room, "dice.roll", {
+      formula: "1d20 + @dex",
+      label: "Dexterity check",
+      context: { actorId: ilseActor },
+    });
+    expect((await waitFor(() => rolls().at(-1)?.formula.endsWith("- 4") && rolls().at(-1)))?.formula).toMatch(
+      /^1d20 \+ @dex - 4$/,
+    );
+    // Damage isn't a D20 Test: untouched.
+    await rq(anna().room, "dice.roll", { formula: "2d6 + 3", context: { actorId: ilseActor } });
+    expect((await waitFor(() => rolls().at(-1)?.formula === "2d6 + 3" && rolls().at(-1)))?.formula).toBe(
+      "2d6 + 3",
+    );
+    // Its speed shows 10 ft less (−5 ft a level).
+    await waitFor(() => room().state.tokens.get(ilse)?.own?.budgetFt === 20);
+    await statusChange(dm, { tokenId: ilse, exhaustion: 0 });
   });
 
   it("death saves outside combat: the DM asks, the owner rolls — a success, a 1 is two failures, a 20 is back on her feet (§8.11)", async () => {

@@ -9,6 +9,7 @@ import { setTokenPositionLookup } from "../CameraRig.tsx";
 import { again } from "../frames.ts";
 import { ghostTokens, onGhosts } from "../move/anims.ts";
 import { layoutOverlays } from "./declutter.ts";
+import { HpFxLayer } from "./hpFx.tsx";
 import { TokenObject } from "./TokenObject.tsx";
 
 /**
@@ -62,22 +63,26 @@ export function TokensLayer() {
   });
 
   return (
-    <group
-      name="tokens"
-      ref={(g) => {
-        boardApi.tokens = g;
-      }}
-    >
-      {[...tokens.values()]
-        .filter((t) => !as || as.has(t.id))
-        .map((t) => (
-          <TokenObject key={t.id} token={t} viewer={viewer} lift={stack.get(t.id) ?? 0} />
-        ))}
-      {[...ghosts.values()]
-        .filter((g) => !tokens.has(g.id))
-        .map((g) => (
-          <TokenObject key={`ghost:${g.id}`} token={g} viewer={viewer} />
-        ))}
-    </group>
+    <>
+      {/* HP feedback (AC-HP-11): the floating numbers, outside the tokens (never picked, never measured with them). */}
+      <HpFxLayer />
+      <group
+        name="tokens"
+        ref={(g) => {
+          boardApi.tokens = g;
+        }}
+      >
+        {[...tokens.values()]
+          .filter((t) => !as || as.has(t.id))
+          .map((t) => (
+            <TokenObject key={t.id} token={t} viewer={viewer} lift={stack.get(t.id) ?? 0} />
+          ))}
+        {[...ghosts.values()]
+          .filter((g) => !tokens.has(g.id))
+          .map((g) => (
+            <TokenObject key={`ghost:${g.id}`} token={g} viewer={viewer} />
+          ))}
+      </group>
+    </>
   );
 }

@@ -167,7 +167,13 @@ export function OverviewTab({ ctx }: { ctx: SheetCtx }) {
 
       <SectionTitle>Death saves</SectionTitle>
       <div className="flex flex-wrap items-center gap-3" data-testid="death-saves">
-        <Rollable actor={ctx.actor} formula="1d20" label="Death save" className="caps text-12">
+        <Rollable
+          actor={ctx.actor}
+          formula="1d20"
+          label="Death save"
+          className="caps text-12"
+          test={{ kind: "save" }}
+        >
           Roll
         </Rollable>
         <span className="inline-flex items-center gap-1">

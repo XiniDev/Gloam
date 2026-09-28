@@ -1,5 +1,5 @@
 import type { RequestCard } from "@gloam/shared/protocol";
-import { ChevronUp, SkipForward, X } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronUp, Heart, SkipForward, Skull, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { create } from "zustand";
 import { audio } from "../audio/engine.ts";
@@ -18,13 +18,21 @@ function Row({ c, onAnswered }: { c: RequestCard; onAnswered: () => void }) {
   const [manual, setManual] = useState(false);
   const [total, setTotal] = useState("");
   const [busy, setBusy] = useState<"roll" | "manual" | "skip" | null>(null);
+  // Its conditions' advantage or disadvantage: on unless the roller sets it aside (AC-DICE-11).
+  const [useHint, setUseHint] = useState(true);
   const answer = async (action: "roll" | "manual" | "skip") => {
     const n = Number(total);
     if (action === "manual" && (!total.trim() || !Number.isInteger(n))) return;
     setBusy(action);
     if (action === "roll") makeRoomForDice();
     try {
-      await respondRequest(c.requestId, c.targetId, action, action === "manual" ? n : undefined);
+      await respondRequest(
+        c.requestId,
+        c.targetId,
+        action,
+        action === "manual" ? n : undefined,
+        Boolean(c.hint) && !useHint,
+      );
       setManual(false);
     } catch (e) {
       toast.danger("Couldn't answer that", (e as Error).message);
@@ -58,6 +66,33 @@ function Row({ c, onAnswered }: { c: RequestCard; onAnswered: () => void }) {
         <span className="min-w-0 truncate text-14 font-bold text-bone">{c.targetName}</span>
         <span className="mono shrink-0 rounded-chip bg-ink-950/70 px-2 py-0.5 text-bone">{c.formula}</span>
       </div>
+      {c.deathSaves ? <DeathSavePips {...c.deathSaves} /> : null}
+      {pending && c.hint ? (
+        <div className="flex flex-wrap items-center gap-1.5 text-13" data-testid="roll-hint">
+          <span
+            className={`inline-flex items-center gap-1 rounded-chip border px-2 py-0.5 ${
+              useHint ? "border-brass/60 text-bone" : "border-line text-muted line-through"
+            }`}
+          >
+            {c.hint.mode === "adv" ? <ArrowUp size={13} aria-hidden /> : <ArrowDown size={13} aria-hidden />}
+            {c.hint.mode === "adv" ? "Advantage" : "Disadvantage"}
+            <span className="text-muted">· {c.hint.from.join(", ")}</span>
+          </span>
+          <button
+            type="button"
+            aria-pressed={!useHint}
+            onClick={() => setUseHint((u) => !u)}
+            className="min-h-[var(--touch-min)] px-1.5 text-12 text-brass underline decoration-dotted underline-offset-2 hover:text-brass-bright"
+          >
+            {useHint ? "Set aside" : "Use it"}
+          </button>
+        </div>
+      ) : null}
+      {pending && c.autoFail?.length ? (
+        <p className="text-12 text-danger-text">
+          Fails outright — {c.autoFail.join(", ")} (the DM may still let it roll).
+        </p>
+      ) : null}
       {pending ? (
         manual ? (
           <form
@@ -218,6 +253,39 @@ function Card({ rows, compact }: { rows: RequestCard[]; compact: boolean }) {
         ))}
       </ul>
     </li>
+  );
+}
+
+/** A death saving throw's tally so far: three hearts for successes, three skulls for failures (§8.11). */
+function DeathSavePips({ successes, failures }: { successes: number; failures: number }) {
+  return (
+    <div
+      className="flex items-center gap-3 text-13"
+      role="img"
+      aria-label={`${successes} of 3 successes, ${failures} of 3 failures`}
+      data-testid="death-save-pips"
+    >
+      <span className="flex items-center gap-0.5">
+        {[0, 1, 2].map((i) => (
+          <Heart
+            key={i}
+            size={15}
+            className={i < successes ? "fill-current text-success" : "text-fog-dim"}
+            aria-hidden
+          />
+        ))}
+      </span>
+      <span className="flex items-center gap-0.5">
+        {[0, 1, 2].map((i) => (
+          <Skull
+            key={i}
+            size={15}
+            className={i < failures ? "text-danger-text" : "text-fog-dim"}
+            aria-hidden
+          />
+        ))}
+      </span>
+    </div>
   );
 }
 

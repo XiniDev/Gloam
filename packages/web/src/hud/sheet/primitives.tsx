@@ -2,7 +2,7 @@ import type { ActorView } from "@gloam/shared/protocol";
 import { Lock, Minus, Pencil, Plus, RotateCcw } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { D20Icon } from "../../icons/dice.tsx";
-import { modeOf, type RollMode } from "./rollMode.ts";
+import { hintFor, modeOf, type RollMode, type RollTest, testOf } from "./rollMode.ts";
 import { rollFromSheet, rollPhysically } from "./sheetActions.ts";
 
 /**
@@ -23,6 +23,7 @@ export function Rollable({
   children,
   className = "",
   title,
+  test,
 }: {
   actor: ActorView;
   formula: string;
@@ -30,12 +31,17 @@ export function Rollable({
   children: ReactNode;
   className?: string;
   title?: string;
+  /** What kind of D20 Test it is (else read from the formula): its character's conditions give it a hint. */
+  test?: RollTest | null;
 }) {
   const [menu, setMenu] = useState(false);
   const timer = useRef<number | null>(null);
   const pressed = useRef(false);
   const touch = useRef(false);
   const ref = useRef<HTMLSpanElement>(null);
+  // Its conditions' advantage or disadvantage (AC-DICE-11): a click rolls with it; Alt / Ctrl choose, and the menu
+  // (right-click, or a long press) sets it aside with "Normal".
+  const hint = hintFor(actor.sheet.core.conditions, test === undefined ? testOf(formula) : test);
   const roll = (mode: RollMode) => void rollFromSheet(actor, formula, label, mode);
   useEffect(() => {
     if (!menu) return;
@@ -52,14 +58,19 @@ export function Rollable({
         data-testid="rollable"
         data-formula={formula}
         aria-label={`Roll ${label}`}
-        title={title ?? `${label}: ${formula} (Alt: advantage, Ctrl: disadvantage)`}
+        title={
+          title ??
+          `${label}: ${formula}${hint.mode === "normal" ? "" : ` — ${hint.mode === "adv" ? "advantage" : "disadvantage"} (${hint.from.join(", ")})`} (Alt: advantage, Ctrl: disadvantage, right-click: more)`
+        }
+        data-hint={hint.mode === "normal" ? undefined : hint.mode}
         className={`group inline-flex min-h-[var(--touch-min)] min-w-[var(--touch-min)] items-center justify-center gap-1 rounded-chip px-1 transition-colors duration-[var(--dur-fast)] hover:bg-parchment-deep hover:text-wax focus-visible:outline-2 focus-visible:outline-wax ${className}`}
         onClick={(e) => {
           if (pressed.current) {
             pressed.current = false;
             return;
           }
-          roll(modeOf(e));
+          const chosen = modeOf(e);
+          roll(chosen === "normal" ? hint.mode : chosen);
         }}
         onPointerDown={(e) => {
           // A new press: a long press before it may have ended without a click (Android sends none).
@@ -78,8 +89,7 @@ export function Rollable({
           if (timer.current) window.clearTimeout(timer.current);
         }}
         onContextMenu={(e) => {
-          // Android reads a long press as a context menu: this one, not the browser's.
-          if (!touch.current && !menu) return;
+          // A right-click, or Android's long press: this menu, not the browser's.
           e.preventDefault();
           if (timer.current) window.clearTimeout(timer.current);
           pressed.current = true;
@@ -87,6 +97,14 @@ export function Rollable({
         }}
       >
         {children}
+        {hint.mode !== "normal" ? (
+          <span
+            aria-hidden
+            className={`-ml-0.5 text-12 leading-none ${hint.mode === "adv" ? "text-success" : "text-wax"}`}
+          >
+            {hint.mode === "adv" ? "▲" : "▼"}
+          </span>
+        ) : null}
       </button>
       {menu ? (
         <span
@@ -96,7 +114,10 @@ export function Rollable({
         >
           {(
             [
-              ["Normal", () => roll("normal")],
+              [
+                hint.mode === "normal" ? "Normal" : `Normal (set aside ${hint.from.join(", ")})`,
+                () => roll("normal"),
+              ],
               ["Advantage", () => roll("adv")],
               ["Disadvantage", () => roll("dis")],
               ["Physical…", () => rollPhysically(formula, label)],
@@ -127,17 +148,20 @@ export function RollButton({
   formula,
   label,
   text,
+  test,
 }: {
   actor: ActorView;
   formula: string;
   label: string;
   text: ReactNode;
+  test?: RollTest | null;
 }) {
   return (
     <Rollable
       actor={actor}
       formula={formula}
       label={label}
+      {...(test !== undefined ? { test } : {})}
       className="min-h-8 border border-parchment-edge px-2 text-13 font-bold text-paper-ink"
     >
       <D20Icon size={14} />
