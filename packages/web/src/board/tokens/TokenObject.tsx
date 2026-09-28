@@ -133,6 +133,8 @@ export const overlayFade = new Map<string, { far: number; clear: number; target:
 const PLATE_PX = 20;
 const PLATE_PX_MIN = 18.5;
 const PLATE_PX_MAX = 26;
+/** A phone's plates don't grow close up: the screen has no room for a larger plate (§8.21 phone < 640 px). */
+const PLATE_PX_MAX_PHONE = 21;
 const NAME_SIZE = 0.7;
 const NUM_SIZE = 0.66;
 const WORD_SIZE = 0.66;
@@ -985,7 +987,7 @@ function Overlay({
     // The plate keeps its type readable: about 20 px per plate unit, a little larger up close and smaller far away,
     // never below the 12-px minimum for its smallest text (SPEC §27.3); very far away it fades out instead.
     const pxPerPlate = Math.min(
-      PLATE_PX_MAX,
+      state.size.width < 640 ? PLATE_PX_MAX_PHONE : PLATE_PX_MAX,
       Math.max(PLATE_PX_MIN, PLATE_PX * (70 / Math.max(1, d)) ** 0.3),
     );
     const plate = pxPerPlate / pxPerWorld;
