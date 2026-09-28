@@ -1,6 +1,17 @@
 import { describe, expect, it } from "vitest";
 import type { P, Seg } from "./index.ts";
-import { BOUND_SIDES, SegmentSet, visContains, visibilityPolygon, visRing } from "./visibility.ts";
+import {
+  BOUND_SIDES,
+  inCone,
+  SegmentSet,
+  type VisPoly,
+  visContains,
+  visibilityPolygon,
+  visNear,
+  visOverlap,
+  visRing,
+  type Wedge,
+} from "./visibility.ts";
 
 /** Deterministic PRNG (mulberry32). */
 function rng(seed: number) {
@@ -264,5 +275,161 @@ describe("visibilityPolygon (SPEC §15.2)", () => {
     for (let k = 0; k < 200; k++) visibilityPolygon({ x: r() * 200, y: r() * 200 }, set, 283);
     const per = (Date.now() - t0) / 200;
     expect(per).toBeLessThan(5);
+  });
+});
+
+/** A point inside both regions (and the cone) with room round it: a witness that they overlap in area. */
+function robustlyInBoth(a: VisPoly, b: VisPoly, x: number, y: number, cone?: Wedge | null): boolean {
+  for (const [dx, dy] of [
+    [0, 0],
+    [0.02, 0],
+    [-0.02, 0],
+    [0, 0.02],
+    [0, -0.02],
+  ] as const) {
+    const px = x + dx;
+    const py = y + dy;
+    if (!visContains(a, px, py) || !visContains(b, px, py)) return false;
+    if (cone && !inCone(px - a.eye.x, py - a.eye.y, cone.dir, cone.half - 0.01)) return false;
+  }
+  return true;
+}
+
+describe("regions overlapping (visOverlap: whose light reaches whose sight, SPEC §13.4)", () => {
+  it("regions on the two sides of one wall touch along it but never overlap — straight or slanted, with clutter", () => {
+    const r = rng(77);
+    let touching = 0;
+    for (let i = 0; i < 400; i++) {
+      const mx = 20 + r() * 60;
+      const my = 20 + r() * 60;
+      const a = r() * Math.PI;
+      const ux = Math.cos(a);
+      const uy = Math.sin(a);
+      const walls: Seg[] = [seg(mx - ux * 400, my - uy * 400, mx + ux * 400, my + uy * 400)];
+      for (let k = 0; k < 6; k++) {
+        const x = r() * 100;
+        const y = r() * 100;
+        walls.push(seg(x, y, x + (r() - 0.5) * 20, y + (r() - 0.5) * 20));
+      }
+      const set = new SegmentSet(walls);
+      // Eyes either side of the wall (the normal is (−uy, ux)).
+      const d1 = 0.5 + r() * 30;
+      const d2 = 0.5 + r() * 30;
+      const t1 = (r() - 0.5) * 40;
+      const t2 = (r() - 0.5) * 40;
+      const A = visibilityPolygon(
+        { x: mx + ux * t1 - uy * d1, y: my + uy * t1 + ux * d1 },
+        set,
+        5 + r() * 80,
+      );
+      const B = visibilityPolygon(
+        { x: mx + ux * t2 + uy * d2, y: my + uy * t2 - ux * d2 },
+        set,
+        5 + r() * 80,
+      );
+      expect(visOverlap(A, B)).toBe(false);
+      expect(visOverlap(B, A)).toBe(false);
+      // (They do meet the wall from both sides, most of the time: the case is the real one.)
+      if (visNear(A, mx - ux * 400, my - uy * 400, mx + ux * 400, my + uy * 400, 1e-3)) touching++;
+    }
+    expect(touching).toBeGreaterThan(300);
+  });
+
+  it("a glow seen only through a slit, on a far wall, overlaps — though no vertex of the lit area lies in the sight and the light itself is out of it", () => {
+    // A far wall (y = 0); a wall at y = 40 with a 0.4-ft slit at x = 50; the viewer beyond it at (50, 60); a light
+    // off to the side at (70, 5), lighting 29 ft.
+    const walls = [seg(0, 0, 100, 0), seg(0, 40, 49.8, 40), seg(50.2, 40, 100, 40)];
+    const set = new SegmentSet(walls);
+    const sight = visibilityPolygon({ x: 50, y: 60 }, set, 200);
+    const lit = visibilityPolygon({ x: 70, y: 5 }, set, 29);
+    // What sampling the lit outline (pulled 5 % toward the light) would test — all of it outside the sight.
+    const ring = visRing(lit);
+    let sampled = visContains(sight, 70, 5);
+    for (let k = 0; k < ring.length; k += 2) {
+      const x = 70 + ((ring[k] as number) - 70) * 0.95;
+      const y = 5 + ((ring[k + 1] as number) - 5) * 0.95;
+      if (visContains(sight, x, y)) sampled = true;
+    }
+    expect(sampled).toBe(false);
+    expect(robustlyInBoth(lit, sight, 50, 10)).toBe(true);
+    expect(visOverlap(lit, sight)).toBe(true);
+    expect(visOverlap(sight, lit)).toBe(true);
+  });
+
+  it("a cone light: only the part of its lit area in its cone counts, including cones wider than a half-turn", () => {
+    const walls = [seg(0, 0, 100, 0), seg(0, 40, 49.8, 40), seg(50.2, 40, 100, 40)];
+    const set = new SegmentSet(walls);
+    const sight = visibilityPolygon({ x: 50, y: 60 }, set, 200);
+    const lit = visibilityPolygon({ x: 70, y: 5 }, set, 29);
+    const deg = Math.PI / 180;
+    // Brute force over the slit's strip: a robust common point inside the cone.
+    const brute = (cone: Wedge) => {
+      for (let y = 0.05; y < 40; y += 0.1)
+        for (let x = 49; x <= 51; x += 0.05) if (robustlyInBoth(lit, sight, x, y, cone)) return true;
+      return false;
+    };
+    const cases: [Wedge, boolean][] = [
+      [{ dir: Math.PI, half: 30 * deg }, true], // facing the slit's strip (west)
+      [{ dir: 0, half: 30 * deg }, false], // facing away (east)
+      [{ dir: Math.PI / 2, half: 30 * deg }, false], // facing south, past the strip
+      [{ dir: 0, half: 166 * deg }, true], // 332° about east: reaches the strip's north-west part
+      [{ dir: 0, half: 126 * deg }, false], // 252° about east: short of it
+      [{ dir: -Math.PI + 0.1, half: 20 * deg }, true], // across the ±π seam
+    ];
+    for (const [cone, want] of cases) {
+      expect([cone, brute(cone)]).toEqual([cone, want]);
+      expect([cone, visOverlap(lit, sight, cone)]).toEqual([cone, want]);
+    }
+  });
+
+  it("finds every overlap a sampled search finds, over 600 random pairs of regions (with and without cones)", () => {
+    let witnessed = 0;
+    let coneWitnessed = 0;
+    let checked = 0;
+    for (let i = 0; i < 600; i++) {
+      const s = scene(i);
+      const set = new SegmentSet(s.walls);
+      const r = rng(4000 + i);
+      const a = visibilityPolygon(s.eye, set, s.R);
+      const b = visibilityPolygon(
+        { x: s.eye.x + (r() - 0.5) * 80, y: s.eye.y + (r() - 0.5) * 80 },
+        set,
+        5 + r() * 100,
+      );
+      const cone: Wedge = { dir: (r() - 0.5) * 2 * Math.PI, half: 0.1 + r() * 3 };
+      const got = visOverlap(a, b);
+      const gotCone = visOverlap(a, b, cone);
+      if (gotCone) expect(got).toBe(true); // a cut region overlaps no more than the whole
+      let w = false;
+      let wc = false;
+      for (let k = 0; k < 3000 && !(w && wc); k++) {
+        const x = b.eye.x + (r() - 0.5) * 2 * b.radius;
+        const y = b.eye.y + (r() - 0.5) * 2 * b.radius;
+        if (!w && robustlyInBoth(a, b, x, y)) w = true;
+        if (!wc && robustlyInBoth(a, b, x, y, cone)) wc = true;
+      }
+      checked++;
+      if (w) {
+        witnessed++;
+        expect([i, got]).toEqual([i, true]);
+      }
+      if (wc) {
+        coneWitnessed++;
+        expect([i, gotCone]).toEqual([i, true]);
+      }
+    }
+    expect(checked).toBe(600);
+    expect(witnessed).toBeGreaterThan(200);
+    expect(coneWitnessed).toBeGreaterThan(100);
+  });
+
+  it("visNear: a segment crossing, touching or within the margin of a region is near it; one beyond is not", () => {
+    const set = new SegmentSet([seg(0, 0, 100, 0)]);
+    const v = visibilityPolygon({ x: 50, y: 10 }, set, 20);
+    expect(visNear(v, 40, 5, 60, 5, 1e-3)).toBe(true); // inside
+    expect(visNear(v, 50, -5, 50, 5, 1e-3)).toBe(true); // crossing the wall into it
+    expect(visNear(v, 40, -0.0005, 60, -0.0005, 1e-3)).toBe(true); // within the margin, beyond the wall
+    expect(visNear(v, 40, -1, 60, -1, 1e-3)).toBe(false); // behind the wall
+    expect(visNear(v, 90, 10, 95, 10, 1e-3)).toBe(false); // beyond the radius
   });
 });

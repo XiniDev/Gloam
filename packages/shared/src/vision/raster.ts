@@ -5,7 +5,7 @@
 import type { VisPoly } from "../geometry/index.ts";
 import { visRing } from "../geometry/index.ts";
 import type { Bounds } from "../schemas/entities.ts";
-import { DARK, type LightLevel, type VisionWorld } from "./world.ts";
+import { BRIGHT, DARK, type LightLevel, type VisionWorld } from "./world.ts";
 
 /** Largest raster side in cells (a 4096-ft scene at 1 ft). */
 export const RASTER_MAX_SIDE = 4096;
@@ -93,12 +93,14 @@ export class Raster {
 
 /**
  * Calls fn for every cell whose centre lies inside the ring (even–odd scanline fill; a star-shaped visibility ring is
- * simple, so this is its inside). `ring` is [x0, y0, x1, y1, …], implicitly closed.
+ * simple, so this is its inside), within `clip` if given. `ring` is [x0, y0, x1, y1, …], implicitly closed. fn
+ * returning true stops the fill.
  */
 export function fillRing(
   r: Raster,
   ring: ArrayLike<number>,
-  fn: (k: number, cx: number, cy: number) => void,
+  fn: (k: number, cx: number, cy: number) => unknown,
+  clip?: CellRect,
 ): void {
   const n = ring.length / 2;
   if (n < 3) return;
@@ -109,41 +111,124 @@ export function fillRing(
     if (y < minY) minY = y;
     if (y > maxY) maxY = y;
   }
-  const j0 = Math.max(0, Math.ceil((minY - r.y0) / r.cell - 0.5));
-  const j1 = Math.min(r.h - 1, Math.floor((maxY - r.y0) / r.cell - 0.5));
+  const j0 = Math.max(clip ? clip.y : 0, Math.ceil((minY - r.y0) / r.cell - 0.5));
+  const j1 = Math.min(clip ? clip.y + clip.h - 1 : r.h - 1, Math.floor((maxY - r.y0) / r.cell - 0.5));
   if (j1 < j0) return;
-  const rows: number[][] = Array.from({ length: j1 - j0 + 1 }, () => []);
+  const ci0 = clip ? clip.x : 0;
+  const ci1 = clip ? clip.x + clip.w - 1 : r.w - 1;
+  // Crossings per row, laid out flat (counts, then offsets): no per-row arrays. The shared scratch is this call's
+  // unless fn fills again inside it.
+  const own = fillDepth++ > 0;
+  try {
+    fillRows(r, ring, n, j0, j1, ci0, ci1, own, fn);
+  } finally {
+    fillDepth--;
+  }
+}
+
+function fillRows(
+  r: Raster,
+  ring: ArrayLike<number>,
+  n: number,
+  j0: number,
+  j1: number,
+  ci0: number,
+  ci1: number,
+  own: boolean,
+  fn: (k: number, cx: number, cy: number) => unknown,
+): void {
+  const rows = j1 - j0 + 1;
+  const span = own ? new Int32Array(2) : SPAN;
+  const rowY = (j: number) => r.y0 + (j + 0.5) * r.cell;
+  // Each edge's rows: those whose centre y is in [lo, hi) (half-open: a vertex is counted once).
+  const edgeRows = (k: number): number => {
+    const ay = ring[k * 2 + 1] as number;
+    const by = ring[((k + 1) % n) * 2 + 1] as number;
+    if (ay === by) return -1;
+    const lo = Math.min(ay, by);
+    const hi = Math.max(ay, by);
+    let ja = Math.max(j0, Math.ceil((lo - r.y0) / r.cell - 0.5));
+    if (ja <= j1 && rowY(ja) < lo) ja++;
+    let jb = Math.min(j1, Math.ceil((hi - r.y0) / r.cell - 0.5) - 1);
+    if (jb + 1 <= j1 && rowY(jb + 1) < hi) jb++;
+    while (jb >= ja && rowY(jb) >= hi) jb--;
+    span[0] = ja;
+    span[1] = jb;
+    return jb >= ja ? jb - ja + 1 : 0;
+  };
+  const start = own ? new Int32Array(rows + 1) : scratchInt(rows + 1);
+  start.fill(0, 0, rows + 1);
+  for (let k = 0; k < n; k++)
+    if (edgeRows(k) > 0)
+      for (let j = span[0] as number; j <= (span[1] as number); j++)
+        start[j - j0 + 1] = (start[j - j0 + 1] as number) + 1;
+  for (let q = 0; q < rows; q++) start[q + 1] = (start[q + 1] as number) + (start[q] as number);
+  const total = start[rows] as number;
+  const xs = own ? new Float64Array(total) : scratchX(total);
+  const fillAt = own ? new Int32Array(rows) : scratchFill(rows);
+  fillAt.set(start.subarray(0, rows));
   for (let k = 0; k < n; k++) {
+    if (edgeRows(k) <= 0) continue;
     const ax = ring[k * 2] as number;
     const ay = ring[k * 2 + 1] as number;
     const bx = ring[((k + 1) % n) * 2] as number;
     const by = ring[((k + 1) % n) * 2 + 1] as number;
-    if (ay === by) continue;
-    const lo = Math.min(ay, by);
-    const hi = Math.max(ay, by);
-    // Rows whose centre y is in [lo, hi) (half-open: a vertex is counted once).
-    const ja = Math.max(j0, Math.ceil((lo - r.y0) / r.cell - 0.5));
-    for (let j = ja; j <= j1; j++) {
-      const cy = r.y0 + (j + 0.5) * r.cell;
-      if (cy >= hi) break;
-      if (cy < lo) continue;
-      (rows[j - j0] as number[]).push(ax + ((cy - ay) * (bx - ax)) / (by - ay));
+    for (let j = span[0] as number; j <= (span[1] as number); j++) {
+      const cy = rowY(j);
+      const at = fillAt[j - j0] as number;
+      xs[at] = ax + ((cy - ay) * (bx - ax)) / (by - ay);
+      fillAt[j - j0] = at + 1;
     }
   }
   for (let j = j0; j <= j1; j++) {
-    const xs = (rows[j - j0] as number[]).sort((a, b) => a - b);
-    const cy = r.y0 + (j + 0.5) * r.cell;
-    for (let q = 0; q + 1 < xs.length; q += 2) {
-      const i0 = Math.max(0, Math.ceil(((xs[q] as number) - r.x0) / r.cell - 0.5));
-      const i1 = Math.min(r.w - 1, Math.floor(((xs[q + 1] as number) - r.x0) / r.cell - 0.5));
-      for (let i = i0; i <= i1; i++) fn(j * r.w + i, r.x0 + (i + 0.5) * r.cell, cy);
+    const a0 = start[j - j0] as number;
+    const a1 = start[j - j0 + 1] as number;
+    // Insertion sort: a row crosses a handful of edges.
+    for (let q = a0 + 1; q < a1; q++) {
+      const v = xs[q] as number;
+      let t = q - 1;
+      while (t >= a0 && (xs[t] as number) > v) {
+        xs[t + 1] = xs[t] as number;
+        t--;
+      }
+      xs[t + 1] = v;
+    }
+    const cy = rowY(j);
+    for (let q = a0; q + 1 < a1; q += 2) {
+      const i0 = Math.max(ci0, Math.ceil(((xs[q] as number) - r.x0) / r.cell - 0.5));
+      const i1 = Math.min(ci1, Math.floor(((xs[q + 1] as number) - r.x0) / r.cell - 0.5));
+      for (let i = i0; i <= i1; i++) if (fn(j * r.w + i, r.x0 + (i + 0.5) * r.cell, cy) === true) return;
     }
   }
 }
 
+// Scratch buffers for the outermost fill.
+let fillDepth = 0;
+const SPAN = new Int32Array(2);
+let startBuf = new Int32Array(256);
+let fillBuf = new Int32Array(256);
+let xBuf = new Float64Array(1024);
+function scratchInt(n: number): Int32Array {
+  if (startBuf.length < n) startBuf = new Int32Array(n * 2);
+  return startBuf;
+}
+function scratchFill(n: number): Int32Array {
+  if (fillBuf.length < n) fillBuf = new Int32Array(n * 2);
+  return fillBuf;
+}
+function scratchX(n: number): Float64Array {
+  if (xBuf.length < n) xBuf = new Float64Array(n * 2);
+  return xBuf;
+}
+
 /** Fills a visibility polygon's cells. */
-export function fillVis(r: Raster, v: VisPoly, fn: (k: number, cx: number, cy: number) => void): void {
-  fillRing(r, visRing(v), fn);
+export function fillVis(
+  r: Raster,
+  v: VisPoly,
+  fn: (k: number, cx: number, cy: number) => unknown,
+  clip?: CellRect,
+): void {
+  fillRing(r, visRing(v), fn, clip);
 }
 
 /** Run lengths of a 0/1 cell array, starting with a run of zeros (possibly empty). */
@@ -199,12 +284,33 @@ export class LightRaster {
 
   /** The cells whose centres lie in a world rectangle. */
   refresh(world: VisionWorld, x0: number, y0: number, x1: number, y1: number): void {
+    // The ambient (or darkness) everywhere, then each light's lit area by scanline — no polygon test per cell.
     const r = this.raster;
     const c = r.cellsIn(x0, y0, x1, y1);
+    if (!c.w || !c.h) return;
+    const dark = world.obscurers.some((o) => o.kind === "magicalDarkness");
     for (let j = c.y; j < c.y + c.h; j++) {
       const cy = r.y0 + (j + 0.5) * r.cell;
       for (let i = c.x; i < c.x + c.w; i++)
-        r.data[j * r.w + i] = world.lightLevel(r.x0 + (i + 0.5) * r.cell, cy);
+        r.data[j * r.w + i] =
+          dark && world.inMagicalDarkness(r.x0 + (i + 0.5) * r.cell, cy) ? DARK : world.ambient;
+    }
+    if (world.ambient === BRIGHT && !dark) return;
+    for (const l of world.lights) {
+      const reach = l.bright + l.dim;
+      if (l.x + reach < x0 || l.x - reach > x1 || l.y + reach < y0 || l.y - reach > y1) continue;
+      fillVis(
+        r,
+        world.litOf(l),
+        (k, cx, cy) => {
+          const cur = r.data[k] as LightLevel;
+          if (cur === BRIGHT) return;
+          if (dark && !(l.magical && l.pierceDarkness) && world.inMagicalDarkness(cx, cy)) return;
+          const lv = world.levelFrom(l, cx, cy);
+          if (lv > cur) r.data[k] = lv;
+        },
+        c,
+      );
     }
   }
 

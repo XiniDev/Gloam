@@ -7,14 +7,15 @@ import { type CellRect, fillVis, type LightRaster, type Raster } from "./raster.
 import { DARK, type VisionWorld } from "./world.ts";
 
 /**
- * Marks the cells the viewers see now in `out`. Returns the rectangle of cells newly marked, or null when nothing
- * new was seen.
+ * Marks the cells the viewers see now in `out` (only within `clips` when given: the viewers haven't moved and only the
+ * light there changed). Returns the rectangle of cells newly marked, or null when nothing new was seen.
  */
 export function markSeen(
   world: VisionWorld,
   light: LightRaster,
   viewers: readonly ViewerSight[],
   out: Raster,
+  clips?: readonly CellRect[],
 ): CellRect | null {
   let i0 = Number.POSITIVE_INFINITY;
   let j0 = Number.POSITIVE_INFINITY;
@@ -26,7 +27,7 @@ export function markSeen(
     const dark = Math.max(v.senses.darkvision, v.senses.truesight);
     const dark2 = dark * dark - v.elevation * v.elevation;
     const checkDarkness = world.obscurers.length > 0;
-    fillVis(out, vs.sight, (k, cx, cy) => {
+    const mark = (k: number, cx: number, cy: number) => {
       if (out.data[k]) return;
       let seen = light.levelAt(cx, cy) > DARK;
       if (!seen && dark > 0) {
@@ -45,7 +46,9 @@ export function markSeen(
       if (i > i1) i1 = i;
       if (j < j0) j0 = j;
       if (j > j1) j1 = j;
-    });
+    };
+    if (!clips) fillVis(out, vs.sight, mark);
+    else for (const c of clips) if (c.w > 0 && c.h > 0) fillVis(out, vs.sight, mark, c);
   }
   return i1 < 0 ? null : { x: i0, y: j0, w: i1 - i0 + 1, h: j1 - j0 + 1 };
 }

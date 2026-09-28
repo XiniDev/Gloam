@@ -69,6 +69,7 @@ import { WallToolLayer } from "./tools/WallToolLayer.tsx";
 import { useWallTool, wallsDoubleClick, wallsDown, wallsKey, wallsMove, wallsUp } from "./tools/walls.ts";
 import { ZoneToolLayer } from "./tools/ZoneToolLayer.tsx";
 import { zonesDoubleClick, zonesDown, zonesKey, zonesMove, zonesUp } from "./tools/zones.ts";
+import { fogUniforms } from "./vision/fogMaterial.ts";
 import { SensedLayer } from "./vision/SensedLayer.tsx";
 import { VisionLayer } from "./vision/VisionLayer.tsx";
 
@@ -504,7 +505,12 @@ export default function Board() {
         camera={{ fov: 40, near: 0.5, far: 4000, position: [30, 60, 90] }}
         frameloop="demand"
         style={{ background: C.ink950 }}
-        onCreated={({ gl }) => gl.setClearColor(C.ink950)}
+        onCreated={({ gl }) => {
+          gl.setClearColor(C.ink950);
+          // The fog composite's fixed noise goes up with the renderer, not with a scene's first frame (§24.7: nothing
+          // uploads or compiles mid-game).
+          gl.initTexture(fogUniforms.gNoise.value);
+        }}
       >
         <color attach="background" args={[C.ink950]} />
         <TierSetup />

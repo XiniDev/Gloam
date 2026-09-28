@@ -123,12 +123,20 @@ export const lightDelete: CommandDef<z.infer<typeof LightDelete>> = {
   },
 };
 
-/** The DM, or the owners of the token carrying the light. */
+/** The DM, or the owners of the token carrying the light while the DM hasn't locked it. */
 function mayHandle(ctx: CommandCtx, l: LightEntity): void {
   if (isDm(ctx.actor.role)) return;
   const carrier = l.tokenId ? ctx.model.get("token", l.tokenId) : undefined;
-  if (!carrier || !controlsToken(ctx.actor.role, ctx.actor.userId, carrier))
-    throw new GloamError("FORBIDDEN");
+  if (!carrier) throw new GloamError("FORBIDDEN");
+  mayCarry(ctx, carrier);
+}
+
+/** A token's owners handle its light like its other controls: not while the DM has locked it (as moving, raising
+ * and turning it). */
+function mayCarry(ctx: CommandCtx, t: TokenEntity): void {
+  if (isDm(ctx.actor.role)) return;
+  if (!controlsToken(ctx.actor.role, ctx.actor.userId, t)) throw new GloamError("FORBIDDEN");
+  if (t.locked) throw new GloamError("FORBIDDEN", "The DM locked this token.");
 }
 
 export const lightToggle: CommandDef<z.infer<typeof LightToggle>> = {
@@ -164,9 +172,7 @@ export const lightCarry: CommandDef<z.infer<typeof LightCarry>, { lightId: strin
   schema: LightCarry,
   undoable: true,
   authorize(ctx, p) {
-    const t = mustGet(ctx, "token", p.tokenId);
-    if (!isDm(ctx.actor.role) && !controlsToken(ctx.actor.role, ctx.actor.userId, t))
-      throw new GloamError("FORBIDDEN");
+    mayCarry(ctx, mustGet(ctx, "token", p.tokenId));
   },
   plan(ctx, p) {
     const t = mustGet(ctx, "token", p.tokenId);

@@ -34,7 +34,16 @@ export const useCameraMode = create<{ ortho: boolean }>(() => ({ ortho: false })
 const SPOTLIGHT_MS = 600;
 
 /** Diagnostics (test hooks): rig mounts, helper installs, and helper calls that found no controls. */
-export const rigDiag = { mounts: 0, unmounts: 0, helpers: 0, noControls: [] as string[] };
+export const rigDiag = {
+  mounts: 0,
+  unmounts: 0,
+  helpers: 0,
+  noControls: [] as string[],
+  /** Control setups (and releases) with their times: when the controls the hooks see came and went. */
+  setups: [] as string[],
+  /** WebGL context losses and restorations of the board's canvas. */
+  context: [] as string[],
+};
 
 /** Diagnostics: when each tween began (the E2E journeys time the camera's motion against it). */
 function noteTween(kind: string): void {
@@ -118,7 +127,11 @@ export function CameraRig({ bounds, sceneId }: { bounds: Bounds; sceneId: string
   // frame is drawn or any pointer is picked with it (see applyNow).
   useLayoutEffect(() => {
     const c = ref.current;
-    if (!c) return;
+    if (!c) {
+      rigDiag.setups.push(`none@${Math.round(performance.now())}`);
+      return;
+    }
+    rigDiag.setups.push(`set@${Math.round(performance.now())}`);
     cameraRig.controls = c;
     c.dollyToCursor = true;
     c.minDistance = DISTANCE.min;
@@ -149,9 +162,23 @@ export function CameraRig({ bounds, sceneId }: { bounds: Bounds; sceneId: string
       c.maxZoom = zoomFor(DISTANCE.min, H);
     }
     return () => {
+      rigDiag.setups.push(`release@${Math.round(performance.now())}`);
       if (cameraRig.controls === c) cameraRig.controls = null;
     };
   }, [camera, gl]);
+
+  // Context loss (software GL under memory pressure can drop a context): recorded for the camera diagnostics.
+  useEffect(() => {
+    const el = gl.domElement;
+    const lost = () => rigDiag.context.push(`lost@${Math.round(performance.now())}`);
+    const restored = () => rigDiag.context.push(`restored@${Math.round(performance.now())}`);
+    el.addEventListener("webglcontextlost", lost);
+    el.addEventListener("webglcontextrestored", restored);
+    return () => {
+      el.removeEventListener("webglcontextlost", lost);
+      el.removeEventListener("webglcontextrestored", restored);
+    };
+  }, [gl]);
 
   // The target stays within the scene bounds + 20 %.
   // biome-ignore lint/correctness/useExhaustiveDependencies: the controls (ref) are new whenever the camera changes

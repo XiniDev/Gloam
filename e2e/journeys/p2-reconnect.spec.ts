@@ -90,13 +90,43 @@ test.describe("P2 — reconnection (AUTH-07)", () => {
 
     // The network drops: the server loses Dave's socket without a goodbye.
     const knocksBefore = await admin.getByRole("alert").filter({ hasText: "knocking" }).count();
-    const t0 = Date.now();
+    type Change = { state: string; at: number };
+    const changes = async () =>
+      ((await hook<Change[]>(dave, "connectionLog")) ?? []).filter((c) => c.at >= t0);
+    // The "reconnecting" banner, seen by an observer in the page (it can come and go between two polls).
+    await dave.evaluate(() => {
+      const w = window as unknown as { __bannerAt?: number };
+      const look = () => {
+        for (const el of document.querySelectorAll("[role=status]"))
+          if (/reconnecting/i.test(el.textContent ?? "")) w.__bannerAt ??= Date.now();
+      };
+      new MutationObserver(look).observe(document.body, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+      });
+    });
+    const t0 = await dave.evaluate(() => Date.now());
     gloam.dropClient(daveId);
-    await expect.poll(() => hook<string>(dave, "connection"), { timeout: 10_000 }).toBe("dropped");
-    await expect(dave.getByText(/reconnecting/i)).toBeVisible();
+    // The client sees the drop (it says so while it reconnects) and comes back — recorded in the page as it happens,
+    // as a local reconnect can be quicker than any poll.
+    await expect
+      .poll(async () => (await changes()).some((c) => c.state === "dropped"), { timeout: 10_000 })
+      .toBe(true);
     await expect.poll(() => hook<string>(dave, "connection"), { timeout: 60_000 }).toBe("open");
-    test.info().annotations.push({ type: "reconnect", description: `back after ${Date.now() - t0} ms` });
-    expect(Date.now() - t0).toBeLessThan(60_000);
+    const log = await changes();
+    const dropped = log.find((c) => c.state === "dropped") as Change;
+    const back = log.find((c) => c.state === "open" && c.at >= dropped.at) as Change;
+    test.info().annotations.push({
+      type: "reconnect",
+      description: `dropped after ${dropped.at - t0} ms, back after ${back.at - t0} ms (${log.map((c) => c.state).join(" → ")})`,
+    });
+    expect(back.at - t0).toBeLessThan(60_000);
+    const bannerAt = await dave.evaluate(
+      () => (window as unknown as { __bannerAt?: number }).__bannerAt ?? null,
+    );
+    expect(bannerAt).not.toBeNull();
+    expect(bannerAt as number).toBeGreaterThanOrEqual(dropped.at);
     // No re-approval: still at the table, no knock card for the DM.
     await expect(dave).toHaveURL(/\/table$/);
     expect(await admin.getByRole("alert").filter({ hasText: "knocking" }).count()).toBe(knocksBefore);

@@ -490,24 +490,293 @@ export function visContains(v: VisPoly, x: number, y: number): boolean {
   return (x1 - x0) * (y - y0) - (y1 - y0) * (x - x0) >= 0;
 }
 
-/** The region's outline as a closed ring [x0, y0, x1, y1, …] in increasing angle (for drawing as a fan). */
+interface Outline {
+  ring: Float64Array;
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+}
+/** Outlines by region (a region never changes once made). */
+const outlines = new WeakMap<VisPoly, Outline>();
+
+function outlineOf(v: VisPoly): Outline {
+  let o = outlines.get(v);
+  if (!o) {
+    const ring = makeRing(v);
+    let minX = Number.POSITIVE_INFINITY;
+    let minY = Number.POSITIVE_INFINITY;
+    let maxX = Number.NEGATIVE_INFINITY;
+    let maxY = Number.NEGATIVE_INFINITY;
+    for (let k = 0; k < ring.length; k += 2) {
+      const x = ring[k] as number;
+      const y = ring[k + 1] as number;
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    }
+    o = { ring, minX, minY, maxX, maxY };
+    outlines.set(v, o);
+  }
+  return o;
+}
+
+/**
+ * The region's outline as a closed ring [x0, y0, x1, y1, …] in increasing angle (for drawing as a fan). Made once per
+ * region and shared: read it, never write to it.
+ */
 export function visRing(v: VisPoly): Float64Array {
+  return outlineOf(v).ring;
+}
+
+/** The region's bounding box. */
+export function visBox(v: VisPoly): { minX: number; minY: number; maxX: number; maxY: number } {
+  return outlineOf(v);
+}
+
+/**
+ * Whether the segment ab comes within `margin` of the (closed) region: an end inside it, or the segment within margin
+ * of its outline.
+ */
+export function visNear(v: VisPoly, ax: number, ay: number, bx: number, by: number, margin: number): boolean {
+  const o = outlineOf(v);
+  if (Math.max(ax, bx) + margin < o.minX || Math.min(ax, bx) - margin > o.maxX) return false;
+  if (Math.max(ay, by) + margin < o.minY || Math.min(ay, by) - margin > o.maxY) return false;
+  if (visContains(v, ax, ay) || visContains(v, bx, by)) return true;
+  const r = o.ring;
+  const n = r.length / 2;
+  const m2 = margin * margin;
+  for (let k = 0; k < n; k++) {
+    const cx = r[k * 2] as number;
+    const cy = r[k * 2 + 1] as number;
+    const dx = r[((k + 1) % n) * 2] as number;
+    const dy = r[((k + 1) % n) * 2 + 1] as number;
+    if (Math.max(cx, dx) + margin < Math.min(ax, bx) || Math.min(cx, dx) - margin > Math.max(ax, bx))
+      continue;
+    if (Math.max(cy, dy) + margin < Math.min(ay, by) || Math.min(cy, dy) - margin > Math.max(ay, by))
+      continue;
+    if (segSegD2(ax, ay, bx, by, cx, cy, dx, dy) <= m2) return true;
+  }
+  return false;
+}
+
+/** Squared distance between segments ab and cd (0 when they cross). */
+function segSegD2(
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+  cx: number,
+  cy: number,
+  dx: number,
+  dy: number,
+): number {
+  const o = (px: number, py: number, qx: number, qy: number, rx: number, ry: number) =>
+    (qx - px) * (ry - py) - (qy - py) * (rx - px);
+  const d1 = o(cx, cy, dx, dy, ax, ay);
+  const d2 = o(cx, cy, dx, dy, bx, by);
+  const d3 = o(ax, ay, bx, by, cx, cy);
+  const d4 = o(ax, ay, bx, by, dx, dy);
+  if (((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))) return 0;
+  return Math.min(
+    ptSegD2(ax, ay, cx, cy, dx, dy),
+    ptSegD2(bx, by, cx, cy, dx, dy),
+    ptSegD2(cx, cy, ax, ay, bx, by),
+    ptSegD2(dx, dy, ax, ay, bx, by),
+  );
+}
+
+function ptSegD2(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
+  const ux = bx - ax;
+  const uy = by - ay;
+  const L = ux * ux + uy * uy;
+  const t = L === 0 ? 0 : Math.max(0, Math.min(1, ((px - ax) * ux + (py - ay) * uy) / L));
+  const qx = ax + ux * t - px;
+  const qy = ay + uy * t - py;
+  return qx * qx + qy * qy;
+}
+
+/** A cone from a region's eye: its facing (radians, as atan2 measures) and half-angle. */
+export interface Wedge {
+  dir: number;
+  half: number;
+}
+
+/** Overlaps thinner than this (ft) are touching, not overlapping (two regions ending on one wall line from its sides). */
+const OVERLAP_EPS = 1e-6;
+
+/**
+ * Whether two regions overlap in area — more than touching: two regions ending on the same wall line from its two
+ * sides don't. `wedge` first cuts `a` to a cone from its eye (a cone light's lit area). Exact (to 1e-6 ft): each region
+ * is a fan of triangles about its eye, and two triangles overlap unless one of their edge normals separates them.
+ */
+export function visOverlap(a: VisPoly, b: VisPoly, wedge?: Wedge | null): boolean {
+  const A = outlineOf(a);
+  const B = outlineOf(b);
+  if (A.maxX <= B.minX || B.maxX <= A.minX || A.maxY <= B.minY || B.maxY <= A.minY) return false;
+  const cut = wedge && wedge.half < Math.PI ? wedge : null;
+  // Quick yeses: an eye (which has room round it in its own region) inside the other region.
+  if (!cut && visContains(b, a.eye.x, a.eye.y)) return true;
+  if (
+    visContains(a, b.eye.x, b.eye.y) &&
+    (!cut || inCone(b.eye.x - a.eye.x, b.eye.y - a.eye.y, cut.dir, cut.half))
+  )
+    return true;
+  const ta = cut ? fan(a, cut) : fanOf(a);
+  const tb = fanOf(b);
+  // B's triangles that reach A's box; then each of A's against those.
+  const near: number[] = [];
+  for (let j = 0; j < tb.length; j += TRI)
+    if (
+      !(
+        (tb[j + 8] as number) <= A.minX ||
+        (tb[j + 6] as number) >= A.maxX ||
+        (tb[j + 9] as number) <= A.minY ||
+        (tb[j + 7] as number) >= A.maxY
+      )
+    )
+      near.push(j);
+  if (!near.length) return false;
+  for (let i = 0; i < ta.length; i += TRI) {
+    const x0 = ta[i + 6] as number;
+    const y0 = ta[i + 7] as number;
+    const x1 = ta[i + 8] as number;
+    const y1 = ta[i + 9] as number;
+    if (x1 <= B.minX || x0 >= B.maxX || y1 <= B.minY || y0 >= B.maxY) continue;
+    for (const j of near) {
+      if (x1 <= (tb[j + 6] as number) || x0 >= (tb[j + 8] as number)) continue;
+      if (y1 <= (tb[j + 7] as number) || y0 >= (tb[j + 9] as number)) continue;
+      if (!separates(ta, i, tb, j) && !separates(tb, j, ta, i)) return true;
+    }
+  }
+  return false;
+}
+
+/** Floats per fan triangle: three corners, then its box (minX, minY, maxX, maxY). */
+const TRI = 10;
+const fans = new WeakMap<VisPoly, Float64Array>();
+
+function fanOf(v: VisPoly): Float64Array {
+  let f = fans.get(v);
+  if (!f) {
+    f = fan(v, null);
+    fans.set(v, f);
+  }
+  return f;
+}
+
+/** The region's triangles about its eye (cut to a cone when given), without the empty ones. */
+function fan(v: VisPoly, cut: Wedge | null): Float64Array {
+  const out: number[] = [];
+  const ex = v.eye.x;
+  const ey = v.eye.y;
+  // The cone as one or two angle ranges within [−π, π].
+  const ranges: [number, number][] = [];
+  if (!cut) ranges.push([-Math.PI, Math.PI]);
+  else {
+    const lo = wrapAngle(cut.dir - cut.half);
+    const hi = lo + 2 * cut.half;
+    if (hi <= Math.PI) ranges.push([lo, hi]);
+    else ranges.push([lo, Math.PI], [-Math.PI, hi - 2 * Math.PI]);
+  }
+  const e = v.edge;
+  const ang = v.ang;
+  for (let k = 0; k + 1 < ang.length; k++) {
+    const lo = ang[k] as number;
+    const hi = ang[k + 1] as number;
+    const x0 = e[k * 4] as number;
+    const y0 = e[k * 4 + 1] as number;
+    const x1 = e[k * 4 + 2] as number;
+    const y1 = e[k * 4 + 3] as number;
+    for (const [rl, rh] of ranges) {
+      const cl = Math.max(lo, rl);
+      const ch = Math.min(hi, rh);
+      if (ch <= cl) continue;
+      const [px, py] = cl === lo ? [x0, y0] : rayOnEdge(ex, ey, cl, x0, y0, x1, y1);
+      const [qx, qy] = ch === hi ? [x1, y1] : rayOnEdge(ex, ey, ch, x0, y0, x1, y1);
+      if (Math.abs((px - ex) * (qy - ey) - (py - ey) * (qx - ex)) < 1e-12) continue;
+      out.push(
+        ex,
+        ey,
+        px,
+        py,
+        qx,
+        qy,
+        Math.min(ex, px, qx),
+        Math.min(ey, py, qy),
+        Math.max(ex, px, qx),
+        Math.max(ey, py, qy),
+      );
+    }
+  }
+  return Float64Array.from(out);
+}
+
+/** Where the ray from (ex, ey) at angle a meets the line through an edge. */
+function rayOnEdge(
+  ex: number,
+  ey: number,
+  a: number,
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+): [number, number] {
+  const dx = Math.cos(a);
+  const dy = Math.sin(a);
+  const sx = x1 - x0;
+  const sy = y1 - y0;
+  const den = dx * sy - dy * sx;
+  if (Math.abs(den) < 1e-15) return [x0, y0];
+  const t = ((x0 - ex) * sy - (y0 - ey) * sx) / den;
+  return [ex + dx * t, ey + dy * t];
+}
+
+function wrapAngle(a: number): number {
+  return ((((a + Math.PI) % TAU) + TAU) % TAU) - Math.PI;
+}
+
+/** Whether an edge of triangle t (at i) separates it from triangle u (at j), touching counting as separate. */
+function separates(t: Float64Array, i: number, u: Float64Array, j: number): boolean {
+  for (let k = 0; k < 3; k++) {
+    const ax = t[i + k * 2] as number;
+    const ay = t[i + k * 2 + 1] as number;
+    const bx = t[i + ((k + 1) % 3) * 2] as number;
+    const by = t[i + ((k + 1) % 3) * 2 + 1] as number;
+    const nx = by - ay;
+    const ny = ax - bx;
+    const len = Math.hypot(nx, ny);
+    if (len < 1e-12) continue;
+    let tMin = Number.POSITIVE_INFINITY;
+    let tMax = Number.NEGATIVE_INFINITY;
+    let uMin = Number.POSITIVE_INFINITY;
+    let uMax = Number.NEGATIVE_INFINITY;
+    for (let c = 0; c < 3; c++) {
+      const pt = (nx * (t[i + c * 2] as number) + ny * (t[i + c * 2 + 1] as number)) / len;
+      const pu = (nx * (u[j + c * 2] as number) + ny * (u[j + c * 2 + 1] as number)) / len;
+      if (pt < tMin) tMin = pt;
+      if (pt > tMax) tMax = pt;
+      if (pu < uMin) uMin = pu;
+      if (pu > uMax) uMax = pu;
+    }
+    if (tMax - uMin <= OVERLAP_EPS || uMax - tMin <= OVERLAP_EPS) return true;
+  }
+  return false;
+}
+
+function makeRing(v: VisPoly): Float64Array {
   const out: number[] = [];
   const e = v.edge;
+  const push = (x: number, y: number) => {
+    const n = out.length;
+    if (n >= 2 && Math.abs((out[n - 2] as number) - x) < 1e-9 && Math.abs((out[n - 1] as number) - y) < 1e-9)
+      return;
+    out.push(x, y);
+  };
   for (let k = 0; k * 4 < e.length; k++) {
-    for (const [x, y] of [
-      [e[k * 4] as number, e[k * 4 + 1] as number],
-      [e[k * 4 + 2] as number, e[k * 4 + 3] as number],
-    ] as const) {
-      const n = out.length;
-      if (
-        n >= 2 &&
-        Math.abs((out[n - 2] as number) - x) < 1e-9 &&
-        Math.abs((out[n - 1] as number) - y) < 1e-9
-      )
-        continue;
-      out.push(x, y);
-    }
+    push(e[k * 4] as number, e[k * 4 + 1] as number);
+    push(e[k * 4 + 2] as number, e[k * 4 + 3] as number);
   }
   // Closed: the last point is the first again (the ±π ray).
   const n = out.length;

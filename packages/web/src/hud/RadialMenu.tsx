@@ -155,7 +155,9 @@ export function RadialMenu() {
           run: () => send("put it away", "light.carry", { tokenId: id, preset: null }),
         });
       }
-      out.push({ id: "light", label: "Light", icon: <Flame size={18} />, ring: lightRing.slice(0, 8) });
+      // A token's light is one of its controls: not for its owners while the DM has locked it.
+      if (dm || !token.locked)
+        out.push({ id: "light", label: "Light", icon: <Flame size={18} />, ring: lightRing.slice(0, 8) });
     }
     if (dm) {
       out.push(

@@ -71,7 +71,7 @@ export function perceivePoint(
       if (o.kind === "heavy") return NONE;
     }
   }
-  const L = Math.max(world.lightLevel(x, y, z), minLight);
+  const L = Math.max(world.lightLevelCached(x, y, z), minLight);
   if (L === BRIGHT) return SEE_BRIGHT;
   if (L === DIM) return v.senses.darkvision >= d ? SEE_BRIGHT : SEE_DIM;
   if (truesight) return DARKVISION;

@@ -397,6 +397,17 @@ async function join(campaignId: string): Promise<Room<unknown, TableState>> {
   provideTestHook("request", (type: string, payload: unknown) => request(type, payload));
   provideTestHook("me", () => useTable.getState().me);
   provideTestHook("connection", () => useTable.getState().connection);
+  // Every change of connection state with its time: a drop that reconnects faster than a poll is still seen.
+  if (__GLOAM_TEST__) {
+    const log: { state: Connection; at: number }[] = [];
+    let last = useTable.getState().connection;
+    useTable.subscribe((s) => {
+      if (s.connection === last) return;
+      last = s.connection;
+      log.push({ state: s.connection, at: Date.now() });
+    });
+    provideTestHook("connectionLog", () => log.slice());
+  }
   // Uploads through the real client path (CSRF, progress, server pipeline) with bytes handed in by the test.
   provideTestHook("upload", async (b64: string, name: string, purpose: UploadPurpose) => {
     const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));

@@ -177,3 +177,19 @@ PASSING 28/224 · DISPUTED 0 · FAILING 196
   ring (light, douse, hood, put away), tremorsense markers, moves seen partway (ghosts that fade). Three journeys
   (p4-vision, p4-light-fog, p4-dm-view) pass: VIS-01/02/03/04/05/09/10/11/13/14 and SCN-07, WAL-03 (vision), VIS-12's
   client half. P3 critic round 2 fixed (12 important items) and verified in the re-rendered shots.
+
+## 2026-09-28 — P4: the server vision budget (VIS-12), exact light reach, `pnpm bench`
+
+- The server vision service recomputes incrementally and exactly: polygons kept across wall/door changes unless a
+  changed segment comes near them, the light raster redrawn by scanline only where lights (or their lit areas)
+  changed, explored marking skipped or clipped to re-lit cells, light reach remembered per polygon pair. Bench on the
+  §37-sized scene: p95 135 ms → ≈ 5 ms (doors ≈ 7 ms p50). An equivalence test (160 mixed events vs a from-scratch
+  service after each) guards it and catches three planted bugs.
+- Carried-light glow round corners is now an exact area overlap (fan triangles, separating axes; cones cut) — fixes
+  a missed glow seen through a gap and a bullseye-lantern hidden-position leak. Geometry tests: wall-touching regions
+  never overlap (400 random), the slit case, cones incl. > 180° and the ±π seam, 600 random pairs vs sampling.
+- A DM-locked token's light is locked too (server + menu), matching the P2 lock rule.
+- `pnpm bench` (tools/bench.mjs) runs the vision part and writes artifacts/bench/report.json with host details.
+- Last full E2E (before these fixes) had 6 failures: stone program key (now includes the fog variant), a fog noise
+  texture uploaded on the first scene (now with the renderer), the Light slice on a locked token (now hidden); the
+  reconnect and two P4 journeys are being re-run.

@@ -13,6 +13,8 @@ import {
   type VisPoly,
   visContains,
   visibilityPolygon,
+  visNear,
+  type Wedge,
 } from "../geometry/index.ts";
 import { blocksLight, blocksMove, blocksSight, type DoorState } from "../movement/blocking.ts";
 import type { AmbientLevel, Bounds } from "../schemas/entities.ts";
@@ -36,7 +38,19 @@ export interface VisionWall {
 /** A token's facing (degrees, as `rotationDeg`) as an angle on the table: models face +z (south) at 0. */
 export const facingAngle = (deg: number): number => ((deg + 90) * Math.PI) / 180;
 
+/** A cone light's cone (null when it shines all round). */
+export function coneOf(l: { coneDeg: number | null; directionDeg: number }): Wedge | null {
+  return l.coneDeg !== null && l.coneDeg < 360
+    ? { dir: facingAngle(l.directionDeg), half: (l.coneDeg * Math.PI) / 360 }
+    : null;
+}
+
 const LOS_CACHE_MAX = 4096;
+/** How many of the most recently used polygons a wall change tries to keep, and the most changed segments to try. */
+const KEEP_RECENT = 256;
+const KEEP_MAX_CHANGED = 32;
+/** A changed segment this far (ft) from a region — well over the weld tolerance — can't have changed it. */
+const KEEP_MARGIN = 1e-3;
 
 /**
  * The blocking segments per purpose (§15.2's table) with caches of the polygons computed from them. Build a new one
@@ -50,29 +64,69 @@ export class VisionGeometry {
   /** `LIT`: light-blocking walls and opaque effect walls. */
   readonly light: SegmentSet;
   private readonly cache = new Map<string, VisPoly>();
+  /** Each input segment with what it blocks, as a key (to tell what a change touched). */
+  private readonly inputs: Map<string, Seg>;
 
   constructor(walls: readonly VisionWall[], opaque: readonly Seg[] = []) {
     const sight: Seg[] = [...opaque];
     const blind: Seg[] = [];
     const light: Seg[] = [...opaque];
+    this.inputs = new Map();
+    let dup = 0;
+    const input = (s: Seg, what: string) => {
+      const k = `${s.a.x},${s.a.y},${s.b.x},${s.b.y}|${what}`;
+      this.inputs.set(this.inputs.has(k) ? `${k}#${++dup}` : k, s);
+    };
+    for (const s of opaque) input(s, "sl");
     for (const w of walls) {
-      if (blocksSight(w.kind, w.door)) sight.push(w);
-      if (blocksMove(w.kind, w.door)) blind.push(w);
-      if (blocksLight(w.kind, w.door)) light.push(w);
+      const bs = blocksSight(w.kind, w.door);
+      const bm = blocksMove(w.kind, w.door);
+      const bl = blocksLight(w.kind, w.door);
+      if (bs) sight.push(w);
+      if (bm) blind.push(w);
+      if (bl) light.push(w);
+      if (bs || bm || bl) input(w, `${bs ? "s" : ""}${bm ? "b" : ""}${bl ? "l" : ""}`);
     }
     this.sight = new SegmentSet(sight);
     this.blind = new SegmentSet(blind);
     this.light = sameSegs(light, sight) ? this.sight : new SegmentSet(light);
   }
 
+  /**
+   * The geometry after walls, doors or opaque effects changed, keeping the recently used polygons the change can't
+   * have touched. Exact: a segment nowhere near a region leaves it as it was, added or taken away — every point seen
+   * is seen along a line inside the region, which the segment doesn't meet; and a point hidden only by the segment
+   * would have its line enter the segment's shadow where the segment touches the region.
+   */
+  static after(
+    prev: VisionGeometry | null,
+    walls: readonly VisionWall[],
+    opaque: readonly Seg[] = [],
+  ): VisionGeometry {
+    const next = new VisionGeometry(walls, opaque);
+    if (!prev) return next;
+    const changed: Seg[] = [];
+    for (const [k, s] of prev.inputs) if (!next.inputs.has(k)) changed.push(s);
+    for (const [k, s] of next.inputs) if (!prev.inputs.has(k)) changed.push(s);
+    if (changed.length > KEEP_MAX_CHANGED) return next;
+    const recent = [...prev.cache].slice(-KEEP_RECENT);
+    for (const [k, v] of recent)
+      if (!changed.some((s) => visNear(v, s.a.x, s.a.y, s.b.x, s.b.y, KEEP_MARGIN))) next.cache.set(k, v);
+    return next;
+  }
+
   private get(kind: "s" | "b" | "l", set: SegmentSet, x: number, y: number, r: number): VisPoly {
     const key = `${kind}${x},${y},${r}`;
     let v = this.cache.get(key);
-    if (!v) {
-      if (this.cache.size >= LOS_CACHE_MAX) this.cache.clear();
-      v = visibilityPolygon({ x, y }, set, r);
+    if (v) {
+      // Most recently used last (what a wall change keeps).
+      this.cache.delete(key);
       this.cache.set(key, v);
+      return v;
     }
+    if (this.cache.size >= LOS_CACHE_MAX) this.cache.clear();
+    v = visibilityPolygon({ x, y }, set, r);
+    this.cache.set(key, v);
     return v;
   }
   losSight(x: number, y: number, r: number): VisPoly {
@@ -123,7 +177,7 @@ export class VisionWorld {
   readonly ambient: LightLevel;
   /** Normal sight's reach: the scene's diagonal (§8.8). */
   readonly sightRadius: number;
-  private readonly lightGrid = new Map<number, number[]>();
+  private grid: Map<number, number[]> | null = null;
 
   readonly geo: VisionGeometry;
   readonly bounds: Bounds;
@@ -142,16 +196,6 @@ export class VisionWorld {
     this.lights = lights.filter((l) => l.enabled !== false && l.dmOnly !== true && l.bright + l.dim > 0);
     this.ambient = typeof ambient === "number" ? ambient : ambientLevel(ambient);
     this.sightRadius = Math.max(1, Math.hypot(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY));
-    this.lights.forEach((l, i) => {
-      const r = l.bright + l.dim;
-      for (let x = Math.floor((l.x - r) / LIGHT_CELL); x <= Math.floor((l.x + r) / LIGHT_CELL); x++)
-        for (let y = Math.floor((l.y - r) / LIGHT_CELL); y <= Math.floor((l.y + r) / LIGHT_CELL); y++) {
-          const k = key(x, y);
-          const list = this.lightGrid.get(k);
-          if (list) list.push(i);
-          else this.lightGrid.set(k, [i]);
-        }
-    });
   }
 
   /** The area a light reaches (`LIT`), all around; cones are applied by `lights at`. */
@@ -167,12 +211,65 @@ export class VisionWorld {
     return false;
   }
 
+  private readonly levels = new Map<string, LightLevel>();
+
+  /**
+   * `lightLevel(p)`, remembered for this world (it never changes): perception asks for the same creature's sample
+   * points once per player.
+   */
+  lightLevelCached(x: number, y: number, z = 0): LightLevel {
+    const k = `${x},${y},${z}`;
+    let v = this.levels.get(k);
+    if (v === undefined) {
+      if (this.levels.size > 50_000) this.levels.clear();
+      v = this.lightLevel(x, y, z);
+      this.levels.set(k, v);
+    }
+    return v;
+  }
+
+  /** The level a light gives at a point it reaches (by distance and cone; LIT is the caller's). */
+  levelFrom(l: VisionLight, x: number, y: number): LightLevel {
+    const dx = x - l.x;
+    const dy = y - l.y;
+    const r = Math.hypot(dx, dy);
+    const lv: LightLevel =
+      l.bright > 0 && r <= l.bright ? BRIGHT : l.dim > 0 && r <= l.bright + l.dim ? DIM : DARK;
+    if (lv === DARK) return DARK;
+    if (
+      l.coneDeg !== null &&
+      l.coneDeg < 360 &&
+      r > 0 &&
+      !inCone(dx, dy, facingAngle(l.directionDeg), (l.coneDeg * Math.PI) / 360)
+    )
+      return DARK;
+    return lv;
+  }
+
+  /** The lights by 10-ft cell (made on first use: a world made only to fill the light raster never needs it). */
+  private lightGrid(): Map<number, number[]> {
+    if (this.grid) return this.grid;
+    const grid = new Map<number, number[]>();
+    this.lights.forEach((l, i) => {
+      const r = l.bright + l.dim;
+      for (let x = Math.floor((l.x - r) / LIGHT_CELL); x <= Math.floor((l.x + r) / LIGHT_CELL); x++)
+        for (let y = Math.floor((l.y - r) / LIGHT_CELL); y <= Math.floor((l.y + r) / LIGHT_CELL); y++) {
+          const k = key(x, y);
+          const list = grid.get(k);
+          if (list) list.push(i);
+          else grid.set(k, [i]);
+        }
+    });
+    this.grid = grid;
+    return grid;
+  }
+
   /** `lightLevel(p)` (§15.3). */
   lightLevel(x: number, y: number, z = 0): LightLevel {
     const darkness = this.obscurers.length > 0 && this.inMagicalDarkness(x, y, z);
     let level: LightLevel = darkness ? DARK : this.ambient;
     if (level === BRIGHT) return level;
-    const list = this.lightGrid.get(key(Math.floor(x / LIGHT_CELL), Math.floor(y / LIGHT_CELL)));
+    const list = this.lightGrid().get(key(Math.floor(x / LIGHT_CELL), Math.floor(y / LIGHT_CELL)));
     if (!list) return level;
     for (const i of list) {
       const l = this.lights[i] as VisionLight;

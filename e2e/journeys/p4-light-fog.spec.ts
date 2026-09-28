@@ -54,7 +54,7 @@ interface LightHook {
 test.describe("P4 — lights and painted fog (VIS-03, VIS-01, SCN-07)", () => {
   test.use({ viewport: VIEWPORT });
 
-  test("AC-VIS-03 / AC-SCN-07 / AC-VIS-01: a torch lit from the token's menu lights 20 ft bright and 20 ft dim, stopped by a wall, flickering; its owner puts it out; the DM changes light and fog mode live for everyone; painted fog — rectangle, brush, polygon, reveal room, one player or all", async ({
+  test("AC-VIS-03 / AC-SCN-07 / AC-VIS-01: a torch lit from the token's menu lights 20 ft bright and 20 ft dim, stopped by a wall, flickering; its owner puts it out; the DM changes light and fog mode live for everyone; painted fog — rectangle, brush, polygon, reveal room, one player or all @timing", async ({
     admin,
     browser,
     gloam,

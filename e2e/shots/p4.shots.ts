@@ -15,7 +15,8 @@ import { expect, test } from "../fixtures/test.ts";
 
 /**
  * The key screens of phase 4 (SPEC §4 Screenshots, §8.8, §15.7): a dark crypt in dynamic fog — darkvision in grey,
- * a torch's bright and dim light blocked by walls, explored memory, the war fog; the DM's hatched view.
+ * a torch's bright and dim light blocked by walls, explored memory, the war fog; the DM's hatched view; the Fog and
+ * Lights tools; View as; a tremorsense marker; the token menu's Light ring; painted fog.
  */
 test("P4 key screens", async ({ admin, browser, gloam, guardLog }, info) => {
   const dir = join("artifacts", "screens", "p4", info.project.name);
@@ -128,6 +129,81 @@ test("P4 key screens", async ({ admin, browser, gloam, guardLog }, info) => {
   await view([admin], 30, 20, 64, 44);
   await step("04-dm-hatched-fog", admin, async () => {
     await admin.waitForTimeout(600);
+  });
+
+  // The Fog tool: its panel (mode, ambient, reveal/hide, shapes, who for) and the brush ring on the board.
+  await step("05-fog-tool", admin, async () => {
+    await admin.keyboard.press("b");
+    await expect(admin.getByTestId("fog-panel")).toBeVisible();
+    const s = (await hook<{ sx: number; sy: number }>(admin, "project", 20, 28, 0)) as {
+      sx: number;
+      sy: number;
+    };
+    await admin.mouse.move(s.sx, s.sy);
+  });
+
+  // The Lights tool: the panel with its presets, gizmos on the lights.
+  await step("06-lights-tool", admin, async () => {
+    await admin.keyboard.press("i");
+    await expect(admin.getByTestId("lights-panel")).toBeVisible();
+  });
+
+  // View as Dave: the DM's board drawn through Dave's eyes, with the banner.
+  await step("07-view-as", admin, async () => {
+    await admin.keyboard.press("b");
+    await admin.getByTestId("view-as").selectOption(daveId);
+    await expect(admin.getByTestId("view-as-banner")).toContainText("Dave");
+    await admin.keyboard.press("v");
+    await admin.waitForTimeout(800);
+  });
+  await admin
+    .getByRole("button", { name: "Stop viewing as" })
+    .click()
+    .catch(() => {});
+
+  // Tremorsense: a ghoul in the side chamber, behind the wall — Nyx feels where it is, nothing more.
+  await mk("Ghoul", { pos: { x: 40, y: 30 }, stats: { hp: 22, hpMax: 22, ac: 12 } });
+  await step("08-tremorsense-marker", dave, async () => {
+    await req(admin, "token.update", {
+      tokenId: elf,
+      stats: { senses: { darkvision: 60, tremorsense: 30 } },
+    });
+    await expect.poll(async () => ((await hook<unknown[]>(dave, "sensed")) ?? []).length).toBeGreaterThan(0);
+    await view([dave], 38, 24, 50, 34);
+  });
+
+  // The token menu's Light ring (Dave, on his own token).
+  await step("09-token-light-ring", dave, async () => {
+    const t = (await hook<{ pos: { x: number; y: number } }>(dave, "token", elf)) as {
+      pos: { x: number; y: number };
+    };
+    const s = (await hook<{ sx: number; sy: number }>(dave, "project", t.pos.x, t.pos.y, 0.15)) as {
+      sx: number;
+      sy: number;
+    };
+    await dave.mouse.click(s.sx, s.sy, { button: "right" });
+    await dave.getByRole("menuitem", { name: "Light" }).click();
+    await expect(dave.getByRole("menuitem", { name: "Put out" })).toBeVisible();
+  });
+  await dave.keyboard.press("Escape");
+
+  // Painted fog: the DM reveals the hall for everyone and the corridor for Dave alone.
+  await step("10-painted-fog", dave, async () => {
+    await req(admin, "scene.update", { sceneId: crypt, fogMode: "painted" });
+    await req(admin, "fog.paint", {
+      sceneId: crypt,
+      mode: "reveal",
+      target: "all",
+      shape: { kind: "room", x: 12, y: 20 },
+    });
+    await req(admin, "fog.paint", {
+      sceneId: crypt,
+      mode: "reveal",
+      target: daveId,
+      shape: { kind: "rect", x: 30, y: 17, w: 14, h: 9 },
+    });
+    await expect.poll(async () => (await hook<{ mode: string }>(dave, "fog"))?.mode).toBe("painted");
+    await view([dave], 30, 20, 64, 44);
   });
 
   writeFileSync(join(dir, "_notes.txt"), notes.length ? notes.join("\n") : "all steps ran\n");

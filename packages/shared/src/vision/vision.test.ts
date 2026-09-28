@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { visContains } from "../geometry/index.ts";
+import { visContains, visRing } from "../geometry/index.ts";
 import { ZERO_SENSES } from "../schemas/entities.ts";
 import { markSeen } from "./explored.ts";
 import {
@@ -14,7 +14,7 @@ import {
   SEE_DIM,
   type Viewer,
 } from "./perceive.ts";
-import { fillVis, LightRaster, Raster, rleDecode, rleEncode } from "./raster.ts";
+import { fillRing, fillVis, LightRaster, Raster, rleDecode, rleEncode } from "./raster.ts";
 import {
   BRIGHT,
   DARK,
@@ -283,6 +283,117 @@ describe("rasters (§15.5, §15.8)", () => {
       }
     expect(inside).toBeGreaterThan(500);
     expect(bad).toBe(0);
+  });
+
+  it("scanline fills are exact for many eyes, clip to a rectangle, stop when asked, and nest", () => {
+    const geo = new VisionGeometry([
+      wall(30.3, 10, 30.3, 50),
+      wall(50, 0, 70, 30),
+      wall(10, 45.3, 90, 45.3),
+      wall(60.5, 35, 85, 52.2),
+    ]);
+    const r = Raster.over(bounds, 1);
+    let seed = 3;
+    const rand = () => {
+      seed = (seed * 16807) % 2147483647;
+      return seed / 2147483647;
+    };
+    const bad: string[] = [];
+    for (let e = 0; e < 30; e++) {
+      const v = geo.losSight(1 + rand() * 98, 1 + rand() * 58, 5 + rand() * 120);
+      const clip = {
+        x: Math.floor(rand() * 60),
+        y: Math.floor(rand() * 40),
+        w: 1 + Math.floor(rand() * 40),
+        h: 1 + Math.floor(rand() * 20),
+      };
+      const all = new Uint8Array(r.w * r.h);
+      const clipped = new Uint8Array(r.w * r.h);
+      fillVis(r, v, (k) => {
+        all[k] = 1;
+      });
+      fillVis(
+        r,
+        v,
+        (k) => {
+          clipped[k] = 1;
+        },
+        clip,
+      );
+      for (let j = 0; j < r.h; j++)
+        for (let i = 0; i < r.w; i++) {
+          const k = j * r.w + i;
+          const inClip = i >= clip.x && i < clip.x + clip.w && j >= clip.y && j < clip.y + clip.h;
+          if ((all[k] === 1) !== visContains(v, i + 0.5, j + 0.5) || clipped[k] !== (inClip ? all[k] : 0))
+            if (bad.length < 5) bad.push(`eye ${e} cell ${i},${j}`);
+        }
+    }
+    expect(bad).toEqual([]);
+    // Stopping: fn returning true ends the fill at that cell.
+    const v = geo.losSight(20, 30, 200);
+    let n = 0;
+    fillVis(r, v, () => ++n === 7);
+    expect(n).toBe(7);
+    // Nesting: a fill inside a fill's callback leaves the outer one whole.
+    const outer: number[] = [];
+    const plain: number[] = [];
+    fillVis(r, v, (k) => {
+      plain.push(k);
+    });
+    const inner = geo.losSight(70, 20, 30);
+    fillVis(r, v, (k) => {
+      outer.push(k);
+      if (outer.length % 97 === 0) fillRing(r, visRing(inner), () => {});
+    });
+    expect(outer).toEqual(plain);
+  });
+
+  it("geometry after a wall change keeps the polygons it can't touch — the very same ones — and every polygon equals a fresh computation", () => {
+    const walls = [
+      wall(20, 0, 20, 17),
+      wall(20, 17, 20, 23, "door", "closed"),
+      wall(20, 23, 20, 60),
+      wall(60, 0, 60, 60),
+      wall(70, 10, 90, 10),
+    ];
+    const before = new VisionGeometry(walls);
+    const eyes = [
+      [5, 5],
+      [10, 40],
+      [35, 20],
+      [45, 50],
+      [75, 30],
+      [90, 55],
+    ] as const;
+    const was = eyes.map(([x, y]) => ({
+      s: before.losSight(x, y, 30),
+      l: before.lit(x, y, 25),
+      b: before.losBlind(x, y, 15),
+    }));
+    // The door opens.
+    const opened = walls.map((w) => (w.kind === "door" ? { ...w, door: "open" as const } : w));
+    const after = VisionGeometry.after(before, opened);
+    const fresh = new VisionGeometry(opened);
+    let kept = 0;
+    let redone = 0;
+    eyes.forEach(([x, y], i) => {
+      const w = was[i] as (typeof was)[number];
+      for (const [got, old, want] of [
+        [after.losSight(x, y, 30), w.s, fresh.losSight(x, y, 30)],
+        [after.lit(x, y, 25), w.l, fresh.lit(x, y, 25)],
+        [after.losBlind(x, y, 15), w.b, fresh.losBlind(x, y, 15)],
+      ] as const) {
+        if (got === old) kept++;
+        else redone++;
+        const a = [...visRing(got)];
+        const b = [...visRing(want)];
+        expect(a.length).toBe(b.length);
+        for (let k = 0; k < a.length; k++) expect(a[k]).toBeCloseTo(b[k] as number, 9);
+      }
+    });
+    // Eyes far from the door kept theirs; those that saw it (or whose light reached it) were redone.
+    expect(kept).toBeGreaterThan(5);
+    expect(redone).toBeGreaterThan(5);
   });
 
   it("run-length encoding round-trips", () => {

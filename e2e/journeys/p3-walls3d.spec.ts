@@ -66,13 +66,14 @@ test.describe("P3 — walls in 3D (WAL-06)", () => {
 
     // Procedural scenes start with walls in 3D. The DM sees everything: stone (3 walls + 1 wall piece of the
     // window's 2 + the door's and secret door's lintels = 2 + window sill and header = 2 → 7), the hidden wall as a
-    // ghost, the invisible wall as a field, two leaves (the door; the secret door, in stone).
+    // ghost, the invisible wall as a field, two leaves (the door; the secret door, in stone). The stone is one
+    // program: the stone shader with the fog composite for walls (P4).
     await expect
       .poll(() => w3d(admin))
       .toMatchObject({
         stone: 7,
         ghost: 1,
-        stoneMaterial: "gloam-wall-stone",
+        stoneMaterial: "gloam-wall-stone|fog:wall",
         glass: 1,
         curtains: 1,
         fields: 1,

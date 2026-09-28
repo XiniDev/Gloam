@@ -40,12 +40,13 @@ const token = (p: Page, id: string) => hook<{ id: string } | null>(p, "token", i
 test.describe("P4 — vision, light and fog (VIS)", () => {
   test.use({ viewport: VIEWPORT });
 
-  test("AC-VIS-02 / 04 / 05 / 09 / 11 / 13 / 14 / AC-WAL-03 / AC-VIS-12 (client): each player sees what their character perceives — darkvision in grey, dim as bright within it, the unknown as war fog; the goblin never reaches the blind player; tremorsense; moves seen partway; a door shows the closet within 200 ms, revealed over 300 ms; sharing; explored memory kept and reset", async ({
+  test("AC-VIS-02 / 04 / 05 / 09 / 11 / 13 / 14 / AC-WAL-03 / AC-VIS-12 (client): each player sees what their character perceives — darkvision in grey, dim as bright within it, the unknown as war fog; the goblin never reaches the blind player; tremorsense; moves seen partway; a door shows the closet within 200 ms, revealed over 300 ms; sharing; explored memory kept and reset @timing", async ({
     admin,
     browser,
     gloam,
     guardLog,
   }) => {
+    test.setTimeout(240_000);
     const code = await adminAtTable(admin);
     await introDone(admin);
     // A grass field (a colour darkvision turns to grey), dark, dynamic fog; a closet in the north-east with a door in

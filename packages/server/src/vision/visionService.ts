@@ -1,14 +1,11 @@
-import {
-  type P,
-  pathLength,
-  pointAtLength,
-  type VisPoly,
-  visContains,
-  visRing,
-} from "@gloam/shared/geometry";
+import { type P, pathLength, pointAtLength, type VisPoly, visOverlap } from "@gloam/shared/geometry";
 import type { SceneEntity, TokenEntity } from "@gloam/shared/schemas";
 import {
+  type CellRect,
+  coneOf,
   creatureSamples,
+  DARK,
+  fillVis,
   type LightLevel,
   LightRaster,
   markSeen,
@@ -84,9 +81,30 @@ interface Player {
   lights: Set<string>;
   sensed: Map<string, SensedMark>;
   explored: Raster | null;
-  /** World version and viewer key the explored raster was last marked with. */
-  markedAt: string;
+  /** What the explored raster was last marked with: raster version, viewer key and sights, light version. */
+  marked: Marked;
+  /** Whether a carried light reaches this player's sight, by the regions it was worked out from. */
+  reach: Map<string, { lit: VisPoly; cone: string; sights: (VisPoly | null)[]; hit: boolean }>;
 }
+
+interface Marked {
+  full: number;
+  key: string;
+  sights: readonly (VisPoly | null)[];
+  light: number;
+}
+const UNMARKED: Marked = { full: -1, key: "", sights: [], light: -1 };
+
+const newPlayer = (): Player => ({
+  viewers: [],
+  key: "",
+  perceived: new Set(),
+  lights: new Set(),
+  sensed: new Map(),
+  explored: null,
+  marked: UNMARKED,
+  reach: new Map(),
+});
 
 /** The pseudo-player whose sensed markers spectators hold (the union of the players'). */
 const SPECTATORS = "*spectators";
@@ -105,7 +123,14 @@ export class VisionService implements Perception, FogApplier {
   private world: VisionWorld | null = null;
   private light: LightRaster | null = null;
   private lightKeys = new Map<string, string>();
-  private worldVersion = 0;
+  /** Bumped when the whole light raster is rebuilt (a new scene, or magical darkness changed). */
+  private fullVersion = 0;
+  /** Each light's lit area as last drawn into the raster, and the magical darkness it was drawn with. */
+  private lits = new Map<string, VisPoly>();
+  private darkKey = "";
+  /** Bumped when lights change; `refreshed` holds the cells the latest change re-lit. */
+  private lightVersion = 0;
+  private refreshed: CellRect[] = [];
   private readonly players = new Map<string, Player>();
   /** Painted layers of the active scene (loaded on demand), by layer name. */
   private readonly layers = new Map<string, Raster>();
@@ -245,6 +270,7 @@ export class VisionService implements Perception, FogApplier {
     this.world = null;
     this.light = null;
     this.lightKeys.clear();
+    this.lits.clear();
     this.layers.clear();
     this.players.clear();
     if (!scene) return;
@@ -270,11 +296,12 @@ export class VisionService implements Perception, FogApplier {
       this.world = null;
       this.light = null;
       this.lightKeys.clear();
+      this.lits.clear();
       return false;
     }
     const fx = sceneEffects(this.model, this.sceneId);
     if (geoChanged || !this.geo)
-      this.geo = new VisionGeometry(sceneWalls(this.model, this.sceneId), fx.opaque);
+      this.geo = VisionGeometry.after(this.geo, sceneWalls(this.model, this.sceneId), fx.opaque);
     const lights = [...sceneLights(this.model, this.sceneId), ...fx.lights];
     const world = new VisionWorld(
       this.geo,
@@ -283,21 +310,36 @@ export class VisionService implements Perception, FogApplier {
       this.scene.bounds,
       fx.obscurers,
     );
-    // The light raster: all of it after a geometry change, else around the lights that changed.
+    // The light raster: around the lights that moved, changed or whose lit area a wall change reshaped; all of it for
+    // a new scene or when magical darkness changed.
     const keys = new Map(world.lights.map((l) => [l.id, lightKey(l)] as const));
-    if (geoChanged || !this.light || !this.world) {
+    const lits = new Map(world.lights.map((l) => [l.id, world.litOf(l)] as const));
+    const darkKey = JSON.stringify(fx.obscurers);
+    if (!this.light || !this.world || darkKey !== this.darkKey) {
       this.light = new LightRaster(this.scene.bounds, this.scene.fogCellFt);
       this.light.build(world);
-      this.worldVersion++;
+      this.fullVersion++;
     } else {
       const areas: number[][] = [];
-      for (const [id, k] of keys) if (this.lightKeys.get(id) !== k) areas.push(areaOf(k));
-      for (const [id, k] of this.lightKeys) if (keys.get(id) !== k) areas.push(areaOf(k));
+      for (const [id, k] of keys) {
+        const was = this.lightKeys.get(id);
+        if (was === k && this.lits.get(id) === lits.get(id)) continue;
+        areas.push(areaOf(k));
+        if (was !== undefined && was !== k) areas.push(areaOf(was));
+      }
+      for (const [id, k] of this.lightKeys) if (!keys.has(id)) areas.push(areaOf(k));
       for (const [x0, y0, x1, y1] of areas)
         this.light.refresh(world, x0 as number, y0 as number, x1 as number, y1 as number);
-      if (areas.length) this.worldVersion++;
+      if (areas.length) {
+        this.lightVersion++;
+        this.refreshed = areas.map(([x0, y0, x1, y1]) =>
+          this.light!.raster.cellsIn(x0 as number, y0 as number, x1 as number, y1 as number),
+        );
+      }
     }
     this.lightKeys = keys;
+    this.lits = lits;
+    this.darkKey = darkKey;
     this.world = world;
     let changed = false;
     const ids = new Set([...this.host.players(), ...this.players.keys(), ...this.viewerOwners()]);
@@ -322,15 +364,7 @@ export class VisionService implements Perception, FogApplier {
   private player(userId: string): Player {
     let p = this.players.get(userId);
     if (!p) {
-      p = {
-        viewers: [],
-        key: "",
-        perceived: new Set(),
-        lights: new Set(),
-        sensed: new Map(),
-        explored: null,
-        markedAt: "",
-      };
+      p = newPlayer();
       this.players.set(userId, p);
       if (userId === SPECTATORS) this.updateSpectators();
       else this.update(userId);
@@ -359,15 +393,7 @@ export class VisionService implements Perception, FogApplier {
     if (!scene || !world) return false;
     let p = this.players.get(userId);
     if (!p) {
-      p = {
-        viewers: [],
-        key: "",
-        perceived: new Set(),
-        lights: new Set(),
-        sensed: new Map(),
-        explored: null,
-        markedAt: "",
-      };
+      p = newPlayer();
       this.players.set(userId, p);
     }
     const perceived = new Set<string>();
@@ -404,7 +430,7 @@ export class VisionService implements Perception, FogApplier {
       }
       this.markExplored(userId, p);
     }
-    const lights = this.lightsReaching(userId, p);
+    const lights = this.lightsReaching(userId, p, perceived);
     const changed =
       !sameSet(perceived, p.perceived) || !sameSensed(sensed, p.sensed) || !sameSet(lights, p.lights);
     p.perceived = perceived;
@@ -413,30 +439,52 @@ export class VisionService implements Perception, FogApplier {
     return changed;
   }
 
-  /** Carried lights whose lit area reaches what the player sees (dynamic) or what's revealed to them (painted). */
-  private lightsReaching(userId: string, p: Player): Set<string> {
+  /**
+   * Carried lights whose carrier the player doesn't perceive but whose lit area reaches what they see (dynamic: their
+   * viewers' sight; painted: the cells revealed to them) — the glow round the corner. Only these matter: a perceived
+   * carrier's light comes with it. Exact — the lit area (cut to its cone) overlapping the sight in area, not merely
+   * touching it along a wall — and remembered while neither region changes.
+   */
+  private lightsReaching(userId: string, p: Player, perceived: ReadonlySet<string>): Set<string> {
     const out = new Set<string>();
     const world = this.world;
-    if (!world || !this.scene) return out;
-    const revealed = this.scene.fogMode === "painted" ? this.revealedFor(userId) : null;
+    const scene = this.scene;
+    if (!world || !scene) return out;
+    const revealed = scene.fogMode === "painted" ? this.revealedFor(userId) : null;
+    const reach = new Map<string, { lit: VisPoly; cone: string; sights: (VisPoly | null)[]; hit: boolean }>();
     for (const l of world.lights) {
       if (l.id.startsWith("fx:")) continue;
+      const tokenId = this.model.get("light", l.id)?.tokenId;
+      if (!tokenId || perceived.has(tokenId)) continue;
       const lit = world.litOf(l);
-      const ring = visRing(lit);
-      const pts: { x: number; y: number }[] = [{ x: l.x, y: l.y }];
-      // The lit area's outline pulled 5 % toward the light (off the walls it ends on).
-      for (let k = 0; k < ring.length; k += 2)
-        pts.push({
-          x: l.x + ((ring[k] as number) - l.x) * 0.95,
-          y: l.y + ((ring[k + 1] as number) - l.y) * 0.95,
+      const cone = coneOf(l);
+      if (revealed) {
+        // Painted fog is cells: a revealed cell whose centre the light reaches.
+        let hit = false;
+        fillVis(this.light?.raster as Raster, lit, (_k, cx, cy) => {
+          if (world.levelFrom(l, cx, cy) > DARK && revealed(cx, cy)) hit = true;
+          return hit;
         });
-      const hit = revealed
-        ? pts.some((q) => revealed(q.x, q.y))
-        : p.viewers.some(
-            (v) => v.sight !== null && pts.some((q) => visContains(v.sight as VisPoly, q.x, q.y)),
-          );
+        if (hit) out.add(l.id);
+        continue;
+      }
+      const sights = p.viewers.map((v) => v.sight);
+      const coneKey = cone ? `${cone.dir},${cone.half}` : "";
+      const was = p.reach.get(l.id);
+      let hit: boolean;
+      if (
+        was &&
+        was.lit === lit &&
+        was.cone === coneKey &&
+        was.sights.length === sights.length &&
+        was.sights.every((s, i) => s === sights[i])
+      )
+        hit = was.hit;
+      else hit = sights.some((s) => s !== null && visOverlap(lit, s, cone));
+      reach.set(l.id, { lit, cone: coneKey, sights, hit });
       if (hit) out.add(l.id);
     }
+    p.reach = reach;
     return out;
   }
 
@@ -445,15 +493,7 @@ export class VisionService implements Perception, FogApplier {
     const scene = this.scene;
     let p = this.players.get(SPECTATORS);
     if (!p) {
-      p = {
-        viewers: [],
-        key: "",
-        perceived: new Set(),
-        lights: new Set(),
-        sensed: new Map(),
-        explored: null,
-        markedAt: "",
-      };
+      p = newPlayer();
       this.players.set(SPECTATORS, p);
     }
     const seen = new Set<string>();
@@ -500,12 +540,23 @@ export class VisionService implements Perception, FogApplier {
 
   private markExplored(userId: string, p: Player): void {
     if (!this.world || !this.light || !p.viewers.length) return;
-    const at = `${this.worldVersion}#${p.key}`;
-    if (p.markedAt === at) return;
-    p.markedAt = at;
+    const m = p.marked;
+    const sights = p.viewers.map((v) => v.sight);
+    // Marking only adds: with the same sight and viewers, only cells whose light changed can newly be seen.
+    let clips: CellRect[] | undefined;
+    if (
+      m.full === this.fullVersion &&
+      m.key === p.key &&
+      m.sights.length === sights.length &&
+      m.sights.every((s, i) => s === sights[i])
+    ) {
+      if (m.light === this.lightVersion) return;
+      if (m.light === this.lightVersion - 1) clips = this.refreshed;
+    }
+    p.marked = { full: this.fullVersion, key: p.key, sights, light: this.lightVersion };
     const raster = this.exploredOf(userId, p);
     const before = raster.data.slice();
-    const rect = markSeen(this.world, this.light, p.viewers, raster);
+    const rect = markSeen(this.world, this.light, p.viewers, raster, clips);
     if (!rect) return;
     const cells = raster.read(rect);
     const old = new Raster(0, 0, 1, rect.w, rect.h, sliceRect(before, raster.w, rect));
@@ -605,7 +656,7 @@ export class VisionService implements Perception, FogApplier {
       if (layer.startsWith("explored:")) {
         const u = layer.slice("explored:".length);
         const p = this.players.get(u);
-        if (p) p.markedAt = ""; // marked again from where they stand
+        if (p) p.marked = UNMARKED; // marked again from where they stand
         this.dirtyExplored.delete(u);
       }
     }

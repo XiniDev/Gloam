@@ -187,6 +187,13 @@ describe("P4 — vision, light and fog on the server (VIS)", () => {
     const l = room().model.get("light", lightId as string);
     expect([l?.bright, l?.dim, l?.animation, l?.tokenId]).toEqual([20, 20, "torch", human]);
     await expect(rq(anna.room, "light.toggle", { lightId, enabled: false })).rejects.toThrow(/FORBIDDEN/);
+    // Nor its owner while the DM has locked the token: its light is one of its controls, like moving it.
+    await rq(dm, "token.update", { tokenId: human, locked: true });
+    await expect(rq(bob.room, "light.toggle", { lightId, enabled: false })).rejects.toThrow(/FORBIDDEN/);
+    await expect(rq(bob.room, "light.carry", { tokenId: human, preset: "candle" })).rejects.toThrow(
+      /FORBIDDEN/,
+    );
+    await rq(dm, "token.update", { tokenId: human, locked: false });
     await rq(bob.room, "light.toggle", { lightId, enabled: false });
     await waitFor(() => !sees(bob, goblin));
     expect(bob.socket.receivedSince(mark, "Goblin G7")).toBe(true); // (he did see it by torchlight)
