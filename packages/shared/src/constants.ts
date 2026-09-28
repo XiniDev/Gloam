@@ -131,9 +131,71 @@ export const BOARD_COLORS = {
 
 /** Colour-blind swaps for dispositions and HP bands (SPEC §27.2, Okabe–Ito). */
 /** A zone's default colour by kind (SPEC §8.7 Zones; the DM can change it). */
+/** A light source preset (SPEC §34.3): radii (a server test checks them against the SRD pack) and how it looks. */
+export interface LightPreset {
+  id: string;
+  name: string;
+  bright: number;
+  /** Dim light beyond the bright radius. */
+  dim: number;
+  /** A cone's full angle, or null for all around. */
+  coneDeg: number | null;
+  animation: "none" | "torch" | "candle" | "pulse" | "shimmer";
+  color: string;
+}
+
+/** Light sources a token can carry or the DM can place (the hooded lantern's lowered hood is its `shuttered` state). */
+export const LIGHT_PRESETS = [
+  {
+    id: "candle",
+    name: "Candle",
+    bright: 5,
+    dim: 5,
+    coneDeg: null,
+    animation: "candle",
+    color: BOARD_COLORS.candle,
+  },
+  {
+    id: "torch",
+    name: "Torch",
+    bright: 20,
+    dim: 20,
+    coneDeg: null,
+    animation: "torch",
+    color: BOARD_COLORS.flameOuter,
+  },
+  {
+    id: "lamp",
+    name: "Lamp",
+    bright: 15,
+    dim: 30,
+    coneDeg: null,
+    animation: "candle",
+    color: BOARD_COLORS.candle,
+  },
+  {
+    id: "hooded-lantern",
+    name: "Hooded lantern",
+    bright: 30,
+    dim: 30,
+    coneDeg: null,
+    animation: "candle",
+    color: BOARD_COLORS.keyLight,
+  },
+  {
+    id: "bullseye-lantern",
+    name: "Bullseye lantern",
+    bright: 60,
+    dim: 60,
+    coneDeg: 53.13,
+    animation: "candle",
+    color: BOARD_COLORS.keyLight,
+  },
+] as const satisfies readonly LightPreset[];
+
 export const ZONE_COLORS = {
   difficult: BOARD_COLORS.brass600,
-  water: BOARD_COLORS.arcane400,
+  water: BOARD_COLORS.ice300,
   hazard: BOARD_COLORS.ember400,
   impassable: BOARD_COLORS.blood500,
   label: BOARD_COLORS.bone100,

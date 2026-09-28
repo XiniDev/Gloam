@@ -79,6 +79,8 @@ export interface CameraState {
   distance: number;
   ortho: boolean;
   zoom: number;
+  /** The camera that draws and picks is where the controls report (not a frame behind). */
+  inSync: boolean;
 }
 export const camera = (page: Page, set?: Record<string, unknown>) => hook<CameraState>(page, "camera", set);
 

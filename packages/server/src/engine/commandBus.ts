@@ -1,5 +1,6 @@
 import { LIMITS } from "@gloam/shared";
 import { GloamError } from "@gloam/shared/protocol";
+import type { Raster } from "@gloam/shared/vision";
 import { and, desc, eq, gt, isNull } from "drizzle-orm";
 import type { z } from "zod";
 import type { ServerContext } from "../context.ts";
@@ -32,6 +33,8 @@ export interface CommandCtx {
   model: CampaignModel;
   app: ServerContext;
   now: number;
+  /** Fog layers (painted reveals, explored memory), when the room has a vision service. */
+  fog?: FogApplier;
 }
 
 export interface Plan<R = unknown> {
@@ -93,9 +96,20 @@ export interface RoomEvent {
 type Working = Map<string, { kind: EntityKind; id: string; value: unknown | null }>;
 
 export interface FogApplier {
-  /** Applies a fog op to the in-memory raster and returns the new stored layer bytes (for the fog_masks row). */
+  /** Stages a fog op's cells on a copy of the layer (inside the commit's transaction). */
   apply(op: Extract<Op, { k: "fog" }>): void;
+  /** Writes the staged layer's row (same transaction). */
   persist(sceneId: string, layer: string): void;
+  /** The transaction committed: the staged layers become the live ones. */
+  commit(): void;
+  /** The transaction failed: the staged layers are dropped. */
+  discard(): void;
+  /** The layer as it is now (commands read it to plan a fog op's before/after). */
+  layer(sceneId: string, layer: string): Raster;
+  /** The scene's fog raster shape (null for no such scene). */
+  shape(sceneId: string): Raster | null;
+  /** The layers a scene has with a prefix ("reveal:", "explored:"), stored or in memory. */
+  layerNames(sceneId: string, prefix: string): string[];
 }
 
 export interface SheetApplier {
@@ -173,7 +187,7 @@ export class CommandBus {
         i ? `${i.path.join(".") || "payload"}: ${i.message}` : "Invalid command.",
       );
     }
-    const ctx: CommandCtx = { actor, model: this.model, app: this.app, now: Date.now() };
+    const ctx: CommandCtx = { actor, model: this.model, app: this.app, now: Date.now(), fog: this.hooks.fog };
     def.authorize(ctx, parsed.data);
     const plan = def.plan(ctx, parsed.data);
     const undoable = plan.undoable ?? def.undoable;
@@ -304,7 +318,13 @@ export class CommandBus {
         undoneBy: null,
       };
     });
-    tx();
+    try {
+      tx();
+    } catch (e) {
+      this.hooks.fog?.discard();
+      throw e;
+    }
+    this.hooks.fog?.commit();
     for (const w of working.values()) {
       if (w.value === null) this.model.remove(w.kind, w.id);
       else this.model.put(w.kind, w.value as never);

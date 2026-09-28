@@ -56,7 +56,7 @@ test("P3 key screens", async ({ admin, browser, gloam, guardLog }, info) => {
   /** On a phone the overview can't hold the room: look where the step happens. */
   const look = async (pages: Page[], x: number, y: number) => {
     if (!phone) return;
-    for (const p of pages) await camera(p, { pitchDeg: 68, distance: 44, target: [x, y], ms: 0 });
+    for (const p of pages) await camera(p, { pitchDeg: 60, distance: 44, target: [x, y], ms: 0 });
     await pages[0]?.waitForTimeout(500);
   };
   const step = async (name: string, page: Page, fn: () => Promise<unknown>) => {
@@ -65,11 +65,14 @@ test("P3 key screens", async ({ admin, browser, gloam, guardLog }, info) => {
       await shot(page, name);
     } catch (e) {
       notes.push(`${name}: ${(e as Error).message.split("\n")[0]}`);
+      // What the screen showed when the step failed, for the notes.
+      await page.screenshot({ path: join(dir, `_failed-${name}.png`) }).catch(() => {});
     }
   };
 
   const code = await adminAtTable(admin);
   await introDone(admin);
+  await req(admin, "campaign.update", { name: "The Lantern Crypt" });
   const crypt = await createScene(admin, {
     name: "The Lantern Crypt",
     mapKind: "procedural",
@@ -100,6 +103,7 @@ test("P3 key screens", async ({ admin, browser, gloam, guardLog }, info) => {
       { a: { x: 8, y: 18 }, b: { x: 8, y: 6 }, kind: "wall" },
       { a: { x: 30, y: 6 }, b: { x: 30, y: 20 }, kind: "curtain" },
       { a: { x: 38, y: 20 }, b: { x: 38, y: 34 }, kind: "wall", hidden: true },
+      { a: { x: 11, y: 20 }, b: { x: 21, y: 20 }, kind: "wall" },
     ],
   });
   const door = wallIds[1] as string;
@@ -188,16 +192,23 @@ test("P3 key screens", async ({ admin, browser, gloam, guardLog }, info) => {
   });
   await dave.keyboard.press("Shift+Digit2");
   await expect.poll(async () => (await camera(dave)).ortho).toBe(false);
+  await step("01b-walls3d-door-open", dave, async () => {
+    await req(admin, "door.toggle", { wallId: door, action: "open" });
+    await camera(dave, { pitchDeg: 40, distance: phone ? 34 : 26, target: [32, 8], ms: 0 });
+    await dave.waitForTimeout(900);
+  });
+  await req(admin, "door.toggle", { wallId: door, action: "close" });
   // The rest flat, from above-ish, walls as the DM's overlay.
   await req(admin, "scene.update", { sceneId: crypt, walls3d: false });
   for (const p of [dave, admin])
-    await camera(p, { pitchDeg: 70, distance: phone ? 72 : 56, target: [30, 20], ms: 0 });
+    await camera(p, { pitchDeg: 60, distance: phone ? 72 : 56, target: [30, 20], ms: 0 });
   await dave.waitForTimeout(600);
 
   // Moving: Dave drags Sir Aldric round the curtain wall; the DM watches the ghost.
   const aldric = ids["Sir Aldric"] as string;
   // A phone sees about 15 ft across at this distance: the moves there stay close to Sir Aldric.
-  const dragTo = phone ? { x: 21, y: 21 } : { x: 40, y: 16 };
+  // (Clear of the free wall's end at (21, 20): a Medium creature keeps 2 ft from walls.)
+  const dragTo = phone ? { x: 22, y: 23 } : { x: 40, y: 16 };
   await look([dave, admin], 18.5, 24);
   await step("03-move-drag-preview", dave, async () => {
     const a = await screen(dave, 16, 26);
@@ -239,13 +250,52 @@ test("P3 key screens", async ({ admin, browser, gloam, guardLog }, info) => {
   await dave.keyboard.press("Escape");
   await dave.keyboard.press("Escape");
 
+  await step("05b-move-around-wall-through-mud", dave, async () => {
+    await look([dave], 16, 18);
+    const a = await screen(dave, 16, 26);
+    await dave.mouse.move(a.x, a.y);
+    await dave.mouse.down();
+    for (let i = 1; i <= 10; i++) await moveTo(dave, 16 + (1 * i) / 10, 26 - (15 * i) / 10);
+    await expect(dave.getByTestId("move-label")).toContainText("difficult");
+    // Round the free wall's end: straight through it would cost ~20 ft.
+    await expect
+      .poll(async () => (await hook<{ preview: { cost: number } | null }>(dave, "move")).preview?.cost ?? 0)
+      .toBeGreaterThan(22);
+  });
+  await dave.keyboard.press("Escape");
+  await dave.mouse.up();
+  await step("05c-move-no-path", dave, async () => {
+    await look([dave], 20, 32);
+    const a = await screen(dave, 16, 26);
+    await dave.mouse.move(a.x, a.y);
+    await dave.mouse.down();
+    for (let i = 1; i <= 8; i++) await moveTo(dave, 16 + (4 * i) / 8, 26 + (12 * i) / 8);
+    await expect(dave.getByTestId("move-label")).toHaveText("No path");
+  });
+  await dave.keyboard.press("Escape");
+  await dave.mouse.up();
+  await step("05d-move-freehand", dave, async () => {
+    await look([dave], 16, 22);
+    const a = await screen(dave, 16, 26);
+    await dave.mouse.move(a.x, a.y);
+    await dave.mouse.down();
+    await dave.keyboard.down("Alt");
+    for (let i = 1; i <= 10; i++)
+      await moveTo(dave, 16 + 2 * Math.sin((i / 10) * Math.PI), 26 - (9 * i) / 10);
+    await expect(dave.getByTestId("move-label")).toBeVisible();
+  });
+  await dave.keyboard.press("Escape");
+  await dave.mouse.up();
+  await dave.keyboard.up("Alt");
+  await camera(dave, { pitchDeg: 60, distance: phone ? 72 : 56, target: [30, 20], ms: 0 });
+
   // Doors: shut, open and locked, with their handles.
   await req(admin, "door.toggle", { wallId: door, action: "lock" });
   await step("06-door-handles", dave, async () => {
     await camera(dave, { pitchDeg: 62, distance: 30, target: [32, 10], ms: 0 });
     await dave.waitForTimeout(700);
   });
-  await camera(dave, { pitchDeg: 70, distance: phone ? 72 : 56, target: [30, 20], ms: 0 });
+  await camera(dave, { pitchDeg: 60, distance: phone ? 72 : 56, target: [30, 20], ms: 0 });
 
   // Measuring.
   await look([dave, admin], 20, 25);
@@ -270,6 +320,22 @@ test("P3 key screens", async ({ admin, browser, gloam, guardLog }, info) => {
   await step("08-measure-cone", dave, async () => {
     await expect(dave.getByTestId("measure-label")).toBeVisible();
   });
+  for (const [label, file, a, b] of [
+    ["Radius", "08b-measure-radius", { x: 26, y: 24 }, { x: 26, y: 30 }],
+    ["Line", "08c-measure-line", { x: 16, y: 28 }, { x: 28, y: 24 }],
+    ["Cube", "08d-measure-cube", { x: 24, y: 24 }, { x: 30, y: 30 }],
+  ] as const) {
+    await step(file, dave, async () => {
+      await dave.getByRole("radio", { name: label }).click();
+      await moveTo(dave, a.x, a.y);
+      await dave.mouse.down();
+      for (let i = 1; i <= 6; i++)
+        await moveTo(dave, a.x + ((b.x - a.x) * i) / 6, a.y + ((b.y - a.y) * i) / 6);
+      await dave.mouse.up();
+      await expect(dave.getByTestId("measure-label")).toBeVisible();
+    });
+    await dave.keyboard.press("Escape");
+  }
   await dave.keyboard.press("Escape");
   await dave.keyboard.press("Escape");
 
@@ -324,8 +390,23 @@ test("P3 key screens", async ({ admin, browser, gloam, guardLog }, info) => {
   await admin.keyboard.press("Escape");
   await admin.keyboard.press("Escape");
 
+  await step("13b-walls-room-tool", admin, async () => {
+    await look([admin], 26, 28);
+    await admin.keyboard.press("w");
+    await admin.getByRole("radio", { name: "Room" }).click();
+    await moveTo(admin, 23, 25);
+    await admin.mouse.down();
+    for (let i = 1; i <= 6; i++) await moveTo(admin, 23 + (7 * i) / 6, 25 + (5 * i) / 6);
+    await expect(admin.getByTestId("room-size")).toBeVisible();
+  });
+  await admin.keyboard.press("Escape");
+  await admin.mouse.up();
+  await admin.keyboard.press("Escape");
+  await admin.keyboard.press("Escape");
+
   // The Zones tool: the hazard's panel with its trigger.
   await step("14-zones-tool-editor", admin, async () => {
+    await look([admin], 31, 27);
     await admin.keyboard.press("z");
     await clickAt(admin, 33.5, 27);
     await expect
@@ -340,7 +421,7 @@ test("P3 key screens", async ({ admin, browser, gloam, guardLog }, info) => {
   await step("15-hazard-prompt-dm", admin, async () => {
     const t = (await hook<{ pos: P }>(dave, "token", aldric)) as { pos: P };
     await req(dave, "move.commit", { tokenId: aldric, points: [t.pos, { x: 33.5, y: 27 }] });
-    await expect(admin.getByText(/Burning floor: Sir Aldric entered/)).toBeVisible();
+    await expect(admin.getByText(/Sir Aldric entered Burning floor/)).toBeVisible();
   });
   await step("16-unseen-bump", dave, async () => {
     const t = (await hook<{ pos: P }>(dave, "token", aldric)) as { pos: P };

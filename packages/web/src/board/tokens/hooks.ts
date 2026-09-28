@@ -1,4 +1,5 @@
 import { SIZE_MINI_HEIGHT_FT, type Size } from "@gloam/shared";
+import type { TokenView } from "@gloam/shared/state";
 import { useEffect, useState } from "react";
 import { Box3, type Group, type Mesh, type Texture, Vector3 } from "three";
 import type { GLTF } from "three/examples/jsm/loaders/GLTFLoader.js";
@@ -6,6 +7,7 @@ import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js
 import { assetMeta, pickImageVariant } from "../../net/assets.ts";
 import { type AssetRender, useLibrary } from "../../state/library.ts";
 import { acquireGlb, acquireTexture } from "../resources.ts";
+import { initialsTexture } from "./glyphs.ts";
 
 /** An asset's render view, kept current when it changes (e.g. a mini's overrides, pushed to every client). */
 export function useAssetMeta(id: string | undefined): AssetRender | null {
@@ -116,4 +118,16 @@ export function useMini(meta: AssetRender | null, size: Size): MiniInstance | nu
     };
   }, [id, size, boundsKey]);
   return inst;
+}
+
+/**
+ * A token's face: its image (a token-art asset), else its portrait, else its initials on its ring colour — what its
+ * coin shows, used wherever the token is stood in for (a move's ghost).
+ */
+export function useTokenFace(token: TokenView | undefined, ring: string): Texture {
+  const meta = useAssetMeta(token?.assetId || undefined);
+  const portrait = useAssetMeta(token?.portraitAssetId || undefined);
+  const faceMeta = meta?.cls === "image" ? meta : portrait?.cls === "image" ? portrait : null;
+  const tex = useAssetTexture(faceMeta, 256);
+  return tex ?? initialsTexture(token?.name ?? "?", ring);
 }

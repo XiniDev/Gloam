@@ -203,8 +203,11 @@ function astar(
       key = nodes[hi - 2] as number;
       cache = lo === 0 ? ends.a : ends.b;
     } else {
+      // The direct a–b edge belongs with this goal: `ends.a` outlives the query (a drag keeps its start's edges),
+      // and a start→goal answer kept there was handed to the next goal — a clear line to the first spot of a drag
+      // then ran straight through the wall behind it.
       key = -1;
-      cache = ends.a;
+      cache = ends.b;
     }
     const hit = cache.get(key);
     if (hit !== undefined) return hit;

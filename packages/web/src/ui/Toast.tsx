@@ -2,6 +2,7 @@ import { X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import type { ReactNode } from "react";
 import { create } from "zustand";
+import { useHudInsets } from "../hud/insets.ts";
 
 export type ToastKind = "info" | "success" | "warning" | "danger" | "knock";
 
@@ -81,10 +82,15 @@ const ACCENT: Record<ToastKind, string> = {
 export function Toaster() {
   const items = useToasts((s) => s.items);
   const dismiss = useToasts((s) => s.dismiss);
+  // At the table the stack stands beside the dock's rail, never over it (a sticky hazard prompt would otherwise
+  // take the DM's panels away until dismissed).
+  const table = useHudInsets((s) => s.active);
+  const right = useHudInsets((s) => s.right);
   return (
     <div
       aria-live="polite"
       className="pointer-events-none fixed right-3 top-[calc(64px+env(safe-area-inset-top))] z-[950] flex w-[min(380px,calc(100vw-24px))] flex-col gap-2 sm:right-4 sm:top-[72px]"
+      style={table ? { right, width: `min(380px, calc(100vw - ${right + 12}px))` } : undefined}
     >
       <AnimatePresence initial={false}>
         {items.map((t) => (

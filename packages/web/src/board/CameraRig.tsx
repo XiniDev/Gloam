@@ -1,7 +1,7 @@
 import { CameraControls, OrthographicCamera } from "@react-three/drei";
 import { useFrame, useThree } from "@react-three/fiber";
 import CameraControlsImpl from "camera-controls";
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import { Box3, MathUtils, type OrthographicCamera as OrthoCam, Vector3 } from "three";
 import { create } from "zustand";
 import { useHudInsets } from "../hud/insets.ts";
@@ -110,8 +110,10 @@ export function CameraRig({ bounds, sceneId }: { bounds: Bounds; sceneId: string
     zoom?: number;
   } | null>(null);
 
-  // Control setup — again whenever the camera changes (drei builds new controls for a new camera).
-  useEffect(() => {
+  // Control setup — again whenever the camera changes (drei builds new controls for a new camera). This and the next
+  // two are layout effects: a new camera (O) is set up and put in place in the commit that creates it, before any
+  // frame is drawn or any pointer is picked with it (see applyNow).
+  useLayoutEffect(() => {
     const c = ref.current;
     if (!c) return;
     cameraRig.controls = c;
@@ -150,7 +152,7 @@ export function CameraRig({ bounds, sceneId }: { bounds: Bounds; sceneId: string
 
   // The target stays within the scene bounds + 20 %.
   // biome-ignore lint/correctness/useExhaustiveDependencies: the controls (ref) are new whenever the camera changes
-  useEffect(() => {
+  useLayoutEffect(() => {
     const c = ref.current;
     if (!c) return;
     const { w, h } = boundsSize(bounds);
@@ -162,16 +164,25 @@ export function CameraRig({ bounds, sceneId }: { bounds: Bounds; sceneId: string
     );
   }, [bounds, camera]);
 
+  /** The scene these controls have set the view up for (the framing below runs once per scene and controls). */
+  const framedBy = useRef<{ sceneId: string; controls: CameraControlsImpl } | null>(null);
+
   // Each scene opens where this viewer left it, or framed at the tabletop preset.
-  useEffect(() => {
+  useLayoutEffect(() => {
     const c = ref.current;
     if (!c) return;
+    // The same controls already show this scene: a re-run for anything else (the scene's bounds or record replaced by
+    // a patch) leaves the view alone — restoring the last live view here undid camera moves not yet drawn.
+    if (framedBy.current?.sceneId === sceneId && framedBy.current.controls === c && !pendingView.current)
+      return;
+    framedBy.current = { sceneId, controls: c };
     // Switching between perspective and orthographic: the new camera takes the old one's view.
     const pv = pendingView.current;
     if (pv) {
       pendingView.current = null;
       void c.setLookAt(...pv.position, ...pv.target, false);
       if (pv.zoom !== undefined) void c.zoomTo(pv.zoom, false);
+      applyNow(c);
       cameraRig.framedScene = sceneId;
       return;
     }
@@ -180,12 +191,14 @@ export function CameraRig({ bounds, sceneId }: { bounds: Bounds; sceneId: string
     const live = liveViews.get(sceneId);
     if (live) {
       void c.setLookAt(...live.position, ...live.target, false);
+      applyNow(c);
       cameraRig.framedScene = sceneId;
       return;
     }
     const saved = useUi.getState().cameras[sceneId];
     if (saved) {
       void c.setLookAt(...saved.position, ...saved.target, false);
+      applyNow(c);
       cameraRig.framedScene = sceneId;
       return;
     }
@@ -203,6 +216,7 @@ export function CameraRig({ bounds, sceneId }: { bounds: Bounds; sceneId: string
       visible: { left: hud.left, top: hud.top + hud.banner, right: W - hud.right, bottom: H - 12 },
     });
     void c.setLookAt(...f.position, ...f.target, false);
+    applyNow(c);
     cameraRig.framedScene = sceneId;
   }, [sceneId, bounds, camera, gl]);
 
@@ -414,6 +428,18 @@ export function CameraRig({ bounds, sceneId }: { bounds: Bounds; sceneId: string
       <CameraControls ref={ref} makeDefault />
     </>
   );
+}
+
+/**
+ * Puts the camera object where its controls now are, at once. The controls write the camera only when they update
+ * (each frame), so a view set without transition was reported by the controls while the camera still sat where it
+ * was built — for a new camera (O) at the origin: a pick in between (a click right after pressing O) landed on the
+ * wrong spot of the table, and a frame drawn in between showed the table from nowhere.
+ */
+function applyNow(c: CameraControlsImpl) {
+  c.update(0);
+  c.camera.updateMatrixWorld();
+  wake();
 }
 
 /** The orthographic zoom showing as much as a perspective camera at distance d (drei sizes the frustum in pixels). */

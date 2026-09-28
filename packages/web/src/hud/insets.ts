@@ -16,6 +16,8 @@ export interface HudInsets {
   right: number;
   /** The prep banner's height (+ gap), when it shows. */
   banner: number;
+  /** The table's HUD is on screen (the insets above apply; elsewhere — the Admin console — they don't). */
+  active: boolean;
 }
 
 export const useHudInsets = create<HudInsets & { set(p: Partial<HudInsets>): void }>((set) => ({
@@ -23,6 +25,7 @@ export const useHudInsets = create<HudInsets & { set(p: Partial<HudInsets>): voi
   left: 76,
   right: 76,
   banner: 0,
+  active: false,
   set: (p) => set(p),
 }));
 
@@ -74,3 +77,14 @@ export function useIsPhone(): boolean {
   return phone;
 }
 const PHONE = "(max-width: 639px)";
+
+/** Narrower than a wide desktop: tool bars use compact controls (a kind dropdown instead of six labelled chips). */
+export function useCompactBar(): boolean {
+  const [narrow, setNarrow] = useState(() => typeof window !== "undefined" && window.innerWidth < 1280);
+  useEffect(() => {
+    const on = () => setNarrow(window.innerWidth < 1280);
+    window.addEventListener("resize", on);
+    return () => window.removeEventListener("resize", on);
+  }, []);
+  return narrow;
+}

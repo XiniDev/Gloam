@@ -18,7 +18,7 @@ import { useUi, type WallDrawKind } from "../state/ui.ts";
 import { Button, IconButton } from "../ui/Button.tsx";
 import { CompactSelect } from "../ui/CompactSelect.tsx";
 import { Segmented } from "../ui/controls.tsx";
-import { useIsPhone } from "./insets.ts";
+import { useCompactBar } from "./insets.ts";
 import { ToolBar } from "./ToolBar.tsx";
 
 const KINDS: { value: WallDrawKind; label: string; hint: string }[] = [
@@ -44,7 +44,7 @@ export function WallsPanel() {
   const walls = useBoard((d) => d.walls);
   const drawKind = useUi((s) => s.wallKind);
   const drawHidden = useUi((s) => s.wallHidden);
-  const phone = useIsPhone();
+  const compact = useCompactBar();
   const sceneId = useBoard((d) => d.scene?.id);
   const walls3d = useBoard((d) => d.scene?.walls3d === true);
   if (tool !== "walls" || !dm) return null;
@@ -80,7 +80,7 @@ export function WallsPanel() {
           },
         ]}
       />
-      {phone ? (
+      {compact ? (
         <CompactSelect<WallDrawKind>
           label="Wall kind"
           value={kind}

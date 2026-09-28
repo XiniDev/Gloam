@@ -130,6 +130,8 @@ export const MESSAGE_RATES = {
   "move.preview": rate(15, 20),
   "ping.send": rate(3, 3),
   "measure.share": rate(5, 5),
+  "fog.snapshot": rate(3, 6),
+  "vision.viewAs": rate(3, 6),
 } as const satisfies Record<string, RateSpec>;
 
 export * from "./commands.ts";

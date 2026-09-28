@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { segSegDist2 } from "../geometry/index.ts";
+import { clearanceRadius } from "./blocking.ts";
 import { buildMoveWorld } from "./build.ts";
 import { pathCost, route } from "./route.ts";
 
@@ -110,5 +112,61 @@ describe("a scene's movement world (§16.1)", () => {
         {},
       ).cost,
     ).toBeCloseTo(20, 9);
+  });
+});
+
+describe("a free-standing wall in a room with difficult ground (the P3 key screens' scene)", () => {
+  it("routes round the wall's end — never through it — and pays double only inside the mud", () => {
+    const world = buildMoveWorld({
+      walls: [
+        { id: "n", a: { x: 8, y: 6 }, b: { x: 52, y: 6 }, kind: "wall", doorState: null },
+        { id: "e", a: { x: 52, y: 6 }, b: { x: 52, y: 34 }, kind: "wall", doorState: null },
+        { id: "s", a: { x: 52, y: 34 }, b: { x: 8, y: 34 }, kind: "wall", doorState: null },
+        { id: "w", a: { x: 8, y: 34 }, b: { x: 8, y: 6 }, kind: "wall", doorState: null },
+        { id: "free", a: { x: 11, y: 20 }, b: { x: 21, y: 20 }, kind: "wall", doorState: null },
+      ],
+      zones: [{ id: "mud", kind: "difficult", shape: { kind: "rect", x: 12, y: 8, w: 10, h: 8 } }],
+      bounds: { minX: 0, minY: 0, maxX: 60, maxY: 40 },
+    });
+    const r = route(world, { x: 16, y: 26 }, { x: 17, y: 11 }, [], { rc: clearanceRadius(5) });
+    expect(r).not.toBeNull();
+    const path = (r as NonNullable<typeof r>).points;
+    // Never across the wall: every leg keeps clear of it.
+    for (let i = 1; i < path.length; i++) {
+      const a = path[i - 1] as { x: number; y: number };
+      const b = path[i] as { x: number; y: number };
+      expect(segSegDist2(a.x, a.y, b.x, b.y, 11, 20, 21, 20)).toBeGreaterThan(1.9 ** 2);
+    }
+    // Longer than the straight 15 ft (+5 ft of mud) it would be through the wall.
+    expect((r as NonNullable<typeof r>).cost).toBeGreaterThan(21);
+  });
+});
+
+describe("a drag: many queries from one start on one world (the kept start edges)", () => {
+  it("answers each new goal as a fresh world would — a clear line to an earlier goal never carries over", () => {
+    const walls = [
+      { id: "n", a: { x: 8, y: 6 }, b: { x: 52, y: 6 }, kind: "wall" as const, doorState: null },
+      { id: "s", a: { x: 52, y: 34 }, b: { x: 8, y: 34 }, kind: "wall" as const, doorState: null },
+      { id: "w", a: { x: 8, y: 34 }, b: { x: 8, y: 6 }, kind: "wall" as const, doorState: null },
+      { id: "e", a: { x: 52, y: 6 }, b: { x: 52, y: 34 }, kind: "wall" as const, doorState: null },
+      { id: "free", a: { x: 11, y: 20 }, b: { x: 21, y: 20 }, kind: "wall" as const, doorState: null },
+    ];
+    const bounds = { minX: 0, minY: 0, maxX: 60, maxY: 40 };
+    for (const zones of [
+      [],
+      [{ id: "mud", kind: "difficult", shape: { kind: "rect" as const, x: 12, y: 8, w: 10, h: 8 } }],
+    ]) {
+      const kept = buildMoveWorld({ walls, zones, bounds });
+      const o = { rc: clearanceRadius(5) };
+      const start = { x: 16, y: 26 };
+      // Pointer positions of a drag straight north: first in plain view, then behind the wall.
+      for (let i = 1; i <= 10; i++) {
+        const goal = { x: 16 + i / 10, y: 26 - 1.5 * i };
+        const r = route(kept, start, goal, [], o);
+        const fresh = route(buildMoveWorld({ walls, zones, bounds }), start, goal, [], o);
+        expect(r === null, `goal ${i} reachable`).toBe(fresh === null);
+        if (r && fresh) expect(r.cost, `goal ${i}`).toBeCloseTo(fresh.cost, 6);
+      }
+    }
   });
 });

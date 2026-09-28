@@ -150,3 +150,23 @@ PASSING 28/224 · DISPUTED 0 · FAILING 196
   overlays drawing only their first 500 segments, forced layouts in pointer handlers, and a store sync that re-read
   every entity on every patch (now incremental, audited against a full re-read after every patch in test builds).
 - Held: WAL-03 (vision part, P4), WAL-05 (start/end-of-turn triggers need the combat tracker, P8).
+
+## 2026-09-28 — P3 critic round 2 fixes; P4 begins (vision engine and server vision service)
+
+- P3 fixes: a pathfinder cache bug (a drag's kept start edges also kept the direct start→goal edge, so a clear line
+  to the drag's first spot ran through a wall behind it — regression test replays a drag); a new camera (O) now put
+  in place in the commit that creates it (a click right after O picked the wrong spot; `inSync` probe); the camera
+  rig no longer "restores" its last live view when a scene patch re-renders it (it undid camera moves); P3 shots at
+  all three viewports run every step. Full E2E green (30 + 6 timing) before the P4 work.
+- P4 shared (`@gloam/shared/geometry`, `/vision`): visibility polygons by rotational sweep over prepared segment
+  sets (property test: 2 000 scenes × 500 points vs a brute-force caster), light levels, `perceive` and creature
+  perception per §15.3–15.4 (darkvision greyscale, blindsight, truesight, invisibility, tremorsense, magical
+  darkness, obscurement, 3-D ranges), fog rasters with scanline fill and RLE, the light raster, explored marking.
+- P4 server: `VisionService` — per-player perceived tokens, carried-light glow, tremorsense markers (`sensed`), painted
+  layers and explored memory (5-s flush, `fog_masks`), `fog.snapshot`, `vision.viewAs`, moves clipped per viewer
+  (§15.6); `fog.paint` (brush/rect/polygon/room/all, for all or one player, undoable), `fog.resetExplored`,
+  `light.create/update/delete/toggle/carry` with §34.3 presets, `shareVisionWith`, party vision. 9 server vision tests
+  (VIS-01/03/05/09/10/11/13/14 server sides, SCN-07, WAL-03 vision) incl. raw-frame checks and a restart.
+- Next: the client — fog/light render targets and composite (§15.7), war fog, explored memory, DM hatched overlay and
+  View as, Fog and Light tools, the token Light slice, sensed markers, partial-move animation; then P4 journeys,
+  shots and the bench (VIS-12).

@@ -1,18 +1,21 @@
 import { SIZE_MINI_HEIGHT_FT, type Size } from "@gloam/shared";
 import { HP_BAND_HIDDEN, HP_BAND_LABELS } from "@gloam/shared/rules";
 import type { TokenView } from "@gloam/shared/state";
-import { Billboard, Text } from "@react-three/drei";
+import { Billboard, Html, Text } from "@react-three/drei";
 import { type ThreeEvent, useFrame } from "@react-three/fiber";
 import { memo, useEffect, useMemo, useRef } from "react";
 import {
   AnimationMixer,
   type Camera,
+  CanvasTexture,
   type Group,
   type Material,
   type Mesh,
+  MeshBasicMaterial,
   MeshStandardMaterial,
   type ShaderMaterial,
   type SpriteMaterial,
+  SRGBColorSpace,
   type Texture,
   Vector3,
 } from "three";
@@ -405,9 +408,9 @@ export const TokenObject = memo(function TokenObject({
     const n = e.nativeEvent;
     // The Pan tool (H): a left press anywhere, tokens included, drags the view.
     if (n.button === 0 && (useUi.getState().tool === "pan" || cameraRig.spaceHeld)) return;
-    // The Walls and Zones tools edit what's under the token: their presses go through to the board.
+    // The Walls and Zones tools edit what's under the token, and Measure snaps to it: their presses go through.
     const tool = useUi.getState().tool;
-    if (n.button === 0 && (tool === "walls" || tool === "zones")) return;
+    if (n.button === 0 && (tool === "walls" || tool === "zones" || tool === "measure")) return;
     e.stopPropagation();
     boardApi.claimedPointer = n.pointerId;
     down.current = { x: n.clientX, y: n.clientY, button: n.button, timer: null };
@@ -643,43 +646,74 @@ function useMiniMaterials(mini: MiniInstance | null, opacity: number, dead: bool
 }
 
 /** Flying tokens: a thin stem to a ground ring and an elevation label (SPEC §8.5 flying). */
+let shadowTex: CanvasTexture | null = null;
+/** A soft ink shadow for a flyer's ground mark: dark at the centre, gone at the rim. */
+function groundShadowTexture(): CanvasTexture {
+  if (shadowTex) return shadowTex;
+  const c = document.createElement("canvas");
+  c.width = c.height = 64;
+  const g = c.getContext("2d") as CanvasRenderingContext2D;
+  const r = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  r.addColorStop(0, "rgba(7,9,12,0.5)");
+  r.addColorStop(0.7, "rgba(7,9,12,0.28)");
+  r.addColorStop(1, "rgba(7,9,12,0)");
+  g.fillStyle = r;
+  g.fillRect(0, 0, 64, 64);
+  shadowTex = new CanvasTexture(c);
+  shadowTex.colorSpace = SRGBColorSpace;
+  return shadowTex;
+}
+
+/**
+ * Flying tokens (SPEC §8.5 flying; AC-TOK-07): a stem down to the ground, where a brass ring over a soft shadow marks
+ * the spot it flies over, and the height as a chip beside the ring — screen-sized, so it reads at any zoom.
+ */
 function Elevation({ elevation, radius }: { elevation: number; radius: number }) {
-  const mat = useMemo(
-    () =>
-      new MeshStandardMaterial({ color: C.brass300, transparent: true, opacity: 0.55, depthWrite: false }),
+  const [stemMat, ringMat, shadowMat] = useMemo(
+    () => [
+      new MeshStandardMaterial({ color: C.brass300, transparent: true, opacity: 0.8, depthWrite: false }),
+      new MeshBasicMaterial({ color: C.brass300, transparent: true, opacity: 0.9, depthWrite: false }),
+      new MeshBasicMaterial({ map: groundShadowTexture(), transparent: true, depthWrite: false }),
+    ],
     [],
   );
-  useEffect(() => () => disposeLater(mat), [mat]);
+  useEffect(() => () => disposeLater(stemMat, ringMat, shadowMat), [stemMat, ringMat, shadowMat]);
   if (Math.abs(elevation) < 0.5) return null;
   const up = elevation > 0;
   return (
     <group>
       {up ? (
-        <mesh position-y={-elevation / 2} material={mat} userData={{ part: "elevationStem" }}>
-          <cylinderGeometry args={[0.05, 0.05, elevation, 8]} />
+        <mesh position-y={-elevation / 2} material={stemMat} userData={{ part: "elevationStem" }}>
+          <cylinderGeometry args={[0.06, 0.06, elevation, 8]} />
         </mesh>
       ) : null}
       <mesh
-        position-y={-elevation + 0.03}
-        rotation-x={Math.PI / 2}
-        material={mat}
-        userData={{ part: "elevationRing" }}
+        position-y={-elevation + 0.02}
+        rotation-x={-Math.PI / 2}
+        material={shadowMat}
+        raycast={() => null}
       >
-        <torusGeometry args={[radius, 0.05, 8, 64]} />
+        <circleGeometry args={[radius * 1.15, 48]} />
       </mesh>
-      <Billboard position={[radius + 0.6, -elevation + 0.6, 0]}>
-        <Text
-          userData={{ part: "elevationLabel" }}
-          font={CAPS_FONT}
-          fontSize={0.5}
-          color={C.brass300}
-          outlineWidth={0.05}
-          outlineColor={C.ink950}
-          raycast={() => null}
-        >
-          {`${up ? "+" : "−"}${Math.abs(Math.round(elevation))} ft`}
-        </Text>
-      </Billboard>
+      <mesh
+        position-y={-elevation + 0.035}
+        rotation-x={Math.PI / 2}
+        material={ringMat}
+        userData={{ part: "elevationRing" }}
+        raycast={() => null}
+      >
+        <torusGeometry args={[radius, 0.1, 8, 64]} />
+      </mesh>
+      <group position={[radius + 0.4, -elevation + 0.1, 0]} userData={{ part: "elevationLabel" }}>
+        <Html center zIndexRange={[18, 0]} style={{ pointerEvents: "none", transform: "translateX(50%)" }}>
+          <span
+            data-testid="elevation-label"
+            className="whitespace-nowrap rounded-chip border border-line bg-ink-950 px-1.5 text-12 font-bold text-brass-bright tabular"
+          >
+            {`${up ? "↑" : "↓"} ${Math.abs(Math.round(elevation))} ft`}
+          </span>
+        </Html>
+      </group>
     </group>
   );
 }

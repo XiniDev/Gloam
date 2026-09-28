@@ -107,13 +107,14 @@ interface HazardMessage {
 
 /** "Flames lick at you — DC 12 DEX save (half on a success) · 1d4 fire". */
 export function hazardText(p: HazardMessage["prompts"][number]): string {
-  const parts = [p.label];
+  const parts: string[] = [];
+  if (p.label && p.label !== p.zoneLabel) parts.push(p.label);
   if (p.save)
     parts.push(
-      `DC ${p.save.dc} ${p.save.ability.toUpperCase()} save${p.save.onSuccess === "half" ? " (half on a success)" : " (none on a success)"}`,
+      `${p.save.ability.toUpperCase()} save DC ${p.save.dc} (${p.save.onSuccess === "half" ? "half on a success" : "none on a success"})`,
     );
   if (p.damage) parts.push(`${p.damage.formula} ${p.damage.type}`);
-  return parts.join(" — ");
+  return parts.join(" · ");
 }
 
 /** One-shot table events the UI reacts to (navigation, toasts, knock cards). */
@@ -365,10 +366,9 @@ async function join(campaignId: string): Promise<Room<unknown, TableState>> {
     for (const p of m.prompts)
       useToasts.getState().push({
         kind: "warning",
-        title: `${p.zoneLabel || "Hazard"}: ${m.tokenName} ${p.when === "enter" ? "entered" : p.when === "startTurn" ? "starts a turn inside" : "ends a turn inside"}`,
+        title: `${m.tokenName} ${p.when === "enter" ? "entered" : p.when === "startTurn" ? "starts a turn in" : "ends a turn in"} ${p.zoneLabel || "a hazard"}`,
         body: hazardText(p),
         duration: 0,
-        actions: [{ label: "Dismiss", onClick: () => {} }],
       });
   });
   room.onMessage(

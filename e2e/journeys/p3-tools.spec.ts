@@ -237,6 +237,8 @@ test.describe("P3 — measuring, elevation and pings (MOV-11/12, TOK-07, FUN-02)
     await admin.keyboard.press("o");
     await expect.poll(async () => (await camera(admin)).ortho, { timeout: 5000 }).toBe(true);
     const o = await camera(admin);
+    // The new camera is in place the moment it exists: what's drawn and what a click picks is the view reported.
+    expect(o.inSync).toBe(true);
     expect(o.pitchDeg).toBeGreaterThan(89.5);
     expect(Math.hypot(o.target[0] - 30, o.target[2] - 20)).toBeLessThan(0.05);
     // Measuring is true everywhere on screen: a 20-ft ruler from the middle to near the edge reads 20 ft.
@@ -260,6 +262,7 @@ test.describe("P3 — measuring, elevation and pings (MOV-11/12, TOK-07, FUN-02)
     await admin.keyboard.press("o");
     await expect.poll(async () => (await camera(admin)).ortho).toBe(false);
     const p = await camera(admin);
+    expect(p.inSync).toBe(true);
     expect(p.pitchDeg).toBeGreaterThan(89.5);
     expect(Math.hypot(p.target[0] - 30, p.target[2] - 20)).toBeLessThan(1);
     // And a tilt preset leaves orthographic by itself.
@@ -268,5 +271,33 @@ test.describe("P3 — measuring, elevation and pings (MOV-11/12, TOK-07, FUN-02)
     await admin.keyboard.press("Shift+Digit2");
     await expect.poll(async () => (await camera(admin)).ortho).toBe(false);
     await expect.poll(async () => Math.round((await camera(admin)).pitchDeg)).toBe(55);
+    // Back in perspective the camera answers as before: a view set outright is where it lands, and stays.
+    await camera(admin, { pitchDeg: 40, distance: 26, target: [32, 8], ms: 0 });
+    await admin.waitForTimeout(600);
+    const back = await camera(admin);
+    expect(back.inSync).toBe(true);
+    expect(Math.round(back.pitchDeg)).toBe(40);
+    expect(back.distance).toBeCloseTo(26, 0);
+    expect(Math.hypot(back.target[0] - 32, back.target[2] - 8)).toBeLessThan(0.05);
+    // And what's drawn is that view: the table point under the screen's centre is the target.
+    const c = await screen(admin, 32, 8);
+    const vp = admin.viewportSize() as { width: number; height: number };
+    expect(Math.abs(c.x - vp.width / 2)).toBeLessThan(2);
+    // A scene update landing while a camera move is still to be drawn doesn't undo the move.
+    for (const [i, target] of [
+      [0, [20, 20]],
+      [1, [40, 12]],
+      [2, [28, 30]],
+    ] as const) {
+      await Promise.all([
+        camera(admin, { pitchDeg: 50, distance: 40, target: [target[0], target[1]], ms: 0 }),
+        req(admin, "scene.update", { sceneId, walls3d: i % 2 === 0 }),
+      ]);
+      await admin.waitForTimeout(400);
+      const now = await camera(admin);
+      expect(Math.hypot(now.target[0] - target[0], now.target[2] - target[1]), `move ${i}`).toBeLessThan(
+        0.05,
+      );
+    }
   });
 });

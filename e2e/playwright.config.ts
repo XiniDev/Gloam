@@ -7,7 +7,9 @@ import { defineConfig, devices } from "@playwright/test";
  */
 export default defineConfig({
   testDir: "./journeys",
-  outputDir: "../artifacts/e2e/results",
+  // One folder per part of the full run: each Playwright run empties its output folder, and the timing part would
+  // otherwise delete the main part's failure traces and screenshots.
+  outputDir: `../artifacts/e2e/results${process.env.E2E_PART ? `-${process.env.E2E_PART}` : ""}`,
   timeout: 120_000,
   expect: { timeout: 10_000 },
   fullyParallel: false,

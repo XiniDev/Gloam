@@ -248,3 +248,5 @@ export function pointAtLength(points: P[], s: number): { point: P; index: number
   }
   return { point: points[points.length - 1] as P, index: points.length - 1 };
 }
+
+export * from "./visibility.ts";

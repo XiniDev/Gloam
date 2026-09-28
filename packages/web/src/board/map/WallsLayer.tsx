@@ -6,7 +6,7 @@ import { LineSegments2 } from "three/examples/jsm/lines/LineSegments2.js";
 import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeometry.js";
 import { useTable } from "../../net/table.ts";
 import { useBoard } from "../../state/entities.ts";
-import { C, WALL_COLORS } from "../colors.ts";
+import { C, col, WALL_COLORS } from "../colors.ts";
 import { setSegments } from "../lines.ts";
 import { useWallTool } from "../tools/walls.ts";
 
@@ -14,69 +14,120 @@ import { useWallTool } from "../tools/walls.ts";
 const LIFT_FT = 0.06;
 
 /**
- * The DM's walls overlay (SPEC §8.7): every wall of the scene as a crisp line in its kind's colour, hidden walls
- * dimmed — one batched draw call however many walls there are. Walls the Walls tool is moving are drawn where the
- * edit puts them (its preview) until the server's echo arrives.
+ * How each kind is drawn, besides its colour (kinds must not differ by hue alone): walls, doors and secret doors
+ * solid; windows in tight dashes; curtains in long dashes; invisible walls dotted; any wall hidden from players dimmed
+ * with wide gaps. Dash lengths are in feet.
+ */
+const PATTERNS = {
+  solid: null,
+  window: { dashSize: 0.35, gapSize: 0.2 },
+  curtain: { dashSize: 1.2, gapSize: 0.35 },
+  invisible: { dashSize: 0.12, gapSize: 0.28 },
+  hidden: { dashSize: 0.5, gapSize: 0.75 },
+} as const;
+type Pattern = keyof typeof PATTERNS;
+const PATTERN_KEYS = Object.keys(PATTERNS) as Pattern[];
+
+function patternOf(kind: string, hidden: boolean): Pattern {
+  if (hidden) return "hidden";
+  if (kind === "window" || kind === "curtain" || kind === "invisible") return kind;
+  return "solid";
+}
+
+function fatLine(name: string, params: ConstructorParameters<typeof LineMaterial>[0], order: number) {
+  const m = new LineMaterial({ depthTest: false, transparent: true, ...params });
+  const l = new LineSegments2(new LineSegmentsGeometry(), m);
+  l.renderOrder = order;
+  l.frustumCulled = false;
+  l.raycast = () => {};
+  l.name = name;
+  return l;
+}
+
+/**
+ * The DM's walls overlay (SPEC §8.7): every wall of the scene as a crisp line in its kind's colour and pattern over an
+ * ink underlay (so it holds on pale floors and busy maps) — a handful of batched draw calls however many walls there
+ * are. Walls the Walls tool is moving are drawn where the edit puts them (its preview) until the server's echo
+ * arrives; the selection shows as the tool's glow and handles, never by recolouring (a brass wall would read as a
+ * door).
  */
 export function WallsLayer() {
   const walls = useBoard((d) => d.walls);
   const dm = useTable((s) => s.me?.role === "dm" || s.me?.role === "admin");
   const size = useThree((s) => s.size);
   const invalidate = useThree((s) => s.invalidate);
-  const [line, material] = useMemo(() => {
-    const m = new LineMaterial({ linewidth: 3, vertexColors: true, depthTest: false, transparent: true });
-    const l = new LineSegments2(new LineSegmentsGeometry(), m);
-    l.renderOrder = 4;
-    l.frustumCulled = false;
-    l.name = "walls-overlay";
-    return [l, m] as const;
+  const [under, lines] = useMemo(() => {
+    const byPattern = {} as Record<Pattern, LineSegments2>;
+    for (const p of PATTERN_KEYS) {
+      const dash = PATTERNS[p];
+      byPattern[p] = fatLine(
+        p === "solid" ? "walls-overlay" : `walls-overlay-${p}`,
+        dash
+          ? { linewidth: 3, vertexColors: true, dashed: true, ...dash }
+          : { linewidth: 3, vertexColors: true },
+        4,
+      );
+    }
+    return [
+      fatLine("walls-overlay-underlay", { linewidth: 7, color: col(C.ink950), opacity: 0.55 }, 3),
+      byPattern,
+    ];
   }, []);
+  const all = useMemo(() => [under, ...Object.values(lines)], [under, lines]);
   useEffect(
     () => () => {
-      line.geometry.dispose();
-      material.dispose();
+      for (const l of all) {
+        l.geometry.dispose();
+        l.material.dispose();
+      }
     },
-    [line, material],
+    [all],
   );
   useEffect(() => {
-    material.resolution.set(size.width, size.height);
-  }, [material, size]);
+    for (const l of all) l.material.resolution.set(size.width, size.height);
+  }, [all, size]);
 
   const preview = useWallTool((s) => s.preview);
-  const selected = useWallTool((s) => s.selected);
-  const count = walls.size;
   // A layout effect: the lines match the store in the same commit (no frame drawn with stale walls while editing).
   useLayoutEffect(() => {
-    if (!count) return;
-    const pos = new Float32Array(count * 6);
-    const colors = new Float32Array(count * 6);
+    const everything = new Float32Array(walls.size * 6);
+    const pos = Object.fromEntries(PATTERN_KEYS.map((p) => [p, [] as number[]])) as Record<Pattern, number[]>;
+    const rgb = Object.fromEntries(PATTERN_KEYS.map((p) => [p, [] as number[]])) as Record<Pattern, number[]>;
     const c = new Color();
-    const chosen = new Set(selected);
     let i = 0;
     for (const w of walls.values()) {
       const moved = preview?.get(w.id);
-      const o = i * 6;
-      pos[o] = moved ? moved.a.x : w.ax;
-      pos[o + 1] = LIFT_FT;
-      pos[o + 2] = moved ? moved.a.y : w.ay;
-      pos[o + 3] = moved ? moved.b.x : w.bx;
-      pos[o + 4] = LIFT_FT;
-      pos[o + 5] = moved ? moved.b.y : w.by;
-      // Selected walls (the Walls tool) in brass, whatever their kind; hidden ones dimmed.
-      if (chosen.has(w.id)) c.set(C.brass400);
-      else {
-        c.set(WALL_COLORS[(w.dmKind ?? w.kind) as keyof typeof WALL_COLORS] ?? WALL_COLORS.wall);
-        if (w.dmHidden) c.multiplyScalar(0.45);
-      }
-      colors[o] = colors[o + 3] = c.r;
-      colors[o + 1] = colors[o + 4] = c.g;
-      colors[o + 2] = colors[o + 5] = c.b;
+      const seg = [
+        moved ? moved.a.x : w.ax,
+        LIFT_FT,
+        moved ? moved.a.y : w.ay,
+        moved ? moved.b.x : w.bx,
+        LIFT_FT,
+        moved ? moved.b.y : w.by,
+      ];
+      everything.set(seg, i * 6);
+      const kind = w.dmKind ?? w.kind;
+      const p = patternOf(kind, w.dmHidden === true);
+      c.set(WALL_COLORS[kind as keyof typeof WALL_COLORS] ?? WALL_COLORS.wall);
+      if (p === "hidden") c.multiplyScalar(0.6);
+      pos[p].push(...seg);
+      rgb[p].push(c.r, c.g, c.b, c.r, c.g, c.b);
       i++;
     }
-    setSegments(line, pos, colors);
+    setSegments(under, everything);
+    for (const p of PATTERN_KEYS) {
+      setSegments(lines[p], new Float32Array(pos[p]), new Float32Array(rgb[p]));
+      if (PATTERNS[p] && pos[p].length) lines[p].computeLineDistances();
+    }
     invalidate();
-  }, [walls, count, preview, selected, line, invalidate]);
+  }, [walls, preview, under, lines, invalidate]);
 
-  if (!dm || !count) return null;
-  return <primitive object={line} />;
+  if (!dm) return null;
+  return (
+    <group name="walls-overlay-group">
+      {all.map((l) => (
+        <primitive key={l.name} object={l} />
+      ))}
+    </group>
+  );
 }

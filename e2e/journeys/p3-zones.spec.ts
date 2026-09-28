@@ -225,10 +225,8 @@ test.describe("P3 — the Zones tool (WAL-05)", () => {
         { x: 27, y: 27 },
       ],
     });
-    await expect(admin.getByText("Burning floor: Dave's Rogue entered")).toBeVisible();
-    await expect(
-      admin.getByText(/Burning floor — DC 12 DEX save \(half on a success\) — 1d4 fire/),
-    ).toBeVisible();
+    await expect(admin.getByText("Dave's Rogue entered Burning floor")).toBeVisible();
+    await expect(admin.getByText("DEX save DC 12 (half on a success) · 1d4 fire")).toBeVisible();
     await expect(dave.getByText(/Burning floor/)).toHaveCount(0);
 
     // Delete (Del) and undo.

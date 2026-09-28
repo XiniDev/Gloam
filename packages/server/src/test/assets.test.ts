@@ -95,7 +95,9 @@ describe("P2 — assets and uploads (AST)", () => {
   beforeAll(async () => {
     t = await startTestServer({
       config: {
-        processor: { timeoutMs: { image: 4000, model: 20_000, audio: 3000 }, rssLimit: 700 * 1024 * 1024 },
+        // Shorter than production so the hang test ends sooner — yet with room for this suite's big legitimate
+        // images (a 16 MB noise PNG) while the rest of `pnpm check` loads the machine (4 s timed them out).
+        processor: { timeoutMs: { image: 10_000, model: 20_000, audio: 3000 }, rssLimit: 700 * 1024 * 1024 },
       },
     });
     admin = await setupAdmin(t);

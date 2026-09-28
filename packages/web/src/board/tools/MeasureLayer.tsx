@@ -5,6 +5,7 @@ import { DoubleSide, Shape, ShapeGeometry } from "three";
 import { useUi } from "../../state/ui.ts";
 import { C } from "../colors.ts";
 import { useUnits } from "../useUnits.ts";
+import { Dots } from "./marks.tsx";
 import {
   conePolygon,
   cubePolygon,
@@ -80,10 +81,23 @@ function MeasureShapeView({ m, color, who }: { m: Measurement; color: string; wh
           renderOrder={8}
           raycast={() => null}
         >
-          <meshBasicMaterial color={color} transparent opacity={0.16} depthWrite={false} side={DoubleSide} />
+          <meshBasicMaterial color={color} transparent opacity={0.3} depthWrite={false} side={DoubleSide} />
         </mesh>
       ) : null}
+      {/* An ink edge under the line: the shape holds on pale stone and bright maps alike. */}
+      <Line
+        points={outline}
+        color={C.ink950}
+        lineWidth={5}
+        transparent
+        opacity={0.55}
+        renderOrder={9}
+        depthTest={false}
+      />
       <Line points={outline} color={color} lineWidth={2.5} dashed={false} renderOrder={9} depthTest={false} />
+      {m.shape === "ruler" ? (
+        <Dots points={m.points.map((p) => ({ x: p.x, y: p.y }))} kind="dot" px={9} color={color} />
+      ) : null}
       {m.shape !== "ruler" ? (
         <Line
           points={[

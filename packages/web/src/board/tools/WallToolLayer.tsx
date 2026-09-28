@@ -97,10 +97,10 @@ function Marks() {
   return (
     <group name="wall-tool">
       <Segments segs={ghosts} color={C.brass300} width={3} opacity={0.6} order={5} />
-      <Segments segs={glow} color={C.brass400} width={12} opacity={0.5} order={3} />
+      <Segments segs={glow} color={C.brass300} width={14} opacity={0.55} order={2} />
       <Segments segs={hovered} color={C.bone100} width={8} opacity={0.18} order={3} />
-      <Segments segs={drawing ? placed : NONE} color={C.brass300} width={3} opacity={1} order={6} />
-      <Segments segs={liveSegs} color={C.brass300} width={2} opacity={0.75} order={6} />
+      <Segments segs={drawing ? placed : NONE} color={C.brass400} width={3.5} opacity={1} order={6} />
+      <Segments segs={liveSegs} color={C.brass300} width={2.5} opacity={0.95} order={6} dashed />
       <Segments segs={closing} color={C.brass300} width={1.5} opacity={0.35} order={6} />
       <Segments segs={on ? rectSegs : NONE} color={C.brass300} width={3} opacity={0.9} order={6} />
       <Dots points={on && mode === "select" ? ends : NONE} kind="dot" px={11} color={C.bone100} />

@@ -10,6 +10,7 @@ import {
   type Float32BufferAttribute,
   FrontSide,
   type Group,
+  InstancedBufferAttribute,
   InstancedMesh,
   Matrix4,
   MeshStandardMaterial,
@@ -57,6 +58,8 @@ interface Box {
   thick: number;
   /** Stretch past both ends (joints close up). */
   extend: number;
+  /** What its top shows from above: plain stone, a door's lintel (wood), a window's header (glass). */
+  cap?: 0 | 1 | 2;
 }
 interface Door {
   id: string;
@@ -98,7 +101,7 @@ export function wallPieces(
     if (kind === "occluder") continue;
     if (kind === "wall") out.stone.push({ a, b, y0: 0, y1: WALL_HEIGHT_FT, thick: THICK, extend: THICK / 2 });
     else if (kind === "door" || kind === "secret") {
-      out.stone.push({ a, b, y0: LINTEL, y1: WALL_HEIGHT_FT, thick: THICK, extend: 0 });
+      out.stone.push({ a, b, y0: LINTEL, y1: WALL_HEIGHT_FT, thick: THICK, extend: 0, cap: 1 });
       out.doors.push({
         id: w.id,
         a,
@@ -109,7 +112,7 @@ export function wallPieces(
       });
     } else if (kind === "window") {
       out.stone.push({ a, b, y0: 0, y1: SILL, thick: THICK, extend: THICK / 2 });
-      out.stone.push({ a, b, y0: LINTEL, y1: WALL_HEIGHT_FT, thick: THICK, extend: THICK / 2 });
+      out.stone.push({ a, b, y0: LINTEL, y1: WALL_HEIGHT_FT, thick: THICK, extend: THICK / 2, cap: 2 });
       out.glass.push({ a, b, y0: SILL, y1: LINTEL, thick: 0.06, extend: 0 });
     } else if (kind === "curtain") out.curtains.push({ id: w.id, a, b });
     else if (kind === "invisible" && dm) out.fields.push({ id: w.id, a, b });
@@ -120,8 +123,8 @@ export function wallPieces(
 // ------------------------------------------------------------------------------------------------ materials (once)
 
 const MASONRY_GLSL = /* glsl */ `
-uniform vec3 uStoneA; uniform vec3 uStoneB; uniform vec3 uJoint;
-varying vec3 vWall; varying float vAlong; varying float vTop;
+uniform vec3 uStoneA; uniform vec3 uStoneB; uniform vec3 uJoint; uniform vec3 uPlank; uniform vec3 uGlass;
+varying vec3 vWall; varying float vAlong; varying float vTop; varying float vCap; varying vec3 vLocal;
 ${NOISE_GLSL}
 // Ashlar courses 1 ft high, blocks 1.8 ft long, every course offset; mortar joints; per-block tint and grime low down.
 vec3 masonry(float u, float v, out float mortar) {
@@ -134,17 +137,25 @@ vec3 masonry(float u, float v, out float mortar) {
   float h = g_hash(vec2(cell, row));
   vec3 c = mix(uStoneA, uStoneB, 0.25 + 0.55 * h + 0.2 * g_fbm(vec2(u, v) * 1.4));
   c *= 0.86 + 0.22 * g_noise(vec2(u, v) * 5.0);
-  c *= mix(0.72, 1.0, smoothstep(0.0, 1.6, v));
+  // Contact shadow where the wall meets the floor, and grime in the lowest course.
+  c *= mix(0.5, 1.0, smoothstep(0.0, 1.1, v)) * mix(0.9, 1.0, smoothstep(0.0, 2.4, v));
   return mix(c, uJoint, mortar);
 }
 // The wall's top: capstones laid along the wall, 1.5 ft long, with fine joints across it (overlapping tops at a joint
 // sit at slightly different heights, so the nearer one simply covers the other).
-vec3 capstone(float u, vec2 p, out float mortar) {
+vec3 capstone(float u, vec2 p, float cap, vec3 local, out float mortar) {
   float q = u / 1.5;
   float f = fract(q);
   mortar = (1.0 - smoothstep(0.02, 0.045, min(f, 1.0 - f) * 1.5)) * 0.7;
-  vec3 c = mix(uStoneA, uStoneB, 0.45 + 0.35 * g_hash(vec2(floor(q), 5.0)) + 0.1 * g_noise(p * 3.0));
-  return mix(c, uJoint, mortar);
+  // Darker than the floor, so a wall reads as a wall from straight above...
+  vec3 c = mix(uStoneA, uStoneB, 0.3 + 0.3 * g_hash(vec2(floor(q), 5.0)) + 0.1 * g_noise(p * 3.0)) * 0.72;
+  // ...a door's lintel as its oak beam, a window's header with a strip of glass along it...
+  if (cap > 1.5) c = mix(c, uGlass, smoothstep(0.2, 0.12, abs(local.z)) * 0.85);
+  else if (cap > 0.5) { c = mix(uPlank, uPlank * 1.35, g_noise(vec2(u * 2.0, local.z * 9.0))); mortar = 0.0; }
+  c = mix(c, uJoint, mortar);
+  // ...with a bright bevel along its long edges catching the light.
+  float bevel = smoothstep(0.36, 0.5, abs(local.z));
+  return mix(c, uStoneB * 1.25, bevel * 0.55);
 }
 `;
 
@@ -216,6 +227,8 @@ function stoneMaterial(ghost: boolean): MeshStandardMaterial {
     uStoneA: { value: col(C.stoneA) },
     uStoneB: { value: col(C.stoneB) },
     uJoint: { value: col(C.stoneJoint) },
+    uPlank: { value: col(C.plankA) },
+    uGlass: { value: col(C.ice300) },
   };
   m.customProgramCacheKey = () => "gloam-wall-stone";
   m.onBeforeCompile = (shader) => {
@@ -223,7 +236,7 @@ function stoneMaterial(ghost: boolean): MeshStandardMaterial {
     shader.vertexShader = shader.vertexShader
       .replace(
         "#include <common>",
-        "#include <common>\nvarying vec3 vWall; varying float vAlong; varying float vTop;",
+        "#include <common>\nvarying vec3 vWall; varying float vAlong; varying float vTop; varying float vCap; varying vec3 vLocal;\n#ifdef USE_INSTANCING\nattribute float aCap;\n#endif",
       )
       .replace(
         "#include <project_vertex>",
@@ -237,7 +250,13 @@ gdir = normalize(instanceMatrix[0].xz);
 gw = modelMatrix * gw;
 vWall = gw.xyz;
 vAlong = dot(gw.xz, gdir);
-vTop = abs(normal.y);`,
+vTop = abs(normal.y);
+vLocal = position;
+#ifdef USE_INSTANCING
+vCap = aCap;
+#else
+vCap = 0.0;
+#endif`,
       );
     shader.fragmentShader = shader.fragmentShader
       .replace("#include <common>", `#include <common>\n${MASONRY_GLSL}`)
@@ -245,7 +264,7 @@ vTop = abs(normal.y);`,
         "#include <color_fragment>",
         `#include <color_fragment>
 float gMortar;
-diffuseColor.rgb = vTop > 0.5 ? capstone(vAlong, vWall.xz, gMortar) : masonry(vAlong, vWall.y, gMortar);
+diffuseColor.rgb = vTop > 0.5 ? capstone(vAlong, vWall.xz, vCap, vLocal, gMortar) : masonry(vAlong, vWall.y, gMortar);
 if (!gl_FrontFacing) diffuseColor.rgb = mix(uStoneA, uJoint, 0.45);`,
       )
       .replace(
@@ -350,7 +369,7 @@ function materials() {
     cloth: cutMaterial(
       "gloam-wall-cloth",
       {
-        color: col(C.blood500).clone().multiplyScalar(0.2),
+        color: col(C.blood500).clone().multiplyScalar(0.34),
         roughness: 0.95,
         side: DoubleSide,
         transparent: true,
@@ -455,18 +474,32 @@ function StoneBoxes({
 }) {
   const capacity = Math.max(16, 2 ** Math.ceil(Math.log2(Math.max(1, boxes.length))));
   const mesh = useMemo(() => {
-    const im = new InstancedMesh(unitBox, material, capacity);
+    // Its own copy of the box, carrying the per-instance cap kind.
+    const g = unitBox.clone();
+    g.setAttribute("aCap", new InstancedBufferAttribute(new Float32Array(capacity), 1));
+    const im = new InstancedMesh(g, material, capacity);
     im.frustumCulled = false;
     im.raycast = () => {};
     im.name = name;
     return im;
   }, [capacity, material, name]);
-  useEffect(() => () => mesh.dispose(), [mesh]);
+  useEffect(
+    () => () => {
+      mesh.geometry.dispose();
+      mesh.dispose();
+    },
+    [mesh],
+  );
   useLayoutEffect(() => {
     // Each box a hair taller than the last few (0–12 thousandths of a foot): where tops overlap at a joint, one
     // covers the other instead of the two flickering.
-    for (let i = 0; i < boxes.length; i++)
-      mesh.setMatrixAt(i, boxMatrix(boxes[i] as Box, tmpM, (i % 5) * 0.003));
+    const caps = mesh.geometry.getAttribute("aCap") as InstancedBufferAttribute;
+    for (let i = 0; i < boxes.length; i++) {
+      const b = boxes[i] as Box;
+      mesh.setMatrixAt(i, boxMatrix(b, tmpM, (i % 5) * 0.003));
+      caps.setX(i, b.cap ?? 0);
+    }
+    caps.needsUpdate = true;
     mesh.count = boxes.length;
     mesh.instanceMatrix.needsUpdate = true;
     mesh.castShadow = shadows;
@@ -501,7 +534,8 @@ function Curtain({ a, b }: { a: P; b: P }) {
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i) + len / 2;
       const t = 1 - (pos.getY(i) + H / 2) / H; // 0 at the rod, 1 at the hem
-      pos.setZ(i, Math.sin((x / 1.6) * Math.PI * 2) * (0.09 + 0.05 * t));
+      // Deep, soft folds (they read as cloth edge-on and from above), a little fuller at the hem.
+      pos.setZ(i, Math.sin((x / 1.7) * Math.PI * 2) * (0.3 + 0.12 * t));
     }
     g.translate(len / 2, H / 2 + 0.12, 0);
     g.computeVertexNormals();

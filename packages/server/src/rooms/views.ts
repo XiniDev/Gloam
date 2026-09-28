@@ -4,7 +4,6 @@ import { controlsToken } from "@gloam/shared/rules";
 import type { TokenEntity, WallEntity } from "@gloam/shared/schemas";
 import {
   COLLECTIONS,
-  type CollectionName,
   TAG_DM,
   TAG_HP,
   TAG_LINK,
@@ -30,20 +29,27 @@ export interface Viewer {
 }
 
 /**
- * Whether a player's viewpoint perceives a token. Phase 2 has no vision engine yet: every token that isn't
- * DM-hidden is perceivable. The vision service (§15.5) replaces this from Phase 4.
+ * What a player's viewpoint perceives (the vision service, §15.5): tokens, carried lights whose light reaches their
+ * sight though the carrier is unseen, and tremorsense markers. `null` user = spectators (the union of the players).
  */
 export interface Perception {
   perceives(userId: string, token: TokenEntity): boolean;
+  seesLight?(userId: string | null, lightId: string): boolean;
+  sensedFor?(userId: string | null): { id: string }[];
 }
 
+/** No vision engine: every token that isn't DM-hidden is perceivable. */
 export const OPEN_PERCEPTION: Perception = { perceives: (_u, t) => !t.hidden };
 
-type Grants = Record<CollectionName, Map<string, number>>;
+/** The view-filtered collections: the entity ones plus tremorsense markers. */
+const VIEWED = [...COLLECTIONS, "sensed"] as const;
+type Viewed = (typeof VIEWED)[number];
+type Grants = Record<Viewed, Map<string, number>>;
 const ALL_TOKEN_TAGS = TAG_HP | TAG_OWNER | TAG_VISION | TAG_DM;
 const VISIBLE = 0;
 
 const emptyGrants = (): Grants => ({
+  sensed: new Map(),
   tokens: new Map(),
   walls: new Map(),
   lights: new Map(),
@@ -126,10 +132,15 @@ export class ViewManager {
         out.lights.set(l.id, VISIBLE);
         continue;
       }
-      // A carried light is in view while its carrier is perceivable (Phase 4 adds: or its light reaches the
-      // viewer's sight); its token link only while the carrier is perceivable.
+      // A carried light is in view while its carrier is perceivable (with its token link), or while its light
+      // reaches the viewer's sight (without: the glow round the corner, not who holds it).
       if (visibleTokens.has(l.tokenId)) out.lights.set(l.id, TAG_LINK);
+      else if (this.perception.seesLight?.(spectator ? null : viewer.userId, l.id))
+        out.lights.set(l.id, VISIBLE);
     }
+    if (!dm)
+      for (const m of this.perception.sensedFor?.(spectator ? null : viewer.userId) ?? [])
+        out.sensed.set(m.id, VISIBLE);
     for (const z of m.inScene("zone", activeSceneId))
       if (dm) out.zones.set(z.id, TAG_DM);
       else if (z.visible) out.zones.set(z.id, VISIBLE);
@@ -170,8 +181,8 @@ export class ViewManager {
     const view = client.view;
     const have = this.granted.get(client) ?? emptyGrants();
     const want = this.desired(viewer, activeSceneId);
-    const st = this.state as unknown as Record<CollectionName, Map<string, Ref>>;
-    for (const c of COLLECTIONS) {
+    const st = this.state as unknown as Record<Viewed, Map<string, Ref>>;
+    for (const c of VIEWED) {
       const map = st[c];
       const cur = have[c];
       const next = want[c];
@@ -218,9 +229,9 @@ export class ViewManager {
    * keeps references to the old scene's schema instances.
    */
   detachAll(): void {
-    const st = this.state as unknown as Record<CollectionName, Map<string, Ref>>;
+    const st = this.state as unknown as Record<Viewed, Map<string, Ref>>;
     for (const [client, have] of this.granted) {
-      for (const c of COLLECTIONS) {
+      for (const c of VIEWED) {
         for (const id of have[c].keys()) {
           const item = st[c].get(id);
           if (item) client.view?.remove(item);

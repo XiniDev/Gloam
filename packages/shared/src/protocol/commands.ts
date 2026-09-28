@@ -194,6 +194,8 @@ export const TokenUpdate = z.strictObject({
   revealTo: z.union([z.enum(["vision", "all"]), z.array(Id).max(20)]).optional(),
   locked: z.boolean().optional(),
   dmNote: z.string().max(20_000).optional(),
+  /** Vision sharing (SPEC §8.8): players who also see what this token sees (DM). */
+  shareVisionWith: z.array(Id).max(20).optional(),
 });
 
 export const TokenPlace = z.strictObject({
@@ -286,6 +288,74 @@ export const ZoneIn = z.strictObject({
   triggers: z.array(ZoneTriggerIn).max(6).default([]),
   note: z.string().max(2000).default(""),
 });
+// ── Fog (SPEC §8.8 DM fog tools, §15.8) ──
+/** Whom a fog operation is for: every player (`all`) or one player (a user id). */
+export const FogTarget = z.union([z.literal("all"), Id]);
+export const FogShapeIn = z.discriminatedUnion("kind", [
+  /** A brush stroke: circles of `radius` along the points. */
+  z.strictObject({
+    kind: z.literal("brush"),
+    points: z.array(Vec2In).min(1).max(4000),
+    radius: Ft.min(0.25).max(100),
+  }),
+  z.strictObject({ kind: z.literal("rect"), x: Coord, y: Coord, w: Ft.min(0.1), h: Ft.min(0.1) }),
+  z.strictObject({ kind: z.literal("polygon"), points: z.array(Vec2In).min(3).max(512) }),
+  /** Reveal room: the region enclosed by sight-blocking walls around the point. */
+  z.strictObject({ kind: z.literal("room"), x: Coord, y: Coord }),
+  /** Reveal all / Hide all. */
+  z.strictObject({ kind: z.literal("all") }),
+]);
+/** `fog.paint` (DM): reveal or hide part of a scene's painted fog for all players or one. */
+export const FogPaint = z.strictObject({
+  sceneId: Id,
+  mode: z.enum(["reveal", "hide"]),
+  target: FogTarget,
+  shape: FogShapeIn,
+});
+/** `fog.resetExplored` (DM): forget explored memory for one player or everyone (SPEC §8.8, AC-VIS-14). */
+export const FogResetExplored = z.strictObject({ sceneId: Id, userId: Id.optional() });
+
+// ── Lights (SPEC §8.8 Light) ──
+export const LIGHT_ANIMATIONS = ["none", "torch", "candle", "pulse", "shimmer"] as const;
+const LightFields = z.strictObject({
+  bright: Ft.max(1000),
+  dim: Ft.max(1000),
+  color: Hex,
+  intensity: z.number().finite().min(0).max(4),
+  animation: z.enum(LIGHT_ANIMATIONS),
+  /** A cone's full angle (e.g. 53.13 for a bullseye lantern); null for all around. */
+  coneDeg: z.number().finite().min(1).max(359).nullable(),
+  directionDeg: z.number().finite().min(-3600).max(3600),
+  magical: z.boolean(),
+  pierceDarkness: z.boolean(),
+  enabled: z.boolean(),
+  dmOnly: z.boolean(),
+  elevation: z.number().finite().min(-1000).max(10_000),
+});
+/** `light.create` (DM): a free-standing light, or one carried by a token; `preset` fills radii from §34.3. */
+export const LightCreate = LightFields.partial().extend({
+  sceneId: Id,
+  pos: Vec2In.optional(),
+  tokenId: Id.optional(),
+  preset: z.string().max(40).optional(),
+});
+/** `light.update` (DM): any field; the hood of a hooded lantern (`shuttered`). */
+export const LightUpdate = LightFields.partial().extend({
+  lightId: Id,
+  pos: Vec2In.optional(),
+  shuttered: z.boolean().optional(),
+  preset: z.string().max(40).nullable().optional(),
+});
+export const LightDelete = z.strictObject({ lightIds: z.array(Id).min(1).max(200) });
+/** `light.toggle` (DM, or the owners of the token carrying it): on/off, and a hooded lantern's hood. */
+export const LightToggle = z.strictObject({
+  lightId: Id,
+  enabled: z.boolean().optional(),
+  shuttered: z.boolean().optional(),
+});
+/** `light.carry` (DM, or the token's owners): give the token a light from a preset, or none (`preset: null`). */
+export const LightCarry = z.strictObject({ tokenId: Id, preset: z.string().max(40).nullable() });
+
 /** `zone.create` (DM): one zone (SPEC §8.7 Zones). */
 export const ZoneCreate = ZoneIn.extend({ sceneId: Id });
 export const ZoneUpdate = z.strictObject({

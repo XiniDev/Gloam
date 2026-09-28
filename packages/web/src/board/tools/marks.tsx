@@ -32,22 +32,31 @@ export function Segments({
   width,
   opacity,
   order,
+  dashed = false,
 }: {
   segs: { a: P; b: P }[];
   color: string;
   width: number;
   opacity: number;
   order: number;
+  /** A rubber band (dashes in feet): what's still being placed, as against what's there. */
+  dashed?: boolean;
 }) {
   const size = useThree((s) => s.size);
   const [line, material] = useMemo(() => {
-    const m = new LineMaterial({ linewidth: width, depthTest: false, transparent: true, opacity });
+    const m = new LineMaterial({
+      linewidth: width,
+      depthTest: false,
+      transparent: true,
+      opacity,
+      ...(dashed ? { dashed: true, dashSize: 0.45, gapSize: 0.3 } : {}),
+    });
     const l = new LineSegments2(new LineSegmentsGeometry(), m);
     l.renderOrder = order;
     l.frustumCulled = false;
     l.raycast = () => {};
     return [l, m] as const;
-  }, [width, opacity, order]);
+  }, [width, opacity, order, dashed]);
   useEffect(
     () => () => {
       line.geometry.dispose();
@@ -72,7 +81,8 @@ export function Segments({
       pos[o + 5] = s.b.y;
     }
     setSegments(line, pos);
-  }, [line, segs]);
+    if (dashed && segs.length) line.computeLineDistances();
+  }, [line, segs, dashed]);
   return <primitive object={line} />;
 }
 

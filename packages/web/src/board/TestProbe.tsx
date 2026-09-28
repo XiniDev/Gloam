@@ -72,7 +72,11 @@ export function TestProbe() {
         }
         const t = c.getTarget(new Vector3());
         const p = c.getPosition(new Vector3());
+        // The camera that draws and picks (its world matrix) is where the controls are now — not a frame behind.
+        const now = c.getPosition(new Vector3(), false);
+        const drawn = new Vector3().setFromMatrixPosition(c.camera.matrixWorld);
         return {
+          inSync: drawn.distanceTo(now) < 1e-3,
           target: [t.x, t.y, t.z],
           position: [p.x, p.y, p.z],
           pitchDeg: cameraRig.pitchDeg(),

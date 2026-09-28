@@ -1,7 +1,7 @@
 import type { WallView } from "@gloam/shared/state";
-import type { ThreeEvent } from "@react-three/fiber";
+import { type ThreeEvent, useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useRef } from "react";
-import type { Sprite } from "three";
+import { type Sprite, Vector3 } from "three";
 import { audio } from "../../audio/engine.ts";
 import { request, useTable } from "../../net/table.ts";
 import { boardData, useBoard, useEntities } from "../../state/entities.ts";
@@ -34,6 +34,13 @@ export function DoorsLayer() {
 const isDoor = (w: WallView, dm: boolean) =>
   (dm ? (w.dmKind ?? w.kind) : w.kind) === "door" || (dm && w.dmKind === "secret");
 
+const HANDLE_FT = 1.1;
+const minHandlePx = () =>
+  typeof matchMedia !== "undefined" && matchMedia("(pointer: coarse)").matches ? 44 : 28;
+const here = new Vector3();
+const right = new Vector3();
+const beside = new Vector3();
+
 function DoorHandle({ wall, dm }: { wall: WallView; dm: boolean }) {
   const state = ((dm ? wall.dmDoor || wall.door : wall.door) || "closed") as "closed" | "open" | "locked";
   const sprite = useRef<Sprite>(null);
@@ -59,22 +66,33 @@ function DoorHandle({ wall, dm }: { wall: WallView; dm: boolean }) {
       } else toast.info("Can't reach that door", (err as Error).message);
     }
   };
-  // The shake: a quick horizontal wobble over 400 ms.
-  const onFrame = () => {
+  const camera = useThree((s) => s.camera);
+  const size = useThree((s) => s.size);
+  useFrame(() => {
     const s = sprite.current;
     if (!s) return;
+    // The shake: a quick horizontal wobble over 400 ms.
     const t = performance.now() - shake.current;
     s.position.x = t < 400 ? Math.sin(t / 22) * 0.18 * (1 - t / 400) : 0;
     if (t < 400) again();
-  };
+    // Never smaller on screen than a button (28 px; 44 px for touch), however far the camera is.
+    here.set(x, 0.9, y).project(camera);
+    right
+      .set(1, 0, 0)
+      .applyQuaternion(camera.quaternion)
+      .add(beside.set(x, 0.9, y))
+      .project(camera);
+    const ppf = (Math.hypot(right.x - here.x, right.y - here.y) * size.width) / 2;
+    const k = ppf > 0 ? Math.max(HANDLE_FT, minHandlePx() / ppf) : HANDLE_FT;
+    if (Math.abs(s.scale.x - k) > 1e-3) s.scale.setScalar(k);
+  });
   return (
     <group position={[x, 0.9, y]} userData={{ part: "doorHandle", wallId: wall.id, doorState: state }}>
       <sprite
         ref={sprite}
-        scale={[1.1, 1.1, 1.1]}
+        scale={[HANDLE_FT, HANDLE_FT, HANDLE_FT]}
         renderOrder={25}
         onPointerDown={onDown}
-        onBeforeRender={onFrame}
         onPointerOver={() => {
           document.body.style.cursor = "pointer";
         }}

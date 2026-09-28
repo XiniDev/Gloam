@@ -31,14 +31,17 @@ export function ElevationControl() {
       className="panel pointer-events-auto absolute top-1/2 z-30 flex -translate-y-1/2 flex-col items-center gap-0.5 p-1"
       style={{ right }}
     >
-      <IconButton label="Raise 5 ft (Alt+wheel)" onClick={() => step(5)}>
+      <span className="caps px-1 pt-0.5 text-12 text-fog" aria-hidden>
+        Height
+      </span>
+      <IconButton label="Raise 5 ft" shortcut="Alt+wheel" onClick={() => step(5)}>
         <ChevronUp size={16} />
       </IconButton>
       <span className="tabular px-1 text-12 font-bold text-bone" data-testid="elevation-value">
         {token.elevation > 0 ? "+" : ""}
         {Math.round(token.elevation)} ft
       </span>
-      <IconButton label="Lower 5 ft (Alt+wheel)" onClick={() => step(-5)}>
+      <IconButton label="Lower 5 ft" shortcut="Alt+wheel" onClick={() => step(-5)}>
         <ChevronDown size={16} />
       </IconButton>
     </section>

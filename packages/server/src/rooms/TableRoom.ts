@@ -16,13 +16,14 @@ import {
   TableKick,
 } from "@gloam/shared/protocol";
 import { controlsToken } from "@gloam/shared/rules";
-import { type PrepSnapshot, Presence, Table, type TableState } from "@gloam/shared/state";
+import { type PrepSnapshot, Presence, Sensed, Table, type TableState, V2 } from "@gloam/shared/state";
 import { z } from "zod";
 import { renderDto } from "../assets/service.ts";
 import { LibraryQuery } from "../assets/types.ts";
 import { type CommandActor, CommandBus, type CommitInfo, type RoomEvent } from "../engine/commandBus.ts";
 import { CampaignModel } from "../engine/model.ts";
 import { ALL_COMMANDS, COMMAND_RATES, registerCommands } from "../engine/registry.ts";
+import { type MoveSeen, VisionService } from "../vision/visionService.ts";
 import {
   buildHandlers,
   type ClientAuth,
@@ -31,7 +32,7 @@ import {
   type MessageDef,
   parseCookies,
 } from "./dispatch.ts";
-import { type ProjectionCtx, prepSnapshot, StateProjector } from "./projector.ts";
+import { type ProjectionCtx, prepSnapshot, StateProjector, tokenView } from "./projector.ts";
 import { CLOSE, type TableRoomApi } from "./registry.ts";
 import { roomCtx } from "./roomContext.ts";
 import { type Viewer, ViewManager } from "./views.ts";
@@ -52,6 +53,8 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
   bus!: CommandBus;
   projector!: StateProjector;
   views!: ViewManager;
+  /** Perception, fog and explored memory of the active scene (SPEC §15.5). */
+  vision!: VisionService;
   /** DM connections viewing a non-active scene in prep (SPEC §13.7): client → scene id. */
   private readonly prepSubs = new Map<Client, string>();
   /** Test probe (AC-PER-01): runs right before Colyseus encodes and sends a state patch. */
@@ -213,6 +216,19 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
         this.broadcastAll("scene.preload", { assetIds: [...assetIds] });
         return { count: assetIds.size };
       }),
+      // Fog of the active scene for this client (SPEC §15.8): its reveal layers and explored memory.
+      "fog.snapshot": def(z.strictObject({}), MESSAGE_RATES["fog.snapshot"], ({ auth }) =>
+        this.vision.snapshot(auth.userId, auth.role !== "player"),
+      ),
+      // View as (SPEC §8.8): what a player would hold. Nothing changes for anyone.
+      "vision.viewAs": def(
+        z.strictObject({ userId: z.string().min(1).max(64) }),
+        MESSAGE_RATES["vision.viewAs"],
+        ({ auth }, p) => {
+          this.requireDm(auth);
+          return this.vision.viewAs(p.userId);
+        },
+      ),
       ...this.commandHandlers(),
       "history.undo": def(
         z.strictObject({ force: z.boolean().optional() }),
@@ -251,16 +267,38 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
     const model = CampaignModel.load(ctx.db, this.campaignId);
     if (!model) throw new Error(`campaign ${this.campaignId} not found`);
     this.model = model;
+    // A reload replaces the database under it (a restore): the old service's memory is not written back.
+    this.vision?.dispose();
+    this.vision = new VisionService(model, ctx.db, {
+      players: () => {
+        const out: string[] = [];
+        this.state.presence.forEach((p, id) => {
+          if (p.role === "player") out.push(id);
+        });
+        return out;
+      },
+      toUser: (userId, type, payload) => {
+        for (const c of this.clientsByUser.get(userId) ?? []) c.send(type, payload);
+      },
+      toOverseers: (type, payload) => {
+        for (const c of this.clients) {
+          const role = (c.auth as ClientAuth | undefined)?.role;
+          if (role === "admin" || role === "dm" || role === "spectator") c.send(type, payload);
+        }
+      },
+    });
     this.bus = new CommandBus(ctx, model, {
       onCommitted: (info) => this.onCommitted(info),
       onEvents: (events) => this.deliver(events),
+      fog: this.vision,
     });
     registerCommands(this.bus);
     this.syncCampaign();
     this.views?.detachAll();
     this.projector = new StateProjector(this.state, this.projectionCtx());
-    this.views = new ViewManager(this.state, model);
+    this.views = new ViewManager(this.state, model, this.vision);
     this.projector.loadActive();
+    this.syncSensed();
     this.syncAllViews();
   }
 
@@ -330,11 +368,14 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
     const nextActive = active && !active.deletedAt ? active.id : "";
     if (nextActive !== this.projector.activeSceneId) this.views.detachAll();
     const res = this.projector.apply(info.ops);
+    const seen = this.vision.onCommitted(info.ops);
+    if (seen) this.syncSensed();
     if (res.switched) {
       // Everyone travels (SPEC §8.3): DMs who were prepping the new active scene now see it live.
       for (const [client, sceneId] of this.prepSubs) if (sceneId === nextActive) this.prepSubs.delete(client);
     }
-    if (res.activeChanged) this.syncAllViews();
+    if (res.activeChanged || seen) this.syncAllViews();
+    this.vision.deliverFog();
     for (const [sceneId, patch] of res.prep) {
       for (const [client, sub] of this.prepSubs) if (sub === sceneId) client.send("prep.patch", patch);
     }
@@ -519,15 +560,70 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
   }
 
   override onDispose(): void {
+    this.vision.flush();
+    this.vision.dispose();
     const ctx = roomCtx();
     if (ctx.rooms.tables.get(this.campaignId) === this) ctx.rooms.tables.delete(this.campaignId);
   }
 
   // ── TableRoomApi ──────────────────────────────────────────────────────────────────────────────────────
 
+  /** The state's tremorsense markers: exactly the ones someone holds (views decide who). */
+  private syncSensed(): void {
+    const want = new Map(this.vision.allSensed().map((m) => [m.id, m] as const));
+    for (const id of [...this.state.sensed.keys()]) if (!want.has(id)) this.state.sensed.delete(id);
+    for (const [id, m] of want) {
+      let s = this.state.sensed.get(id);
+      if (!s) {
+        s = new Sensed();
+        s.id = id;
+        s.pos = new V2();
+        this.state.sensed.set(id, s);
+      }
+      if (s.pos.x !== m.x) s.pos.x = m.x;
+      if (s.pos.y !== m.y) s.pos.y = m.y;
+    }
+  }
+
+  /**
+   * A token's move (SPEC §15.6): DMs see all of it; every other viewer the part they perceive — from where it came
+   * into their perception to where it left it — or nothing. Who never holds the token gets its looks with the path.
+   */
+  private deliverMove(p: { id: string; path: { x: number; y: number }[]; durationMs: number }): void {
+    const t = this.model.get("token", p.id);
+    const clips = new Map<string, MoveSeen | null>();
+    const clipFor = (userId: string) => {
+      if (!clips.has(userId)) clips.set(userId, this.vision.clipMove(userId, p.id, p.path, p.durationMs));
+      return clips.get(userId) ?? null;
+    };
+    for (const c of this.clients) {
+      const auth = c.auth as ClientAuth | undefined;
+      if (!auth) continue;
+      if (auth.role === "admin" || auth.role === "dm") {
+        c.send("token.moved", { ...p, delayMs: 0, appear: false, disappear: false });
+        continue;
+      }
+      let clip: MoveSeen | null = null;
+      if (auth.role === "spectator") {
+        // The union of the players' views: the widest part any of them sees.
+        for (const u of this.vision.playerIds()) clip = widest(clip, clipFor(u));
+      } else clip = clipFor(auth.userId);
+      if (!clip) continue;
+      const holds = this.views.grantsOf(c)?.tokens.has(p.id) === true;
+      c.send(
+        "token.moved",
+        !holds && t ? { ...clip, ghost: ghostOf(tokenView(t, this.projectionCtx())) } : clip,
+      );
+    }
+  }
+
   /** Delivers command events (§14.1 post-commit): to a token's viewers, to users, or to the DMs. */
   private deliver(events: RoomEvent[]): void {
     for (const e of events) {
+      if (e.name === "token.moved" && "viewersOf" in e.to) {
+        this.deliverMove(e.payload as { id: string; path: { x: number; y: number }[]; durationMs: number });
+        continue;
+      }
       if ("viewersOf" in e.to) this.toViewersOf(e.to.viewersOf, e.name, e.payload);
       else if ("users" in e.to)
         for (const u of e.to.users)
@@ -597,6 +693,44 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
   }
 
   flushFog(): void {
-    // Explored memory is written by the vision service (Phase 4); nothing buffered yet.
+    this.vision.flush();
   }
+}
+
+/** The wider of two clipped moves (for spectators: the union of the players' views). */
+function widest(a: MoveSeen | null, b: MoveSeen | null): MoveSeen | null {
+  if (!a) return b;
+  if (!b) return a;
+  const end = (m: MoveSeen) => m.delayMs + m.durationMs;
+  if (a.delayMs <= b.delayMs && end(a) >= end(b)) return a;
+  if (b.delayMs <= a.delayMs && end(b) >= end(a)) return b;
+  // Overlapping parts: from the earlier start to the later end.
+  const [first, second] = a.delayMs <= b.delayMs ? [a, b] : [b, a];
+  return {
+    ...first,
+    path: [...first.path, ...second.path.slice(1)],
+    durationMs: end(second) - first.delayMs,
+    appear: first.appear,
+    disappear: second.disappear,
+  };
+}
+
+/** A token's looks for a viewer who never holds it (it crosses their view mid-move): nothing tagged. */
+function ghostOf(v: ReturnType<typeof tokenView>) {
+  return {
+    name: v.name,
+    size: v.size,
+    sizeFt: v.sizeFt,
+    elevation: v.elevation,
+    rotation: v.rotation,
+    mode: v.mode,
+    assetId: v.assetId,
+    portraitAssetId: v.portraitAssetId,
+    scale: v.scale,
+    offsetY: v.offsetY,
+    rotOffset: v.rotOffset,
+    tint: v.tint,
+    ringColor: v.ringColor,
+    disposition: v.disposition,
+  };
 }

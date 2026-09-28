@@ -186,6 +186,8 @@ export const tokenUpdate: CommandDef<z.infer<typeof TokenUpdate>> = {
     if (p.revealTo !== undefined) patch.revealTo = p.revealTo;
     if (p.locked !== undefined) patch.locked = p.locked;
     if (p.dmNote !== undefined) patch.dmNote = p.dmNote;
+    if (p.shareVisionWith !== undefined)
+      patch.overrides = { ...t.overrides, shareVisionWith: [...new Set(p.shareVisionWith)] };
     if (p.appearance) patch.appearance = mergeAppearance(t.appearance, p.appearance);
     if (p.size !== undefined) {
       patch.sizeFt = SIZE_BASE_FT[p.size];

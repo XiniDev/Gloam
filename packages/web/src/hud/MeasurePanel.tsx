@@ -1,4 +1,4 @@
-import { Box, Circle, Cone, Minus, Ruler, Share2 } from "lucide-react";
+import { Box, Circle, Cone, Minus, Radio, Ruler } from "lucide-react";
 import { useMeasure } from "../board/tools/measure.ts";
 import { useSettings } from "../state/settings.ts";
 import { useUi } from "../state/ui.ts";
@@ -54,11 +54,11 @@ export function MeasurePanel() {
         </label>
       ) : null}
       <IconButton
-        label={share ? "Sharing finished measurements (3 s)" : "Not sharing measurements"}
+        label={share ? "Share my rulers: on (3 s)" : "Share my rulers: off"}
         active={share}
         onClick={() => useSettings.getState().update({ shareRulers: !share })}
       >
-        <Share2 size={16} />
+        <Radio size={16} />
       </IconButton>
     </ToolBar>
   );

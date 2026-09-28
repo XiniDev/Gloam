@@ -33,6 +33,8 @@ export const CampaignSettings = z
     idleAnimations: z.boolean().default(true),
     autoFacing: z.boolean().default(true),
     revealHiddenCombatantCount: z.boolean().default(false),
+    /** Party vision (SPEC §8.8 Vision sharing): every player sees what any party member sees. Off by default. */
+    partyVision: z.boolean().default(false),
   })
   .strict();
 export type CampaignSettings = z.infer<typeof CampaignSettings>;

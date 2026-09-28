@@ -5,6 +5,7 @@ import { MapToolsPanel } from "../hud/dm/MapToolsPanel.tsx";
 import { NewSceneWizard } from "../hud/dm/NewSceneWizard.tsx";
 import { ElevationControl } from "../hud/ElevationControl.tsx";
 import { Intro, useIntro } from "../hud/Intro.tsx";
+import { useHudInsets } from "../hud/insets.ts";
 import { dismissKnockCard, showKnockCard } from "../hud/KnockCards.tsx";
 import { LeftToolbar } from "../hud/LeftToolbar.tsx";
 import { LoadingBar } from "../hud/LoadingBar.tsx";
@@ -36,6 +37,11 @@ export default function TableRoute() {
   const introPhase = useIntro((s) => s.phase);
   useUndoKeys();
   const introReduced = useIntro((s) => s.reduced);
+  // While the table is up, overlays that float over the HUD (toasts) keep clear of the dock.
+  useEffect(() => {
+    useHudInsets.getState().set({ active: true });
+    return () => useHudInsets.getState().set({ active: false });
+  }, []);
   useEffect(() => {
     let cancelled = false;
     const offs: (() => void)[] = [];

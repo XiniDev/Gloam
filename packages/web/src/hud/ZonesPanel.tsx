@@ -12,7 +12,7 @@ import { Button, IconButton } from "../ui/Button.tsx";
 import { CompactSelect } from "../ui/CompactSelect.tsx";
 import { Segmented, Select, Toggle } from "../ui/controls.tsx";
 import { toast } from "../ui/Toast.tsx";
-import { useHudInsets, useIsPhone } from "./insets.ts";
+import { useCompactBar, useHudInsets, useIsPhone } from "./insets.ts";
 import { ToolBar } from "./ToolBar.tsx";
 
 type ZoneKind = keyof typeof ZONE_COLORS;
@@ -78,7 +78,7 @@ export function ZonesPanel() {
   const selected = useZoneTool((s) => s.selected);
   const zone = useBoard((d) => (selected ? d.zones.get(selected) : undefined));
   const drawKind = useUi((s) => s.zoneKind);
-  const phoneBar = useIsPhone();
+  const phoneBar = useCompactBar();
   if (tool !== "zones" || !dm) return null;
   // In Select mode the kinds edit the selected zone; while drawing they set the next zone's kind.
   const editing = mode === "select" && zone ? zone : null;
@@ -245,7 +245,7 @@ export function ZoneEditor() {
           className="h-10 w-full rounded-[var(--radius-control)] border border-line bg-ink-900 px-3 text-14 text-bone hover:border-line-strong focus:border-brass"
         />
       </div>
-      <div role="radiogroup" aria-label="Zone colour" className="flex flex-wrap gap-1.5">
+      <div role="radiogroup" aria-label="Zone colour" className="flex gap-1">
         {SWATCHES.map((c) => {
           const active = zone.color.toLowerCase() === c.hex.toLowerCase();
           return (
@@ -257,7 +257,7 @@ export function ZoneEditor() {
               aria-label={c.name}
               title={c.name}
               onClick={() => void update(zone.id, { color: c.hex })}
-              className={`grid h-8 w-8 place-items-center rounded-full border-2 ${active ? "border-bone" : "border-transparent hover:border-line-strong"}`}
+              className={`grid h-7 w-7 place-items-center rounded-full border-2 ${active ? "border-bone" : "border-transparent hover:border-line-strong"}`}
             >
               <span className="block h-5 w-5 rounded-full" style={{ background: c.hex }} aria-hidden />
             </button>
@@ -322,6 +322,11 @@ export function ZoneEditor() {
           ) : null}
         </div>
       ) : null}
+      {/* More below: a fade at the panel's foot while it scrolls. */}
+      <div
+        aria-hidden
+        className="pointer-events-none sticky -bottom-3 -mx-3 -mb-6 h-6 shrink-0 bg-gradient-to-t from-[var(--ink-900)] to-transparent"
+      />
       <Button size="S" variant="danger" icon={<Trash2 size={16} />} onClick={() => void deleteZone(zone.id)}>
         Delete zone
       </Button>
@@ -364,6 +369,7 @@ function TriggerCard({
           <Trash2 size={16} />
         </IconButton>
       </div>
+      <span className="caps -mb-1 block text-12 text-fog">Prompt text</span>
       <input
         aria-label="Trigger label"
         value={label}
