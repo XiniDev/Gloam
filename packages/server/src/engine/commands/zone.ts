@@ -1,20 +1,11 @@
-import { BOARD_COLORS } from "@gloam/shared";
+import { ZONE_COLORS } from "@gloam/shared";
 import { ZoneCreate, ZoneDelete, ZoneUpdate } from "@gloam/shared/protocol";
-import type { ZoneEntity, ZoneKind } from "@gloam/shared/schemas";
+import type { ZoneEntity } from "@gloam/shared/schemas";
 import type { z } from "zod";
 import { newId } from "../../ids.ts";
 import type { CommandDef } from "../commandBus.ts";
 import type { Op } from "../ops.ts";
 import { createOp, deleteOp, mustGet, requireDm, setOps } from "../plan.ts";
-
-/** A zone's default colour by kind (the DM can change it). */
-export const ZONE_COLORS: Record<ZoneKind, string> = {
-  difficult: BOARD_COLORS.brass600,
-  water: BOARD_COLORS.arcane400,
-  hazard: BOARD_COLORS.ember400,
-  impassable: BOARD_COLORS.blood500,
-  label: BOARD_COLORS.bone100,
-};
 
 /** Zone commands (SPEC §8.7 Zones; DM). Their geometry feeds movement at once (the scene's geometry version). */
 export const zoneCreate: CommandDef<z.infer<typeof ZoneCreate>, { zoneId: string }> = {

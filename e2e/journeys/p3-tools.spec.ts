@@ -189,6 +189,8 @@ test.describe("P3 — measuring, elevation and pings (MOV-11/12, TOK-07, FUN-02)
     await dave.keyboard.down("Alt");
     await dave.mouse.click(at.x, at.y);
     await dave.keyboard.up("Alt");
+    // The sender sees their own ping at once (pings last a few seconds: look before they fade), and so does the DM.
+    await expect.poll(async () => (await hook<unknown[]>(dave, "pings")).length).toBeGreaterThan(0);
     await expect
       .poll(async () =>
         (await hook<{ color: string; spotlight: boolean }[]>(admin, "pings")).map((p) => [
@@ -197,7 +199,6 @@ test.describe("P3 — measuring, elevation and pings (MOV-11/12, TOK-07, FUN-02)
         ]),
       )
       .toContainEqual([me.color.toLowerCase(), false]);
-    await expect.poll(async () => (await hook<unknown[]>(dave, "pings")).length).toBeGreaterThan(0);
     const before = (await camera(dave)).target;
     const spot = await screen(admin, 50, 8);
     await admin.keyboard.down("Alt");
@@ -215,5 +216,57 @@ test.describe("P3 — measuring, elevation and pings (MOV-11/12, TOK-07, FUN-02)
       })
       .toBeLessThan(1);
     expect(Math.hypot(before[0] - 50, before[2] - 8)).toBeGreaterThan(5);
+  });
+
+  test("SPEC §8.4 O: an orthographic top-down view for precise measuring — tilts to 90° first, keeps the view, measures true, and any tilt leaves it", async ({
+    admin,
+  }) => {
+    await adminAtTable(admin);
+    await introDone(admin);
+    const sceneId = await createScene(admin, {
+      name: "Hall",
+      mapKind: "procedural",
+      floorStyle: "stone",
+      widthFt: 60,
+      heightFt: 40,
+    });
+    await boardSettled(admin, sceneId);
+    await camera(admin, { pitchDeg: 55, distance: 60, target: [30, 20], ms: 0 });
+    await admin.waitForTimeout(400);
+    // O: tilts to top-down over 400 ms, then switches to orthographic with the same target.
+    await admin.keyboard.press("o");
+    await expect.poll(async () => (await camera(admin)).ortho, { timeout: 5000 }).toBe(true);
+    const o = await camera(admin);
+    expect(o.pitchDeg).toBeGreaterThan(89.5);
+    expect(Math.hypot(o.target[0] - 30, o.target[2] - 20)).toBeLessThan(0.05);
+    // Measuring is true everywhere on screen: a 20-ft ruler from the middle to near the edge reads 20 ft.
+    await admin.keyboard.press("m");
+    await clickAt(admin, 20, 20);
+    const end = await screen(admin, 40, 20);
+    await admin.mouse.move(end.x, end.y);
+    await admin.mouse.dblclick(end.x, end.y);
+    await expect.poll(async () => (await measure(admin)).ft ?? 0).toBeCloseTo(20, 0);
+    await expect(admin.getByTestId("measure-label")).toHaveText("20 ft");
+    await admin.keyboard.press("Escape");
+    await admin.keyboard.press("Escape");
+    // The wheel zooms (it doesn't dolly): the zoom changes, the view stays top-down and orthographic.
+    const z0 = (await camera(admin)).zoom;
+    const mid = await screen(admin, 30, 20);
+    await admin.mouse.move(mid.x, mid.y);
+    await admin.mouse.wheel(0, -300);
+    await expect.poll(async () => (await camera(admin)).zoom).toBeGreaterThan(z0 * 1.05);
+    expect((await camera(admin)).ortho).toBe(true);
+    // O again: back to perspective, top-down, over the same point.
+    await admin.keyboard.press("o");
+    await expect.poll(async () => (await camera(admin)).ortho).toBe(false);
+    const p = await camera(admin);
+    expect(p.pitchDeg).toBeGreaterThan(89.5);
+    expect(Math.hypot(p.target[0] - 30, p.target[2] - 20)).toBeLessThan(1);
+    // And a tilt preset leaves orthographic by itself.
+    await admin.keyboard.press("o");
+    await expect.poll(async () => (await camera(admin)).ortho).toBe(true);
+    await admin.keyboard.press("Shift+Digit2");
+    await expect.poll(async () => (await camera(admin)).ortho).toBe(false);
+    await expect.poll(async () => Math.round((await camera(admin)).pitchDeg)).toBe(55);
   });
 });

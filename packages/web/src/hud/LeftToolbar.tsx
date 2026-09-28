@@ -1,6 +1,7 @@
 import { BrickWall, Hand, LandPlot, MousePointer2, Radar, Ruler } from "lucide-react";
 import { type ReactElement, useEffect, useRef } from "react";
 import { boardApi } from "../board/boardApi.ts";
+import { setWallMode, useWallTool } from "../board/tools/walls.ts";
 import { request, useTable } from "../net/table.ts";
 import { type Tool, useUi } from "../state/ui.ts";
 import { IconButton } from "../ui/Button.tsx";
@@ -55,15 +56,17 @@ export function LeftToolbar() {
       if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return;
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       const ui = useUi.getState();
+      // The 3D map tools use W / E / R for their gizmo while they're open.
+      if (ui.mapTool && (e.code === "KeyW" || e.code === "KeyE" || e.code === "KeyR")) return;
       // Shift+W: the Walls tool drawing doors.
       if (e.shiftKey) {
-        if (e.code === "KeyW" && dm) ui.set({ tool: "walls", wallKind: "door" });
+        if (e.code === "KeyW" && dm) drawWalls("door");
         return;
       }
       if (e.code === "KeyV") ui.set({ tool: "select" });
       else if (e.code === "KeyM") ui.set({ tool: ui.tool === "measure" ? "select" : "measure" });
       else if (e.code === "KeyH") void request("hand.toggle", {}).catch(() => {});
-      else if (e.code === "KeyW" && dm) ui.set({ tool: "walls", wallKind: "wall" });
+      else if (e.code === "KeyW" && dm) drawWalls("wall");
       else if (e.code === "KeyZ" && dm) ui.set({ tool: "zones" });
       else if (e.code === "KeyQ" && dm) openQuickUnit();
     };
@@ -113,6 +116,12 @@ export function LeftToolbar() {
       ) : null}
     </nav>
   );
+}
+
+/** W / Shift+W: the Walls tool, drawing walls or doors. */
+function drawWalls(kind: "wall" | "door"): void {
+  useUi.getState().set({ tool: "walls", wallKind: kind });
+  if (useWallTool.getState().mode === "select") setWallMode("draw");
 }
 
 /** Opens the Quick Unit dialog, placing the unit at the cursor (or the view's centre). */

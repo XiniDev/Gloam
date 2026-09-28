@@ -5,6 +5,7 @@ import type { Sprite } from "three";
 import { audio } from "../../audio/engine.ts";
 import { request, useTable } from "../../net/table.ts";
 import { boardData, useBoard, useEntities } from "../../state/entities.ts";
+import { useUi } from "../../state/ui.ts";
 import { toast } from "../../ui/Toast.tsx";
 import { boardApi } from "../boardApi.ts";
 import { again, wake } from "../frames.ts";
@@ -41,6 +42,8 @@ function DoorHandle({ wall, dm }: { wall: WallView; dm: boolean }) {
   const y = (wall.ay + wall.by) / 2;
   const onDown = async (e: ThreeEvent<PointerEvent>) => {
     if (e.nativeEvent.button !== 0) return;
+    // With the Walls tool a press here edits the door's wall (the board takes it).
+    if (useUi.getState().tool === "walls") return;
     e.stopPropagation();
     boardApi.claimedPointer = e.nativeEvent.pointerId;
     const action = dm && e.nativeEvent.shiftKey ? (state === "locked" ? "unlock" : "lock") : "toggle";

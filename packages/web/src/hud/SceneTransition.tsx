@@ -73,7 +73,7 @@ export function SceneTransition() {
       setAnimating("travel", p === "out" || p === "title");
     };
     const after = (ms: number, fn: () => void) => timers.current.push(setTimeout(fn, ms));
-    let raf = 0;
+    let poll: ReturnType<typeof setTimeout> | undefined;
     setName(travel.name);
 
     const reveal = () => {
@@ -92,9 +92,11 @@ export function SceneTransition() {
           });
           return;
         }
-        raf = requestAnimationFrame(waitReady);
+        // A short timer, not the next animation frame: the board is drawing the new scene under the fade, and on a
+        // slow device frames come too far apart to be the clock the reveal waits on.
+        poll = setTimeout(waitReady, 16);
       };
-      raf = requestAnimationFrame(waitReady);
+      poll = setTimeout(waitReady, 16);
     };
 
     // Already dark (a second activation while the name is up): the new name shows straight away.
@@ -104,7 +106,7 @@ export function SceneTransition() {
       after(out, reveal);
     }
     return () => {
-      cancelAnimationFrame(raf);
+      clearTimeout(poll);
       for (const t of timers.current) clearTimeout(t);
       timers.current = [];
       if (phaseRef.current === "idle") setAnimating("travel", false);

@@ -1,12 +1,14 @@
-import { CameraControls } from "@react-three/drei";
+import { CameraControls, OrthographicCamera } from "@react-three/drei";
 import { useFrame, useThree } from "@react-three/fiber";
 import CameraControlsImpl from "camera-controls";
 import { useEffect, useRef } from "react";
-import { Box3, MathUtils, Vector3 } from "three";
+import { Box3, MathUtils, type OrthographicCamera as OrthoCam, Vector3 } from "three";
+import { create } from "zustand";
 import { useHudInsets } from "../hud/insets.ts";
 import { tableEvents } from "../net/table.ts";
 import { useSettings } from "../state/settings.ts";
 import { useUi } from "../state/ui.ts";
+import { boardApi } from "./boardApi.ts";
 import { boardDiag } from "./diag.ts";
 import { again, wake } from "./frames.ts";
 import { frameBounds } from "./framing.ts";
@@ -20,13 +22,32 @@ export const PRESETS = { top: 90, tabletop: 55, low: 30 } as const;
 export const PITCH_MIN = 25;
 export const DISTANCE = { min: 8, max: 400 } as const;
 const PRESET_MS = 400;
+/** The perspective camera's vertical field of view (the Board's Canvas). */
+const FOV_DEG = 40;
+
+/**
+ * The orthographic top-down view (SPEC §8.4: `O`, "for precise measuring"): no perspective, so a foot is the same
+ * size anywhere on screen. It is only ever top-down — turning it on tilts to 90° first, and any other preset turns it
+ * off.
+ */
+export const useCameraMode = create<{ ortho: boolean }>(() => ({ ortho: false }));
 const SPOTLIGHT_MS = 600;
+
+/** Diagnostics (test hooks): rig mounts, helper installs, and helper calls that found no controls. */
+export const rigDiag = { mounts: 0, unmounts: 0, helpers: 0, noControls: [] as string[] };
 
 /** Diagnostics: when each tween began (the E2E journeys time the camera's motion against it). */
 function noteTween(kind: string): void {
   boardDiag.tweenStarts.push({ kind, at: performance.now() });
   if (boardDiag.tweenStarts.length > 20) boardDiag.tweenStarts.shift();
 }
+
+/**
+ * Each scene's view as it is right now, for as long as the page lives: if the camera setup runs again for a scene
+ * already on screen (the renderer or the controls re-created), the view must not jump back to a default framing that
+ * the session-storage copy (written only when the camera comes to rest) would otherwise give.
+ */
+const liveViews = new Map<string, { position: [number, number, number]; target: [number, number, number] }>();
 
 const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
 
@@ -41,18 +62,24 @@ interface Tween {
 /** Shared handle for tools, tests and panels: the live controls plus the rig's tween helpers. */
 export const cameraRig: {
   controls: CameraControlsImpl | null;
-  pitchTo(pitchDeg: number, ms?: number): void;
+  pitchTo(pitchDeg: number, ms?: number, done?: () => void): void;
+  /** Orthographic top-down on or off (the view stays where it is). */
+  setOrtho(on: boolean): void;
   moveTargetTo(x: number, z: number, ms?: number): void;
   pitchDeg(): number;
   /** Moves the view so the table slides by (dx, dz) feet (the grab-the-table pan). */
   panBy(dx: number, dz: number): void;
   /** Space is held: a left-drag pans whatever is under it. */
   spaceHeld: boolean;
+  /** The scene the camera has been set up for (restored or framed) — set after the board shows it. */
+  framedScene: string | null;
 } = {
   controls: null,
   spaceHeld: false,
+  framedScene: null,
   panBy: () => {},
   pitchTo: () => {},
+  setOrtho: () => {},
   moveTargetTo: () => {},
   pitchDeg: () => PRESETS.tabletop,
 };
@@ -75,7 +102,15 @@ export function CameraRig({ bounds, sceneId }: { bounds: Bounds; sceneId: string
   const camera = useThree((s) => s.camera);
   const gl = useThree((s) => s.gl);
 
-  // One-time control setup.
+  const ortho = useCameraMode((s) => s.ortho);
+  /** The view to put the new camera at when it switches between perspective and orthographic. */
+  const pendingView = useRef<{
+    position: [number, number, number];
+    target: [number, number, number];
+    zoom?: number;
+  } | null>(null);
+
+  // Control setup — again whenever the camera changes (drei builds new controls for a new camera).
   useEffect(() => {
     const c = ref.current;
     if (!c) return;
@@ -98,12 +133,23 @@ export function CameraRig({ bounds, sceneId }: { bounds: Bounds; sceneId: string
     c.touches.one = ACTION.TOUCH_SCREEN_PAN;
     c.touches.two = ACTION.TOUCH_DOLLY_ROTATE;
     c.touches.three = ACTION.TOUCH_ROTATE;
+    if ((camera as OrthoCam).isOrthographicCamera) {
+      // Top-down only; the wheel and pinch zoom (the same range as the perspective distances).
+      c.minPolarAngle = 0.0001;
+      c.maxPolarAngle = 0.0001;
+      c.mouseButtons.wheel = ACTION.ZOOM;
+      c.touches.two = ACTION.TOUCH_ZOOM_ROTATE;
+      const H = gl.domElement.clientHeight || window.innerHeight;
+      c.minZoom = zoomFor(DISTANCE.max, H);
+      c.maxZoom = zoomFor(DISTANCE.min, H);
+    }
     return () => {
       if (cameraRig.controls === c) cameraRig.controls = null;
     };
-  }, []);
+  }, [camera, gl]);
 
   // The target stays within the scene bounds + 20 %.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the controls (ref) are new whenever the camera changes
   useEffect(() => {
     const c = ref.current;
     if (!c) return;
@@ -114,15 +160,33 @@ export function CameraRig({ bounds, sceneId }: { bounds: Bounds; sceneId: string
         new Vector3(bounds.maxX + w * 0.2, 200, bounds.maxY + h * 0.2),
       ),
     );
-  }, [bounds]);
+  }, [bounds, camera]);
 
   // Each scene opens where this viewer left it, or framed at the tabletop preset.
   useEffect(() => {
     const c = ref.current;
     if (!c) return;
+    // Switching between perspective and orthographic: the new camera takes the old one's view.
+    const pv = pendingView.current;
+    if (pv) {
+      pendingView.current = null;
+      void c.setLookAt(...pv.position, ...pv.target, false);
+      if (pv.zoom !== undefined) void c.zoomTo(pv.zoom, false);
+      cameraRig.framedScene = sceneId;
+      return;
+    }
+    // Already showing this scene in this page (the effect re-running — renderer or controls re-created, a remount):
+    // the view stays exactly where the viewer has it.
+    const live = liveViews.get(sceneId);
+    if (live) {
+      void c.setLookAt(...live.position, ...live.target, false);
+      cameraRig.framedScene = sceneId;
+      return;
+    }
     const saved = useUi.getState().cameras[sceneId];
     if (saved) {
       void c.setLookAt(...saved.position, ...saved.target, false);
+      cameraRig.framedScene = sceneId;
       return;
     }
     // The whole map inside the part of the screen the HUD leaves visible, centred there (framing.ts).
@@ -139,9 +203,11 @@ export function CameraRig({ bounds, sceneId }: { bounds: Bounds; sceneId: string
       visible: { left: hud.left, top: hud.top + hud.banner, right: W - hud.right, bottom: H - 12 },
     });
     void c.setLookAt(...f.position, ...f.target, false);
+    cameraRig.framedScene = sceneId;
   }, [sceneId, bounds, camera, gl]);
 
   // Remember the view whenever the camera settles.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the controls (ref) are new whenever the camera changes
   useEffect(() => {
     const c = ref.current;
     if (!c) return;
@@ -150,16 +216,46 @@ export function CameraRig({ bounds, sceneId }: { bounds: Bounds; sceneId: string
       const t = c.getTarget(new Vector3());
       useUi.getState().rememberCamera(sceneId, { position: [p.x, p.y, p.z], target: [t.x, t.y, t.z] });
     };
+    // And, as it moves, the live view (for the page's life; see liveViews).
+    const p = new Vector3();
+    const t = new Vector3();
+    const onUpdate = () => {
+      if (sceneId === "none") return;
+      c.getPosition(p);
+      c.getTarget(t);
+      liveViews.set(sceneId, { position: [p.x, p.y, p.z], target: [t.x, t.y, t.z] });
+    };
     c.addEventListener("rest", onRest);
-    return () => c.removeEventListener("rest", onRest);
-  }, [sceneId]);
+    c.addEventListener("update", onUpdate);
+    return () => {
+      c.removeEventListener("rest", onRest);
+      c.removeEventListener("update", onUpdate);
+    };
+  }, [sceneId, camera]);
+
+  useEffect(() => {
+    rigDiag.mounts++;
+    return () => {
+      rigDiag.unmounts++;
+    };
+  }, []);
 
   // Tween helpers (exact durations, unlike the controls' damping).
   useEffect(() => {
+    rigDiag.helpers++;
     cameraRig.pitchDeg = () => 90 - (ref.current?.polarAngle ?? 35 * DEG) / DEG;
-    cameraRig.pitchTo = (pitchDeg, ms = PRESET_MS) => {
+    cameraRig.pitchTo = (pitchDeg, ms = PRESET_MS, done) => {
       const c = ref.current;
-      if (!c) return;
+      if (!c) {
+        rigDiag.noControls.push(`pitch@${Math.round(performance.now())}`);
+        return;
+      }
+      // A tilt leaves the orthographic view (it is top-down only).
+      if (useCameraMode.getState().ortho && pitchDeg < 89.5) {
+        cameraRig.setOrtho(false);
+        requestAnimationFrame(() => cameraRig.pitchTo(pitchDeg, ms, done));
+        return;
+      }
       const from = c.polarAngle;
       const to = Math.max(0.0001, (90 - pitchDeg) * DEG);
       tweens.current = tweens.current.filter((t) => t.kind !== "pitch");
@@ -170,7 +266,37 @@ export function CameraRig({ bounds, sceneId }: { bounds: Bounds; sceneId: string
         start: performance.now(),
         duration: ms,
         apply: (k) => void c.rotatePolarTo(from + (to - from) * k, false),
+        done,
       });
+    };
+    cameraRig.setOrtho = (on) => {
+      if (on === useCameraMode.getState().ortho || !ref.current) return;
+      const go = () => {
+        const c = ref.current;
+        if (!c) return;
+        const t = c.getTarget(new Vector3());
+        const p = c.getPosition(new Vector3());
+        const H = boardApi.element?.clientHeight || window.innerHeight;
+        const cam = c.camera as unknown as OrthoCam & { isOrthographicCamera?: boolean };
+        // The same visible area: the orthographic zoom that shows what the perspective camera showed at the
+        // target's distance, and back.
+        const d = on
+          ? c.distance
+          : MathUtils.clamp(distanceFor(cam.zoom ?? 1, H), DISTANCE.min, DISTANCE.max);
+        const dir = p.clone().sub(t);
+        if (dir.lengthSq() < 1e-9) dir.set(0, 1, 0);
+        // Orthographic: well above anything on the table (minis, 8-ft walls) whatever the zoom.
+        dir.setLength(on ? Math.max(d, 60) : d);
+        pendingView.current = {
+          target: [t.x, t.y, t.z],
+          position: [t.x + dir.x, t.y + dir.y, t.z + dir.z],
+          ...(on ? { zoom: zoomFor(d, H) } : {}),
+        };
+        useCameraMode.setState({ ortho: on });
+        wake();
+      };
+      if (on && cameraRig.pitchDeg() < 89.5) cameraRig.pitchTo(PRESETS.top, PRESET_MS, go);
+      else go();
     };
     cameraRig.panBy = (dx, dz) => {
       const c = ref.current;
@@ -182,7 +308,10 @@ export function CameraRig({ bounds, sceneId }: { bounds: Bounds; sceneId: string
     };
     cameraRig.moveTargetTo = (x, z, ms = PRESET_MS) => {
       const c = ref.current;
-      if (!c) return;
+      if (!c) {
+        rigDiag.noControls.push(`move@${Math.round(performance.now())}`);
+        return;
+      }
       const t0 = c.getTarget(new Vector3());
       tweens.current = tweens.current.filter((t) => t.kind !== "move");
       wake();
@@ -205,6 +334,8 @@ export function CameraRig({ bounds, sceneId }: { bounds: Bounds; sceneId: string
         cameraRig.pitchTo(
           e.code === "Digit1" ? PRESETS.top : e.code === "Digit2" ? PRESETS.tabletop : PRESETS.low,
         );
+      } else if (!e.shiftKey && e.code === "KeyO") {
+        cameraRig.setOrtho(!useCameraMode.getState().ortho);
       } else if (!e.shiftKey && e.code === "KeyT") {
         cameraRig.pitchTo(cameraRig.pitchDeg() > 75 ? PRESETS.tabletop : PRESETS.top);
       } else if (e.code === "KeyF") {
@@ -277,7 +408,20 @@ export function CameraRig({ bounds, sceneId }: { bounds: Bounds; sceneId: string
     }
   });
 
-  return <CameraControls ref={ref} makeDefault />;
+  return (
+    <>
+      {ortho ? <OrthographicCamera makeDefault near={0.5} far={4000} /> : null}
+      <CameraControls ref={ref} makeDefault />
+    </>
+  );
+}
+
+/** The orthographic zoom showing as much as a perspective camera at distance d (drei sizes the frustum in pixels). */
+function zoomFor(d: number, heightPx: number): number {
+  return heightPx / (2 * d * Math.tan((FOV_DEG * DEG) / 2));
+}
+function distanceFor(zoom: number, heightPx: number): number {
+  return heightPx / (2 * zoom * Math.tan((FOV_DEG * DEG) / 2));
 }
 
 /** Where a token is on the table (looked up lazily to avoid a store subscription per frame). */

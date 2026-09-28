@@ -37,19 +37,35 @@ async function watchArrival(page: Page, sceneId: string, name: string): Promise<
         __gloam: { boardScene(): { shown: string | null; travelling: boolean; loading: number } };
       };
       w.__arrive = { shown: 0, settled: 0, titleSeen: false, diag: [] };
+      // The title: every change of the transition's phase (a DOM mutation — whatever the frame rate).
+      const seeTitle = () => {
+        const el = document.querySelector("[data-testid=scene-transition]");
+        if (el?.getAttribute("data-phase") === "title" && el.querySelector("h2")?.textContent === name)
+          w.__arrive.titleSeen = true;
+      };
+      const mo = new MutationObserver(seeTitle);
+      mo.observe(document.body, {
+        subtree: true,
+        childList: true,
+        characterData: true,
+        attributes: true,
+        attributeFilter: ["data-phase"],
+      });
+      // Arrival on a 5-ms clock rather than animation frames (which a busy software renderer spaces out).
       let last = performance.now();
       const tick = () => {
         const b = w.__gloam.boardScene();
         const now = performance.now();
-        const el = document.querySelector("[data-testid=scene-transition]");
-        const phase = el?.getAttribute("data-phase") ?? "";
-        if (phase === "title" && el?.querySelector("h2")?.textContent === name) w.__arrive.titleSeen = true;
+        const phase =
+          document.querySelector("[data-testid=scene-transition]")?.getAttribute("data-phase") ?? "";
+        seeTitle();
         if (now - last > 120 || b.loading)
           w.__arrive.diag.push([Math.round(now), Math.round(now - last), b.loading, phase]);
         last = now;
         if (b.shown === id && !w.__arrive.shown) w.__arrive.shown = Date.now();
         if (b.shown === id && !b.travelling && !w.__arrive.settled) w.__arrive.settled = Date.now();
-        if (!w.__arrive.settled) requestAnimationFrame(tick);
+        if (!w.__arrive.settled) setTimeout(tick, 5);
+        else mo.disconnect();
       };
       tick();
     },

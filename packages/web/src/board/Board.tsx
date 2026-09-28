@@ -32,12 +32,15 @@ import { Lighting } from "./Lighting.tsx";
 import { DoorsLayer } from "./map/DoorsLayer.tsx";
 import { MapAlignGizmo } from "./map/MapAlignGizmo.tsx";
 import { MapLayer } from "./map/MapLayer.tsx";
+import { Walls3DLayer } from "./map/Walls3D.tsx";
 import { WallsLayer } from "./map/WallsLayer.tsx";
 import { ZonesLayer } from "./map/ZonesLayer.tsx";
 import { clickFloor, hoverBoard, leaveBoard, moveKey } from "./move/input.ts";
 import { MoveLayer } from "./move/MoveLayer.tsx";
 import { PingLayer } from "./PingLayer.tsx";
 import { PostFX } from "./PostFX.tsx";
+import { frameStarted, measureTask } from "./perf.ts";
+import { pinPrograms } from "./programs.ts";
 import { setMaxAnisotropy } from "./resources.ts";
 import { boundsFromJson } from "./scene.ts";
 import { TableSurface } from "./TableSurface.tsx";
@@ -52,6 +55,10 @@ import {
   measureMove,
   measureUp,
 } from "./tools/measure.ts";
+import { WallToolLayer } from "./tools/WallToolLayer.tsx";
+import { useWallTool, wallsDoubleClick, wallsDown, wallsKey, wallsMove, wallsUp } from "./tools/walls.ts";
+import { ZoneToolLayer } from "./tools/ZoneToolLayer.tsx";
+import { zonesDoubleClick, zonesDown, zonesKey, zonesMove, zonesUp } from "./tools/zones.ts";
 
 setupText();
 
@@ -96,6 +103,8 @@ function TierSetup() {
   }, [camera, gl]);
   const continuing = useRef(false);
   useFrame((state, dt) => {
+    frameStarted();
+    pinPrograms(gl);
     const now = performance.now();
     boardApi.frames++;
     // The first-load intro waits for this before fading the board up (SPEC §27.7).
@@ -140,6 +149,11 @@ export default function Board() {
   /** Grab-the-table pan: the table point under the pointer when the drag began stays under it. */
   const pan = useRef<{ pointerId: number; grab: { x: number; y: number } } | null>(null);
   const clipboard = useRef<string[]>([]);
+  /** The pointer a Walls-tool press is using. */
+  const walling = useRef<number | null>(null);
+  /** The pointer a Zones-tool press is using. */
+  const zoning = useRef<number | null>(null);
+  const wallBox = useWallTool((s) => s.box);
   const tool = useUi((s) => s.tool);
 
   // Anything the board shows may have changed: draw for a moment (on-demand rendering, see frames.ts).
@@ -170,6 +184,15 @@ export default function Board() {
       const el = e.target as HTMLElement | null;
       if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return;
       const ui = useUi.getState();
+      // The Walls tool's keys (Esc/Enter finish, Backspace removes the last segment or the selection, Delete).
+      if (ui.tool === "walls" && dm && wallsKey(e)) {
+        e.preventDefault();
+        return;
+      }
+      if (ui.tool === "zones" && dm && zonesKey(e)) {
+        e.preventDefault();
+        return;
+      }
       // Measuring: Enter finishes a ruler, Esc clears.
       if (ui.tool === "measure" && (e.key === "Enter" || e.key === "Escape")) {
         if (e.key === "Enter") finishMeasure();
@@ -220,7 +243,8 @@ export default function Board() {
     return () => window.removeEventListener("keydown", onKey);
   }, [dm]);
 
-  const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+  const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => measureTask(() => pointerDown(e));
+  const pointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     // Token presses stop propagation inside the canvas; anything reaching here without a token hit is the table.
     // Tokens set `hover` on pointer-over, so a press with a hovered token is a token press, not the table.
     wake();
@@ -263,6 +287,21 @@ export default function Board() {
     }
     if (tool === "measure" && !cameraRig.spaceHeld) {
       measureDown(e.clientX, e.clientY);
+      return;
+    }
+    if (tool === "walls" && dm && !cameraRig.spaceHeld) {
+      const n = e.nativeEvent;
+      if (wallsDown(n)) {
+        walling.current = e.pointerId;
+        e.currentTarget.setPointerCapture(e.pointerId);
+      }
+      return;
+    }
+    if (tool === "zones" && dm && !cameraRig.spaceHeld) {
+      if (zonesDown(e.nativeEvent)) {
+        zoning.current = e.pointerId;
+        e.currentTarget.setPointerCapture(e.pointerId);
+      }
       return;
     }
     const boxSelect = dm && e.shiftKey && !onToken && !panTool && !cameraRig.spaceHeld;
@@ -325,7 +364,8 @@ export default function Board() {
       toast.danger("Couldn't place it", (err as Error).message);
     }
   };
-  const onPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+  const onPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => measureTask(() => pointerMove(e));
+  const pointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
     wake(400);
     const drag = pan.current;
     if (drag && drag.pointerId === e.pointerId) {
@@ -336,11 +376,27 @@ export default function Board() {
     const p = press.current;
     if (p?.box) setBox({ x0: p.x, y0: p.y, x1: e.clientX, y1: e.clientY });
     if (useUi.getState().tool === "measure") measureMove(e.clientX, e.clientY);
-    // Hovering (nothing held): click-to-move previews a move for the selected token.
-    if (!p && !drag && e.buttons === 0) hoverBoard(e.clientX, e.clientY, useUi.getState().hover !== null);
+    if (useUi.getState().tool === "walls" && dm && !drag) wallsMove(e.nativeEvent);
+    if (useUi.getState().tool === "zones" && dm && !drag) zonesMove(e.nativeEvent);
+    // Hovering (nothing held): click-to-move previews a move for the selected token — over the table itself, not
+    // over something laid on it (a label, a stepper, a pill).
+    if (!p && !drag && e.buttons === 0) {
+      if ((e.target as HTMLElement).tagName === "CANVAS")
+        hoverBoard(e.clientX, e.clientY, useUi.getState().hover !== null);
+      else leaveBoard();
+    }
   };
-  const onPointerUp = (e: ReactPointerEvent<HTMLDivElement>) => {
+  const onPointerUp = (e: ReactPointerEvent<HTMLDivElement>) => measureTask(() => pointerUp(e));
+  const pointerUp = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (pan.current?.pointerId === e.pointerId) pan.current = null;
+    if (walling.current === e.pointerId) {
+      walling.current = null;
+      wallsUp();
+    }
+    if (zoning.current === e.pointerId) {
+      zoning.current = null;
+      zonesUp();
+    }
     if (useUi.getState().tool === "measure") measureUp();
     const p = press.current;
     press.current = null;
@@ -376,8 +432,11 @@ export default function Board() {
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerLeave={leaveBoard}
-      onDoubleClick={() => {
-        if (useUi.getState().tool === "measure") finishMeasure();
+      onDoubleClick={(e) => {
+        const t = useUi.getState().tool;
+        if (t === "measure") finishMeasure();
+        else if (t === "walls" && dm) wallsDoubleClick(e.nativeEvent);
+        else if (t === "zones" && dm) zonesDoubleClick();
       }}
       onContextMenu={(e) => e.preventDefault()}
       onDragOver={onDragOver}
@@ -406,12 +465,15 @@ export default function Board() {
         <TableSurface bounds={bounds} empty={!scene} />
         <DustMotes bounds={bounds} count={tier.dust} />
         {scene ? <MapLayer scene={scene} bounds={bounds} /> : null}
+        <Walls3DLayer />
         <TokensLayer />
         <ZonesLayer />
         <MoveLayer />
         <PingLayer />
         <MeasureLayer />
         <WallsLayer />
+        <WallToolLayer />
+        <ZoneToolLayer />
         <DoorsLayer />
         <MapAlignGizmo />
         <ShadowSync enabled={tier.shadowMap > 0} soft={tier.softShadows} />
@@ -426,6 +488,18 @@ export default function Board() {
         }}
         aria-hidden
       />
+      {wallBox ? (
+        <div
+          data-testid="wall-box"
+          className="pointer-events-none fixed border border-accent bg-[var(--selection-fill)]"
+          style={{
+            left: Math.min(wallBox.x0, wallBox.x1),
+            top: Math.min(wallBox.y0, wallBox.y1),
+            width: Math.abs(wallBox.x1 - wallBox.x0),
+            height: Math.abs(wallBox.y1 - wallBox.y0),
+          }}
+        />
+      ) : null}
       {box ? (
         <div
           className="pointer-events-none fixed border border-accent bg-[var(--selection-fill)]"

@@ -210,14 +210,23 @@ test.describe("P3 — moving tokens (MOV, WAL)", () => {
     const g = await screen(dave, goal.x, goal.y, 0);
     await dave.mouse.move(g.x, g.y);
     await expect.poll(async () => (await moveState(dave)).preview?.ok).toBe(true);
-    const via = (await moveState(dave)).preview as NonNullable<MoveHook["preview"]>;
+    const plan = await moveState(dave);
+    const via = plan.preview as NonNullable<MoveHook["preview"]>;
+    // The waypoints are where the clicks landed (within half a foot of the aim; the view may still be easing), and
+    // the path goes through each of them exactly, in order, costing the sum of the legs.
+    const [r1, r2] = plan.waypoints as [P, P];
+    expect(Math.hypot(r1.x - w1.x, r1.y - w1.y)).toBeLessThan(0.5);
+    expect(Math.hypot(r2.x - w2.x, r2.y - w2.y)).toBeLessThan(0.5);
+    const end = via.points[via.points.length - 1] as P;
     const legs =
-      Math.hypot(w1.x - start.x, w1.y - start.y) +
-      Math.hypot(w2.x - w1.x, w2.y - w1.y) +
-      Math.hypot(goal.x - w2.x, goal.y - w2.y);
+      Math.hypot(r1.x - start.x, r1.y - start.y) +
+      Math.hypot(r2.x - r1.x, r2.y - r1.y) +
+      Math.hypot(end.x - r2.x, end.y - r2.y);
     expect(via.cost).toBeCloseTo(legs, 1);
-    for (const w of [w1, w2])
-      expect(via.points.some((p) => Math.hypot(p.x - w.x, p.y - w.y) < 1e-6)).toBe(true);
+    const i1 = via.points.findIndex((p) => Math.hypot(p.x - r1.x, p.y - r1.y) < 1e-6);
+    const i2 = via.points.findIndex((p) => Math.hypot(p.x - r2.x, p.y - r2.y) < 1e-6);
+    expect(i1).toBeGreaterThan(0);
+    expect(i2).toBeGreaterThan(i1);
     await expect(dave.getByTestId("move-label")).toContainText("2 waypoints");
     await dave.mouse.click(g.x, g.y);
     await expect

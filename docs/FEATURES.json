@@ -723,10 +723,10 @@
       "code": "WAL",
       "phase": "P3",
       "text": "Wall drawing supports chaining, 1-ft endpoint snapping, Shift angle snapping to 15°, Ctrl/Cmd to disable snapping, the Room tool, and Backspace to remove the last placed segment while drawing.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p3-walls.spec.ts › AC-WAL-02: chains with 1-ft end snapping, Shift 15°, Ctrl free, Backspace; rooms; select, joints, split, join, kind, box-select and delete; packages/web/src/board/tools/wallEdit.test.ts (snapping, angles, joints, hit tests, 1 000-wall timing); packages/server/src/test/walls.test.ts (batched update, split, join, undo, DM-only)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-28T01:03:21.644Z"
     },
     {
       "id": "AC-WAL-03",
@@ -767,10 +767,10 @@
       "code": "WAL",
       "phase": "P3",
       "text": "\"Walls in 3D\" extrudes walls with a stone material and animates doors opening and closing.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p3-walls3d.spec.ts › AC-WAL-06: 'Walls in 3D' extrudes walls in stone (instanced masonry, program gloam-wall-stone); doors swing open and shut over 300 ms (eased curve asserted: 0°, 44° at 150 ms, 88° at 300 ms); windows glass, curtains cloth; players get no geometry for hidden or invisible walls; screenshots artifacts/screens/p3/*/01-walls3d-tabletop.png, 02-walls3d-top-orthographic.png",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-28T01:03:21.735Z"
     },
     {
       "id": "AC-WAL-07",
@@ -778,10 +778,10 @@
       "code": "WAL",
       "phase": "P3",
       "text": "Editing stays responsive (under 16 ms per frame) with 1 000 wall segments in a scene.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p3-walls.spec.ts › AC-WAL-07 @timing: 1 000 walls — joint drag and a 1 000-wall selection move; Chrome trace: main-thread CPU in every frame period < 16 ms (measured p50 1.8 · p95 4.9 · max 7.1 ms; longest task 7.8 ms)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-28T01:03:21.814Z"
     },
     {
       "id": "AC-VIS-01",

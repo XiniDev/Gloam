@@ -31,14 +31,11 @@ interface UiStore {
   /** Walls tool: the kind drawn next, and whether new walls are hidden from players (SPEC §8.7). */
   wallKind: WallDrawKind;
   wallHidden: boolean;
-  /** Zones tool: the shape and kind drawn next. */
-  zoneShape: "rect" | "circle" | "polygon";
+  /** Zones tool: the kind drawn next. */
   zoneKind: "difficult" | "water" | "hazard" | "impassable" | "label";
   /** Measure tool shape (SPEC §8.6 Measurement tools) and the line tool's width in feet. */
   measureShape: "ruler" | "radius" | "cone" | "line" | "cube";
   lineWidthFt: number;
-  /** The wall or zone the DM is editing (Walls / Zones tools), or null. */
-  editing: { kind: "zone"; id: string } | { kind: "walls"; ids: string[] } | null;
   set(p: Partial<UiStore>): void;
   select(ids: string[], mode?: "replace" | "toggle"): void;
   rememberCamera(sceneId: string, cam: CameraMemory): void;
@@ -88,11 +85,9 @@ export const useUi = create<UiStore>((set, get) => ({
   cameras: initial.cameras ?? {},
   wallKind: "wall",
   wallHidden: false,
-  zoneShape: "rect",
   zoneKind: "difficult",
   measureShape: "ruler",
   lineWidthFt: 5,
-  editing: null,
   set(p) {
     set(p);
     persist();

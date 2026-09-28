@@ -130,6 +130,26 @@ export const BOARD_COLORS = {
 } as const;
 
 /** Colour-blind swaps for dispositions and HP bands (SPEC §27.2, Okabe–Ito). */
+/** A zone's default colour by kind (SPEC §8.7 Zones; the DM can change it). */
+export const ZONE_COLORS = {
+  difficult: BOARD_COLORS.brass600,
+  water: BOARD_COLORS.arcane400,
+  hazard: BOARD_COLORS.ember400,
+  impassable: BOARD_COLORS.blood500,
+  label: BOARD_COLORS.bone100,
+} as const;
+/** The colours the Zones tool offers. */
+export const ZONE_SWATCHES = [
+  BOARD_COLORS.brass600,
+  BOARD_COLORS.arcane400,
+  BOARD_COLORS.ember400,
+  BOARD_COLORS.blood500,
+  BOARD_COLORS.bone100,
+  BOARD_COLORS.verdigris400,
+  BOARD_COLORS.hex400,
+  BOARD_COLORS.ice300,
+] as const;
+
 export const CB_BOARD_COLORS = {
   hostile: "#D55E00",
   friendly: "#009E73",

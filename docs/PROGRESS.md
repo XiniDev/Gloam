@@ -134,3 +134,19 @@ PASSING 28/224 · DISPUTED 0 · FAILING 196
   combat in P8 — the engine side is tested).
 - Next: Zones tool (WAL-05), walls editor (WAL-02), 3D walls with swinging doors (WAL-06), 1 000-wall editing perf
   (WAL-07), then P3 shots and the critic round.
+
+## 2026-09-27 — P3: walls editor, zones tool, walls in 3D, editing performance
+
+- Walls tool (WAL-02): chains with 1-ft end snapping (+ on-wall snapping), Shift 15°, Ctrl free, Backspace; Room tool
+  (rectangle or polygon); select, box-select, joint drags (Alt detaches), move with stretching neighbours, split,
+  join, bulk kind/hidden, delete — each edit one command, one undo step. Server: batched `wall.update`, `wall.split`,
+  `wall.join` (5 server tests), geometry unit tests.
+- Zones tool (WAL-05 UI): rectangle/circle/polygon drawing, selection of the smallest zone, move/reshape handles, panel
+  for label, colour, visibility, DM note and hazard triggers (save + damage).
+- Walls in 3D (WAL-06): instanced masonry, swinging door leaves (300 ms), glass windows, cloth curtains, DM-only
+  ghosts; camera cutaway so rooms stay visible at low angles.
+- Editing performance (WAL-07): traced journey — every frame of a 1 000-wall joint drag and a 1 000-wall move under
+  16 ms of main-thread CPU (p95 ≈ 5 ms). Fixed on the way: shader programs recompiled on every selection, grown line
+  overlays drawing only their first 500 segments, forced layouts in pointer handlers, and a store sync that re-read
+  every entity on every patch (now incremental, audited against a full re-read after every patch in test builds).
+- Held: WAL-03 (vision part, P4), WAL-05 (start/end-of-turn triggers need the combat tracker, P8).

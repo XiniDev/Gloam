@@ -18,6 +18,8 @@ import { useBoard } from "../../state/entities.ts";
 import { C } from "../colors.ts";
 import { disposeLater } from "../dispose.ts";
 import { CAPS_FONT } from "../fonts.ts";
+import { useZoneTool } from "../tools/zones.ts";
+import { parseZoneShape } from "./zoneShape.ts";
 
 /**
  * Zones on the floor (SPEC §8.7 Zones): difficult terrain with a subtle hatch, water as a cool tint, hazards with a
@@ -37,18 +39,12 @@ export function ZonesLayer() {
 
 const PATTERN: Record<string, number> = { difficult: 1, water: 2, hazard: 3, impassable: 4, label: 0 };
 
-export function parseZoneShape(json: string): WorldZoneShape | null {
-  try {
-    const s = JSON.parse(json) as WorldZoneShape;
-    return s && typeof s === "object" && "kind" in s ? s : null;
-  } catch {
-    return null;
-  }
-}
-
 function ZoneMesh({ zone }: { zone: ZoneView }) {
   const dm = useTable((s) => s.me?.role === "dm" || s.me?.role === "admin");
-  const shape = useMemo(() => parseZoneShape(zone.shapeJson), [zone.shapeJson]);
+  // Being moved or reshaped with the Zones tool: drawn where the edit puts it.
+  const edited = useZoneTool((s) => (s.preview?.id === zone.id ? s.preview.shape : null));
+  const stored = useMemo(() => parseZoneShape(zone.shapeJson), [zone.shapeJson]);
+  const shape = edited ?? stored;
   // A zone hidden from players: DMs see it dimmer.
   const hidden = zone.dmHidden === true;
   const fill = useMemo(() => (shape ? fillGeometry(shape) : null), [shape]);

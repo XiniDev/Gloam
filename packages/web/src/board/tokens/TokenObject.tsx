@@ -1,9 +1,8 @@
 import { SIZE_MINI_HEIGHT_FT, type Size } from "@gloam/shared";
 import { HP_BAND_HIDDEN, HP_BAND_LABELS } from "@gloam/shared/rules";
 import type { TokenView } from "@gloam/shared/state";
-import { Billboard, Html, Text } from "@react-three/drei";
+import { Billboard, Text } from "@react-three/drei";
 import { type ThreeEvent, useFrame } from "@react-three/fiber";
-import { ChevronDown, ChevronUp } from "lucide-react";
 import { memo, useEffect, useMemo, useRef } from "react";
 import {
   AnimationMixer,
@@ -21,8 +20,6 @@ import { audio } from "../../audio/engine.ts";
 import { request, useTable } from "../../net/table.ts";
 import { useSettings } from "../../state/settings.ts";
 import { useUi } from "../../state/ui.ts";
-import { IconButton } from "../../ui/Button.tsx";
-import { toast } from "../../ui/Toast.tsx";
 import { boardApi } from "../boardApi.ts";
 import { cameraRig } from "../CameraRig.tsx";
 import { C, col, ringColorOf } from "../colors.ts";
@@ -35,6 +32,7 @@ import { pressToken } from "../move/input.ts";
 import { TIERS, useTier } from "../tiers.ts";
 import { AUTO_COIN_PITCH, approach, crossfadeStep } from "./crossfade.ts";
 import { overlayClear, PRIORITY, registerOverlay } from "./declutter.ts";
+import { canRaise } from "./elevation.ts";
 import { cylinder, plane, torus } from "./geometries.ts";
 import { hiddenBadgeTexture, initialsTexture } from "./glyphs.ts";
 import { type MiniInstance, useAssetMeta, useAssetTexture, useMini } from "./hooks.ts";
@@ -407,6 +405,9 @@ export const TokenObject = memo(function TokenObject({
     const n = e.nativeEvent;
     // The Pan tool (H): a left press anywhere, tokens included, drags the view.
     if (n.button === 0 && (useUi.getState().tool === "pan" || cameraRig.spaceHeld)) return;
+    // The Walls and Zones tools edit what's under the token: their presses go through to the board.
+    const tool = useUi.getState().tool;
+    if (n.button === 0 && (tool === "walls" || tool === "zones")) return;
     e.stopPropagation();
     boardApi.claimedPointer = n.pointerId;
     down.current = { x: n.clientX, y: n.clientY, button: n.button, timer: null };
@@ -589,7 +590,6 @@ export const TokenObject = memo(function TokenObject({
         ) : null}
       </group>
       <Elevation elevation={token.elevation} radius={R} />
-      {selected && canRaise(token, viewer) ? <ElevationStepper token={token} radius={R} /> : null}
       <Overlay
         token={token}
         viewer={viewer}
@@ -643,45 +643,6 @@ function useMiniMaterials(mini: MiniInstance | null, opacity: number, dead: bool
 }
 
 /** Flying tokens: a thin stem to a ground ring and an elevation label (SPEC §8.5 flying). */
-/** Who may raise this token: a DM always; its controller when it can fly (SPEC §8.6 Speeds and modes). */
-function canRaise(t: TokenView, viewer: Viewer): boolean {
-  if (viewer.dm) return true;
-  return t.ownerIds.includes(viewer.userId) && (t.own?.speedFly ?? 0) > 0;
-}
-
-/**
- * The HUD elevation stepper (AC-TOK-07): ▲/▼ in 5-ft steps beside the selected token, with its height. Alt+wheel
- * over the token does the same.
- */
-function ElevationStepper({ token, radius }: { token: TokenView; radius: number }) {
-  const step = (delta: number) =>
-    void request("token.elevation", { tokenId: token.id, delta }).catch((e) =>
-      toast.danger("Couldn't change its height", (e as Error).message),
-    );
-  return (
-    <Html position={[radius + 1.4, 0.2, 0]} center zIndexRange={[25, 0]}>
-      <div
-        className="panel flex flex-col items-center gap-0.5 p-1"
-        role="group"
-        aria-label={`Elevation of ${token.name}`}
-        data-testid="elevation-stepper"
-        onPointerDown={(e) => e.stopPropagation()}
-      >
-        <IconButton label="Raise 5 ft (Alt+wheel)" onClick={() => step(5)}>
-          <ChevronUp size={16} />
-        </IconButton>
-        <span className="tabular text-12 font-bold text-bone" data-testid="elevation-value">
-          {token.elevation > 0 ? "+" : ""}
-          {Math.round(token.elevation)} ft
-        </span>
-        <IconButton label="Lower 5 ft (Alt+wheel)" onClick={() => step(-5)}>
-          <ChevronDown size={16} />
-        </IconButton>
-      </div>
-    </Html>
-  );
-}
-
 function Elevation({ elevation, radius }: { elevation: number; radius: number }) {
   const mat = useMemo(
     () =>

@@ -230,7 +230,7 @@ export const WallIn = z.strictObject({
 });
 /** `wall.create`: one or many segments (batches ≤ 500, SPEC §13.5). */
 export const WallCreate = z.strictObject({ sceneId: Id, walls: z.array(WallIn).min(1).max(500) });
-export const WallUpdate = z.strictObject({
+export const WallPatch = z.strictObject({
   wallId: Id,
   a: Vec2In.optional(),
   b: Vec2In.optional(),
@@ -238,7 +238,16 @@ export const WallUpdate = z.strictObject({
   doorState: z.enum(["closed", "open", "locked"]).nullable().optional(),
   hidden: z.boolean().optional(),
 });
+/**
+ * `wall.update`: one wall, or many at once (≤ 500) — moving a joint shared by several walls, or a bulk kind change,
+ * is one atomic, undoable edit. A wall an edit collapses to a point is removed.
+ */
+export const WallUpdate = z.union([WallPatch, z.strictObject({ walls: z.array(WallPatch).min(1).max(500) })]);
 export const WallDelete = z.strictObject({ wallIds: z.array(Id).min(1).max(500) });
+/** `wall.split`: a joint on the wall at (the point on it nearest to) `at`; the two halves keep its properties. */
+export const WallSplit = z.strictObject({ wallId: Id, at: Vec2In });
+/** `wall.join`: two walls sharing an endpoint become one, from the far end of the first to the far end of the second. */
+export const WallJoin = z.strictObject({ wallIds: z.tuple([Id, Id]) });
 /**
  * `door.toggle` (SPEC §8.7 Doors): open/close for players whose token is within 5 ft of the door; DMs also lock and
  * unlock, anywhere. "toggle" opens a shut door and shuts an open one.

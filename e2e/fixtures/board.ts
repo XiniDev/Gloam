@@ -77,6 +77,8 @@ export interface CameraState {
   pitchDeg: number;
   azimuthDeg: number;
   distance: number;
+  ortho: boolean;
+  zoom: number;
 }
 export const camera = (page: Page, set?: Record<string, unknown>) => hook<CameraState>(page, "camera", set);
 
@@ -129,10 +131,16 @@ export async function createScene(
 /** Waits until the board shows this scene, with no travel transition running and nothing loading. */
 export async function boardSettled(page: Page, sceneId: string): Promise<void> {
   await expect
-    .poll(() => hook<{ shown: string | null; travelling: boolean; loading: number }>(page, "boardScene"), {
-      timeout: 20_000,
-    })
-    .toMatchObject({ shown: sceneId, travelling: false, loading: 0 });
+    .poll(
+      () =>
+        hook<{ shown: string | null; travelling: boolean; loading: number; framed: string | null }>(
+          page,
+          "boardScene",
+        ),
+      { timeout: 20_000 },
+    )
+    // …and the camera has been set up for it (otherwise a camera move right after could be overwritten).
+    .toMatchObject({ shown: sceneId, travelling: false, loading: 0, framed: sceneId });
 }
 
 /** Mean luminance and the share of near-white pixels of a PNG screenshot. */
@@ -213,7 +221,14 @@ export function installRecorder() {
     frames: number;
     running: boolean;
   };
-  const rec: Rec = { shifts: [], boxesStart: null, hud: null, lightFrames: [], frames: 0, running: true };
+  const rec: Rec = {
+    shifts: [],
+    boxesStart: null,
+    hud: null,
+    lightFrames: [],
+    frames: 0,
+    running: true,
+  };
   (window as unknown as { __rec: Rec }).__rec = rec;
   new PerformanceObserver((list) => {
     for (const e of list.getEntries() as (PerformanceEntry & { value: number; hadRecentInput: boolean })[])
@@ -252,8 +267,20 @@ export function installRecorder() {
       [0.9, 0.9],
       [0.25, 0.75],
     ] as const) {
-      const el = document.elementFromPoint(innerWidth * fx, innerHeight * fy);
-      if (el && el.tagName !== "CANVAS") probes.push(el);
+      const x = innerWidth * fx;
+      const y = innerHeight * fy;
+      // What shows at this point: the first layer down that isn't (mostly) transparent.
+      for (const el of document.elementsFromPoint(x, y)) {
+        // The board's canvas: its pixels are the screencast's to check (reading them back stalls a software renderer).
+        if (el.tagName === "CANVAS") break;
+        const cs = getComputedStyle(el);
+        // Faded out (a fading overlay) or a see-through background: look at what's below.
+        if (Number(cs.opacity) < 0.5) continue;
+        if (lum(cs.backgroundColor) !== null) {
+          probes.push(el);
+          break;
+        }
+      }
     }
     for (const el of probes) {
       const l = lum(getComputedStyle(el).backgroundColor);
@@ -296,9 +323,27 @@ export async function recordFrames(
     raw.push(Buffer.from(f.data, "base64"));
     void cdp.send("Page.screencastFrameAck", { sessionId: f.sessionId }).catch(() => {});
   });
-  await cdp.send("Page.startScreencast", { format: "jpeg", quality: 60, maxWidth: 480, maxHeight: 300 });
+  // The screencast only sends frames the page's main thread commits; fades that run on the compositor alone (CSS
+  // opacity transitions) would go unsampled. A 1-px, all-but-invisible element nudged every animation frame makes
+  // each frame a commit, so what's on screen is sampled at the frame rate. It changes nothing anyone could see.
+  await page.evaluate(() => {
+    const el = document.createElement("div");
+    el.id = "__screencast_clock";
+    el.style.cssText = "position:fixed;left:0;top:0;width:1px;height:1px;pointer-events:none;opacity:0.001";
+    document.body.appendChild(el);
+    let odd = false;
+    const tick = () => {
+      if (!el.isConnected) return;
+      odd = !odd;
+      el.style.opacity = odd ? "0.002" : "0.001";
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+  await cdp.send("Page.startScreencast", { format: "jpeg", quality: 50, maxWidth: 240, maxHeight: 150 });
   return {
     async stop() {
+      await page.evaluate(() => document.getElementById("__screencast_clock")?.remove()).catch(() => {});
       await cdp.send("Page.stopScreencast").catch(() => {});
       await cdp.detach().catch(() => {});
       return Promise.all(raw.map((b) => brightness(b)));

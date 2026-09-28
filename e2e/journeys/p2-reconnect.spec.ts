@@ -43,13 +43,37 @@ test.describe("P2 — reconnection (AUTH-07)", () => {
     await boardSettled(dave, sceneId);
     await expect.poll(() => hook(dave, "token", tokenId)).not.toBeNull();
     // Dave frames his own view and selects his token.
+    const setAt = await dave.evaluate(() => performance.now());
     await camera(dave, { pitchDeg: 70, distance: 45, target: [25, 18], ms: 0 });
-    await expect
-      .poll(async () => {
-        const c = await camera(dave);
-        return Math.abs(c.pitchDeg - 70) + Math.abs(c.target[0] - 25) + Math.abs(c.target[2] - 18);
-      })
-      .toBeLessThan(0.05);
+    try {
+      await expect
+        .poll(async () => {
+          const c = await camera(dave);
+          return Math.abs(c.pitchDeg - 70) + Math.abs(c.target[0] - 25) + Math.abs(c.target[2] - 18);
+        })
+        .toBeLessThan(0.05);
+    } catch (e) {
+      // Diagnostics for an intermittent failure under load: the camera's recent frames, tweens and the rig's state.
+      const log = await hook<{
+        log: { t: number; tx: number; tz: number; pitch: number }[];
+        tweenStarts: unknown[];
+        rig: unknown;
+      }>(dave, "cameraLog");
+      test.info().annotations.push({
+        type: "camera diagnostics",
+        description: JSON.stringify({
+          setAt,
+          tweens: log.tweenStarts,
+          rig: log.rig,
+          frames: log.log
+            .filter((x) => x.t > setAt - 500)
+            .slice(0, 40)
+            .map((x) => [Math.round(x.t), x.tx, x.tz, x.pitch]),
+          scene: await hook(dave, "boardScene"),
+        }),
+      });
+      throw e;
+    }
     const t = (await hook<{ pos: { x: number; y: number } }>(dave, "token", tokenId)) as {
       pos: { x: number; y: number };
     };

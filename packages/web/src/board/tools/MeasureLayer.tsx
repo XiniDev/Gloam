@@ -2,10 +2,9 @@ import { formatDistance } from "@gloam/shared/units";
 import { Html, Line } from "@react-three/drei";
 import { useMemo } from "react";
 import { DoubleSide, Shape, ShapeGeometry } from "three";
-import { useTable } from "../../net/table.ts";
-import { useSettings } from "../../state/settings.ts";
 import { useUi } from "../../state/ui.ts";
 import { C } from "../colors.ts";
+import { useUnits } from "../useUnits.ts";
 import {
   conePolygon,
   cubePolygon,
@@ -38,12 +37,6 @@ export function MeasureLayer() {
       ))}
     </group>
   );
-}
-
-function useUnits(): "ft" | "m" {
-  const campaign = useTable((s) => s.units);
-  const pref = useSettings((s) => s.units);
-  return pref === "campaign" ? campaign : pref;
 }
 
 function MeasureShapeView({ m, color, who }: { m: Measurement; color: string; who?: string }) {

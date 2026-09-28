@@ -1,3 +1,4 @@
+import type { DataChange } from "@colyseus/schema";
 import { Callbacks, type Room } from "@colyseus/sdk";
 import type { KnockCard } from "@gloam/shared/protocol";
 import { CampaignSettings, DEFAULT_HOUSE_RULES, HouseRules } from "@gloam/shared/schemas";
@@ -7,6 +8,7 @@ import { create } from "zustand";
 import { startMoveAnim } from "../board/move/anims.ts";
 import { clearRemotePreview, onRemotePreview } from "../board/move/remote.ts";
 import { addPing } from "../board/PingLayer.tsx";
+import { editPerf, measureSince } from "../board/perf.ts";
 import { type MeasureShape, onSharedMeasure } from "../board/tools/measure.ts";
 import { useEntities } from "../state/entities.ts";
 import { type AssetItem, type AssetRender, type SceneListItem, useLibrary } from "../state/library.ts";
@@ -15,7 +17,7 @@ import { provideTestHook } from "../test/hooks.ts";
 import { useToasts } from "../ui/Toast.tsx";
 import { preloadAssets } from "./assets.ts";
 import { colyseus, leaveRoom, rejectionMessage } from "./colyseus.ts";
-import { resetSync, syncLive } from "./sync.ts";
+import { auditLive, noteChanges, resetSync, syncFull, syncLive } from "./sync.ts";
 import { type UploadPurpose, uploadAsset } from "./upload.ts";
 
 export interface PresenceView {
@@ -197,6 +199,48 @@ export function disconnectTable(): void {
   resetSync();
 }
 
+/**
+ * Feeds each patch's change list to the store sync (so it re-reads only what changed), after the schema callbacks'
+ * own hook; a full state (join, resync) asks for a complete pass. Patch handling counts toward the editing frame
+ * budget in measuring builds (AC-WAL-07).
+ */
+function watchPatches(room: Room<unknown, TableState>): void {
+  const serializer = room.serializer as unknown as {
+    decoder: { triggerChanges?: (changes: DataChange[]) => void };
+    setState(...a: unknown[]): void;
+    patch(...a: unknown[]): void;
+  };
+  const decoder = serializer.decoder;
+  const inner = decoder.triggerChanges;
+  decoder.triggerChanges = (changes) => {
+    noteChanges(room.state, changes);
+    inner?.(changes);
+  };
+  const setState = serializer.setState.bind(serializer);
+  serializer.setState = (...a) => {
+    syncFull();
+    setState(...a);
+  };
+  const patch = serializer.patch.bind(serializer);
+  serializer.patch = (...a) => {
+    patchStarted = performance.now();
+    patch(...a);
+  };
+}
+let audited = 0;
+function auditPatch(room: Room<unknown, TableState>): void {
+  if (useTable.getState().room !== room) return;
+  const bad = auditLive(room.state);
+  audited++;
+  if (bad.length)
+    console.error(
+      `[sync] store differs from the state after patch ${audited}: ${bad.slice(0, 5).join("; ")}`,
+    );
+}
+
+/** When the patch being applied began (its decode, store write and commits are measured together). */
+let patchStarted = 0;
+
 async function join(campaignId: string): Promise<Room<unknown, TableState>> {
   useTable.getState().set({ connection: "connecting", campaignId });
   resetSync();
@@ -204,6 +248,10 @@ async function join(campaignId: string): Promise<Room<unknown, TableState>> {
   // Board data: one store write per server patch (SPEC §13.6).
   room.onStateChange((state) => {
     syncLive(state as TableState);
+    if (patchStarted) measureSince(patchStarted);
+    patchStarted = 0;
+    // Test builds: every patch, the incremental store must equal a complete re-read (not while timing frames).
+    if (__GLOAM_TEST__ && !editPerf.on) setTimeout(() => auditPatch(room));
     // Everyone travelled to the scene this DM was preparing: the server dropped the prep subscription (§13.7).
     const prep = useEntities.getState().prep;
     if (prep && prep.scene?.id === (state as TableState).scene?.id) {
@@ -228,6 +276,7 @@ async function join(campaignId: string): Promise<Room<unknown, TableState>> {
     tableEvents.emit("spotlight", m),
   );
   const cb = Callbacks.get<TableState>(room as never);
+  watchPatches(room);
   const presence = new Map<string, PresenceView>();
   const push = () =>
     useTable

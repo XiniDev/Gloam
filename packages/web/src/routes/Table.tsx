@@ -3,6 +3,7 @@ import { useNavigate } from "react-router";
 import { Dock } from "../hud/Dock.tsx";
 import { MapToolsPanel } from "../hud/dm/MapToolsPanel.tsx";
 import { NewSceneWizard } from "../hud/dm/NewSceneWizard.tsx";
+import { ElevationControl } from "../hud/ElevationControl.tsx";
 import { Intro, useIntro } from "../hud/Intro.tsx";
 import { dismissKnockCard, showKnockCard } from "../hud/KnockCards.tsx";
 import { LeftToolbar } from "../hud/LeftToolbar.tsx";
@@ -15,6 +16,8 @@ import { RadialMenu } from "../hud/RadialMenu.tsx";
 import { SceneTransition } from "../hud/SceneTransition.tsx";
 import { TopBar } from "../hud/TopBar.tsx";
 import { useUndoKeys } from "../hud/useUndoKeys.ts";
+import { WallsPanel } from "../hud/WallsPanel.tsx";
+import { ZoneEditor, ZonesPanel } from "../hud/ZonesPanel.tsx";
 import { joinErrorCode } from "../net/colyseus.ts";
 import { connectTable, disconnectTable, request, tableEvents, useTable } from "../net/table.ts";
 import { useSession } from "../state/session.ts";
@@ -113,7 +116,11 @@ export default function TableRoute() {
       <LoadingBar />
       <RadialMenu />
       <MoveLabel />
+      <ElevationControl />
       <MeasurePanel />
+      <WallsPanel />
+      <ZonesPanel />
+      <ZoneEditor />
       <QuickUnitDialog />
       <SceneWizardHost />
       <ConnectionBanner connection={connection} />

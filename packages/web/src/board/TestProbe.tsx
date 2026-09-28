@@ -17,19 +17,23 @@ import { useSettings } from "../state/settings.ts";
 import { useUi } from "../state/ui.ts";
 import { provideTestHook } from "../test/hooks.ts";
 import { boardApi } from "./boardApi.ts";
-import { cameraRig } from "./CameraRig.tsx";
+import { cameraRig, rigDiag } from "./CameraRig.tsx";
 import { boardDiag, useLoading } from "./diag.ts";
 import { setAnimating, wake } from "./frames.ts";
+import { cutaway, doorLeafAngles, doorSwing } from "./map/Walls3D.tsx";
 import { animatingTokens } from "./move/anims.ts";
 import { moveDiag, useMove } from "./move/drag.ts";
 import { remoteLog, useRemoteMoves } from "./move/remote.ts";
 import { usePings } from "./PingLayer.tsx";
+import { editPerf } from "./perf.ts";
 import { resourceStats } from "./resources.ts";
 import { TIERS, TierGovernor, useTier } from "./tiers.ts";
 import { overlayDiagnostics } from "./tokens/declutter.ts";
 import { createHpBarMaterial, setHpBar } from "./tokens/hpBar.ts";
 import { hpBarState, overlayFade } from "./tokens/TokenObject.tsx";
 import { current as currentMeasure, measuredFt, useMeasure } from "./tools/measure.ts";
+import { useWallTool } from "./tools/walls.ts";
+import { useZoneTool } from "./tools/zones.ts";
 
 /**
  * Test hooks for the board (SPEC §23.7; present only in `vite build --mode test`): camera read/write, renderer and
@@ -74,6 +78,8 @@ export function TestProbe() {
           pitchDeg: cameraRig.pitchDeg(),
           azimuthDeg: (c.azimuthAngle * 180) / Math.PI,
           distance: c.distance,
+          ortho: (c.camera as { isOrthographicCamera?: boolean }).isOrthographicCamera === true,
+          zoom: (c.camera as { zoom?: number }).zoom ?? 1,
         };
       },
     );
@@ -102,7 +108,11 @@ export function TestProbe() {
         dust: boardDiag.dust,
       };
     });
-    provideTestHook("cameraLog", () => ({ log: boardDiag.cameraLog, tweenStarts: boardDiag.tweenStarts }));
+    provideTestHook("cameraLog", () => ({
+      log: boardDiag.cameraLog,
+      tweenStarts: boardDiag.tweenStarts,
+      rig: rigDiag,
+    }));
     provideTestHook("groundAt", (x: number, y: number) => boardApi.groundAt(x, y));
     provideTestHook("project", (x: number, y: number, elevation?: number) =>
       boardApi.project(x, y, elevation ?? 0),
@@ -115,6 +125,8 @@ export function TestProbe() {
         prep: e.prep?.scene?.id ?? null,
         travelling: e.travel !== null,
         loading: useLoading.getState().pending,
+        /** The scene the camera rig has set the view up for (its framing runs an effect after the scene shows). */
+        framed: cameraRig.framedScene,
       };
     });
     provideTestHook("scene", () => boardData(useEntities.getState()).scene);
@@ -160,6 +172,86 @@ export function TestProbe() {
     provideTestHook("walls", () => [...boardData(useEntities.getState()).walls.values()]);
     provideTestHook("wall", (id: string) => boardData(useEntities.getState()).walls.get(id) ?? null);
     provideTestHook("zones", () => [...boardData(useEntities.getState()).zones.values()]);
+    /** AC-WAL-02: the Walls tool as it stands (mode, chain, snap, selection, the edit being previewed). */
+    provideTestHook("wallTool", () => {
+      const w = useWallTool.getState();
+      return {
+        mode: w.mode,
+        chain: w.chain,
+        pointer: w.pointer,
+        snap: w.snap,
+        rect: w.rect,
+        selected: w.selected,
+        hover: w.hover,
+        handle: w.handle,
+        preview: w.preview ? [...w.preview.entries()] : null,
+        ghosts: w.ghosts.length,
+      };
+    });
+    /**
+     * The walls overlay: segments in its buffers, and how many the renderer will draw (three.js fixes an instanced
+     * geometry's count at its first draw — the overlay must never draw fewer than it holds).
+     */
+    provideTestHook("wallsOverlay", () => {
+      const o = scene.getObjectByName("walls-overlay") as
+        | { geometry: { getAttribute(n: string): { count: number } | undefined; _maxInstanceCount?: number } }
+        | undefined;
+      if (!o) return null;
+      return {
+        segments: o.geometry.getAttribute("instanceStart")?.count ?? 0,
+        drawn: o.geometry._maxInstanceCount ?? null,
+      };
+    });
+    /** AC-WAL-06: the 3D walls on this viewer's board — instance counts, door leaves and their angles. */
+    provideTestHook("walls3d", () => {
+      const g = scene.getObjectByName("walls3d");
+      if (!g) return null;
+      const count = (name: string) =>
+        (g.getObjectByName(name) as unknown as { count?: number } | undefined)?.count ?? 0;
+      const names = (name: string) => {
+        let n = 0;
+        g.traverse((o) => {
+          if (o.name === name) n++;
+        });
+        return n;
+      };
+      const stone = g.getObjectByName("walls3d-stone") as unknown as
+        | { material: { customProgramCacheKey?: () => string } }
+        | undefined;
+      return {
+        stone: count("walls3d-stone"),
+        ghost: count("walls3d-ghost"),
+        stoneMaterial: stone?.material.customProgramCacheKey?.() ?? null,
+        glass: names("window-glass"),
+        curtains: names("curtain"),
+        fields: names("force-field"),
+        doors: doorLeafAngles(),
+        cut: cutaway.uCutOn.value === 1,
+      };
+    });
+    /** AC-WAL-06: a door leaf's latest swing and its angle at given times after it began. */
+    provideTestHook("doorSwing", (id: string, ms: number[]) => doorSwing(id, ms));
+    /** AC-WAL-05: the Zones tool as it stands. */
+    provideTestHook("zoneTool", () => {
+      const z = useZoneTool.getState();
+      return { mode: z.mode, points: z.points, draft: z.draft, selected: z.selected, preview: z.preview };
+    });
+    /** The Walls tool in a few numbers (cheap to poll while a trace measures the page). */
+    provideTestHook("wallToolSummary", () => {
+      const w = useWallTool.getState();
+      return { mode: w.mode, selected: w.selected.length, preview: w.preview ? w.preview.size : null };
+    });
+    /** AC-WAL-07: main-thread editing work per frame (ms) — switch on, reset, read. */
+    provideTestHook("editPerf", (cmd: "on" | "off" | "read" | "parts") => {
+      if (cmd === "on") {
+        editPerf.on = true;
+        editPerf.frames = [];
+        editPerf.parts = [];
+        editPerf.pending = 0;
+      } else if (cmd === "off") editPerf.on = false;
+      if (cmd === "parts") return editPerf.parts.map((x) => [...x]);
+      return [...editPerf.frames];
+    });
     /** AC-WAL-03/04: the door handles drawn on this viewer's board. */
     provideTestHook("doorHandles", () => {
       const out: { wallId: string; doorState: string }[] = [];
