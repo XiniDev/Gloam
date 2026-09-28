@@ -1,12 +1,14 @@
 import { DRAWING_SWATCHES } from "@gloam/shared";
 import { ImagePlus, Redo2, Trash2, Undo2 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { uploadAsset } from "../../net/upload.ts";
 import { provideTestHook } from "../../test/hooks.ts";
 import { Button, IconButton } from "../../ui/Button.tsx";
 import { Segmented, Slider } from "../../ui/controls.tsx";
 import { Dialog } from "../../ui/Dialog.tsx";
+import { Menu } from "../../ui/Menu.tsx";
 import { toast } from "../../ui/Toast.tsx";
+import { useIsPhone } from "../insets.ts";
 import { type DrawTool, drawStroke, PAD_SIZE, type Stroke, StrokeHistory } from "./drawing.ts";
 
 /** What the drawing becomes: the sheet's portrait, or its token as a paper standee or a coin. */
@@ -38,6 +40,35 @@ export function DrawingPad({
   const [reference, setReference] = useState<string | null>(null);
   const [, setTick] = useState(0);
   const [busy, setBusy] = useState(false);
+  const phone = useIsPhone();
+  const [palette, setPalette] = useState(false);
+  // The canvas: the largest square the screen leaves beside and around everything else in the dialog.
+  const wrap = useRef<HTMLDivElement>(null);
+  const [side, setSide] = useState(560);
+  useLayoutEffect(() => {
+    if (!open) return;
+    const el = wrap.current;
+    const dialog = el?.closest<HTMLElement>('[role="dialog"]');
+    const body = el?.parentElement?.parentElement;
+    if (!el || !dialog || !body) return;
+    const fit = () => {
+      const cur = el.offsetWidth;
+      // Everything but the canvas: the dialog as tall as it is, plus whatever of it scrolls out of sight.
+      const others = dialog.offsetHeight + Math.max(0, body.scrollHeight - body.clientHeight) - cur;
+      const tall = window.innerHeight - 32 - others;
+      const wide = body.clientWidth - 48;
+      const next = Math.max(140, Math.floor(Math.min(560, wide, tall)));
+      setSide((s) => (Math.abs(s - next) > 1 ? next : s));
+    };
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(dialog);
+    window.addEventListener("resize", fit);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", fit);
+    };
+  }, [open]);
 
   const redraw = useCallback(() => {
     const c = canvas.current;
@@ -147,20 +178,39 @@ export function DrawingPad({
       title="Drawing pad"
       width={760}
       footer={
-        <div className="flex flex-wrap justify-end gap-2">
-          <Button variant="ghost" onClick={onClose}>
-            Close
-          </Button>
-          <Button variant="secondary" loading={busy} onClick={() => void use("coin")}>
-            Use as coin
-          </Button>
-          <Button variant="secondary" loading={busy} onClick={() => void use("standee")}>
-            Use as standee
-          </Button>
-          <Button variant="primary" loading={busy} onClick={() => void use("portrait")}>
-            Use as portrait
-          </Button>
-        </div>
+        phone ? (
+          // A phone's room goes to the canvas: the three uses under one button.
+          <div className="flex items-center justify-between gap-2 max-sm:!flex-row [&_button]:!w-auto">
+            <Button variant="ghost" onClick={onClose}>
+              Close
+            </Button>
+            <Menu
+              label="Use the drawing as"
+              text={busy ? "Saving…" : "Use as…"}
+              up
+              items={[
+                { label: "Portrait", onSelect: () => void use("portrait") },
+                { label: "Standee", onSelect: () => void use("standee") },
+                { label: "Coin", onSelect: () => void use("coin") },
+              ]}
+            />
+          </div>
+        ) : (
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button variant="ghost" onClick={onClose}>
+              Close
+            </Button>
+            <Button variant="secondary" loading={busy} onClick={() => void use("coin")}>
+              Use as coin
+            </Button>
+            <Button variant="secondary" loading={busy} onClick={() => void use("standee")}>
+              Use as standee
+            </Button>
+            <Button variant="primary" loading={busy} onClick={() => void use("portrait")}>
+              Use as portrait
+            </Button>
+          </div>
+        )
       }
     >
       <div className="flex flex-col gap-3" data-testid="drawing-pad">
@@ -177,18 +227,43 @@ export function DrawingPad({
               { value: "eraser", label: "Eraser" },
             ]}
           />
-          <span className="ml-auto" />
-          <IconButton label="Undo" shortcut="Ctrl+Z" disabled={!canUndo} onClick={undo}>
-            <Undo2 size={16} />
-          </IconButton>
-          <IconButton label="Redo" shortcut="Ctrl+Shift+Z" disabled={!canRedo} onClick={redo}>
-            <Redo2 size={16} />
-          </IconButton>
-          <IconButton label="Clear the drawing" tone="danger" onClick={clear}>
-            <Trash2 size={16} />
-          </IconButton>
+          {/* The history together: on a narrow screen it wraps as one. */}
+          <span className="ml-auto flex items-center gap-1">
+            <IconButton label="Undo" shortcut="Ctrl+Z" disabled={!canUndo} onClick={undo}>
+              <Undo2 size={16} />
+            </IconButton>
+            <IconButton label="Redo" shortcut="Ctrl+Shift+Z" disabled={!canRedo} onClick={redo}>
+              <Redo2 size={16} />
+            </IconButton>
+            <IconButton label="Clear the drawing" tone="danger" onClick={clear}>
+              <Trash2 size={16} />
+            </IconButton>
+          </span>
         </div>
-        <div className="flex flex-wrap items-center gap-1" role="radiogroup" aria-label="Colour">
+        {phone ? (
+          <button
+            type="button"
+            aria-expanded={palette}
+            onClick={() => setPalette((p) => !p)}
+            className="inline-flex min-h-[var(--touch-min)] items-center gap-2 self-start text-13 text-muted"
+          >
+            <span
+              aria-hidden
+              className="block h-6 w-6 rounded-full"
+              style={{
+                background: color,
+                boxShadow: "0 0 0 1px color-mix(in srgb, var(--fog-300) 55%, transparent)",
+              }}
+            />
+            Colour
+          </button>
+        ) : null}
+        <div
+          className="flex flex-wrap items-center gap-1"
+          role="radiogroup"
+          aria-label="Colour"
+          hidden={phone && !palette}
+        >
           {DRAWING_SWATCHES.map((s) => (
             <button
               key={s.hex}
@@ -197,7 +272,10 @@ export function DrawingPad({
               aria-checked={color === s.hex}
               aria-label={s.name}
               title={s.name}
-              onClick={() => setColor(s.hex)}
+              onClick={() => {
+                setColor(s.hex);
+                setPalette(false);
+              }}
               className={`grid h-7 min-h-[var(--touch-min)] w-7 min-w-[var(--touch-min)] place-items-center rounded-full border-2 ${color === s.hex ? "border-bone" : "border-transparent"}`}
             >
               <span
@@ -249,10 +327,12 @@ export function DrawingPad({
           </label>
         </div>
         <div
+          ref={wrap}
           // Square, and all of it on screen with the tools above and the buttons below (never scrolled to draw).
-          className="relative mx-auto aspect-square w-[min(100%,560px,calc(100dvh-360px))] shrink-0 overflow-hidden rounded-[var(--radius-control)] border border-line"
+          className="relative mx-auto aspect-square shrink-0 overflow-hidden rounded-[var(--radius-control)] border border-line"
           // A light checkerboard (transparency, as image editors show it): ink reads on it as on paper.
           style={{
+            width: side,
             backgroundColor: "var(--parchment-100)",
             backgroundImage:
               "linear-gradient(45deg, var(--parchment-200) 25%, transparent 25%), linear-gradient(-45deg, var(--parchment-200) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, var(--parchment-200) 75%), linear-gradient(-45deg, transparent 75%, var(--parchment-200) 75%)",

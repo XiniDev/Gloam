@@ -461,6 +461,7 @@ test.describe("P6 — character sheets (SHEET)", () => {
     await text.fill(JSON.stringify(bad));
     const errors = dialog.getByTestId("import-errors");
     await expect(errors).toContainText("Strength score");
+    await expect(errors).toContainText("must be 30 or less (it's 99)");
     await expect(errors).toContainText("core.abilities.str");
     await expect(errors).toContainText("Walk speed");
     await expect(dialog.getByRole("button", { name: "Create a new character" })).toBeDisabled();

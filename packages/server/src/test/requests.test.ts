@@ -162,7 +162,7 @@ describe("P6 — roll requests on the server (AC-DICE-06)", () => {
     expect(a).not.toHaveProperty("dc");
     expect(cards("Anna", requestId).every((c) => c.targetId === annaTok)).toBe(true);
     const b = (await waitFor(() => cards("Bob", requestId)[0])) as Card;
-    expect(b.formula).toBe("1d20 + 0");
+    expect(b.formula).toBe("1d20");
     // Nobody is asked for the goblin but the DM.
     expect(JSON.stringify(anna.msgs.concat(bob.msgs))).not.toContain(goblin);
     const s0 = (await waitFor(() => lastStatus(requestId))) as Status;

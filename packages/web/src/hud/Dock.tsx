@@ -1,4 +1,4 @@
-import { ScrollText, Users } from "lucide-react";
+import { ScrollText, Users, X } from "lucide-react";
 import { type ReactElement, Suspense, useEffect, useRef, useState } from "react";
 import { pendingProposals, useSheets } from "../net/sheets.ts";
 import { useTable } from "../net/table.ts";
@@ -11,6 +11,7 @@ import { Sparkle } from "../ui/ornaments.tsx";
 import { hudOrder } from "./Intro.tsx";
 import { insetMeasures, useCover, useHudInsets, useIsPhone, useMeasuredInset } from "./insets.ts";
 import { PartyPanel } from "./PartyPanel.tsx";
+import { RequestCards } from "./RequestCards.tsx";
 import { SheetPanel } from "./sheet/SheetPanel.tsx";
 
 const DmPanel = lazyPage(() => import("./dm/DmPanel.tsx"));
@@ -64,12 +65,34 @@ export function Dock() {
 
   const order = hudOrder(2);
   const toggle = (id: DockTab) => useUi.getState().set({ dock: tab === id ? null : id });
+  // A phone's panel is a page (§8.10: "a full-screen page on phones"): the whole width, the rail folded into a bar
+  // across its top with the close button.
+  const page = phone && tab !== null;
+  const railButtons = tabs.map((t) => (
+    <div key={t.id} className="relative">
+      <IconButton
+        label={t.badge ? `${t.label} (${t.badge} waiting for approval)` : t.label}
+        active={tab === t.id}
+        onClick={() => toggle(t.id)}
+      >
+        {t.icon}
+      </IconButton>
+      {t.badge ? (
+        <span
+          className="tabular pointer-events-none absolute -right-1 -top-1 grid h-[18px] min-w-[18px] place-items-center rounded-full bg-accent px-1 text-12 font-bold text-ink-950"
+          aria-hidden
+        >
+          {t.badge}
+        </span>
+      ) : null}
+    </div>
+  ));
 
   return (
     <aside
       ref={asideRef}
       {...order}
-      className="pointer-events-none absolute right-3 z-30 flex items-stretch gap-2"
+      className={`pointer-events-none absolute right-3 z-30 flex items-stretch gap-2 ${page ? "left-3" : ""}`}
       // Below the top bar — and on phones below the prep banner, which spans the screen there, and above the action
       // bar (its dice button stood on the sheet). (Merged with the intro's stagger variable, which a second `style`
       // prop would drop.)
@@ -82,14 +105,27 @@ export function Dock() {
     >
       {tab ? (
         <section
-          className="panel pointer-events-auto relative flex min-w-0 flex-col overflow-hidden"
-          // Never wider than the screen leaves beside the rail (phones: nearly full width, over the toolbar, until
-          // P14's bottom sheets).
-          style={{ width: `min(${width}px, calc(100vw - ${RAIL_ROOM}px))` }}
+          className="panel pointer-events-auto relative flex min-w-0 flex-col overflow-hidden overflow-x-clip"
+          // Never wider than the screen leaves beside the rail; on a phone, all of it.
+          style={{ width: page ? "100%" : `min(${width}px, calc(100vw - ${RAIL_ROOM}px))` }}
           aria-label={tab === "dm" ? "DM panel" : tab === "sheet" ? "Character sheet" : "Party"}
         >
+          {page ? (
+            <nav
+              aria-label="Panels"
+              className="flex shrink-0 items-center gap-1 border-b border-line px-1.5 py-1"
+            >
+              {railButtons}
+              <span className="flex-1" />
+              <IconButton label="Close panel" onClick={() => useUi.getState().set({ dock: null })}>
+                <X size={19} />
+              </IconButton>
+            </nav>
+          ) : null}
+          {page ? <RequestCards inline /> : null}
           {/* Resize handle on the panel's left edge. */}
           <div
+            hidden={page}
             role="separator"
             aria-orientation="vertical"
             aria-label="Resize panel"
@@ -130,31 +166,15 @@ export function Dock() {
           </ErrorBoundary>
         </section>
       ) : null}
-      <nav
-        ref={railRef}
-        aria-label="Panels"
-        className="panel pointer-events-auto flex flex-col items-center gap-1 self-start p-1.5"
-      >
-        {tabs.map((t) => (
-          <div key={t.id} className="relative">
-            <IconButton
-              label={t.badge ? `${t.label} (${t.badge} waiting for approval)` : t.label}
-              active={tab === t.id}
-              onClick={() => toggle(t.id)}
-            >
-              {t.icon}
-            </IconButton>
-            {t.badge ? (
-              <span
-                className="tabular pointer-events-none absolute -right-1 -top-1 grid h-[18px] min-w-[18px] place-items-center rounded-full bg-accent px-1 text-12 font-bold text-ink-950"
-                aria-hidden
-              >
-                {t.badge}
-              </span>
-            ) : null}
-          </div>
-        ))}
-      </nav>
+      {page ? null : (
+        <nav
+          ref={railRef}
+          aria-label="Panels"
+          className="panel pointer-events-auto flex flex-col items-center gap-1 self-start p-1.5"
+        >
+          {railButtons}
+        </nav>
+      )}
     </aside>
   );
 }

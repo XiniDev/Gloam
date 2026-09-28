@@ -1,14 +1,22 @@
+import { formulaText, summarizeFormula } from "@gloam/shared/dice";
+import { sheetRefs } from "@gloam/shared/rules";
+import { useMemo, useState } from "react";
 import type { SheetCtx } from "../context.ts";
 import { RollButton, SectionTitle, TextField } from "../primitives.tsx";
 import { AddButton, RemoveButton } from "./OverviewTab.tsx";
 
 /**
- * Actions (§8.10): the character's attacks — an attack roll and a damage roll each, formulas in the §18.1 grammar
- * with `@` references to the sheet ("1d20 + @str + @prof", "1d8 + @str [slashing]").
+ * Actions (§8.10): the character's attacks — an attack roll and a damage roll each, shown with the sheet's numbers in
+ * ("Attack +6", "1d8 + 3 bludgeoning"); their formulas, in the §18.1 grammar with `@` references to the sheet
+ * ("1d20 + @str + @prof", "1d8 + @str [slashing]"), behind Edit.
  */
 export function ActionsTab({ ctx }: { ctx: SheetCtx }) {
   const attacks = ctx.sheet.core.attacks;
   const ro = !ctx.canEdit;
+  const [editing, setEditing] = useState<number | null>(null);
+  const resolve = useMemo(() => sheetRefs(ctx.sheet.core), [ctx.sheet.core]);
+  const shown = (formula: string, toHit: boolean) =>
+    formulaText(summarizeFormula(formula, resolve), { toHit }) ?? formula;
   const set = (i: number, key: "name" | "attack" | "damage" | "range" | "properties", v: string) =>
     void ctx.set(
       ["core", "attacks", i, key],
@@ -64,15 +72,35 @@ export function ActionsTab({ ctx }: { ctx: SheetCtx }) {
           </div>
           <div className="mt-1.5 flex flex-wrap items-center gap-2">
             {a.attack ? (
-              <RollButton actor={ctx.actor} formula={a.attack} label={`${a.name} — attack`} text="Attack" />
+              <RollButton
+                actor={ctx.actor}
+                formula={a.attack}
+                label={`${a.name} — attack`}
+                text={<span className="tabular">Attack {shown(a.attack, true)}</span>}
+              />
             ) : null}
             {a.damage ? (
-              <RollButton actor={ctx.actor} formula={a.damage} label={`${a.name} — damage`} text="Damage" />
+              <RollButton
+                actor={ctx.actor}
+                formula={a.damage}
+                label={`${a.name} — damage`}
+                text={<span className="tabular">{shown(a.damage, false)}</span>}
+              />
             ) : null}
             {a.range ? <span className="text-13 text-paper-muted">{a.range}</span> : null}
             {a.properties ? <span className="text-13 italic text-paper-muted">{a.properties}</span> : null}
+            {ro ? null : (
+              <button
+                type="button"
+                aria-expanded={editing === i}
+                onClick={() => setEditing(editing === i ? null : i)}
+                className="ml-auto min-h-[var(--touch-min)] min-w-[var(--touch-min)] px-1 text-13 text-paper-muted underline decoration-dotted hover:text-paper-ink"
+              >
+                {editing === i ? "Done" : "Edit"}
+              </button>
+            )}
           </div>
-          {ro ? null : (
+          {ro || editing !== i ? null : (
             <div className="mt-1.5 grid grid-cols-[4.5rem_1fr] items-center gap-x-2 gap-y-1">
               <span className="text-13 text-paper-muted">To hit</span>
               <TextField

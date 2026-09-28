@@ -258,6 +258,13 @@ test("P6 key screens", async ({ admin, browser, gloam, guardLog }, info) => {
       ms: 0,
     });
     await admin.waitForTimeout(400);
+    // Its plate is on screen close up too (a hidden one is a finding: say why).
+    const diag = await hook<{ id: string; clear: number }[]>(admin, "overlays");
+    const mine = diag.find((d) => d.id === thorinToken.id);
+    if (mine?.clear !== 1)
+      notes.push(
+        `07: Thorin's plate hidden close up: ${JSON.stringify({ mine, covers: await hook(admin, "plateCovers"), all: diag })}`,
+      );
   });
   await step("08-radial-sheet", admin, async () => {
     const s = await hook<{ sx: number; sy: number }>(

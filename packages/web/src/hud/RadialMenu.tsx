@@ -4,7 +4,6 @@ import {
   ArrowUp,
   Backpack,
   Copy,
-  Dices,
   Eye,
   EyeOff,
   Flame,
@@ -20,12 +19,14 @@ import {
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { type ReactElement, useEffect, useMemo, useRef, useState } from "react";
+import { D20Icon } from "../icons/dice.tsx";
 import { LightPresetIcon } from "../icons/lights.tsx";
 import { request, useTable } from "../net/table.ts";
 import { boardData, useEntities } from "../state/entities.ts";
 import { useLibrary } from "../state/library.ts";
 import { useUi } from "../state/ui.ts";
 import { KeyHint } from "../ui/KeyHint.tsx";
+import { WaxSeal } from "../ui/ornaments.tsx";
 import { toast } from "../ui/Toast.tsx";
 import { toastUndo } from "./dm/ScenesPanel.tsx";
 import { clearArea, isPhoneNow, useHudInsets } from "./insets.ts";
@@ -34,6 +35,8 @@ import { openSheetFor, sheetOfToken } from "./sheet/open.ts";
 interface Slice {
   id: string;
   label: string;
+  /** What the slice shows when its label is too long for it (the label stays its accessible name). */
+  short?: string;
   icon: ReactElement;
   run?: () => unknown;
   /** Opens a second ring instead of acting. */
@@ -174,21 +177,23 @@ export function RadialMenu() {
         out.push({ id: "light", label: "Light", icon: <Flame size={18} />, ring: lightRing.slice(0, 8) });
     }
     if (dm) {
-      // A DM asks for a roll: the selection (this token among it) goes to DM panel → Requests (§8.9 Roll requests).
-      out.push({
-        id: "request",
-        label: "Request a roll",
-        icon: <Dices size={18} />,
-        run: () => {
-          const sel = useUi.getState().selection;
-          useUi.getState().set({
-            dock: "dm",
-            dmSection: "requests",
-            requestTargets: sel.includes(id) ? sel : [id],
-          });
+      // The DM's own actions under one slice (§8.19 "token radial menu → DM"): the ring keeps to §28's 6–8 slices.
+      const dmRing: Slice[] = [
+        // A DM asks for a roll: the selection (this token among it) goes to DM panel → Requests (§8.9).
+        {
+          id: "request",
+          label: "Request a roll",
+          short: "Request",
+          icon: <D20Icon size={18} />,
+          run: () => {
+            const sel = useUi.getState().selection;
+            useUi.getState().set({
+              dock: "dm",
+              dmSection: "requests",
+              requestTargets: sel.includes(id) ? sel : [id],
+            });
+          },
         },
-      });
-      out.push(
         token.dm?.dmHidden
           ? {
               id: "reveal",
@@ -242,7 +247,8 @@ export function RadialMenu() {
             }
           },
         },
-      );
+      ];
+      out.push({ id: "dm", label: "DM", icon: <WaxSeal size={20} />, ring: dmRing });
     }
     return out;
   }, [token, me, assets, carried]);
@@ -344,7 +350,7 @@ export function RadialMenu() {
                 style={{ left: Math.cos(a) * R, top: Math.sin(a) * R }}
               >
                 {s.icon}
-                <span className="text-12 leading-none">{s.label}</span>
+                <span className="text-12 leading-none">{s.short ?? s.label}</span>
                 <span className="absolute -right-1.5 -top-1.5" aria-hidden>
                   <KeyHint keys={String(i + 1)} />
                 </span>

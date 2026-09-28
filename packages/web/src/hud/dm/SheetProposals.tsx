@@ -50,16 +50,16 @@ function Proposal({ p }: { p: ProposalView }) {
         <tbody>
           {p.changes.map((c) => (
             <tr key={c.path.join("/")} className="border-t border-line/60 align-baseline">
-              <th scope="row" className="py-1 pr-2 text-left font-normal text-muted">
+              <th scope="row" className="w-[45%] py-1 pr-2 text-left font-normal text-muted">
                 {c.label}
               </th>
-              <td className="tabular py-1 text-right text-fog line-through decoration-fog/60">
-                {valueText(c.before)}
+              <td className="py-1 text-left">
+                <span className="tabular text-fog line-through decoration-fog/60">{valueText(c.before)}</span>
+                <span className="px-1.5 text-fog" aria-hidden>
+                  →
+                </span>
+                <span className="tabular font-bold text-bone">{valueText(c.after)}</span>
               </td>
-              <td className="px-1 text-fog" aria-hidden>
-                →
-              </td>
-              <td className="tabular py-1 font-bold text-bone">{valueText(c.after)}</td>
             </tr>
           ))}
         </tbody>

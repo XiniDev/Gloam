@@ -183,7 +183,8 @@ test.describe("P6 — roll requests (DICE-06)", () => {
     const t = all.find((x) => x.id === goblins[0]) as Token;
     const s = await hook<{ sx: number; sy: number }>(admin, "project", t.pos.x, t.pos.y, 0.15);
     await admin.mouse.click(s.sx, s.sy, { button: "right" });
-    await admin.getByRole("menuitem", { name: /Request a roll/ }).click();
+    await admin.getByRole("menuitem", { name: "DM" }).click();
+    await admin.getByRole("menuitem", { name: "Request a roll" }).click();
     await expect(form.getByRole("button", { pressed: true })).toHaveCount(1);
     await form.getByRole("button", { name: "Thorin" }).click();
     await form
@@ -197,7 +198,10 @@ test.describe("P6 — roll requests (DICE-06)", () => {
       .click();
     await form.getByLabel("Skill").selectOption({ label: "Perception (WIS)" });
     await form.getByLabel("DC", { exact: true }).fill("12");
-    await form.getByRole("radiogroup", { name: "Results" }).getByRole("radio", { name: "Blind" }).click();
+    await form
+      .getByRole("radiogroup", { name: "Who sees the result" })
+      .getByRole("radio", { name: "Blind" })
+      .click();
     await form.getByRole("button", { name: "Ask 3 creatures" }).click();
     const blind = panel.getByTestId("request-board");
     await expect(blind).toContainText("Perception check");

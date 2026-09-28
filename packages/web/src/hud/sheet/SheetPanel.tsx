@@ -1,7 +1,9 @@
 import { CONDITION_IDS } from "@gloam/shared";
 import type { ActorView } from "@gloam/shared/protocol";
+import { statusName, statusSummary } from "@gloam/shared/rules";
 import { FileDown, FileUp, Lock, Plus, Sparkles, Trash2, Unlock, UserPlus, X } from "lucide-react";
 import { useLayoutEffect, useRef, useState } from "react";
+import { StatusIcon } from "../../icons/status.tsx";
 import { useSheets } from "../../net/sheets.ts";
 import { request, useTable } from "../../net/table.ts";
 import { useBoard } from "../../state/entities.ts";
@@ -116,14 +118,14 @@ export function SheetPanel() {
 }
 
 const TAB_CLASS =
-  "caps h-9 min-h-[var(--touch-min)] shrink-0 whitespace-nowrap px-2.5 text-12 transition-[color,box-shadow] duration-[var(--dur-fast)]";
-/** The More button's room in the row (its 36-px button and a gap). */
-const MORE_W = 40;
+  "h-9 min-h-[var(--touch-min)] shrink-0 whitespace-nowrap px-2 text-13 font-semibold transition-[color,box-shadow] duration-[var(--dur-fast)]";
+/** The More button's room in the row ("+4 ▾" and a gap). */
+const MORE_W = 60;
 
 /**
- * The sheet's sections (§29.7): one row of tabs — as many as the panel's width holds, the rest under "…" (the
- * section being read always stays in the row). Widths come from an invisible copy of every tab, measured again as
- * the panel is resized.
+ * The sheet's sections (§29.7): one row of tabs in their fixed order — as many as the panel's width holds, the rest
+ * under "+n" — and the section being read, when it's one of those, added at the end (never pushing out an earlier
+ * one). Widths come from an invisible copy of every tab, measured again as the panel is resized.
  */
 function SheetTabs({ tab }: { tab: SheetTab }) {
   const row = useRef<HTMLDivElement>(null);
@@ -156,32 +158,39 @@ function SheetTabs({ tab }: { tab: SheetTab }) {
     const gap = 2;
     const total = room.widths.reduce((a, w) => a + w + gap, 0);
     if (total > room.avail) {
-      // The section being read first, then the others in order while they fit beside the More button.
-      let used = MORE_W + (room.widths[active] ?? 0) + gap;
-      const keep = new Set([active]);
-      for (const [k, w] of room.widths.entries()) {
-        if (k === active) continue;
-        if (used + w + gap > room.avail) break;
-        used += w + gap;
-        keep.add(k);
+      // The first tabs in order while they fit beside the More button — leaving room for the active one if it
+      // isn't among them — then the active one at the end.
+      const w = (k: number) => (room.widths[k] ?? 0) + gap;
+      let first = 0;
+      let used = MORE_W;
+      while (first < TABS.length) {
+        const next = used + w(first);
+        const needActive = active > first ? w(active) : 0;
+        if (next + needActive > room.avail) break;
+        used = next;
+        first++;
       }
-      shown = [...keep].sort((a, b) => a - b);
+      shown = TABS.map((_, k) => k).slice(0, Math.max(0, first));
+      if (!shown.includes(active)) shown = [...shown, active];
     }
   }
   const rest = TABS.filter((_, k) => !shown.includes(k));
   const pick = (id: SheetTab) => useUi.getState().set({ sheetTab: id });
   return (
     <div className="relative flex shrink-0 items-center border-b border-parchment-edge px-2">
+      {/* The widths' ruler, laid out but inside a box of no size (an absolute row of every tab still counted toward
+          the page's scroll width, so the page could be slid sideways). */}
       <div
-        ref={ruler}
         aria-hidden
-        className="pointer-events-none invisible absolute left-0 top-0 flex whitespace-nowrap"
+        className="pointer-events-none invisible absolute left-0 top-0 h-0 w-0 overflow-hidden"
       >
-        {TABS.map((t) => (
-          <span key={t.id} className={`${TAB_CLASS} inline-flex items-center`}>
-            {t.label}
-          </span>
-        ))}
+        <div ref={ruler} className="flex w-max whitespace-nowrap">
+          {TABS.map((t) => (
+            <span key={t.id} className={`${TAB_CLASS} inline-flex items-center`}>
+              {t.label}
+            </span>
+          ))}
+        </div>
       </div>
       <div ref={row} aria-label="Sheet sections" role="tablist" className="flex min-w-0 flex-1 gap-0.5">
         {shown.map((k) => {
@@ -207,6 +216,7 @@ function SheetTabs({ tab }: { tab: SheetTab }) {
       {rest.length ? (
         <Menu
           label="More sections"
+          text={`+${rest.length}`}
           items={rest.map((t) => ({ label: t.label, onSelect: () => pick(t.id) }))}
         />
       ) : null}
@@ -219,7 +229,8 @@ function SheetPage({ actor, onImport }: { actor: ActorView; onImport: (m: "json"
   const tab = useUi((s) => s.sheetTab);
   return (
     <article
-      className="parchment m-2 flex min-h-0 flex-1 flex-col overflow-hidden"
+      // Never scrollable sideways (a wide child would slide the whole page left and cut its edge).
+      className="parchment m-2 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden overflow-x-clip"
       data-testid="sheet"
       data-actor={actor.id}
       aria-label={`${actor.sheet.core.name}'s sheet`}
@@ -227,7 +238,7 @@ function SheetPage({ actor, onImport }: { actor: ActorView; onImport: (m: "json"
       <SheetHeader ctx={ctx} onImport={onImport} />
       <SheetTabs tab={tab} />
       <div
-        className="min-h-0 flex-1 overflow-y-auto px-3 pt-2 pb-4"
+        className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-clip px-3 pt-2 pb-4"
         role="tabpanel"
         data-testid={`sheet-tab-${tab}`}
       >
@@ -306,24 +317,24 @@ function SheetHeader({ ctx, onImport }: { ctx: SheetCtx; onImport: (m: "json" | 
       <div className="flex items-start gap-3">
         <Portrait name={c.name} color="var(--wax-500)" size={52} src={portrait} />
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1">
-            {ctx.canEdit ? (
-              <TextField
-                label="Name"
-                value={c.name}
-                onCommit={(v) => v.trim() && void ctx.set(["core", "name"], v.trim())}
-                className="display h-9 border-transparent bg-transparent px-1 text-22 leading-tight max-sm:text-18"
-              />
-            ) : (
-              <h2 className="display truncate text-22 leading-tight text-paper-ink max-sm:text-18">
-                {c.name}
-              </h2>
-            )}
-            <LockMark show={ctx.canEdit && !ctx.free(["core", "name"])} />
-          </div>
+          <NameField ctx={ctx} />
           <p className="truncate px-1 text-13 text-paper-muted" data-testid="sheet-subtitle">
             {subtitle(ctx) || "—"}
           </p>
+          {/* The lock and what's waiting on the DM, on one line (the DM sets the lock below). */}
+          {ctx.dm ? null : (
+            <p className="flex min-w-0 items-center gap-1.5 px-1 text-12 text-paper-muted">
+              <span className="inline-flex shrink-0 items-center gap-1" data-testid="sheet-lock">
+                {ctx.actor.lockLevel === "unlocked" ? (
+                  <Unlock size={12} aria-hidden />
+                ) : (
+                  <Lock size={12} aria-hidden />
+                )}
+                {lockLabel}
+              </span>
+              <PendingProposals actorId={ctx.actor.id} />
+            </p>
+          )}
         </div>
         <Menu
           label="Sheet actions"
@@ -348,13 +359,14 @@ function SheetHeader({ ctx, onImport }: { ctx: SheetCtx; onImport: (m: "json" | 
           ]}
         />
       </div>
-      {/* The lock (§8.10 Ownership and locks): the DM sets it; a player sees it. */}
-      <div className="mt-2 flex items-center gap-2">
-        {ctx.dm ? (
+      {/* The lock (§8.10 Ownership and locks): the DM sets it. */}
+      {ctx.dm ? (
+        <div className="mt-2">
           <Segmented
             label="Sheet lock"
             size="S"
             tone="paper"
+            fill
             value={ctx.actor.lockLevel}
             onChange={(level) => void request("actor.setLock", { actorId: ctx.actor.id, level })}
             options={[
@@ -363,56 +375,46 @@ function SheetHeader({ ctx, onImport }: { ctx: SheetCtx; onImport: (m: "json" | 
               { value: "full", label: "Fully locked", hint: "Read-only for players" },
             ]}
           />
-        ) : ctx.actor.lockLevel !== "unlocked" ? (
-          <span
-            className="caps inline-flex items-center gap-1 text-12 text-paper-muted"
-            data-testid="sheet-lock"
-          >
-            <Lock size={12} aria-hidden />
-            {lockLabel}
-          </span>
-        ) : (
-          <span
-            className="caps inline-flex items-center gap-1 text-12 text-paper-muted"
-            data-testid="sheet-lock"
-          >
-            <Unlock size={12} aria-hidden />
-            {lockLabel}
-          </span>
-        )}
-        <PendingProposals actorId={ctx.actor.id} />
-      </div>
-      {/* Vitals (§29.7). */}
-      <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5" data-testid="sheet-vitals">
-        <div className="flex items-center gap-1">
+        </div>
+      ) : null}
+      {/* Vitals (§29.7): HP large in the display face, − and + either side of the whole value. */}
+      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2" data-testid="sheet-vitals">
+        <div className="flex min-w-0 items-center gap-1">
           <span className="caps text-12 text-paper-muted">HP</span>
           <Stepper
+            big
             label="Current HP"
             value={c.hp.current}
             min={-c.hp.max}
             max={c.hp.max}
             disabled={!ctx.canEdit}
             onChange={(v) => void ctx.set(["core", "hp", "current"], v)}
+            after={
+              <span className="display flex items-baseline text-18 text-paper-muted">
+                <span aria-hidden>/</span>
+                <NumberField
+                  label="Max HP"
+                  value={c.hp.max}
+                  min={0}
+                  width="2.6rem"
+                  disabled={!ctx.canEdit}
+                  onCommit={(v) => void ctx.set(["core", "hp", "max"], v)}
+                  className="text-18"
+                />
+              </span>
+            }
           />
-          <span className="text-paper-muted">/</span>
-          <NumberField
-            label="Max HP"
-            value={c.hp.max}
-            min={0}
-            disabled={!ctx.canEdit}
-            onCommit={(v) => void ctx.set(["core", "hp", "max"], v)}
-          />
-        </div>
-        {/* Its own item: on a narrow sheet it wraps to the next line instead of running off the page. */}
-        <div className="flex items-center gap-1">
-          <span className="caps text-12 text-paper-muted">temp</span>
-          <NumberField
-            label="Temporary HP"
-            value={c.hp.temp}
-            min={0}
-            disabled={!ctx.canEdit}
-            onCommit={(v) => void ctx.set(["core", "hp", "temp"], v)}
-          />
+          <span className="inline-flex items-center gap-0.5 rounded-chip border border-parchment-edge/60 bg-parchment-deep/40 pl-1.5 text-13">
+            <span className="caps text-12 text-paper-muted">temp</span>
+            <NumberField
+              label="Temporary HP"
+              value={c.hp.temp}
+              min={0}
+              width="2.4rem"
+              disabled={!ctx.canEdit}
+              onCommit={(v) => void ctx.set(["core", "hp", "temp"], v)}
+            />
+          </span>
         </div>
         {ctx.canEdit ? (
           <div className="flex items-center gap-1">
@@ -422,53 +424,57 @@ function SheetHeader({ ctx, onImport }: { ctx: SheetCtx; onImport: (m: "json" | 
               value={amount}
               onChange={(e) => setAmount(e.target.value.replace(/\D/g, ""))}
               placeholder="0"
-              className="tabular h-8 w-12 rounded-[var(--radius-control)] border border-parchment-edge bg-parchment/60 px-1 text-center text-14 text-paper-ink focus:border-wax focus:outline-none"
+              className="tabular h-8 min-h-[var(--touch-min)] w-12 rounded-[var(--radius-control)] border border-parchment-edge bg-parchment/60 px-1 text-center text-14 text-paper-ink focus:border-brass-deep focus:shadow-[var(--ring-focus)] focus:outline-none"
             />
             <button
               type="button"
               onClick={() => dmg(false)}
-              className="h-8 min-h-[var(--touch-min)] rounded-[var(--radius-control)] border border-wax px-2 text-13 font-bold text-wax hover:bg-wax hover:text-parchment"
+              className="h-8 min-h-[var(--touch-min)] min-w-[var(--touch-min)] rounded-[var(--radius-control)] border border-wax px-2 text-13 font-bold text-wax hover:bg-wax hover:text-parchment"
             >
               Damage
             </button>
             <button
               type="button"
               onClick={() => dmg(true)}
-              className="h-8 min-h-[var(--touch-min)] rounded-[var(--radius-control)] border border-paper-ink/40 px-2 text-13 font-bold text-paper-ink hover:bg-parchment-deep"
+              className="h-8 min-h-[var(--touch-min)] min-w-[var(--touch-min)] rounded-[var(--radius-control)] border border-paper-ink/40 px-2 text-13 font-bold text-paper-ink hover:bg-parchment-deep"
             >
               Heal
             </button>
           </div>
         ) : null}
       </div>
-      <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-14">
+      {/* The numbers most asked for, labels above values. */}
+      <dl className="mt-2 grid grid-cols-4 gap-1.5 text-center" data-testid="sheet-stats">
         <Stat label="AC">
           <NumberField
             label="Armour class"
             value={c.ac.value}
             min={0}
             max={99}
+            width="100%"
             disabled={!ctx.canEdit}
             onCommit={(v) => void ctx.set(["core", "ac", "value"], v)}
+            className="text-16"
           />
         </Stat>
         <Stat label="Init">
-          <Rollable actor={ctx.actor} formula="1d20 + @init" label="Initiative" className="tabular font-bold">
+          <Rollable
+            actor={ctx.actor}
+            formula="1d20 + @init"
+            label="Initiative"
+            className="tabular min-h-[var(--touch-min)] justify-center text-16 font-bold"
+          >
             {signed(d.initiative)}
           </Rollable>
         </Stat>
         <Stat label="Speed">
-          <span className="tabular font-bold">{c.speeds.walk} ft</span>
+          <span className="tabular text-16 font-bold">{c.speeds.walk} ft</span>
         </Stat>
-        {c.senses.darkvision ? (
-          <Stat label="Darkvision">
-            <span className="tabular font-bold">{c.senses.darkvision} ft</span>
-          </Stat>
-        ) : null}
         <Stat label="Prof">
-          <span className="tabular font-bold">{signed(d.proficiencyBonus)}</span>
+          <span className="tabular text-16 font-bold">{signed(d.proficiencyBonus)}</span>
         </Stat>
-      </div>
+      </dl>
+      {senses(c) ? <p className="mt-1 px-1 text-13 text-paper-muted">{senses(c)}</p> : null}
       <Conditions ctx={ctx} />
       <Dialog
         open={naming !== null}
@@ -495,7 +501,7 @@ function SheetHeader({ ctx, onImport }: { ctx: SheetCtx; onImport: (m: "json" | 
             maxLength={80}
             onChange={(e) => setNaming(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && void saveTemplate()}
-            className="h-10 rounded-[var(--radius-control)] border border-parchment-edge bg-parchment/60 px-2 text-16 text-paper-ink focus:border-wax focus:outline-none"
+            className="h-10 rounded-[var(--radius-control)] border border-parchment-edge bg-parchment/60 px-2 text-16 text-paper-ink focus:border-brass-deep focus:shadow-[var(--ring-focus)] focus:outline-none"
           />
         </label>
       </Dialog>
@@ -505,14 +511,68 @@ function SheetHeader({ ctx, onImport }: { ctx: SheetCtx; onImport: (m: "json" | 
 
 function Stat({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <span className="inline-flex items-center gap-1">
-      <span className="caps text-12 text-paper-muted">{label}</span>
-      {children}
-    </span>
+    <div className="flex min-w-0 flex-col rounded-[var(--radius-control)] border border-parchment-edge/50 bg-parchment-deep/30 px-1 py-0.5">
+      <dt className="caps text-12 text-paper-muted">{label}</dt>
+      <dd className="flex min-h-8 items-center justify-center text-paper-ink">{children}</dd>
+    </div>
   );
 }
 
-const conditionName = (id: string) => id.charAt(0).toUpperCase() + id.slice(1);
+/** Senses beyond plain sight, as a line: "Darkvision 60 ft · Tremorsense 10 ft". */
+function senses(c: SheetCtx["sheet"]["core"]): string {
+  const s = c.senses;
+  return (
+    [
+      ["Darkvision", s.darkvision],
+      ["Blindsight", s.blindsight],
+      ["Tremorsense", s.tremorsense],
+      ["Truesight", s.truesight],
+    ] as const
+  )
+    .filter(([, ft]) => ft > 0)
+    .map(([n, ft]) => `${n} ${ft} ft`)
+    .join(" · ");
+}
+
+/**
+ * The character's name as a heading (the display face; a long name ends in an ellipsis); its player or the DM click
+ * it to rename.
+ */
+function NameField({ ctx }: { ctx: SheetCtx }) {
+  const [editing, setEditing] = useState(false);
+  const name = ctx.sheet.core.name;
+  if (editing)
+    return (
+      <TextField
+        label="Name"
+        value={name}
+        autoFocus
+        onCommit={(v) => {
+          if (v.trim() && v.trim() !== name) void ctx.set(["core", "name"], v.trim());
+        }}
+        onDone={() => setEditing(false)}
+        className="display h-9 border-transparent bg-transparent px-1 text-22 leading-tight max-sm:text-18"
+      />
+    );
+  return (
+    <div className="flex min-w-0 items-center gap-1">
+      {ctx.canEdit ? (
+        <button
+          type="button"
+          onClick={() => setEditing(true)}
+          title="Rename"
+          aria-label={`${name} — rename`}
+          className="display min-h-[var(--touch-min)] min-w-0 max-w-full rounded-[var(--radius-control)] px-1 text-left text-22 leading-tight text-paper-ink hover:bg-parchment-deep/50 max-sm:text-18"
+        >
+          <span className="block truncate">{name}</span>
+        </button>
+      ) : (
+        <h2 className="display truncate px-1 text-22 leading-tight text-paper-ink max-sm:text-18">{name}</h2>
+      )}
+      <LockMark show={ctx.canEdit && !ctx.free(["core", "name"])} />
+    </div>
+  );
+}
 
 function Conditions({ ctx }: { ctx: SheetCtx }) {
   const c = ctx.sheet.core;
@@ -523,19 +583,23 @@ function Conditions({ ctx }: { ctx: SheetCtx }) {
       {c.conditions.map((id) => (
         <span
           key={id}
-          className="inline-flex h-7 items-center gap-1 rounded-chip border border-wax/60 bg-parchment-deep px-2 text-13 text-paper-ink"
+          title={statusSummary(id)}
+          className="inline-flex h-7 items-center gap-1 rounded-chip border border-parchment-edge bg-parchment-deep pl-0.5 text-13 text-paper-ink"
         >
-          {conditionName(id)}
+          <StatusIcon id={id} size={22} badge label="" />
+          {statusName(id)}
           {ctx.canEdit ? (
             <button
               type="button"
-              aria-label={`Remove ${conditionName(id)}`}
+              aria-label={`Remove ${statusName(id)}`}
               onClick={() => setConditions(c.conditions.filter((x) => x !== id))}
-              className="text-paper-muted hover:text-wax"
+              className="grid h-7 w-6 place-items-center text-paper-muted hover:text-wax pointer-coarse:h-[var(--touch-min)] pointer-coarse:w-[var(--touch-min)]"
             >
               <X size={12} />
             </button>
-          ) : null}
+          ) : (
+            <span className="w-1" />
+          )}
         </span>
       ))}
       {ctx.canEdit ? (
@@ -548,7 +612,7 @@ function Conditions({ ctx }: { ctx: SheetCtx }) {
           <option value="">+ add</option>
           {CONDITION_IDS.filter((id) => !c.conditions.includes(id)).map((id) => (
             <option key={id} value={id}>
-              {conditionName(id)}
+              {statusName(id)}
             </option>
           ))}
         </select>
@@ -561,10 +625,9 @@ function Conditions({ ctx }: { ctx: SheetCtx }) {
         className="ml-auto inline-flex h-7 min-h-[var(--touch-min)] items-center gap-1 px-1 text-13 text-paper-ink"
         title="Heroic Inspiration"
       >
-        <span
-          aria-hidden
-          className={`block h-3 w-3 rotate-45 border ${c.inspiration ? "border-wax bg-wax" : "border-paper-muted"}`}
-        />
+        <span className={c.inspiration ? "text-wax" : "text-paper-muted opacity-60"}>
+          <StatusIcon id="inspiration" size={18} label="" />
+        </span>
         Inspiration
       </button>
     </div>

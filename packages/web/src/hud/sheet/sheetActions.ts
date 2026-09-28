@@ -19,6 +19,7 @@ import { changeSheet, proposeChange, type SheetChangeIn } from "../../net/sheets
 import { useTable } from "../../net/table.ts";
 import { useUi } from "../../state/ui.ts";
 import { toast } from "../../ui/Toast.tsx";
+import { makeRoomForDice } from "../insets.ts";
 import { type RollMode, withMode } from "./rollMode.ts";
 
 /** A proposal waiting for the player's note (the sheet's Propose dialog). */
@@ -110,6 +111,7 @@ export async function rollFromSheet(
   mode: RollMode,
 ): Promise<void> {
   try {
+    makeRoomForDice();
     await rollDice({ formula: withMode(formula, mode), label, visibility: "public", actorId: actor.id });
   } catch (e) {
     toast.danger("Couldn't roll", (e as Error).message);

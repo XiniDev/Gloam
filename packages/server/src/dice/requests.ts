@@ -102,8 +102,12 @@ export function targetFormula(
   const numeric = base.replace(/@([a-z][a-zA-Z.]*)/g, (_, ref: string) =>
     String(resolve(ref.split(".")) ?? 0),
   );
-  // "+ -3" reads as "- 3".
-  const tidy = numeric.replace(/\+\s*-\s*(\d)/g, "- $1").replace(/-\s*-\s*(\d)/g, "+ $1");
+  // "+ -3" reads as "- 3"; a "+ 0" says nothing (a creature without the modifier rolls its plain d20).
+  const tidy = numeric
+    .replace(/\+\s*-\s*(\d)/g, "- $1")
+    .replace(/-\s*-\s*(\d)/g, "+ $1")
+    .replace(/\s*[+-]\s*0(?![\d.])/g, "")
+    .trim();
   return adv !== "none" && /d20/i.test(tidy) ? `${tidy} ${adv}` : tidy;
 }
 

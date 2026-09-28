@@ -122,6 +122,7 @@ export const BOARD_COLORS = {
   ink950: "#07090C",
   ink900: "#0D1117",
   bone100: "#EDE6D6",
+  fog300: "#A9B4C2",
   brass300: "#E6C98B",
   brass400: "#D4AF6A",
   brass600: "#9C7A3C",

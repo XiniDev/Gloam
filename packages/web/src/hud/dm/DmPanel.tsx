@@ -24,7 +24,12 @@ export default function DmPanel() {
         <WaxSeal size={20} />
         <h2 className="text-18 text-bone">DM panel</h2>
       </header>
-      <div role="tablist" aria-label="DM panel sections" className="flex gap-1 border-b border-line px-3">
+      {/* Its sections scroll sideways inside their own row on a narrow panel (never the whole panel). */}
+      <div
+        role="tablist"
+        aria-label="DM panel sections"
+        className="flex shrink-0 gap-1 overflow-x-auto border-b border-line px-3 [scrollbar-width:none]"
+      >
         {SECTIONS.map((s) => {
           const active = s.id === section;
           return (
@@ -34,7 +39,7 @@ export default function DmPanel() {
               role="tab"
               aria-selected={active}
               onClick={() => useUi.getState().set({ dmSection: s.id })}
-              className={`relative flex h-10 items-center gap-1.5 px-3 text-14 font-bold transition-colors duration-[var(--dur-fast)] ${
+              className={`relative flex h-10 min-h-[var(--touch-min)] shrink-0 items-center gap-1.5 px-3 text-14 font-bold transition-colors duration-[var(--dur-fast)] ${
                 active ? "text-brass-bright" : "text-muted hover:text-bone"
               }`}
             >
@@ -49,7 +54,7 @@ export default function DmPanel() {
           );
         })}
       </div>
-      <div role="tabpanel" className="flex min-h-0 flex-1 flex-col">
+      <div role="tabpanel" className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-clip">
         {section === "scenes" ? <ScenesPanel /> : null}
         {section === "library" ? <LibraryPanel /> : null}
         {section === "requests" ? <RequestsPanel /> : null}

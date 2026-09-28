@@ -299,3 +299,22 @@ P5        9     0     0      9
 P6       14     0     0     14
 PASSING 112/224
 ```
+
+## 2026-09-28 — P6 visual review, round 1 (critic 5/10): fixes in
+
+- The critic's 11 BLOCKING and 22 IMPORTANT items worked through (DECISIONS, "P6 critic round 1"): phone panels are
+  pages; request cards and the phone feed never over a panel; nothing scrolls sideways; tooltips on keyboard focus
+  only; the banned dice glyph gone; parchment themes the ink components on it; a new sheet header; tabs, spells,
+  attacks, inventory, custom blocks, party rows, proposals, request form, import errors, radial DM ring, plates
+  (temp HP beside the bar, lighter pinned gauges, a visible leader), the drawing pad on a phone.
+- New tests: `p6-phone.spec.ts` (the sheet on a 390×844 phone: a full-width page, no sideways scroll in any section,
+  every control ≥ 44 px, a roll from the page shows the dice) — it found 40-odd small targets and an invisible ruler
+  that let the page slide sideways, all fixed; unit tests for `summarizeFormula`, `issueText`, the conditions and
+  damage rules (P7 groundwork: 37 + 5), the palette mirror, declutter covers.
+- P7 groundwork already in: the SRD damage pipeline (`applyDamage`, 30 table cases + overflow, massive damage, death
+  saves, concentration), condition and marker metadata with roll hints and speed (§19.3–19.4), the Appendix G icons
+  extracted into `@gloam/shared/icons` (checked against the spec by `pnpm lint`) with the `StatusIcon` component and
+  the WebGL atlas.
+- Journeys after the fixes: p2-tokens (6), p2-camera, p4-phone, p5-dice (3), p6-sheets (3), p6-requests, p6-art,
+  p6-phone pass. Flaky under a loaded machine, to look at: `wallGen.test.ts` "stays fast on a large map" (1.7 s vs a
+  1.5-s budget once) and `assets.test.ts` AC-AST-03 (a socket closed once); both pass on reruns.

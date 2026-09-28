@@ -271,7 +271,8 @@ test.describe("P6 — character art (SHEET-10/11)", () => {
     for (let i = 0; i < 14; i++) await tolerance.press("ArrowRight");
     await expect.poll(async () => (await picture(preview)).width, { timeout: 10_000 }).toBeLessThan(360);
     await cut.getByRole("button", { name: "Use as portrait" }).click();
-    await expect(cut).toHaveCount(0);
+    // (Saving renders the sticker at 2048 px and uploads it: seconds under software GL with other journeys running.)
+    await expect(cut).toHaveCount(0, { timeout: 30_000 });
     await approveUpload(admin);
     await expect
       .poll(async () => (await actorNamed(dave, "Pip Thistle"))?.sheet.core.portraitAssetId)

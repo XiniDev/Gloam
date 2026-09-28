@@ -50,7 +50,7 @@ export function PaperCutout({
   open: boolean;
   onClose: () => void;
   /** The sticker, saved: usable now, or (a player's) once the DM approves it. */
-  onUse: (assetId: string, as: "portrait" | "token", approved: boolean) => void;
+  onUse: (assetId: string, as: "portrait" | "standee" | "coin", approved: boolean) => void;
 }) {
   const [bitmap, setBitmap] = useState<ImageBitmap | null>(null);
   const [opts, setOpts] = useState<CutoutOptions>(CUTOUT_DEFAULTS);
@@ -91,7 +91,7 @@ export function PaperCutout({
       await load(new File([bytes], "photo.png", { type: "image/png" }));
     });
   }, [open, load]);
-  const use = async (as: "portrait" | "token") => {
+  const use = async (as: "portrait" | "standee" | "coin") => {
     if (!bitmap) return;
     setBusy(true);
     try {
@@ -100,12 +100,16 @@ export function PaperCutout({
       paint(canvas, r);
       const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, "image/png"));
       if (!blob) throw new Error("The sticker couldn't be saved.");
-      const asset = await uploadAsset(new File([blob], "sticker.png", { type: "image/png" }), as, {
-        name: "Sticker",
-      });
+      const asset = await uploadAsset(
+        new File([blob], "sticker.png", { type: "image/png" }),
+        as === "portrait" ? "portrait" : "token",
+        { name: "Sticker" },
+      );
       if (asset.status === "approved") {
         onUse(asset.id, as, true);
-        toast.success(as === "portrait" ? "Your new portrait" : "Your new token");
+        toast.success(
+          as === "portrait" ? "Your new portrait" : as === "standee" ? "Your new standee" : "Your new coin",
+        );
       } else {
         onUse(asset.id, as, false);
         toast.info("Sent to the DM", "It goes on your character as soon as they approve it.");
@@ -130,8 +134,11 @@ export function PaperCutout({
           <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
-          <Button variant="secondary" loading={busy} disabled={!bitmap} onClick={() => void use("token")}>
-            Use as token
+          <Button variant="secondary" loading={busy} disabled={!bitmap} onClick={() => void use("coin")}>
+            Use as coin
+          </Button>
+          <Button variant="secondary" loading={busy} disabled={!bitmap} onClick={() => void use("standee")}>
+            Use as standee
           </Button>
           <Button variant="primary" loading={busy} disabled={!bitmap} onClick={() => void use("portrait")}>
             Use as portrait
@@ -153,6 +160,7 @@ export function PaperCutout({
           }}
         />
         <Button
+          data-autofocus
           variant="secondary"
           size="S"
           icon={<ImageUp size={15} />}
@@ -181,7 +189,7 @@ export function PaperCutout({
             <p className="text-14 text-muted">No photo yet.</p>
           )}
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid gap-4 sm:grid-cols-2">
           <Slider
             label="Paper tolerance"
             labelled

@@ -4,6 +4,7 @@ import {
   CHARACTER_AI_PROMPT,
   CHARACTER_SCHEMA_MARKER,
   fillPrompt,
+  issueText,
   jsonFromReply,
   Sheet,
 } from "@gloam/shared/schemas";
@@ -69,7 +70,7 @@ export function ImportDialog({
         ok: false,
         issues: r.error.issues
           .slice(0, 20)
-          .map((i) => ({ path: i.path as (string | number)[], message: i.message })),
+          .map((i) => ({ path: i.path as (string | number)[], message: issueText(i as never, doc) })),
       });
   };
   const copyPrompt = async () => {
@@ -177,6 +178,7 @@ export function ImportDialog({
           <span className="caps text-12 text-fog">{mode === "ai" ? "The assistant's reply" : "JSON"}</span>
           <textarea
             data-testid="import-text"
+            data-autofocus
             value={text}
             onChange={(e) => check(e.target.value)}
             rows={7}
@@ -198,7 +200,7 @@ export function ImportDialog({
                   {i.path.length ? (
                     <>
                       <span className="text-bone">{fieldLabel(i.path)}</span>{" "}
-                      <span className="mono text-12 text-fog">({pathLabel(i.path)})</span>
+                      <span className="text-12 text-faint">({pathLabel(i.path)})</span>
                     </>
                   ) : (
                     <span className="text-bone">The text</span>

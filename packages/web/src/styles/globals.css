@@ -118,6 +118,8 @@
     font-variation-settings:
       "SOFT" 50,
       "opsz" 72;
+    /* §27.3: the display face at 600–800 wherever it's used (an input doesn't inherit the headings' 650). */
+    font-weight: 650;
   }
   .mono {
     font-family: var(--font-mono);
@@ -145,6 +147,26 @@
     color: var(--parchment-ink);
     border-radius: var(--radius-panel);
     box-shadow: var(--shadow-paper);
+    /* The ink components on it take its colours (§28: themed for the parchment variant) — a ghost button, a
+       dialog's ×, an icon button read as ink on paper, not fog (2.5:1); native controls draw light. */
+    color-scheme: light;
+    --text: var(--parchment-ink);
+    --text-muted: var(--parchment-ink-muted);
+    --text-faint: var(--parchment-ink-muted);
+    --raised: var(--parchment-200);
+    --border: color-mix(in srgb, var(--parchment-ink) 22%, transparent);
+    --border-strong: color-mix(in srgb, var(--parchment-ink) 40%, transparent);
+  }
+  /* …and an ink panel laid on parchment is ink again. */
+  .parchment .panel,
+  .parchment .panel-raised {
+    color-scheme: dark;
+    --text: var(--bone-100);
+    --text-muted: var(--fog-300);
+    --text-faint: var(--fog-400);
+    --raised: var(--ink-800);
+    --border: var(--ink-700);
+    --border-strong: var(--ink-600);
   }
   .engraved-divider {
     height: 1px;

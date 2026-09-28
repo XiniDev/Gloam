@@ -75,13 +75,14 @@ export function QuickCreateDialog({ open, onClose }: { open: boolean; onClose: (
   const field = (
     key: keyof typeof f,
     label: string,
-    opts: { inputMode?: "numeric"; placeholder?: string } = {},
+    opts: { inputMode?: "numeric"; placeholder?: string; first?: boolean } = {},
   ) => (
     <TextInput
       label={label}
       value={f[key] as string}
       inputMode={opts.inputMode}
       placeholder={opts.placeholder}
+      data-autofocus={opts.first || undefined}
       onChange={(e) =>
         setF((x) => ({ ...x, [key]: opts.inputMode ? e.target.value.replace(/\D/g, "") : e.target.value }))
       }
@@ -107,7 +108,9 @@ export function QuickCreateDialog({ open, onClose }: { open: boolean; onClose: (
       }
     >
       <div className="grid grid-cols-2 gap-3" data-testid="quick-create">
-        <div className="col-span-2">{field("name", "Name", { placeholder: "Thorin Emberhand" })}</div>
+        <div className="col-span-2">
+          {field("name", "Name", { placeholder: "Thorin Emberhand", first: true })}
+        </div>
         <div className="col-span-2">
           {field("classLevel", "Class and level", { placeholder: "Fighter 3 / Wizard 2" })}
         </div>
@@ -149,7 +152,7 @@ export function QuickCreateDialog({ open, onClose }: { open: boolean; onClose: (
             </select>
           </label>
         ) : null}
-        <div className="parchment col-span-2 grid grid-cols-2 gap-3 p-3">
+        <div className="col-span-2 grid grid-cols-2 gap-3 rounded-[var(--radius-control)] border border-dashed border-brass-deep/50 p-3">
           <AssetPicker
             label="Portrait"
             purpose="portrait"

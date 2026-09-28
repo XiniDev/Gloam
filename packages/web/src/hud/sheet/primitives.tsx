@@ -1,5 +1,5 @@
 import type { ActorView } from "@gloam/shared/protocol";
-import { Lock, Minus, Plus, RotateCcw } from "lucide-react";
+import { Lock, Minus, Pencil, Plus, RotateCcw } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { D20Icon } from "../../icons/dice.tsx";
 import { modeOf, type RollMode } from "./rollMode.ts";
@@ -53,7 +53,7 @@ export function Rollable({
         data-formula={formula}
         aria-label={`Roll ${label}`}
         title={title ?? `${label}: ${formula} (Alt: advantage, Ctrl: disadvantage)`}
-        className={`group inline-flex items-center gap-1 rounded-chip px-1 transition-colors duration-[var(--dur-fast)] hover:bg-parchment-deep hover:text-wax focus-visible:outline-2 focus-visible:outline-wax ${className}`}
+        className={`group inline-flex min-h-[var(--touch-min)] min-w-[var(--touch-min)] items-center justify-center gap-1 rounded-chip px-1 transition-colors duration-[var(--dur-fast)] hover:bg-parchment-deep hover:text-wax focus-visible:outline-2 focus-visible:outline-wax ${className}`}
         onClick={(e) => {
           if (pressed.current) {
             pressed.current = false;
@@ -193,7 +193,7 @@ export function NumberField({
         }
       }}
       style={{ width }}
-      className={`tabular h-8 rounded-[var(--radius-control)] border border-transparent bg-transparent px-1 text-center text-14 font-bold text-paper-ink hover:border-parchment-edge focus:border-wax focus:bg-parchment focus:outline-none disabled:opacity-60 ${className}`}
+      className={`tabular h-8 rounded-[var(--radius-control)] border border-transparent bg-transparent px-1 text-center text-14 font-bold text-paper-ink hover:border-parchment-edge focus:border-brass-deep focus:shadow-[var(--ring-focus)] focus:bg-parchment focus:outline-none disabled:opacity-60 ${className}`}
     />
   );
 }
@@ -207,6 +207,8 @@ export function TextField({
   multiline = false,
   disabled = false,
   className = "",
+  autoFocus = false,
+  onDone,
 }: {
   value: string;
   onCommit: (v: string) => void;
@@ -215,6 +217,10 @@ export function TextField({
   multiline?: boolean;
   disabled?: boolean;
   className?: string;
+  /** Focused as it appears (a heading turned into its field). */
+  autoFocus?: boolean;
+  /** Called when editing ends, committed or not (Enter, Escape, leaving the field). */
+  onDone?: () => void;
 }) {
   const [draft, setDraft] = useState<string | null>(null);
   const commit = () => {
@@ -223,7 +229,11 @@ export function TextField({
     setDraft(null);
     if (v !== value) onCommit(v);
   };
-  const cls = `w-full rounded-[var(--radius-control)] border border-parchment-edge/60 bg-parchment/60 px-2 text-14 text-paper-ink placeholder:text-paper-muted/70 focus:border-wax focus:bg-parchment focus:outline-none disabled:opacity-60 ${className}`;
+  const end = () => {
+    commit();
+    onDone?.();
+  };
+  const cls = `w-full rounded-[var(--radius-control)] border border-parchment-edge/60 bg-parchment/60 px-2 text-14 text-paper-ink placeholder:text-paper-muted/70 focus:border-brass-deep focus:shadow-[var(--ring-focus)] focus:bg-parchment focus:outline-none disabled:opacity-60 ${className}`;
   if (multiline)
     return (
       <textarea
@@ -244,9 +254,11 @@ export function TextField({
       disabled={disabled}
       value={draft ?? value}
       placeholder={placeholder}
+      // biome-ignore lint/a11y/noAutofocus: only when the person just asked to edit it (clicked its heading)
+      autoFocus={autoFocus}
       onFocus={() => setDraft(value)}
       onChange={(e) => setDraft(e.target.value)}
-      onBlur={commit}
+      onBlur={end}
       onKeyDown={(e) => {
         if (e.key === "Enter") e.currentTarget.blur();
         if (e.key === "Escape") {
@@ -269,6 +281,8 @@ export function Stepper({
   min = -99_999,
   max = 99_999,
   disabled = false,
+  big = false,
+  after,
 }: {
   value: number;
   onChange: (v: number) => void;
@@ -276,6 +290,10 @@ export function Stepper({
   min?: number;
   max?: number;
   disabled?: boolean;
+  /** The value in the display face, large (the sheet's HP). */
+  big?: boolean;
+  /** Shown after the value, inside the − … + (HP's "/ 52"). */
+  after?: ReactNode;
 }) {
   const repeat = useRef<number | null>(null);
   // Held down, the steps run ahead of the server's echo: count from the last step sent, and take the value from the
@@ -345,7 +363,10 @@ export function Stepper({
         min={min}
         max={max}
         disabled={disabled}
+        width={big ? "3.2rem" : undefined}
+        className={big ? "display h-10 text-28 leading-none" : ""}
       />
+      {after}
       {button(1)}
     </span>
   );
@@ -448,7 +469,7 @@ export function DerivedValue({
           title={`Set by hand (worked out: ${auto}). Click to go back to ${auto}.`}
           aria-label={`${label} is set by hand; revert to ${auto}`}
           onClick={onRevert}
-          className="caps inline-flex h-5 items-center gap-0.5 rounded-chip border border-wax px-1 text-12 text-wax hover:bg-wax hover:text-parchment"
+          className="caps inline-flex h-5 min-h-[var(--touch-min)] min-w-[var(--touch-min)] items-center justify-center gap-0.5 rounded-chip border border-wax px-1 text-12 text-wax hover:bg-wax hover:text-parchment"
         >
           <RotateCcw size={10} aria-hidden />
           set
@@ -459,9 +480,9 @@ export function DerivedValue({
           aria-label={`Set ${label} by hand`}
           title="Set by hand"
           onClick={() => setEditing(true)}
-          className="h-5 rounded-chip px-1 text-12 text-paper-muted opacity-0 hover:text-paper-ink focus:opacity-100 group-hover/row:opacity-100 pointer-coarse:opacity-100"
+          className="grid h-5 min-h-[var(--touch-min)] w-5 min-w-[var(--touch-min)] place-items-center rounded-chip text-paper-muted opacity-0 hover:text-paper-ink focus:opacity-100 group-hover/row:opacity-100 pointer-coarse:opacity-100"
         >
-          ✎
+          <Pencil size={12} aria-hidden />
         </button>
       ) : null}
     </span>

@@ -206,7 +206,7 @@ export function OverviewTab({ ctx }: { ctx: SheetCtx }) {
             />
           </span>
         ))}
-        <label className="flex items-center gap-1 text-13">
+        <label className="flex min-h-[var(--touch-min)] items-center gap-1.5 text-13">
           <input
             type="checkbox"
             checked={c.speeds.hover}

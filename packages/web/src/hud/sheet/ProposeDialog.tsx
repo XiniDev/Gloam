@@ -66,7 +66,7 @@ export function ProposeDialog() {
           rows={3}
           onChange={(e) => setNote(e.target.value)}
           placeholder="Level 4 — Ability Score Improvement"
-          className="rounded-[var(--radius-control)] border border-parchment-edge bg-parchment/60 px-2 py-1.5 text-14 text-paper-ink focus:border-wax focus:outline-none"
+          className="rounded-[var(--radius-control)] border border-parchment-edge bg-parchment/60 px-2 py-1.5 text-14 text-paper-ink focus:border-brass-deep focus:shadow-[var(--ring-focus)] focus:outline-none"
         />
       </label>
     </Dialog>

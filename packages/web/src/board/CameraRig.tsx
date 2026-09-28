@@ -409,6 +409,42 @@ export function CameraRig({ bounds, sceneId }: { bounds: Bounds; sceneId: string
     };
   }, []);
 
+  // The dock opening or closing (desktop): the board keeps what was in the middle of its free part there — the view
+  // slides by half the panel's width (a panel over the right third hid the token being worked on). Only for a panel
+  // opened or closed, not a resize or the first measurement.
+  useEffect(() => {
+    let expect: number | null = null;
+    const offDock = useUi.subscribe((s, prev) => {
+      if ((s.dock === null) !== (prev.dock === null) && !isPhoneNow()) expect = useHudInsets.getState().right;
+    });
+    const offInsets = useHudInsets.subscribe((s, prev) => {
+      if (expect === null || s.right === prev.right) return;
+      const shift = (s.right - expect) / 2;
+      expect = null;
+      const c = ref.current;
+      const cam = c?.camera;
+      const el = boardApi.element;
+      if (!c || !cam || !el || Math.abs(shift) < 1) return;
+      // Screen pixels to feet at the target's depth, along the camera's right on the table.
+      const t = c.getTarget(new Vector3());
+      const H = el.clientHeight || window.innerHeight;
+      const perPx =
+        "isOrthographicCamera" in cam && cam.isOrthographicCamera
+          ? (cam.top - cam.bottom) / (cam.zoom || 1) / H
+          : (2 * cam.position.distanceTo(t) * Math.tan(MathUtils.degToRad(FOV_DEG) / 2)) / H;
+      const right = new Vector3().setFromMatrixColumn(cam.matrixWorld, 0).setY(0);
+      if (right.lengthSq() < 1e-9) return;
+      right.normalize().multiplyScalar(shift * perPx);
+      follow.current = null;
+      void c.moveTo(t.x + right.x, t.y, t.z + right.z, true);
+      wake();
+    });
+    return () => {
+      offDock();
+      offInsets();
+    };
+  }, []);
+
   // Keyboard: Shift+1/2/3 presets, T toggles top-down ↔ tabletop, F focuses the selection, Shift+F follows it.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

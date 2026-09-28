@@ -58,7 +58,10 @@ export function Tooltip({
     },
     onPointerEnter: show,
     onPointerLeave: hide,
-    onFocus: show,
+    // Keyboard focus only: a dialog focusing its close button, or a click, isn't a request for the tooltip.
+    onFocus: (e: { currentTarget: HTMLElement }) => {
+      if (e.currentTarget.matches(":focus-visible")) show();
+    },
     onBlur: hide,
     "aria-describedby": open ? id : undefined,
   });
@@ -68,20 +71,26 @@ export function Tooltip({
       {open &&
         pos &&
         createPortal(
+          // The placement on an outer box, the rise-in animation on the inner one: an animated transform would
+          // override the placement's while it runs (the tooltip drew over its own trigger, then jumped).
           <div
-            id={id}
-            role="tooltip"
-            className="pointer-events-none fixed z-[1000] w-max max-w-[260px] rounded-[var(--radius-chip)] border border-line bg-ink-800 px-2.5 py-1.5 text-13 text-bone shadow-[var(--shadow-float)] animate-[rise-in_var(--dur-fast)_var(--ease-out)]"
+            className="pointer-events-none fixed z-[1000]"
             style={{
               left: Math.min(window.innerWidth - 140, Math.max(140, pos.x)),
               top: pos.y,
               transform: `translate(-50%, ${pos.below ? "0" : "-100%"})`,
             }}
           >
-            <span className="flex items-center gap-2">
-              {label}
-              {shortcut ? <KeyHint keys={shortcut} /> : null}
-            </span>
+            <div
+              id={id}
+              role="tooltip"
+              className="w-max max-w-[260px] rounded-[var(--radius-chip)] border border-line bg-ink-800 px-2.5 py-1.5 text-13 text-bone shadow-[var(--shadow-float)] animate-[rise-in_var(--dur-fast)_var(--ease-out)]"
+            >
+              <span className="flex items-center gap-2">
+                {label}
+                {shortcut ? <KeyHint keys={shortcut} /> : null}
+              </span>
+            </div>
           </div>,
           document.body,
         )}

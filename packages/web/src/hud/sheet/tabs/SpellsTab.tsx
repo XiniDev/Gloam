@@ -116,67 +116,8 @@ export function SpellsTab({ ctx }: { ctx: SheetCtx }) {
           actor={ctx.actor}
           formula="1d20 + @spellmod + @prof"
           label="Spell attack"
-          text="Spell attack"
+          text={`Spell attack ${signed(d.values["spell.attack"])}`}
         />
-      </div>
-
-      <SectionTitle>Slots</SectionTitle>
-      <div className="flex flex-col gap-1" data-testid="spell-slots">
-        {Array.from({ length: 9 }, (_, k) => k + 1).map((level) => {
-          const i = slotFor(level);
-          const slot = i >= 0 ? sc.slots[i] : undefined;
-          if (!slot && ro) return null;
-          return (
-            <div key={level} className="flex items-center gap-2">
-              <span className="w-10 text-13 text-paper-muted">{LEVEL[level]}</span>
-              {slot ? (
-                <Pips
-                  label={`${LEVEL[level]}-level slots spent`}
-                  total={slot.max}
-                  filled={slot.used}
-                  disabled={ro}
-                  onSet={(n) => void ctx.set(["core", "spellcasting", "slots", i, "used"], n)}
-                />
-              ) : null}
-              {ro ? null : (
-                <NumberField
-                  label={`${LEVEL[level]}-level slots`}
-                  value={slot?.max ?? 0}
-                  min={0}
-                  max={9}
-                  width="2.5rem"
-                  onCommit={(v) => {
-                    const slots = sc.slots.filter((s) => s.level !== level);
-                    if (v > 0) slots.push({ level, max: v, used: Math.min(slot?.used ?? 0, v) });
-                    slots.sort((a, b) => a.level - b.level);
-                    void ctx.set(["core", "spellcasting", "slots"], slots);
-                  }}
-                />
-              )}
-            </div>
-          );
-        })}
-        {sc.pact ? (
-          <div className="flex items-center gap-2">
-            <span className="w-10 text-13 text-paper-muted">Pact</span>
-            <Pips
-              label={`Pact slots (level ${sc.pact.level}) spent`}
-              total={sc.pact.max}
-              filled={sc.pact.used}
-              disabled={ro}
-              onSet={(n) => void ctx.set(["core", "spellcasting", "pact", "used"], n)}
-            />
-            <span className="text-13 text-paper-muted">level {sc.pact.level}</span>
-          </div>
-        ) : ro ? null : (
-          <button
-            type="button"
-            onClick={() => void ctx.set(["core", "spellcasting", "pact"], { level: 1, max: 1, used: 0 })}
-            className="self-start text-13 text-paper-muted underline decoration-dotted hover:text-wax"
-          >
-            Add pact slots
-          </button>
-        )}
       </div>
 
       {[...byLevel.keys()]
@@ -201,7 +142,7 @@ export function SpellsTab({ ctx }: { ctx: SheetCtx }) {
                       onClick={() =>
                         void ctx.set(["core", "spellcasting", "spells", i, "prepared"], !spell.prepared)
                       }
-                      className="grid h-6 min-h-[var(--touch-min)] w-5 place-items-center"
+                      className="grid h-6 min-h-[var(--touch-min)] w-5 min-w-[var(--touch-min)] place-items-center"
                     >
                       <span
                         aria-hidden
@@ -238,6 +179,92 @@ export function SpellsTab({ ctx }: { ctx: SheetCtx }) {
           </div>
         ))}
 
+      <SectionTitle>Slots</SectionTitle>
+      <div className="flex flex-col gap-1" data-testid="spell-slots">
+        {sc.slots.length === 0 && !sc.pact ? (
+          <p className="text-13 italic text-paper-muted">No spell slots.</p>
+        ) : null}
+        {sc.slots.map((slot, i) => (
+          <div key={slot.level} className="flex items-center gap-2">
+            <span className="w-10 text-13 text-paper-muted">{LEVEL[slot.level]}</span>
+            <Pips
+              label={`${LEVEL[slot.level]}-level slots spent`}
+              total={slot.max}
+              filled={slot.used}
+              disabled={ro}
+              onSet={(n) => void ctx.set(["core", "spellcasting", "slots", i, "used"], n)}
+            />
+            <span className="text-13 text-paper-muted">{slot.max - slot.used} of</span>
+            {ro ? (
+              <span className="tabular text-13 font-bold">{slot.max}</span>
+            ) : (
+              <NumberField
+                label={`${LEVEL[slot.level]}-level slots`}
+                value={slot.max}
+                min={0}
+                max={9}
+                width="2.5rem"
+                onCommit={(v) => {
+                  const slots = sc.slots.filter((x) => x.level !== slot.level);
+                  if (v > 0) slots.push({ level: slot.level, max: v, used: Math.min(slot.used, v) });
+                  slots.sort((x, y) => x.level - y.level);
+                  void ctx.set(["core", "spellcasting", "slots"], slots);
+                }}
+              />
+            )}
+            <span className="text-13 text-paper-muted">left</span>
+          </div>
+        ))}
+        {sc.pact ? (
+          <div className="flex items-center gap-2">
+            <span className="w-10 text-13 text-paper-muted">Pact</span>
+            <Pips
+              label={`Pact slots (level ${sc.pact.level}) spent`}
+              total={sc.pact.max}
+              filled={sc.pact.used}
+              disabled={ro}
+              onSet={(n) => void ctx.set(["core", "spellcasting", "pact", "used"], n)}
+            />
+            <span className="text-13 text-paper-muted">
+              {sc.pact.max - sc.pact.used} of {sc.pact.max} left, level {sc.pact.level}
+            </span>
+          </div>
+        ) : null}
+        {ro ? null : (
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              aria-label="Add slots for a level"
+              value=""
+              onChange={(e) => {
+                const level = Number(e.target.value);
+                if (!level) return;
+                const slots = [...sc.slots, { level, max: 1, used: 0 }].sort((x, y) => x.level - y.level);
+                void ctx.set(["core", "spellcasting", "slots"], slots);
+              }}
+              className="h-8 min-h-[var(--touch-min)] rounded-[var(--radius-control)] border border-dashed border-paper-muted bg-transparent px-1 text-13 text-paper-muted"
+            >
+              <option value="">+ slots for a level</option>
+              {Array.from({ length: 9 }, (_, k) => k + 1)
+                .filter((level) => slotFor(level) < 0)
+                .map((level) => (
+                  <option key={level} value={level}>
+                    {LEVEL[level]} level
+                  </option>
+                ))}
+            </select>
+            {sc.pact ? null : (
+              <button
+                type="button"
+                onClick={() => void ctx.set(["core", "spellcasting", "pact"], { level: 1, max: 1, used: 0 })}
+                className="min-h-[var(--touch-min)] text-13 text-paper-muted underline decoration-dotted hover:text-wax"
+              >
+                Add pact slots
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
       {ro ? null : (
         <>
           <SectionTitle action={<AddButton label="Add the spell" onClick={addSpell} />}>
@@ -250,7 +277,7 @@ export function SpellsTab({ ctx }: { ctx: SheetCtx }) {
               placeholder="Shield"
               onChange={(e) => setNewSpell((x) => ({ ...x, name: e.target.value }))}
               onKeyDown={(e) => e.key === "Enter" && addSpell()}
-              className="h-8 min-h-[var(--touch-min)] min-w-0 flex-1 rounded-[var(--radius-control)] border border-parchment-edge/60 bg-parchment/60 px-2 text-14 text-paper-ink placeholder:text-paper-muted/70 focus:border-wax focus:outline-none"
+              className="h-8 min-h-[var(--touch-min)] min-w-0 flex-1 rounded-[var(--radius-control)] border border-parchment-edge/60 bg-parchment/60 px-2 text-14 text-paper-ink placeholder:text-paper-muted/70 focus:border-brass-deep focus:shadow-[var(--ring-focus)] focus:outline-none"
             />
             <select
               aria-label="New spell level"

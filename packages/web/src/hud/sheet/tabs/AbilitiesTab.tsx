@@ -43,7 +43,8 @@ export function AbilitiesTab({ ctx }: { ctx: SheetCtx }) {
   );
   return (
     <div className="flex flex-col text-14 text-paper-ink">
-      <SectionTitle>Abilities · click a modifier for a check, a save to save</SectionTitle>
+      <SectionTitle>Abilities</SectionTitle>
+      <p className="mb-1 text-13 text-paper-muted">A modifier rolls its check, a save its saving throw.</p>
       <div
         className="grid grid-cols-[auto_auto_auto_1fr] items-center gap-x-2 gap-y-0.5"
         data-testid="sheet-abilities"
@@ -86,7 +87,7 @@ export function AbilitiesTab({ ctx }: { ctx: SheetCtx }) {
                   onClick={() =>
                     void ctx.set(["core", "saves", a], { ...(save ?? {}), proficient: !save?.proficient })
                   }
-                  className="grid h-6 min-h-[var(--touch-min)] w-5 place-items-center text-paper-ink"
+                  className="grid h-6 min-h-[var(--touch-min)] w-5 min-w-[var(--touch-min)] place-items-center text-paper-ink"
                 >
                   {save?.proficient ? "●" : "○"}
                 </button>
@@ -155,7 +156,7 @@ export function AbilitiesTab({ ctx }: { ctx: SheetCtx }) {
                 aria-label={`${skillName(id)}: ${prof}; change to ${next}`}
                 title={`${prof} — click for ${next}`}
                 onClick={() => void ctx.set(["core", "skills", id], { ...(s ?? {}), prof: next })}
-                className="grid h-6 min-h-[var(--touch-min)] w-5 place-items-center text-paper-ink"
+                className="grid h-6 min-h-[var(--touch-min)] w-5 min-w-[var(--touch-min)] place-items-center text-paper-ink"
               >
                 {PROF_MARK[prof]}
               </button>

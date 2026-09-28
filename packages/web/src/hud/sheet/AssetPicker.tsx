@@ -47,7 +47,8 @@ export function AssetPicker({
           type="button"
           aria-label={`${label}: ${value ? "change" : "choose"}`}
           onClick={() => setOpen((o) => !o)}
-          className="grid h-16 w-16 place-items-center overflow-hidden rounded-[var(--radius-control)] border border-dashed border-paper-muted bg-parchment-deep/50 text-paper-muted hover:border-wax hover:text-wax"
+          // Semantic colours: right on ink (a dialog) and on parchment (the sheet) alike.
+          className="grid h-16 w-16 place-items-center overflow-hidden rounded-[var(--radius-control)] border border-dashed border-line-strong bg-raised text-muted hover:border-brass hover:text-brass"
         >
           {current ? (
             <img src={current} alt="" className="h-full w-full object-cover" />
@@ -55,13 +56,13 @@ export function AssetPicker({
             <ImagePlus size={20} />
           )}
         </button>
-        <span className="text-13 text-paper-muted">{label}</span>
+        <span className="text-13 text-muted">{label}</span>
         {value ? (
           <button
             type="button"
             aria-label={`Clear ${label}`}
             onClick={() => onChange(undefined)}
-            className="text-paper-muted hover:text-wax"
+            className="grid min-h-[var(--touch-min)] min-w-[var(--touch-min)] place-items-center text-muted hover:text-danger-text"
           >
             <X size={14} />
           </button>

@@ -5,6 +5,7 @@ import { type FeedRoll, isMasked, useRolls } from "../dice/state.ts";
 import { HandDieIcon, SparkIcon } from "../icons/dice.tsx";
 import { useTable } from "../net/table.ts";
 import { useBoard } from "../state/entities.ts";
+import { useUi } from "../state/ui.ts";
 import { BottomSheet } from "../ui/BottomSheet.tsx";
 import { IconButton } from "../ui/Button.tsx";
 import { WaxSeal } from "../ui/ornaments.tsx";
@@ -29,7 +30,9 @@ const PHONE_FRESH_MS = 6000;
 export function RollFeed() {
   const feed = useRolls((s) => s.feed);
   const phone = useIsPhone();
-  if (feed.length === 0) return null;
+  // A phone's open panel is a page over the board: the feed waits under it (a roll from the panel closes it first).
+  const panel = useUi((s) => s.dock !== null);
+  if (feed.length === 0 || (phone && panel)) return null;
   return phone ? <PhoneFeed feed={feed} /> : <DesktopFeed feed={feed} />;
 }
 

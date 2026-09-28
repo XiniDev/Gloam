@@ -135,7 +135,9 @@ export function Dialog({
               <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-2 pt-4">{children}</div>
             ) : null}
             {footer ? (
-              <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 px-6 pb-6 pt-4">
+              // On a phone the actions stack full-width, the main one on top (a ragged right-aligned wrap
+              // otherwise).
+              <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 px-6 pb-6 pt-4 max-sm:[&>div]:w-full max-sm:[&>div]:flex-col-reverse max-sm:[&_button]:w-full">
                 {footer}
               </div>
             ) : null}

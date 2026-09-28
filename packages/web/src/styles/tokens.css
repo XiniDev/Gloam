@@ -67,6 +67,17 @@
   --hp-ghost: #f4e9d8;
   --on-accent: var(--ink-950);
 
+  /* condition and status icon badges by category (SPEC Appendix G; the WebGL atlas uses the same values from
+     @gloam/shared/icons — a unit test keeps them equal) */
+  --badge-senses: #4e7bc4;
+  --badge-mind: #8e5cc8;
+  --badge-affliction: #5e9a4e;
+  --badge-body: #a67c3d;
+  --badge-incapacity: #c8643b;
+  --badge-vital: #b43a36;
+  --badge-tactical: #56657a;
+  --badge-boon: #3f9c78;
+
   /* dispositions (party = the owner's player colour) */
   --disp-friendly: #5fbf9a;
   --disp-neutral: #d4af6a;

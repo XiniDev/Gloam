@@ -1,7 +1,8 @@
 import { ABILITIES, SKILL_IDS, SKILLS, type SkillId } from "@gloam/shared";
 import type { RollRequestView } from "@gloam/shared/protocol";
-import { Check, Dices, Pencil, SkipForward, X } from "lucide-react";
+import { Check, Pencil, SkipForward, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { D20Icon } from "../../icons/dice.tsx";
 import {
   answerRequest,
   closeRequest,
@@ -151,19 +152,21 @@ function NewRequest() {
           </ul>
         )}
       </div>
-      <Segmented
-        label="What to roll"
-        value={kind}
-        onChange={setKind}
-        fill
-        size="S"
-        options={[
-          { value: "check", label: "Check" },
-          { value: "save", label: "Save" },
-          { value: "attack", label: "Attack" },
-          { value: "custom", label: "Custom" },
-        ]}
-      />
+      <Caption text="What to roll">
+        <Segmented
+          label="What to roll"
+          value={kind}
+          onChange={setKind}
+          fill
+          size="S"
+          options={[
+            { value: "check", label: "Check" },
+            { value: "save", label: "Save" },
+            { value: "attack", label: "Attack" },
+            { value: "custom", label: "Custom" },
+          ]}
+        />
+      </Caption>
       {kind === "check" ? (
         <div className="grid grid-cols-2 gap-2">
           <Select
@@ -204,60 +207,64 @@ function NewRequest() {
           help="@ references come from each creature's sheet."
         />
       )}
-      <div className="grid grid-cols-[1fr_auto] items-end gap-2">
-        <TextInput
-          label="Label"
-          hint="optional"
-          value={label}
-          maxLength={80}
-          placeholder={kind === "attack" ? "Attack" : "Named from the roll"}
-          onChange={(e) => setLabel(e.target.value)}
-        />
+      <TextInput
+        label="Label (optional)"
+        value={label}
+        maxLength={80}
+        placeholder={kind === "attack" ? "Attack" : "Named from the roll"}
+        onChange={(e) => setLabel(e.target.value)}
+      />
+      <div className="grid grid-cols-[5rem_1fr] items-end gap-3">
         <TextInput
           label="DC"
           inputMode="numeric"
-          className="w-20"
           value={dc}
           placeholder="—"
           error={dcBad ? "1–50" : null}
           onChange={(e) => setDc(e.target.value.replace(/[^0-9]/g, "").slice(0, 2))}
         />
+        {dcNum !== undefined ? (
+          <Toggle
+            checked={showDc}
+            onChange={setShowDc}
+            label="Show the DC to players"
+            description="Hidden, they see only their roll; you see each against it."
+          />
+        ) : (
+          <p className="pb-3 text-13 text-muted">No DC: you judge each result.</p>
+        )}
       </div>
-      {dcNum !== undefined ? (
-        <Toggle
-          checked={showDc}
-          onChange={setShowDc}
-          label="Show the DC to players"
-          description="Hidden, they see only their roll; you see each against it."
+      <Caption text="Roll with">
+        <Segmented
+          label="Roll with"
+          value={adv}
+          onChange={setAdv}
+          fill
+          size="S"
+          options={[
+            { value: "none", label: "Normal" },
+            { value: "adv", label: "Advantage" },
+            { value: "dis", label: "Disadvantage" },
+          ]}
         />
-      ) : null}
-      <Segmented
-        label="Advantage"
-        value={adv}
-        onChange={setAdv}
-        fill
-        size="S"
-        options={[
-          { value: "none", label: "Normal" },
-          { value: "adv", label: "Advantage" },
-          { value: "dis", label: "Disadvantage" },
-        ]}
-      />
-      <Segmented
-        label="Results"
-        value={visibility}
-        onChange={setVisibility}
-        fill
-        size="S"
-        options={[
-          { value: "public", label: "Public", hint: "Everyone sees each result" },
-          { value: "dm", label: "Private", hint: "Only you and the roller see it" },
-          { value: "blind", label: "Blind", hint: "They roll, only you see the number" },
-        ]}
-      />
+      </Caption>
+      <Caption text="Who sees the result">
+        <Segmented
+          label="Who sees the result"
+          value={visibility}
+          onChange={setVisibility}
+          fill
+          size="S"
+          options={[
+            { value: "public", label: "Public", hint: "Everyone sees each result" },
+            { value: "dm", label: "Private to DM", hint: "Only you and the roller see it" },
+            { value: "blind", label: "Blind", hint: "They roll, only you see the number" },
+          ]}
+        />
+      </Caption>
       <Button
         variant="primary"
-        icon={<Dices size={16} />}
+        icon={<D20Icon size={16} />}
         loading={busy}
         disabled={!targets.length || dcBad || ((kind === "attack" || kind === "custom") && !formula.trim())}
         onClick={() => void send()}
@@ -267,6 +274,18 @@ function NewRequest() {
           : "Pick who rolls"}
       </Button>
     </section>
+  );
+}
+
+/** A caption over a control (the segmented controls carry no visible label of their own). */
+function Caption({ text, children }: { text: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="caps text-12 text-fog" aria-hidden>
+        {text}
+      </span>
+      {children}
+    </div>
   );
 }
 
@@ -431,7 +450,7 @@ function Board({ r }: { r: RollRequestView }) {
         <Button
           size="S"
           variant="secondary"
-          icon={<Dices size={14} />}
+          icon={<D20Icon size={14} />}
           loading={busy}
           onClick={() => void rollNpcs()}
         >
@@ -450,7 +469,7 @@ export function RequestsPanel() {
     [requests],
   );
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-3 py-3">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-5 overflow-y-auto overflow-x-clip px-3 py-3">
       {open.length ? (
         <section aria-label="Open requests" className="flex flex-col gap-2">
           <h3 className="caps text-12 text-fog">Open</h3>

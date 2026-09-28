@@ -75,7 +75,7 @@ export function FeaturesTab({ ctx }: { ctx: SheetCtx }) {
                 value={f.uses.recharge}
                 disabled={ro}
                 onChange={(e) => void ctx.set(["core", "features", i, "uses", "recharge"], e.target.value)}
-                className="h-7 rounded-chip border border-parchment-edge bg-transparent px-1 text-13 text-paper-ink"
+                className="h-7 min-h-[var(--touch-min)] rounded-chip border border-parchment-edge bg-transparent px-1 text-13 text-paper-ink"
               >
                 {RECHARGES.map((r) => (
                   <option key={r} value={r}>
@@ -87,7 +87,7 @@ export function FeaturesTab({ ctx }: { ctx: SheetCtx }) {
                 <button
                   type="button"
                   onClick={() => void ctx.set(["core", "features", i, "uses"], undefined)}
-                  className="text-13 text-paper-muted underline decoration-dotted hover:text-wax"
+                  className="min-h-[var(--touch-min)] min-w-[var(--touch-min)] text-13 text-paper-muted underline decoration-dotted hover:text-wax"
                 >
                   no uses
                 </button>
@@ -99,7 +99,7 @@ export function FeaturesTab({ ctx }: { ctx: SheetCtx }) {
               onClick={() =>
                 void ctx.set(["core", "features", i, "uses"], { max: 1, used: 0, recharge: "long" })
               }
-              className="mt-1 text-13 text-paper-muted underline decoration-dotted hover:text-wax"
+              className="min-h-[var(--touch-min)] mt-1 text-13 text-paper-muted underline decoration-dotted hover:text-wax"
             >
               Has uses…
             </button>
@@ -124,7 +124,7 @@ export function FeaturesTab({ ctx }: { ctx: SheetCtx }) {
             placeholder="Add a feature — Second Wind…"
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && add()}
-            className="h-8 min-h-[var(--touch-min)] min-w-0 flex-1 rounded-[var(--radius-control)] border border-parchment-edge/60 bg-parchment/60 px-2 text-14 text-paper-ink placeholder:text-paper-muted/70 focus:border-wax focus:outline-none"
+            className="h-8 min-h-[var(--touch-min)] min-w-0 flex-1 rounded-[var(--radius-control)] border border-parchment-edge/60 bg-parchment/60 px-2 text-14 text-paper-ink placeholder:text-paper-muted/70 focus:border-brass-deep focus:shadow-[var(--ring-focus)] focus:outline-none"
           />
           <button
             type="button"

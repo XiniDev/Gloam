@@ -158,7 +158,10 @@ function TokensOfCharacter({ ctx }: { ctx: SheetCtx }) {
                 <div className="mt-1 flex flex-wrap items-center gap-2 text-13">
                   <span className="text-paper-muted">Sight shared with</span>
                   {players.map((p) => (
-                    <label key={p.userId} className="inline-flex items-center gap-1">
+                    <label
+                      key={p.userId}
+                      className="inline-flex min-h-[var(--touch-min)] items-center gap-1.5"
+                    >
                       <input
                         type="checkbox"
                         checked={shares.includes(p.userId)}

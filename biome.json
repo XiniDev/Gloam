@@ -21,7 +21,8 @@
       "!test-results",
       "!playwright-report",
       "!**/spikes",
-      "!packages/web/src/styles/tokens.css"
+      "!packages/web/src/styles/tokens.css",
+      "!**/*.generated.ts"
     ]
   },
   "formatter": {

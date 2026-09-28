@@ -6,18 +6,15 @@ import { type ThreeEvent, useFrame } from "@react-three/fiber";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import {
   AnimationMixer,
-  BufferGeometry,
   type Camera,
   CanvasTexture,
   CircleGeometry,
-  Float32BufferAttribute,
   Group,
-  Line,
-  LineBasicMaterial,
   type Material,
   Mesh,
   MeshBasicMaterial,
   MeshStandardMaterial,
+  PlaneGeometry,
   type ShaderMaterial,
   type SpriteMaterial,
   SRGBColorSpace,
@@ -61,12 +58,12 @@ import { CHIP_GEOMETRY, createChipMaterial, setChip } from "./plateChip.ts";
 
 const BASE_H = 0.14;
 const COIN_H = 0.2;
-/** A plate leader's pieces, shared by every token: a unit segment along x, and the dot at its token end. */
-const LEADER_LINE = new BufferGeometry().setAttribute(
-  "position",
-  new Float32BufferAttribute([0, 0, 0, 1, 0, 0], 3),
-);
-const LEADER_DOT = new CircleGeometry(1, 12);
+/**
+ * A plate leader's pieces, shared by every token: a unit strip along x (scaled to its length and to a few screen
+ * pixels across — a GL line is 1 px, too faint to tie a plate to its token), and the dot at its token end.
+ */
+const LEADER_STRIP = new PlaneGeometry(1, 1).translate(0.5, 0, 0);
+const LEADER_DOT = new CircleGeometry(1, 16);
 /** A troika text mesh (drei's <Text>): its opacities apply at render, no re-layout. */
 type TroikaText = Mesh & {
   fillOpacity: number;
@@ -152,9 +149,11 @@ const PIN_MAX = 3;
 const PIN_TEXT = 0.66;
 const PIN_LINE = 0.78;
 const PIN_ROW_GAP = 0.16;
-const PIN_BAR_H = 0.26;
+const PIN_BAR_H = 0.16;
 const PIN_BAR_GAP = 0.06;
 const PIN_LABEL_MAX = 18;
+/** Between the bar and the temporary HP beside it. */
+const TEMP_GAP = 0.18;
 
 export const hpBarState = new Map<
   string,
@@ -818,39 +817,40 @@ function Overlay({
   const numText = useRef<TroikaText>(null);
   /** The numbers again in ink, shown only over the bar's fill (the bone ones only over its empty track). */
   const numInk = useRef<TroikaText>(null);
+  const tempText = useRef<TroikaText>(null);
   const barWidth = useRef(BAR_W);
   const wordText = useRef<TroikaText>(null);
   const badge = useRef<SpriteMaterial>(null);
   const bar = useMemo(() => createHpBarMaterial(), []);
   useEffect(() => () => disposeLater(bar), [bar]);
   const ghost = useRef(new HpGhost());
-  // The leader: a brass hairline (a bone one read as a scratch on the map) ending in a small dot on the token — one
-  // shared unit segment and one shared disc, placed per token (no geometry per token to upload).
+  // The leader: a 2-px brass stroke on a dark halo (it reads on stone, wood and water alike; a bone one read as a
+  // scratch on the map) ending in a dot on the token — shared unit strip and disc, placed per token.
   const leader = useMemo(() => {
     const group = new Group();
     group.name = "plateLeader";
     group.visible = false;
     // Not part of the plate's extent (declutter.ts).
     group.userData.overlayDecor = true;
-    const line = new Line(
-      LEADER_LINE,
-      new LineBasicMaterial({ color: C.brass600, transparent: true, opacity: 0.85, depthTest: false }),
-    );
-    const dot = new Mesh(
-      LEADER_DOT,
-      new MeshBasicMaterial({ color: C.brass600, transparent: true, depthTest: false }),
-    );
-    for (const o of [line, dot]) {
+    const haloMat = new MeshBasicMaterial({
+      color: C.ink950,
+      transparent: true,
+      opacity: 0.55,
+      depthTest: false,
+    });
+    const strokeMat = new MeshBasicMaterial({ color: C.brass400, transparent: true, depthTest: false });
+    const halo = new Mesh(LEADER_STRIP, haloMat);
+    const line = new Mesh(LEADER_STRIP, strokeMat);
+    const dotHalo = new Mesh(LEADER_DOT, haloMat);
+    const dot = new Mesh(LEADER_DOT, strokeMat);
+    for (const o of [halo, dotHalo, line, dot]) {
       o.renderOrder = 18;
       o.raycast = () => {};
       group.add(o);
     }
-    return { group, line, dot };
+    return { group, halo, line, dotHalo, dot, haloMat, strokeMat };
   }, []);
-  useEffect(
-    () => () => disposeLater(leader.line.material as Material, leader.dot.material as Material),
-    [leader],
-  );
+  useEffect(() => () => disposeLater(leader.haloMat, leader.strokeMat), [leader]);
   const controls = token.ownerIds.includes(viewer.userId) || viewer.dm;
   const nums = token.hp;
   const frac = nums ? nums.hp / Math.max(1, nums.hpMax) : token.hpFrac;
@@ -990,12 +990,22 @@ function Overlay({
       const sy = lowest.current;
       const ex = -off.dx / pxPerPlate;
       const ey = off.dy / pxPerPlate + lowest.current - PLATE_GAP;
-      leader.line.position.set(0, sy, 0);
-      leader.line.rotation.z = Math.atan2(ey - sy, ex);
-      leader.line.scale.x = Math.hypot(ex, ey - sy);
+      const px = 1 / pxPerPlate;
+      const len = Math.hypot(ex, ey - sy);
+      const rot = Math.atan2(ey - sy, ex);
+      for (const [m, across] of [
+        [leader.halo, 4],
+        [leader.line, 2],
+      ] as const) {
+        m.position.set(0, sy, 0);
+        m.rotation.z = rot;
+        m.scale.set(len, across * px, 1);
+      }
+      // A dot on the token end: 2.5 px, on a 4-px halo, whatever the zoom.
       leader.dot.position.set(ex, ey, 0);
-      // 1.5 px across on screen, whatever the zoom.
-      leader.dot.scale.setScalar(1.5 / pxPerPlate);
+      leader.dot.scale.setScalar(2.5 * px);
+      leader.dotHalo.position.set(ex, ey, 0);
+      leader.dotHalo.scale.setScalar(4 * px);
     }
     // Overlays always read on top of other tokens and the map (troika re-derives its materials — an array of
     // outline + fill when outlined — so reapply every frame; the chip and bar keep their own lower orders).
@@ -1015,7 +1025,7 @@ function Overlay({
     const fade = far * clear.current;
     g.visible = fade > 0.02;
     const a = fade * opacity;
-    for (const t of [nameText.current, numText.current, numInk.current, wordText.current])
+    for (const t of [nameText.current, numText.current, numInk.current, tempText.current, wordText.current])
       if (t && (t.fillOpacity !== a || t.outlineOpacity !== a)) {
         t.fillOpacity = a;
         t.outlineOpacity = a;
@@ -1031,8 +1041,8 @@ function Overlay({
       const m = pinMats[i];
       if (m) setGauge(m, p.max > 0 ? Math.min(1, Math.max(0, p.value / p.max)) : 0, a);
     }
-    (leader.line.material as LineBasicMaterial).opacity = 0.85 * a;
-    (leader.dot.material as MeshBasicMaterial).opacity = 0.85 * a;
+    leader.strokeMat.opacity = 0.95 * a;
+    leader.haloMat.opacity = 0.55 * a;
     overlayFade.set(token.id, { far, clear: clear.current, target, a });
     const now = performance.now();
     const gv = showBar ? ghost.current.update(Math.max(0, frac), now) : 0;
@@ -1074,6 +1084,10 @@ function Overlay({
     }
     const barW = showBar ? Math.max(BAR_W, numB ? numB[2] - numB[0] + 0.7 : 0, pinW) : 0;
     barWidth.current = barW;
+    // Temporary HP stand just right of the bar.
+    const tempB = tempText.current?.textRenderInfo?.blockBounds;
+    const tempW = tempB && showBar ? tempB[2] - tempB[0] + TEMP_GAP : 0;
+    tempText.current?.position.setX(barW / 2 + TEMP_GAP);
     const wordW = wordB ? wordB[2] - wordB[0] : 0;
     const bm = barMesh.current;
     if (bm) bm.scale.set(barW, BAR_H, 1);
@@ -1091,7 +1105,7 @@ function Overlay({
       }
       bottom = barY - PIN_BAR_H / 2;
     }
-    const w = Math.max(nameW, barW, wordW, gaugeW) + 2 * CHIP_PAD_X;
+    const w = Math.max(nameW, barW + 2 * tempW, wordW, gaugeW) + 2 * CHIP_PAD_X;
     const h = nameTop - bottom + 2 * CHIP_PAD_Y;
     const cm = chipMesh.current;
     if (cm) {
@@ -1167,7 +1181,7 @@ function Overlay({
               position={[0, -0.02, 0.01]}
               raycast={() => null}
             >
-              {`${nums.hp} / ${nums.hpMax}${nums.hpTemp ? `  +${nums.hpTemp}` : ""}`}
+              {`${nums.hp} / ${nums.hpMax}`}
             </BoardText>
           ) : null}
           {showNumbers && nums ? (
@@ -1181,7 +1195,26 @@ function Overlay({
               position={[0, -0.02, 0.011]}
               raycast={() => null}
             >
-              {`${nums.hp} / ${nums.hpMax}${nums.hpTemp ? `  +${nums.hpTemp}` : ""}`}
+              {`${nums.hp} / ${nums.hpMax}`}
+            </BoardText>
+          ) : null}
+          {showNumbers && nums?.hpTemp ? (
+            // Temporary HP beside the bar in their own colour (inside it, "+5" straddled the fill's edge).
+            <BoardText
+              ref={tempText}
+              font={NUMBER_FONT}
+              fontSize={NUM_SIZE}
+              color={C.ice300}
+              outlineWidth={0.022}
+              outlineBlur={0.12}
+              outlineOpacity={0.9}
+              outlineColor={C.ink950}
+              anchorX="left"
+              anchorY="middle"
+              position={[BAR_W / 2 + TEMP_GAP, -0.02, 0.01]}
+              raycast={() => null}
+            >
+              {`+${nums.hpTemp}`}
             </BoardText>
           ) : null}
           {descriptor ? (
@@ -1210,7 +1243,7 @@ function Overlay({
                 font={CAPS_FONT}
                 fontSize={PIN_TEXT}
                 letterSpacing={0.06}
-                color={C.brass300}
+                color={C.fog300}
                 outlineWidth={0.02}
                 outlineColor={C.ink950}
                 anchorX="left"

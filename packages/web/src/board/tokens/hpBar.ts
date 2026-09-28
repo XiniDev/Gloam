@@ -121,7 +121,8 @@ export function createGaugeMaterial(): ShaderMaterial {
     uniforms: {
       uFrac: { value: 1 },
       uOpacity: { value: 1 },
-      uFill: { value: col(C.arcane400) },
+      // Neutral bone: a custom counter isn't HP (verdigris/brass/ember), temp HP (ice) or magic (arcane).
+      uFill: { value: col(C.bone100) },
       uBg: { value: col(C.ink900) },
       uEdge: { value: col(C.ink950) },
     },

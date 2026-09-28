@@ -1,5 +1,6 @@
 import { type RefObject, useEffect, useLayoutEffect, useState } from "react";
 import { create } from "zustand";
+import { useUi } from "../state/ui.ts";
 
 /**
  * Where the HUD sits over the board, in CSS pixels from each screen edge (SPEC §29: the board fills the screen and
@@ -280,6 +281,14 @@ export function largestClear(area: ScreenArea, obstacles: readonly ScreenArea[],
 
 /** Whether the screen is a phone's now (outside React). */
 export const isPhoneNow = (): boolean => typeof matchMedia === "function" && matchMedia(PHONE).matches;
+
+/**
+ * A roll from a phone's open panel (the sheet, a request card): the panel steps aside so the dice are seen on the
+ * board — the panel is a whole page there. Its Sheet button brings it back as it was.
+ */
+export function makeRoomForDice(): void {
+  if (isPhoneNow()) useUi.getState().set({ dock: null });
+}
 
 /** Phone layout (SPEC §8.21 breakpoints: phone < 640 px wide). */
 export function useIsPhone(): boolean {

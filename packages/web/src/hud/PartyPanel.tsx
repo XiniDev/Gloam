@@ -1,6 +1,7 @@
 import type { ActorView } from "@gloam/shared/protocol";
-import { deriveSheet } from "@gloam/shared/rules";
+import { deriveSheet, statusName } from "@gloam/shared/rules";
 import { useMemo } from "react";
+import { StatusIcon } from "../icons/status.tsx";
 import { useSheets } from "../net/sheets.ts";
 import { useTable } from "../net/table.ts";
 import { useUi } from "../state/ui.ts";
@@ -16,11 +17,14 @@ const ROLE_LABEL: Record<string, string> = {
   spectator: "Watching",
 };
 
-/** A character at a glance: portrait, name and classes, HP, conditions and passive Perception; opens its sheet. */
+/**
+ * A character at a glance (§8.3 Party): portrait, name and classes, HP on a track of one width for every row (so they
+ * compare), the conditions by name, the three passive scores; it opens the sheet.
+ */
 function CharacterRow({ a, color, player }: { a: ActorView; color: string; player: string | null }) {
   const c = a.sheet.core;
   const portrait = useAssetImage(c.portraitAssetId, 96);
-  const pp = useMemo(() => deriveSheet(c).values["passive.perception"], [c]);
+  const d = useMemo(() => deriveSheet(c).values, [c]);
   const frac = c.hp.max > 0 ? Math.min(1, Math.max(0, c.hp.current / c.hp.max)) : 0;
   const hpColor = frac > 0.5 ? "var(--hp-high)" : frac > 0.25 ? "var(--hp-mid)" : "var(--hp-low)";
   const classes = c.classes.map((k) => `${k.name} ${k.level}`).join(" / ");
@@ -31,7 +35,7 @@ function CharacterRow({ a, color, player }: { a: ActorView; color: string; playe
         data-testid="party-character"
         data-actor={a.id}
         onClick={() => useUi.getState().set({ dock: "sheet", sheetActor: a.id })}
-        className="flex w-full items-center gap-3 rounded-[var(--radius-control)] px-2 py-2 text-left hover:bg-raised"
+        className="flex w-full items-start gap-3 rounded-[var(--radius-control)] px-2 py-2 text-left hover:bg-raised"
       >
         <Portrait name={c.name} color={color} size={36} src={portrait} />
         <span className="min-w-0 flex-1">
@@ -39,25 +43,36 @@ function CharacterRow({ a, color, player }: { a: ActorView; color: string; playe
           <span className="block truncate text-12 text-muted">
             {[classes, player].filter(Boolean).join(" · ") || "No class yet"}
           </span>
-          <span className="mt-1 flex items-center gap-2">
-            <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-ink-950" aria-hidden>
+          <span className="mt-1 grid grid-cols-[6rem_auto] items-center gap-2">
+            <span className="h-1.5 overflow-hidden rounded-full bg-ink-950" aria-hidden>
               <span className="block h-full" style={{ width: `${frac * 100}%`, background: hpColor }} />
             </span>
             <span className="tabular text-12 text-fog">
               {c.hp.current}/{c.hp.max}
-              {c.hp.temp ? ` +${c.hp.temp}` : ""}
+              {c.hp.temp ? <span className="text-ice"> +{c.hp.temp}</span> : null}
             </span>
-          </span>
-        </span>
-        <span className="flex shrink-0 flex-col items-end gap-0.5 text-12">
-          <span className="tabular text-fog" title="Passive Perception">
-            PP {pp}
           </span>
           {c.conditions.length ? (
-            <span className="text-warning">
-              {c.conditions.length} condition{c.conditions.length === 1 ? "" : "s"}
+            <span className="mt-1 flex flex-wrap items-center gap-1">
+              {c.conditions.map((id) => (
+                <span key={id} className="inline-flex items-center gap-1 text-12 text-bone">
+                  <StatusIcon id={id} size={16} badge label="" />
+                  {statusName(id)}
+                </span>
+              ))}
             </span>
           ) : null}
+        </span>
+        <span className="tabular flex shrink-0 flex-col items-end text-12 text-fog">
+          <span>
+            <abbr title="Passive Perception">PP</abbr> {d["passive.perception"]}
+          </span>
+          <span>
+            <abbr title="Passive Investigation">Inv</abbr> {d["passive.investigation"]}
+          </span>
+          <span>
+            <abbr title="Passive Insight">Ins</abbr> {d["passive.insight"]}
+          </span>
         </span>
       </button>
     </li>

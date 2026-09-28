@@ -73,7 +73,8 @@ export function CustomTab({ ctx }: { ctx: SheetCtx }) {
           data-testid="custom-block"
           data-type={b.type}
         >
-          <div className="flex items-center gap-1">
+          {/* Title, kind and controls in fixed columns: every block's header lines up with the next. */}
+          <div className="grid grid-cols-[minmax(0,1fr)_5.5rem_auto] items-center gap-1">
             <TextField
               label={`${TYPE_LABEL[b.type]} block title`}
               value={b.title}
@@ -81,15 +82,17 @@ export function CustomTab({ ctx }: { ctx: SheetCtx }) {
               onCommit={(v) => void ctx.set(["custom", i, "title"], v)}
               className="font-bold"
             />
-            <span className="caps shrink-0 text-12 text-paper-muted">{TYPE_LABEL[b.type]}</span>
-            {ro ? null : (
-              <>
+            <span className="caps truncate text-right text-12 text-paper-muted">{TYPE_LABEL[b.type]}</span>
+            {ro ? (
+              <span />
+            ) : (
+              <span className="flex items-center">
                 <button
                   type="button"
                   aria-label={`Move ${b.title} up`}
                   disabled={i === 0}
                   onClick={() => move(i, -1)}
-                  className="grid h-7 min-h-[var(--touch-min)] w-7 place-items-center text-paper-muted hover:text-wax disabled:opacity-30"
+                  className="grid h-7 min-h-[var(--touch-min)] w-7 min-w-[var(--touch-min)] place-items-center text-paper-muted hover:text-wax disabled:opacity-30"
                 >
                   <ArrowUp size={14} />
                 </button>
@@ -98,7 +101,7 @@ export function CustomTab({ ctx }: { ctx: SheetCtx }) {
                   aria-label={`Move ${b.title} down`}
                   disabled={i === blocks.length - 1}
                   onClick={() => move(i, 1)}
-                  className="grid h-7 min-h-[var(--touch-min)] w-7 place-items-center text-paper-muted hover:text-wax disabled:opacity-30"
+                  className="grid h-7 min-h-[var(--touch-min)] w-7 min-w-[var(--touch-min)] place-items-center text-paper-muted hover:text-wax disabled:opacity-30"
                 >
                   <ArrowDown size={14} />
                 </button>
@@ -106,7 +109,7 @@ export function CustomTab({ ctx }: { ctx: SheetCtx }) {
                   label={`Remove ${b.title}`}
                   onClick={() => setBlocks(blocks.filter((_, j) => j !== i))}
                 />
-              </>
+              </span>
             )}
           </div>
           <div className="mt-1.5">
@@ -170,7 +173,7 @@ function BlockBody({ block: b, index: i, ctx }: { block: CustomBlock; index: num
             if (Number.isFinite(n) && n !== b.value) set("value", n);
             else e.target.value = String(b.value);
           }}
-          className="tabular h-8 w-24 rounded-[var(--radius-control)] border border-parchment-edge/60 bg-parchment/60 px-2 text-center text-14 font-bold text-paper-ink focus:border-wax focus:outline-none"
+          className="tabular h-8 w-24 rounded-[var(--radius-control)] border border-parchment-edge/60 bg-parchment/60 px-2 text-center text-14 font-bold text-paper-ink focus:border-brass-deep focus:shadow-[var(--ring-focus)] focus:outline-none"
         />
       );
     case "counter":
@@ -194,7 +197,7 @@ function BlockBody({ block: b, index: i, ctx }: { block: CustomBlock; index: num
             onCommit={(v) => set("max", v)}
           />
           <label
-            className="ml-auto inline-flex items-center gap-1 text-13"
+            className="ml-auto inline-flex min-h-[var(--touch-min)] items-center gap-1.5 text-13"
             title="Shown on the token as a thin bar under its HP"
           >
             <input
@@ -213,14 +216,16 @@ function BlockBody({ block: b, index: i, ctx }: { block: CustomBlock; index: num
         <ul className="flex flex-col gap-0.5">
           {b.items.map((it, k) => (
             <li key={k} className="flex items-center gap-1.5">
-              <input
-                type="checkbox"
-                aria-label={`${it.label} done`}
-                checked={it.done}
-                disabled={ro}
-                onChange={(e) => void ctx.set(["custom", i, "items", k, "done"], e.target.checked)}
-                className="accent-[var(--wax-500)]"
-              />
+              <label className="grid min-h-[var(--touch-min)] min-w-[var(--touch-min)] place-items-center">
+                <input
+                  type="checkbox"
+                  aria-label={`${it.label} done`}
+                  checked={it.done}
+                  disabled={ro}
+                  onChange={(e) => void ctx.set(["custom", i, "items", k, "done"], e.target.checked)}
+                  className="h-4 w-4 accent-[var(--wax-500)]"
+                />
+              </label>
               <TextField
                 label={`${b.title} item ${k + 1}`}
                 value={it.label}
@@ -247,7 +252,7 @@ function BlockBody({ block: b, index: i, ctx }: { block: CustomBlock; index: num
                 onClick={() =>
                   set("items", [...b.items, { label: `Item ${b.items.length + 1}`, done: false }])
                 }
-                className="text-13 text-paper-muted underline decoration-dotted hover:text-wax"
+                className="min-h-[var(--touch-min)] text-13 text-paper-muted underline decoration-dotted hover:text-wax"
               >
                 Add an item
               </button>
@@ -329,7 +334,7 @@ function BlockBody({ block: b, index: i, ctx }: { block: CustomBlock; index: num
             <button
               type="button"
               onClick={() => set("rows", [...b.rows, b.columns.map(() => "")])}
-              className="mt-1 text-13 text-paper-muted underline decoration-dotted hover:text-wax"
+              className="min-h-[var(--touch-min)] mt-1 text-13 text-paper-muted underline decoration-dotted hover:text-wax"
             >
               Add a row
             </button>
@@ -373,7 +378,7 @@ function BlockBody({ block: b, index: i, ctx }: { block: CustomBlock; index: num
               onClick={() =>
                 set("entries", [...b.entries, { key: `Key ${b.entries.length + 1}`, value: "" }])
               }
-              className="self-start text-13 text-paper-muted underline decoration-dotted hover:text-wax"
+              className="min-h-[var(--touch-min)] self-start text-13 text-paper-muted underline decoration-dotted hover:text-wax"
             >
               Add a pair
             </button>

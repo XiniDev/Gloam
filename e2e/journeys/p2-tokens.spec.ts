@@ -156,21 +156,22 @@ test.describe("P2 — tokens (TOK)", () => {
     expect((await hook<string[]>(dave, "visibleTokenIds")).sort()).toEqual([goblin, hero].sort());
     expect(await tokenView(dave, lurker)).toBeNull();
 
-    // The DM: everything this phase offers.
+    // The DM: everything this phase offers — the DM's own actions under one "DM" slice (§8.19; §28's 6–8 slices).
     // (Light arrived with P4 — SPEC §8.8; Request a roll with P6 — §8.9; the other phases add theirs.)
-    expect(labels(await openRadial(admin, goblin))).toEqual([
-      "Elevation",
-      "Facing",
-      "Look",
-      "Light",
-      "Request a roll",
+    expect(labels(await openRadial(admin, goblin))).toEqual(["Elevation", "Facing", "Look", "Light", "DM"]);
+    await admin.getByRole("menuitem", { name: "DM" }).click();
+    await expect(admin.getByRole("menuitem", { name: "Delete" })).toBeVisible();
+    expect(labels(await admin.getByRole("menu").getByRole("menuitem").allInnerTexts())).toEqual([
+      "Request",
       "Hide",
       "Lock",
       "Duplicate",
       "Delete",
     ]);
     await closeRadial(admin);
-    expect(labels(await openRadial(admin, lurker))).toContain("Reveal");
+    await openRadial(admin, lurker);
+    await admin.getByRole("menuitem", { name: "DM" }).click();
+    await expect(admin.getByRole("menuitem", { name: "Reveal" })).toBeVisible();
     await closeRadial(admin);
     // The owner: only their own token's controls.
     expect(labels(await openRadial(dave, hero))).toEqual(["Elevation", "Facing", "Look", "Light"]);

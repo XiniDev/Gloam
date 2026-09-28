@@ -16,7 +16,8 @@
     "./movement": "./src/movement/index.ts",
     "./aoe": "./src/aoe/index.ts",
     "./dice": "./src/dice/index.ts",
-    "./rules": "./src/rules/index.ts"
+    "./rules": "./src/rules/index.ts",
+    "./icons": "./src/icons.generated.ts"
   },
   "dependencies": {
     "@colyseus/schema": "5.0.34",
