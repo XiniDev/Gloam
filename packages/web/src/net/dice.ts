@@ -5,6 +5,7 @@
 import type { MaskedRoll, RollRecord, RollVisibility } from "@gloam/shared/dice";
 import { type FeedRoll, useRolls } from "../dice/state.ts";
 import { useSettings } from "../state/settings.ts";
+import { provideTestHook } from "../test/hooks.ts";
 import { request, tableEvents, useTable } from "./table.ts";
 
 let asked = "";
@@ -31,6 +32,10 @@ function check(): void {
 
 /** Starts watching (once per page): the feed on each connection, rolls as they come. */
 export function watchDice(): () => void {
+  if (__GLOAM_TEST__) {
+    provideTestHook("rollArrivals", () => rollArrivals.slice());
+    provideTestHook("rollFeed", () => useRolls.getState().feed);
+  }
   const off = useTable.subscribe(check);
   const offMsg = tableEvents.on("message", ({ type, payload }) => {
     if (type === "roll.result" || type === "roll.masked") onRoll(payload as RollRecord | MaskedRoll);
@@ -47,8 +52,14 @@ export function watchDice(): () => void {
  * at once). Reduced motion still shows the dice, resting (the overlay's choice).
  */
 export function onRoll(r: RollRecord | MaskedRoll): void {
+  // How long after the server decided it this client had it (test hooks; same machine, same clock).
+  if (__GLOAM_TEST__) {
+    rollArrivals.push({ id: r.id, lagMs: Date.now() - r.at });
+    if (rollArrivals.length > 50) rollArrivals.shift();
+  }
   useRolls.getState().add(r, useSettings.getState().diceAnimation);
 }
+export const rollArrivals: { id: string; lagMs: number }[] = [];
 
 export interface RollRequest {
   formula: string;

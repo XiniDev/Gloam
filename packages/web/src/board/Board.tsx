@@ -10,6 +10,7 @@ import {
   useState,
 } from "react";
 import { PCFShadowMap, PCFSoftShadowMap } from "three";
+import { DiceOverlay } from "../dice/DiceOverlay.tsx";
 import { request, send, useTable } from "../net/table.ts";
 import { boardData, useBoard, useEntities } from "../state/entities.ts";
 import { ASSET_DRAG_TYPE, type AssetDragPayload } from "../state/library.ts";
@@ -593,6 +594,8 @@ export default function Board() {
         <ShadowSync enabled={tier.shadowMap > 0} soft={tier.softShadows} />
         <Contained>
           <PostFX tier={tier} />
+          {/* The 3D dice: their own scene over the board's, while there are dice to show (§8.9). */}
+          <DiceOverlay tier={tier} />
         </Contained>
         {__GLOAM_TEST__ ? <TestProbe /> : null}
       </Canvas>

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { roll } from "./evaluate.ts";
 import { checkFormula, DICE_LIMITS, DiceError, parseFormula } from "./parse.ts";
+import { DEFAULT_SKIN, type RollRecord, type RollVisibility, viewOfRoll } from "./record.ts";
 import { seededDie, xoshiro128ss } from "./rng.ts";
 
 /** A die that returns the given faces in order (then 1s). */
@@ -196,5 +197,61 @@ describe("seeded dice (AC-DICE-10's generator)", () => {
       // 99.9th percentile of χ² with 5 / 19 degrees of freedom: 20.5 / 43.8.
       expect(chi2).toBeLessThan(sides === 6 ? 20.5 : 43.8);
     }
+  });
+});
+
+describe("who sees a roll (SPEC §18.3, AC-DICE-04)", () => {
+  const rec = (visibility: RollVisibility, userId = "anna"): RollRecord => ({
+    ...roll("2d6+1", { die: () => 3 }),
+    id: "r1",
+    userId,
+    name: "Anna",
+    color: "amber",
+    skin: DEFAULT_SKIN,
+    visibility,
+    manual: false,
+    seed: 42,
+    tumble: [
+      { kind: "d6", face: 3, kept: true },
+      { kind: "d6", face: 3, kept: true },
+    ],
+    at: 1,
+  });
+  const anna = { userId: "anna", dm: false };
+  const bob = { userId: "bob", dm: false };
+  const dm = { userId: "dm", dm: true };
+  const numbers = (v: unknown) =>
+    JSON.stringify(v).includes('"total"') || JSON.stringify(v).includes('"terms"');
+
+  it("public: everyone gets the roll", () => {
+    for (const v of [anna, bob, dm]) expect(viewOfRoll(rec("public"), v, false)).toMatchObject({ total: 7 });
+  });
+  it("private to DM: the roller and DMs get it; other players a card with no numbers", () => {
+    expect(viewOfRoll(rec("dm"), anna, false)).toMatchObject({ total: 7 });
+    expect(viewOfRoll(rec("dm"), dm, false)).toMatchObject({ total: 7 });
+    const b = viewOfRoll(rec("dm"), bob, false);
+    expect(b).toMatchObject({ masked: true, text: "Anna rolled privately" });
+    expect(numbers(b)).toBe(false);
+    // The DM's own private roll: "The DM rolls…".
+    expect(viewOfRoll(rec("dm", "dm"), bob, true)).toMatchObject({ masked: true, text: "The DM rolls…" });
+  });
+  it("blind: only DMs get the numbers — the roller sees '?', others that it was for the DM", () => {
+    expect(viewOfRoll(rec("blind"), dm, false)).toMatchObject({ total: 7 });
+    const own = viewOfRoll(rec("blind"), anna, false);
+    expect(own).toMatchObject({ masked: true, text: "Anna rolled for the DM" });
+    expect(numbers(own)).toBe(false);
+    const other = viewOfRoll(rec("blind"), bob, false);
+    expect(other).toMatchObject({ masked: true, text: "Anna rolled for the DM" });
+    expect(numbers(other)).toBe(false);
+    // The masked dice keep their kinds (they tumble with "?" faces), never their faces.
+    expect((own as { tumble: unknown[] }).tumble).toEqual([{ kind: "d6" }, { kind: "d6" }]);
+  });
+  it("self: only the roller; DMs are told, other players get nothing", () => {
+    expect(viewOfRoll(rec("self"), anna, false)).toMatchObject({ total: 7 });
+    expect(viewOfRoll(rec("self"), dm, false)).toMatchObject({
+      masked: true,
+      text: "Anna rolled for themselves",
+    });
+    expect(viewOfRoll(rec("self"), bob, false)).toBeNull();
   });
 });

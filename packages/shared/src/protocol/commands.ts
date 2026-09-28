@@ -394,7 +394,7 @@ const RollLabel = z.string().trim().max(60);
 /** `dice.roll` (req, ≤ 5/s): the server rolls a formula (§18.1) — players Public / Private to DM / Self, DMs Public
  * or Private; `context.tokenId` resolves `@` references from that token. */
 export const DiceRoll = z.strictObject({
-  formula: z.string().min(1).max(200),
+  formula: z.string().min(1).max(200, "A formula is at most 200 characters."),
   label: RollLabel.optional(),
   visibility: z.enum(ROLL_VISIBILITIES).default("public"),
   purpose: z.string().max(40).optional(),
@@ -402,7 +402,7 @@ export const DiceRoll = z.strictObject({
 });
 /** `dice.manual` (req, ≤ 5/s): a physical roll — one value per die of the formula, in order, or just its total. */
 export const DiceManual = z.strictObject({
-  formula: z.string().min(1).max(200),
+  formula: z.string().min(1).max(200, "A formula is at most 200 characters."),
   values: z.array(z.number().int().min(1).max(1000)).min(1).max(500).optional(),
   total: z.number().int().min(-100_000).max(100_000).optional(),
   label: RollLabel.optional(),

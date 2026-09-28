@@ -502,7 +502,7 @@ function ManualEntry({
                 setValues((v) => v.map((x, k) => (k === i ? e.target.value.replace(/\D/g, "") : x)))
               }
               placeholder={`d${sides}`}
-              className="tabular h-9 w-14 rounded-[var(--radius-control)] border border-line bg-ink-900 px-2 text-center text-14 text-bone placeholder:text-faint"
+              className="tabular h-9 min-h-[var(--touch-min)] w-14 rounded-[var(--radius-control)] border border-line bg-ink-900 px-2 text-center text-14 text-bone placeholder:text-faint"
             />
           ))}
         </div>
@@ -514,7 +514,7 @@ function ManualEntry({
           value={total}
           onChange={(e) => setTotal(e.target.value.replace(/[^\d-]/g, ""))}
           placeholder="Total"
-          className="tabular h-9 w-24 rounded-[var(--radius-control)] border border-line bg-ink-900 px-2 text-14 text-bone placeholder:text-faint"
+          className="tabular h-9 min-h-[var(--touch-min)] w-24 rounded-[var(--radius-control)] border border-line bg-ink-900 px-2 text-14 text-bone placeholder:text-faint"
         />
         <span className="ml-auto" />
         <Button variant="ghost" size="S" onClick={onCancel}>

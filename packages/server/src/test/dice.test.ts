@@ -107,6 +107,18 @@ describe("P5 — dice on the server (DICE)", () => {
     );
     expect(bad).toMatchObject({ code: "INVALID" });
     expect(String((bad as { message?: string }).message)).toMatch(/Unexpected/);
+    // AC-DICE-09: the limits hold on the server too (the same engine decides).
+    for (const [f, re] of [
+      ["101d6", /At most 100 dice/],
+      ["100d6+100d6+100d6+100d6+100d6+1d6", /At most 500 dice/],
+      ["1d1001", /1 to 1000 sides/],
+      [`1d20+${"1+".repeat(100)}1`, /at most 200 characters/],
+    ] as const) {
+      const e = await paced(anna.room, "dice.roll", { formula: f }).catch(
+        (x: { reason?: { code?: string; message?: string } }) => x.reason,
+      );
+      expect(e, f).toMatchObject({ code: "INVALID", message: expect.stringMatching(re) });
+    }
     // AC-DICE-04 (public): everyone within 300 ms of the result.
     for (const p of [bob.msgs, dmMsgs]) expect((got(p, id) as Msg).at - sent).toBeLessThan(300);
   });

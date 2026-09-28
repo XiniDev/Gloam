@@ -225,3 +225,18 @@ PASSING 28/224 · DISPUTED 0 · FAILING 196
   500 ms heartbeat); the Spotlight toast claimed success when the server refused (now it says so).
 - P5: dice sound recipes (per-material clacks for tray and die contacts, the settle tick, natural 20 and 1) with the
   test sound log recording each clack's gain; the 3D dice overlay is next.
+
+## 2026-09-28 — P5 dice: ACs proven
+
+- The 3D dice overlay (DiceOverlay.tsx): recorded deterministic throws played back with the symmetry remap, landing on
+  the server's numbers for everyone; per-skin materials; clacks from the recorded contacts (tray or die, per skin
+  material, gain from the impulse), settle ticks, natural 20 / 1 flourishes; a camera that frames the dice; the card's
+  total at rest; fade after 2.5 s; reduced motion shows them at rest; renders only while something moves.
+- Dice skins: Settings → Your dice (body, material, numbers; a live d20), saved to the profile and presence
+  (`profile.diceSkin`), everyone's view of that player's dice.
+- Tests: e2e/journeys/p5-dice.spec.ts (2 journeys), server dice tests (skins, limits on the server), §18.3 visibility
+  rows (blind included) as unit tests; key screens in artifacts/screens/p5. FEATURES: DICE-01/02/03/04/05/07/08/09/10
+  marked (DICE-06 → P6, DICE-11 → P7).
+- E2E note: under the machine's current load (open browser tabs ~2.3 cores) the token-crossfade timing journey can't
+  catch two frames inside 200 ms (frames ~110 ms on software GL, the same on the last commit); everything else passes
+  run on its own. The full run is repeated when the machine is quieter.

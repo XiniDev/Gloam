@@ -18,6 +18,11 @@ export const POSE = 7;
 /** Contact response (§18.4). */
 export const RESTITUTION = 0.3;
 export const FRICTION = 0.6;
+/**
+ * The tray every client throws in (cm): the same for everyone, or the same seed wouldn't give the same tumble. Square,
+ * so it fills a portrait phone as well as a landscape screen (a 30 × 19 tray left dice 20 px across on a phone).
+ */
+export const TRAY = { w: 20, d: 20 } as const;
 
 export interface ThrowInput {
   dice: DieKind[];
@@ -95,16 +100,21 @@ export async function simulate(input: ThrowInput): Promise<ThrowResult> {
     const s = solid(input.dice[i] as DieKind);
     // Tossed from the thrower's edge: up and forward in an arc, spinning, landing mid-tray and tumbling on — about
     // 1.1–1.8 s from the throw to rest (measured; §8.9 asks 1.2–2.5 s).
-    const x = (r() - 0.5) * Math.min(w * 0.6, 4 + n * 2.2);
-    const y = 10 + r() * 4 + (i % 3) * 2;
-    const z = edge + (r() - 0.5) * 2;
+    // Released low from the thrower's edge, in rows of five (never overlapping), and skimmed across the tray with a
+    // strong spin: they tumble along the table and stay in view, instead of arcing up out of it.
+    const row = Math.floor(i / 5);
+    const col = i % 5;
+    const across = Math.min(5, n - row * 5);
+    const x = (col - (across - 1) / 2) * 2.4 + (r() - 0.5) * 0.8;
+    const y = 9 + r() * 3;
+    const z = edge + toward * row * 2.3 + (r() - 0.5) * 0.6;
     const q = new Quaternion(r() - 0.5, r() - 0.5, r() - 0.5, r() - 0.5).normalize();
     const body = world.createRigidBody(
       RAPIER.RigidBodyDesc.dynamic()
         .setTranslation(x, y, z)
         .setRotation({ x: q.x, y: q.y, z: q.z, w: q.w })
-        .setLinvel((r() - 0.5) * 90 - x * 1.5, 220 + r() * 60, toward * (180 + r() * 80))
-        .setAngvel({ x: (r() - 0.5) * 160, y: (r() - 0.5) * 160, z: (r() - 0.5) * 160 })
+        .setLinvel((r() - 0.5) * 80 - x * 2, 215 + r() * 50, toward * (170 + r() * 70))
+        .setAngvel({ x: (r() - 0.5) * 220, y: (r() - 0.5) * 160, z: (r() - 0.5) * 220 })
         .setLinearDamping(0.1)
         .setAngularDamping(0.1)
         .setCanSleep(true)

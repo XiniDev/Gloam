@@ -1,9 +1,7 @@
 import { Quaternion } from "three";
 import { describe, expect, it } from "vitest";
-import { MAX_STEPS, POSE, STEP_S, simulate } from "./simulate.ts";
+import { MAX_STEPS, POSE, STEP_S, simulate, TRAY } from "./simulate.ts";
 import { type DieKind, landedMarker, markerFor, remap, solid } from "./solids.ts";
-
-const TRAY = { w: 30, d: 19 };
 
 function hash(a: Float32Array): number {
   let h = 2166136261;

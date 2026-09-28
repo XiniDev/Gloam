@@ -399,6 +399,7 @@ async function join(campaignId: string): Promise<Room<unknown, TableState>> {
   // Test builds only (SPEC §23.7): journeys drive commands through the same room and permissions as the UI.
   provideTestHook("request", (type: string, payload: unknown) => request(type, payload));
   provideTestHook("me", () => useTable.getState().me);
+  provideTestHook("presenceList", () => useTable.getState().presence);
   provideTestHook("connection", () => useTable.getState().connection);
   // Every change of connection state with its time: a drop that reconnects faster than a poll is still seen.
   if (__GLOAM_TEST__) {

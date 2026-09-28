@@ -954,10 +954,10 @@
       "code": "DICE",
       "phase": "P5",
       "text": "The formula grammar in §18.1 is fully supported and invalid formulas show inline errors without submitting.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/shared/src/dice/dice.test.ts › dice formulas (SPEC §18.1): arithmetic, d%, keep/drop, rerolls, explosions, min/max, @ refs, adv/dis, damage tags, naturals, invalid formulas with their position; e2e/journeys/p5-dice.spec.ts › AC-DICE-01 / AC-DICE-03 / AC-DICE-08 (inline errors, nothing sent); artifacts/screens/p5/*/02-tray-error.png",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-28T11:49:38.208Z"
     },
     {
       "id": "AC-DICE-02",
@@ -965,10 +965,10 @@
       "code": "DICE",
       "phase": "P5",
       "text": "All outcomes are generated on the server with `crypto.randomInt`; the client never decides a result.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/dice.test.ts › AC-DICE-02 / AC-DICE-01 (server): the server decides every die (crypto.randomInt in packages/server/src/dice/service.ts DiceSource; seeded only in test mode), the protocol takes a formula and no result (a total is refused), invalid formulas refused with their place",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-28T11:49:38.294Z"
     },
     {
       "id": "AC-DICE-03",
@@ -976,10 +976,10 @@
       "code": "DICE",
       "phase": "P5",
       "text": "3D dice for d4, d6, d8, d10, d12, d20 and d100 (two d10s) always come to rest showing exactly the server's values.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/web/src/dice/simulate.test.ts › 60 deterministic throws of d4–d20 and d100's pair each shown on the server's number by the symmetry remap, same seed → same tumble; e2e/journeys/p5-dice.spec.ts › AC-DICE-01 / AC-DICE-03 / AC-DICE-08 (d4, d6, d8, d10, d12, d20 and d100 rest showing exactly the server's faces for the roller and the DM); artifacts/screens/p5/*/04-dice-at-rest.png",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-28T11:49:38.377Z"
     },
     {
       "id": "AC-DICE-04",
@@ -987,10 +987,10 @@
       "code": "DICE",
       "phase": "P5",
       "text": "Public results reach everyone within 300 ms of the server result; Private-to-DM shows to the roller and DMs; Blind shows only to DMs (the roller sees \"?\"); Self shows only to the roller.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/dice.test.ts › AC-DICE-02 (public within 300 ms) and AC-DICE-04 (private, self, the DM's private roll; no numbers in a masked player's frames); packages/shared/src/dice/dice.test.ts › who sees a roll (SPEC §18.3): public, private to DM, blind (roller sees '?'), self; e2e/journeys/p5-dice.spec.ts › AC-DICE-04 / AC-DICE-05 / AC-DICE-07 (arrival under 300 ms, masked cards in the UI)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-28T11:49:38.464Z"
     },
     {
       "id": "AC-DICE-05",
@@ -998,10 +998,10 @@
       "code": "DICE",
       "phase": "P5",
       "text": "Manual entries are recorded with a hand icon and are visible to everyone like normal rolls.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p5-dice.spec.ts › AC-DICE-04 / AC-DICE-05 / AC-DICE-07 (a roll entered by hand carries the hand icon and total on the DM's and both players' feeds); packages/server/src/test/dice.test.ts (manual values and totals validated); artifacts/screens/p5/*/07-feed-dm.png",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-28T11:49:38.557Z"
     },
     {
       "id": "AC-DICE-06",
@@ -1020,10 +1020,10 @@
       "code": "DICE",
       "phase": "P5",
       "text": "Each player's dice skin is visible to everyone for that player's rolls.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/dice.test.ts › AC-DICE-07 (server): skin saved to the profile, in everyone's presence, on the player's rolls; malformed refused; e2e/journeys/p5-dice.spec.ts › AC-DICE-04 / AC-DICE-05 / AC-DICE-07 (picked in Settings → Your dice; the DM and another player throw that player's roll in it); artifacts/screens/p5/*/05-dice-skin.png, 06-others-dice-in-their-skin.png",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-28T11:49:38.648Z"
     },
     {
       "id": "AC-DICE-08",
@@ -1031,10 +1031,10 @@
       "code": "DICE",
       "phase": "P5",
       "text": "Dice sounds are triggered by simulated contacts, with volume scaled by impulse.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p5-dice.spec.ts › AC-DICE-01 / AC-DICE-03 / AC-DICE-08: every clack played is a recorded simulation contact (tray or die, by skin material) in order, its gain v^1.5 from the contact's impulse (varied, within (0, 1]), a settle tick per die; packages/web/src/dice/simulate.test.ts (contacts with their kind, masses, rest steps)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-28T11:49:38.724Z"
     },
     {
       "id": "AC-DICE-09",
@@ -1042,10 +1042,10 @@
       "code": "DICE",
       "phase": "P5",
       "text": "Limits are enforced: at most 100 dice per term and 500 dice rolled in total (including rerolls and explosions), at most 1 000 sides, explosion depth at most 20, formula length at most 200 characters.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/shared/src/dice/dice.test.ts › limits (AC-DICE-09): 100 per term, 500 in all including rerolls and explosions, sides 1–1000, explosion depth 20, formula length 200; packages/server/src/test/dice.test.ts › AC-DICE-02 / AC-DICE-01 (server) (the server refuses 101d6, 501 dice, d1001 and a 201-character formula)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-28T11:49:38.803Z"
     },
     {
       "id": "AC-DICE-10",
@@ -1053,10 +1053,10 @@
       "code": "DICE",
       "phase": "P5",
       "text": "In test mode only, `GLOAM_TEST_SEED` makes results reproducible; production builds ignore it.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/dice.test.ts › AC-DICE-10: GLOAM_TEST_SEED makes results reproducible in test mode; production ignores it (packages/server/src/config.ts testSeed only when NODE_ENV=test)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-28T11:49:38.889Z"
     },
     {
       "id": "AC-DICE-11",
