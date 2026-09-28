@@ -67,6 +67,8 @@ const SLOTS: [number, number][] = [
 /** The slot number of "its own spot, slid onto the screen" (tried right after its own spot). */
 const SLID = SLOTS.length;
 const TRY_ORDER = [0, SLID, ...SLOTS.keys()].filter((k, i, all) => all.indexOf(k) === i);
+/** Slot numbers from here on are nudges (a few pixels sideways off whatever takes its spot's side). */
+const NUDGE = 100;
 /** A plate in its own spot gives way when it would cover more than this share of another token… */
 const BURIED = 0.5;
 /** …and a spot aside is taken only when it covers no more than this share of one. */
@@ -211,8 +213,21 @@ function place(
     const h = r.y1 - r.y0 + PAD_PX;
     // Sliding onto the screen: only sideways, and only as far as its own width (its token is at least partly on it).
     const slide = r.x0 < EDGE_PX ? EDGE_PX - r.x0 : r.x1 > width - EDGE_PX ? width - EDGE_PX - r.x1 : 0;
+    // Nudges: when only the side of its own spot is taken (a HUD piece, a plate, by a few pixels), just far enough
+    // sideways to clear it — at most as far as the spots beside it — nearest first.
+    const nudges: number[] = [];
+    const blockers = [
+      ...covered,
+      ...placed.map((p) => ({ x0: p.x0 - PAD_PX, y0: p.y0 - PAD_PX, x1: p.x1 + PAD_PX, y1: p.y1 + PAD_PX })),
+    ];
+    for (const b of blockers) {
+      if (!(r.x0 < b.x1 && r.x1 > b.x0 && r.y0 < b.y1 && r.y1 > b.y0)) continue;
+      for (const dx of [b.x0 - r.x1 - 0.5, b.x1 - r.x0 + 0.5]) if (Math.abs(dx) <= 0.62 * w) nudges.push(dx);
+    }
+    nudges.sort((a, b) => Math.abs(a) - Math.abs(b));
     const shift = (k: number): [number, number] => {
       if (k === SLID) return [Math.abs(slide) <= w ? slide : Number.NaN, 0];
+      if (k >= NUDGE) return [nudges[k - NUDGE] ?? Number.NaN, 0];
       const [sx, sy] = SLOTS[k] as [number, number];
       return [sx * w, sy * h];
     };
@@ -231,11 +246,14 @@ function place(
       });
     const ok = (k: number) =>
       (k !== SLID || (slide !== 0 && Math.abs(slide) <= w)) &&
+      !Number.isNaN(shift(k)[0]) &&
       free(at(k)) &&
       (!clearOfTokens || !covers(at(k), k === 0 || k === SLID ? BURIED : ASIDE));
+    const order = [0, SLID, ...nudges.map((_, i) => NUDGE + i), ...TRY_ORDER.slice(2)];
     let slot = -1;
-    if (it.e.slot > 0 && ok(it.e.slot) && !ok(0)) slot = it.e.slot;
-    else for (const k of TRY_ORDER) if (slot < 0 && ok(k)) slot = k;
+    // The spot it had, if still free (no hopping) — a nudge is worked out afresh each time.
+    if (it.e.slot > 0 && it.e.slot < NUDGE && ok(it.e.slot) && !ok(0)) slot = it.e.slot;
+    else for (const k of order) if (slot < 0 && ok(k)) slot = k;
     const q = slot >= 0 ? at(slot) : r;
     if (slot >= 0) placed.push(q);
     const [dx, dy] = slot >= 0 ? shift(slot) : [0, 0];

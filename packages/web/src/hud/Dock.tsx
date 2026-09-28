@@ -48,10 +48,14 @@ export function Dock() {
   const banner = useHudInsets((s) => s.banner);
   const actionBand = useHudInsets((s) => s.bottom);
   useMeasuredInset("right", asideRef, insetMeasures.right);
-  useCover("dock", asideRef);
+  // What of it is drawn over the board: the open panel and the rail (the dock's own box is an invisible column the
+  // height of the screen — plates beside the rail were hidden under nothing).
+  const panelRef = useRef<HTMLElement>(null);
+  useCover("dock-panel", panelRef, tab !== null);
   // On a phone the rail takes the top-right corner, not a column down the side.
   const railRef = useRef<HTMLElement>(null);
   useMeasuredInset("cornerRight", railRef, insetMeasures.corner, phone);
+  useCover("dock-rail", railRef, !(phone && tab !== null));
 
   useEffect(() => {
     if (tab === "dm" && !dm) useUi.getState().set({ dock: null });
@@ -105,6 +109,7 @@ export function Dock() {
     >
       {tab ? (
         <section
+          ref={panelRef}
           className="panel pointer-events-auto relative flex min-w-0 flex-col overflow-hidden overflow-x-clip"
           // Never wider than the screen leaves beside the rail; on a phone, all of it.
           style={{ width: page ? "100%" : `min(${width}px, calc(100vw - ${RAIL_ROOM}px))` }}
@@ -166,15 +171,16 @@ export function Dock() {
           </ErrorBoundary>
         </section>
       ) : null}
-      {page ? null : (
-        <nav
-          ref={railRef}
-          aria-label="Panels"
-          className="panel pointer-events-auto flex flex-col items-center gap-1 self-start p-1.5"
-        >
-          {railButtons}
-        </nav>
-      )}
+      {/* Hidden, not unmounted, under a phone's page: its measured corner (what the request cards stand below)
+          follows it back. */}
+      <nav
+        ref={railRef}
+        aria-label="Panels"
+        hidden={page}
+        className="panel pointer-events-auto flex flex-col items-center gap-1 self-start p-1.5"
+      >
+        {page ? null : railButtons}
+      </nav>
     </aside>
   );
 }

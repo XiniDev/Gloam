@@ -389,6 +389,7 @@ export function TestProbe() {
           visible: boolean;
           bounds?: { min: number[]; max: number[] };
           pin?: { label: string; value: number; max: number };
+          status?: string;
         }
       > = {};
       let ring: string | null = null;
@@ -401,6 +402,7 @@ export function TestProbe() {
           parts[part] = { diameter: o.userData.diameter as number | undefined, visible };
           if (o.userData.pin)
             parts[part].pin = o.userData.pin as { label: string; value: number; max: number };
+          if (o.userData.status) parts[part].status = o.userData.status as string;
           if (part === "mini") {
             const b = new Box3().setFromObject(o);
             parts[part].bounds = { min: b.min.toArray(), max: b.max.toArray() };

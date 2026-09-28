@@ -53,6 +53,7 @@ import {
   setHpBar,
 } from "./hpBar.ts";
 import { CHIP_GEOMETRY, createChipMaterial, setChip } from "./plateChip.ts";
+import { atlasCell, statusAtlas } from "./statusAtlas.ts";
 
 /** Pitch above which Auto mode shows the coin (SPEC §8.5, AC-TOK-11) and the crossfade time. */
 
@@ -152,6 +153,11 @@ const PIN_ROW_GAP = 0.16;
 const PIN_BAR_H = 0.16;
 const PIN_BAR_GAP = 0.06;
 const PIN_LABEL_MAX = 18;
+/** Status icons under the bar (§8.5): six at most, then "+n"; ≈ 18 px each, badges drawn from the atlas. */
+const ICON_MAX = 6;
+const ICON = 0.9;
+const ICON_GAP = 0.1;
+const ICON_ROW_GAP = 0.14;
 /** Between the bar and the temporary HP beside it. */
 const TEMP_GAP = 0.18;
 
@@ -886,6 +892,50 @@ function Overlay({
     return r;
   };
 
+  // Conditions and status markers under the bar (§8.5: up to six, then "+n"); Exhaustion with its level.
+  const statusKey = JSON.stringify([
+    ...token.conditions,
+    ...(token.exhaustion > 0 && !token.conditions.includes("exhaustion") ? ["exhaustion"] : []),
+    ...(token.concentrating && !token.markers.includes("concentrating") ? ["concentrating"] : []),
+    ...token.markers,
+  ]);
+  const statuses = useMemo(() => JSON.parse(statusKey) as string[], [statusKey]);
+  const iconMat = useMemo(() => {
+    const a = statusAtlas();
+    const m = new MeshBasicMaterial({
+      map: a.texture,
+      transparent: true,
+      depthTest: false,
+      depthWrite: false,
+    });
+    void a.ready.then(() => again());
+    return m;
+  }, []);
+  useEffect(() => () => disposeLater(iconMat), [iconMat]);
+  const iconGeos = useMemo(() => Array.from({ length: ICON_MAX }, () => new PlaneGeometry(1, 1)), []);
+  useEffect(() => () => disposeLater(...iconGeos), [iconGeos]);
+  // Each slot's UVs point at its icon's cell.
+  useEffect(() => {
+    for (const [i, g] of iconGeos.entries()) {
+      const id = statuses[i];
+      if (!id) continue;
+      const c = atlasCell(id);
+      const uv = g.getAttribute("uv");
+      // PlaneGeometry's corners: top-left, top-right, bottom-left, bottom-right.
+      uv.setXY(0, c.u0, c.v1);
+      uv.setXY(1, c.u1, c.v1);
+      uv.setXY(2, c.u0, c.v0);
+      uv.setXY(3, c.u1, c.v0);
+      uv.needsUpdate = true;
+    }
+    again();
+  }, [statuses, iconGeos]);
+  const iconMeshes = useRef<(Mesh | null)[]>([]);
+  const moreText = useRef<TroikaText>(null);
+  const levelText = useRef<TroikaText>(null);
+  const shownIcons = statuses.slice(0, ICON_MAX);
+  const moreIcons = statuses.length - shownIcons.length;
+
   // Decluttering: this overlay competes for its spot on screen with its neighbours' (declutter.ts).
   const latest = useRef({ token, viewer });
   latest.current = { token, viewer };
@@ -1031,6 +1081,12 @@ function Overlay({
         t.outlineOpacity = a;
       }
     if (badge.current) badge.current.opacity = fade;
+    iconMat.opacity = a;
+    for (const t of [moreText.current, levelText.current])
+      if (t && (t.fillOpacity !== a || t.outlineOpacity !== a)) {
+        t.fillOpacity = a;
+        t.outlineOpacity = a;
+      }
     for (const [i, p] of pins.entries()) {
       const r = pinRows.current[i];
       for (const t of [r?.label, r?.value])
@@ -1092,6 +1148,27 @@ function Overlay({
     const bm = barMesh.current;
     if (bm) bm.scale.set(barW, BAR_H, 1);
     let bottom = showBar || descriptor ? -BAR_H / 2 : BAR_H / 2 + NAME_GAP;
+    // The status icons, a row under the bar.
+    let iconsW = 0;
+    if (shownIcons.length) {
+      const moreB = moreText.current?.textRenderInfo?.blockBounds;
+      const moreW = moreIcons > 0 && moreB ? moreB[2] - moreB[0] + ICON_GAP : 0;
+      iconsW = shownIcons.length * ICON + (shownIcons.length - 1) * ICON_GAP + moreW;
+      const y = bottom - ICON_ROW_GAP - ICON / 2;
+      let x = -iconsW / 2 + ICON / 2;
+      for (let i = 0; i < shownIcons.length; i++) {
+        const m = iconMeshes.current[i];
+        if (m) {
+          m.position.set(x, y, 0.005);
+          m.scale.set(ICON, ICON, 1);
+        }
+        if (shownIcons[i] === "exhaustion")
+          levelText.current?.position.set(x + ICON / 2 - 0.04, y - ICON / 2 + 0.02, 0.02);
+        x += ICON + ICON_GAP;
+      }
+      moreText.current?.position.set(x - ICON / 2, y, 0.01);
+      bottom = y - ICON / 2;
+    }
     const gaugeW = pins.length ? Math.max(barW || BAR_W, pinW) : 0;
     for (let i = 0; i < pins.length; i++) {
       const r = pinRows.current[i];
@@ -1105,7 +1182,7 @@ function Overlay({
       }
       bottom = barY - PIN_BAR_H / 2;
     }
-    const w = Math.max(nameW, barW + 2 * tempW, wordW, gaugeW) + 2 * CHIP_PAD_X;
+    const w = Math.max(nameW, barW + 2 * tempW, wordW, gaugeW, iconsW) + 2 * CHIP_PAD_X;
     const h = nameTop - bottom + 2 * CHIP_PAD_Y;
     const cm = chipMesh.current;
     if (cm) {
@@ -1232,6 +1309,51 @@ function Overlay({
               raycast={() => null}
             >
               {descriptor}
+            </BoardText>
+          ) : null}
+          {shownIcons.map((id, i) => (
+            <mesh
+              // Slots are positional: each slot's UVs follow its icon.
+              key={i}
+              ref={(m) => {
+                iconMeshes.current[i] = m;
+              }}
+              geometry={iconGeos[i]}
+              material={iconMat}
+              renderOrder={20}
+              raycast={() => null}
+              dispose={null}
+              userData={{ part: `status:${i}`, status: id }}
+            />
+          ))}
+          {shownIcons.includes("exhaustion") ? (
+            <BoardText
+              ref={levelText}
+              font={NUMBER_FONT}
+              fontSize={0.5}
+              color={C.bone100}
+              outlineWidth={0.06}
+              outlineColor={C.ink950}
+              anchorX="right"
+              anchorY="bottom"
+              raycast={() => null}
+            >
+              {String(token.exhaustion)}
+            </BoardText>
+          ) : null}
+          {moreIcons > 0 ? (
+            <BoardText
+              ref={moreText}
+              font={NUMBER_FONT}
+              fontSize={NUM_SIZE}
+              color={C.bone100}
+              outlineWidth={0.022}
+              outlineColor={C.ink950}
+              anchorX="left"
+              anchorY="middle"
+              raycast={() => null}
+            >
+              {`+${moreIcons}`}
             </BoardText>
           ) : null}
           {pins.map((p, i) => (

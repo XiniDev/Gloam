@@ -379,6 +379,8 @@ test("P6 key screens", async ({ admin, browser, gloam, guardLog }, info) => {
   // ── Art ──
   await closeDialogs(dave);
   await step("18-drawing-pad", dave, async () => {
+    // (On a phone the roll from the request card closed the sheet's page: open it again.)
+    await openDock(dave, "Sheet");
     await sheetTab(dave, "Token");
     await dave.getByTestId("sheet").getByRole("button", { name: "Draw…" }).click();
     const canvas = dave.getByTestId("drawing-canvas");

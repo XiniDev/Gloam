@@ -133,6 +133,16 @@ describe("overlay declutter", () => {
     expect(overlayClear("under")).toBe(0);
   });
 
+  it("nudges a plate whose side just touches the HUD sideways off it, instead of hiding or moving it far", () => {
+    plate("rail", 100, 50, 1);
+    // A rail over the right of the screen, 0.2 px into the plate's own spot (80–120).
+    layoutOverlays(camera, W, H, [{ x0: 119.8, y0: 0, x1: W, y1: H }]);
+    expect(overlayClear("rail")).toBe(1);
+    const dx = overlayOffset("rail").dx;
+    expect(dx).toBeLessThan(0);
+    expect(dx).toBeGreaterThan(-2);
+  });
+
   it("still shows a plate over a token when that's the only room left", () => {
     plate("hero", 100, 50, 3);
     plate("goblin", 100, 50, 1);
