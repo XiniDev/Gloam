@@ -102,7 +102,9 @@ export function tokenView(t: TokenEntity, ctx: ProjectionCtx): TokenView {
     exhaustion: status.exhaustion,
     concentrating: Boolean(status.concentration),
     prone: conditions.includes("prone"),
-    dead: status.deathSaves?.dead === true || (!stats.isPC && stats.hp <= 0),
+    // Dead when marked so (the DM's answer to "Dead?", or Auto with an NPC's "dead at 0 HP" default) — not merely at
+    // 0 HP: an NPC left Unconscious or kept at 0 lies there alive (§8.11).
+    dead: status.deathSaves?.dead === true || status.markers.some((m) => m.id === "dead"),
     invisibleFx: conditions.includes("invisible"),
     outlined: status.outlined,
     lightOn: light ? light.enabled : false,

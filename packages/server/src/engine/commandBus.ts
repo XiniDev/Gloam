@@ -28,6 +28,11 @@ export interface CommandActor {
   name: string;
   /** "Act as": the character the DM is controlling (AC-DMP-03). */
   actingAs?: { actorId: string; name: string } | null;
+  /**
+   * Whether this person can see a token now (their view, §13.4) — for commands a player may aim at others' tokens
+   * (damage, healing): a token they can't see is as good as not there. Absent: the server itself, or a test.
+   */
+  sees?: (tokenId: string) => boolean;
 }
 
 export interface CommandCtx {
@@ -125,6 +130,8 @@ export interface BusHooks {
   onEvents?(events: RoomEvent[], info: CommitInfo): void;
   fog?: FogApplier;
   sheet?: SheetApplier;
+  /** An entry was undone (Ctrl+Z, a revert, a forced undo): what it left pending can be let go (a DM prompt). */
+  onUndone?(entry: HistoryEntry, actor: CommandActor): void;
 }
 
 interface UndoStep {
@@ -509,6 +516,11 @@ export class CommandBus {
     const next = this.commit("history.undo", ops, summary, true, actor, e.sceneId);
     this.markUndone(e.id, actor.userId);
     this.hooks.onCommitted({ entry: next, ops, actor, type: "history.undo" });
+    try {
+      this.hooks.onUndone?.(e, actor);
+    } catch (err) {
+      this.app.log.error({ err }, "after-undo hook failed");
+    }
     this.markUndone(next.id, "system");
     return next;
   }

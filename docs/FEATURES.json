@@ -1207,10 +1207,10 @@
       "code": "HP",
       "phase": "P7",
       "text": "Healing never exceeds max HP; healing a creature at 0 HP restores consciousness and resets death saves.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/health.test.ts › 'damage runs the SRD pipeline…; healing stops at the maximum' (heal 100 → 40/40) and 'healing a creature at 0 brings it round and clears its death saves' (Unconscious from 0 HP off, Prone stays, death saves cleared); rules: damage.test.ts › healing and temporary HP, consequences.test.ts › healing from 0",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-28T21:29:53.471Z"
     },
     {
       "id": "AC-HP-03",
@@ -1251,10 +1251,10 @@
       "code": "HP",
       "phase": "P7",
       "text": "Bloodied is applied and removed automatically at the half-HP threshold when enabled.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/health.test.ts › 'Bloodied comes and goes at half HP by itself, when the campaign has it on' (marker on at ≤ half, off above it, not applied with the house rule off); consequences.test.ts › Bloodied (0 < hp ≤ max/2)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-28T21:29:53.552Z"
     },
     {
       "id": "AC-HP-07",

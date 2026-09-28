@@ -6,8 +6,10 @@ import {
   type Consequence,
   damageConsequences,
   deathSave,
+  describeConsequence,
   healingConsequences,
   isBloodied,
+  sortConsequences,
 } from "./consequences.ts";
 import { applyDamage, applyHealing, type DamageTarget } from "./damage.ts";
 
@@ -143,5 +145,39 @@ describe("death saving throws (§19.5; AC-HP-08's rules)", () => {
     expect(deathSave({ successes: 0, failures: 2 }, 5, 5)).toMatchObject({ failures: 3, dying: true });
     // A bonus counts toward the DC (a natural 8 with +2 succeeds).
     expect(deathSave({ successes: 0, failures: 0 }, 8, 10)).toMatchObject({ successes: 1 });
+  });
+});
+
+describe("what's applied at once and what's asked (§19.1; AC-HP-12)", () => {
+  const all: Consequence[] = [
+    { kind: "down", conditions: ["unconscious", "prone"] },
+    { kind: "dying", reason: "massive" },
+    { kind: "concentrationEnds", reason: "Unconscious" },
+    { kind: "bloodied", on: false },
+  ];
+  it("Assist: the marker now, the rest to the DM", () => {
+    const s = sortConsequences(all, "assist");
+    expect(s.apply.map((x) => x.consequence.kind)).toEqual(["bloodied"]);
+    expect(s.ask.map((c) => c.kind)).toEqual(["down", "dying", "concentrationEnds"]);
+    // The concentration save goes to its owner at once (its failure is what the DM confirms).
+    expect(sortConsequences([{ kind: "concentrationSave", dc: 12 }], "assist").apply).toHaveLength(1);
+  });
+  it("Auto: all but a death; Manual: only the marker; the DM's own decisions over both", () => {
+    const auto = sortConsequences(all, "auto");
+    expect(auto.apply.map((x) => x.consequence.kind)).toEqual(["down", "concentrationEnds", "bloodied"]);
+    expect(auto.ask.map((c) => c.kind)).toEqual(["dying"]);
+    expect(sortConsequences(all, "manual").apply.map((x) => x.consequence.kind)).toEqual(["bloodied"]);
+    const decided = sortConsequences(all, "assist", { keep: ["down", "dying"], choices: { dying: "keep" } });
+    expect(decided.ask).toEqual([]);
+    expect(decided.apply).toEqual([{ consequence: all[0] }, { consequence: all[1], choice: "keep" }]);
+  });
+  it("says each in words, with its choices", () => {
+    expect(describeConsequence({ kind: "down", conditions: ["unconscious", "prone"] }).label).toBe(
+      "Unconscious and Prone; death saves start",
+    );
+    const npc = describeConsequence({ kind: "npcAtZero", choice: "unconscious" });
+    expect(npc.choices?.map((c) => c.label)).toEqual(["Dead", "Unconscious", "Keep at 0"]);
+    expect(npc.choice).toBe("unconscious");
+    expect(describeConsequence({ kind: "dying", reason: "failures" }).choices?.[1]?.label).toBe("Keep dying");
   });
 });

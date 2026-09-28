@@ -54,6 +54,12 @@ export interface RollRequest {
   responses: Record<string, RequestResponse>;
   status: "open" | "closed";
   closedAt: number | null;
+  /**
+   * What the room does with the answers (P7, §8.11): a concentration save (a failure ends concentration, at once or
+   * via the DM's prompt) or a death saving throw (the tally moves; a 20 brings the creature back; three failures ask
+   * the DM). Absent: an ordinary request.
+   */
+  purpose?: { kind: "concentration"; spell?: string } | { kind: "deathSave" };
 }
 
 /** The formula a request asks of everyone, with its `@` references (resolved per target). */
@@ -182,7 +188,7 @@ export class RequestService {
  * A target's card for one of its controllers (never another target's result, never a hidden DC, never the total of a
  * blind roll — the player sees "?" for those).
  */
-export function cardFor(r: RollRequest, t: RequestTarget): RequestCard {
+export function cardFor(r: RollRequest, t: RequestTarget, extra: Partial<RequestCard> = {}): RequestCard {
   const res = r.responses[t.id] ?? { state: "pending" as const };
   const blind = r.visibility === "blind";
   return {
@@ -198,5 +204,6 @@ export function cardFor(r: RollRequest, t: RequestTarget): RequestCard {
     ...(!blind && res.total !== undefined ? { total: res.total } : {}),
     ...(!blind && r.showDc && res.success !== undefined ? { success: res.success } : {}),
     open: r.status === "open",
+    ...extra,
   };
 }

@@ -148,7 +148,12 @@ export const MESSAGE_RATES = {
   "request.answer": rate(5, 10),
   "request.respond": rate(5, 8),
   "request.list": rate(1, 3),
+  // Health (§8.11): the DM's prompts, death saves asked for outside combat.
+  "prompt.list": rate(1, 3),
+  "prompt.resolve": rate(5, 10),
+  "death.request": rate(2, 4),
 } as const satisfies Record<string, RateSpec>;
 
 export * from "./commands.ts";
+export * from "./health.ts";
 export * from "./sheets.ts";

@@ -53,6 +53,8 @@ export interface RequestCard {
   /** Only when the DC is shown. */
   success?: boolean;
   open: boolean;
+  /** A death saving throw's card: the successes and failures so far (hearts and skulls). */
+  deathSaves?: { successes: number; failures: number };
 }
 
 /** A request as the DM's live board has it. */

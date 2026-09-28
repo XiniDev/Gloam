@@ -3,6 +3,7 @@ import { ACTOR_COMMANDS } from "./commands/actor.ts";
 import { ASSET_COMMANDS } from "./commands/asset.ts";
 import { campaignUpdate } from "./commands/campaign.ts";
 import { FOG_COMMANDS } from "./commands/fog.ts";
+import { HEALTH_COMMANDS } from "./commands/health.ts";
 import { LIGHT_COMMANDS } from "./commands/light.ts";
 import { MOVE_COMMANDS } from "./commands/move.ts";
 import { PARTY_COMMANDS } from "./commands/party.ts";
@@ -24,6 +25,7 @@ export const ALL_COMMANDS: CommandDef<never, unknown>[] = [
   ...FOG_COMMANDS,
   ...ACTOR_COMMANDS,
   ...PARTY_COMMANDS,
+  ...HEALTH_COMMANDS,
 ];
 
 /** Room message rate limits per command (SPEC §13.5); default 10/s. */
@@ -45,6 +47,9 @@ export const COMMAND_RATES: Record<string, { capacity: number; perSecond: number
   // Sheets (§8.10): edits come as a player types and ticks; the rest are deliberate.
   ...Object.fromEntries(ACTOR_COMMANDS.map((d) => [d.type, { capacity: 5, perSecond: 2 }])),
   "actor.change": { capacity: 20, perSecond: 10 },
+  // Health (§8.11): a burst of damage from an area, conditions ticked on and off.
+  "hp.apply": { capacity: 10, perSecond: 5 },
+  "status.change": { capacity: 10, perSecond: 5 },
 };
 
 export function registerCommands(bus: CommandBus): void {

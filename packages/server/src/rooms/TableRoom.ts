@@ -8,6 +8,7 @@ import {
   AdminUnban,
   CameraSpotlight,
   ClockSync,
+  DeathSaveRequest,
   DiceManual,
   DiceRoll,
   GloamError,
@@ -18,6 +19,7 @@ import {
   MovePreview,
   PingSend,
   ProfileDiceSkin,
+  PromptResolve,
   ProposalDecide,
   RequestAnswer,
   RequestClose,
@@ -53,9 +55,11 @@ import {
 import type { ActorEntity } from "../engine/codecs.ts";
 import { type CommandActor, CommandBus, type CommitInfo, type RoomEvent } from "../engine/commandBus.ts";
 import { checkSheet, readSheet } from "../engine/commands/actor.ts";
+import { FOLLOWUPS, type Followups } from "../engine/commands/health.ts";
 import { SYSTEM_ACTOR } from "../engine/commands/party.ts";
 import { CampaignModel } from "../engine/model.ts";
 import { ALL_COMMANDS, COMMAND_RATES, registerCommands } from "../engine/registry.ts";
+import { PromptService } from "../health/prompts.ts";
 import { type Proposal, ProposalService, proposalView } from "../sheets/proposals.ts";
 import { type MoveSeen, VisionService } from "../vision/visionService.ts";
 import {
@@ -66,6 +70,7 @@ import {
   type MessageDef,
   parseCookies,
 } from "./dispatch.ts";
+import { HealthFlow, type SystemRequest } from "./health.ts";
 import {
   glowView,
   lightView,
@@ -104,6 +109,9 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
   proposals!: ProposalService;
   /** The DM's roll requests (SPEC §8.9, §18.5). */
   requests!: RequestService;
+  /** The DM's prompts (SPEC §8.11, §19.1) and the room's half of health (concentration and death saves). */
+  prompts!: PromptService;
+  health!: HealthFlow;
   /** DM connections viewing a non-active scene in prep (SPEC §13.7): client → scene id. */
   private readonly prepSubs = new Map<Client, string>();
   /** Test probe (AC-PER-01): runs right before Colyseus encodes and sends a state patch. */
@@ -341,32 +349,7 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
       // Roll requests (SPEC §8.9, §18.5, AC-DICE-06): the DM asks; each target's controllers get a card.
       "request.create": def(RequestCreate, MESSAGE_RATES["request.create"], ({ auth }, p) => {
         this.requireDm(auth);
-        const base = requestFormula(p as Parameters<typeof requestFormula>[0]);
-        const targets: RequestTarget[] = [...new Set(p.targets)].map((id) => {
-          const x = this.requestTarget(id);
-          const formula = targetFormula(base, creatureRefs(x.token, x.sheet), p.adv);
-          try {
-            parseFormula(formula);
-          } catch (e) {
-            if (e instanceof DiceError) throw new GloamError("INVALID", e.message);
-            throw e;
-          }
-          return { ...x.target, formula };
-        });
-        const r = this.requests.create({
-          campaignId: this.campaignId,
-          createdBy: auth.userId,
-          type: p.type,
-          ...(p.ability ? { ability: p.ability } : {}),
-          ...(p.skill ? { skill: p.skill as RollRequest["skill"] & string } : {}),
-          label: requestLabel(p as Parameters<typeof requestLabel>[0]),
-          ...(p.dc !== undefined ? { dc: p.dc } : {}),
-          showDc: p.showDc,
-          adv: p.adv,
-          visibility: p.visibility,
-          targets,
-        });
-        this.sendRequest(r);
+        const r = this.createRequest(auth.userId, p);
         return { requestId: r.id };
       }),
       // A target's controller answers its card: the server rolls, a physical roll is entered, or it's skipped.
@@ -377,6 +360,7 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
         if (r.responses[target.id]?.state !== "pending")
           throw new GloamError("CONFLICT", "That roll was already answered.");
         let res: RequestResponse;
+        let roll: RollRecord | null = null;
         if (p.action === "skip") res = { state: "skipped", by: auth.userId };
         else {
           const x = this.requestTarget(target.id);
@@ -385,7 +369,7 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
             visibility: r.visibility,
             label: `${r.label} · ${target.name}`,
           };
-          const roll =
+          roll =
             p.action === "roll"
               ? this.dice.roll(this.campaignId, this.projector.activeSceneId || null, this.rollerOf(auth), {
                   ...opts,
@@ -407,15 +391,17 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
           };
         }
         r.responses[target.id] = res;
+        this.answeredForRules(r, target, res, roll);
         this.requests.save(r);
         this.sendRequest(r);
-        return cardFor(r, target);
+        return cardFor(r, target, this.health.cardExtra(r, target));
       }),
       // The DM answers for a target: rolls with its modifiers, sets its result, or skips it.
       "request.answer": def(RequestAnswer, MESSAGE_RATES["request.answer"], ({ auth }, p) => {
         this.requireDm(auth);
         const { r, target } = this.openTarget(p.requestId, p.target);
         let res: RequestResponse;
+        let dmRoll: RollRecord | null = null;
         if (p.action === "skip") res = { state: "skipped", by: auth.userId };
         else if (p.action === "set") {
           if (p.total === undefined) throw new GloamError("INVALID", "Give the result.");
@@ -427,7 +413,7 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
           };
         } else {
           const x = this.requestTarget(target.id);
-          const roll = this.dice.roll(
+          dmRoll = this.dice.roll(
             this.campaignId,
             this.projector.activeSceneId || null,
             this.rollerOf(auth),
@@ -439,16 +425,17 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
               ...(x.token ? { token: x.token } : {}),
             },
           );
-          this.deliverRoll(roll, true);
+          this.deliverRoll(dmRoll, true);
           res = {
             state: "dm",
-            rollId: roll.id,
-            total: roll.total,
+            rollId: dmRoll.id,
+            total: dmRoll.total,
             by: auth.userId,
-            ...(r.dc !== undefined ? { success: roll.total >= r.dc } : {}),
+            ...(r.dc !== undefined ? { success: dmRoll.total >= r.dc } : {}),
           };
         }
         r.responses[target.id] = res;
+        this.answeredForRules(r, target, res, dmRoll);
         this.requests.save(r);
         this.sendRequest(r);
         return { state: res.state };
@@ -472,6 +459,20 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
         return open.flatMap((r) =>
           r.targets.filter((t) => t.controllers.includes(auth.userId)).map((t) => cardFor(r, t)),
         );
+      }),
+      // Health (§8.11): the DM's prompts — what follows from damage or a condition, a player's damage to check.
+      "prompt.list": def(z.strictObject({}), MESSAGE_RATES["prompt.list"], ({ auth }) => {
+        this.requireDm(auth);
+        return this.health.list();
+      }),
+      "prompt.resolve": def(PromptResolve, MESSAGE_RATES["prompt.resolve"], ({ auth }, p) => {
+        this.requireDm(auth);
+        return this.health.resolve(this.actorFor(auth), p);
+      }),
+      // Outside combat, the DM asks the dying for death saving throws.
+      "death.request": def(DeathSaveRequest, MESSAGE_RATES["death.request"], ({ auth }, p) => {
+        this.requireDm(auth);
+        return this.health.requestDeathSaves(this.actorFor(auth), p.targets);
       }),
       // Sheet templates (§8.10 Templates): anyone at the table may start a character from one.
       "template.list": def(z.strictObject({}), MESSAGE_RATES["template.list"], ({ auth }) => {
@@ -634,7 +635,8 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
     });
     this.bus = new CommandBus(ctx, model, {
       onCommitted: (info) => this.onCommitted(info),
-      onEvents: (events) => this.deliver(events),
+      onEvents: (events, info) => this.deliver(events, info),
+      onUndone: (e, actor) => this.health?.undone(e.id, actor.userId),
       fog: this.vision,
       sheet: { apply: (sheet, patch) => applyPatch(sheet, patch) },
     });
@@ -642,6 +644,19 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
     this.sheets = new SheetSync(model);
     this.proposals = new ProposalService(ctx.db);
     this.requests = new RequestService(ctx.db);
+    this.prompts = new PromptService(ctx.db);
+    this.health = new HealthFlow({
+      campaignId: this.campaignId,
+      model: () => this.model,
+      bus: () => this.bus,
+      prompts: () => this.prompts,
+      requests: () => this.requests,
+      toDms: (type, payload) => this.toDms(type, payload),
+      toUser: (userId, type, payload) => this.toUser(userId, type, payload),
+      actorOf: (userId) => this.actorOfUser(userId),
+      ask: (r) => this.askForRules(r),
+      sendRequest: (r) => this.sendRequest(r),
+    });
     this.syncCampaign();
     this.views?.detachAll();
     this.projector = new StateProjector(this.state, this.projectionCtx());
@@ -697,6 +712,91 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
     for (const c of this.clientsByUser.get(userId) ?? []) c.send(type, payload);
   }
 
+  /** A roll request: each target's formula from its sheet, cards to its players, the board to the DMs. */
+  private createRequest(
+    createdBy: string,
+    p: {
+      targets: readonly string[];
+      type: RollRequest["type"];
+      ability?: RollRequest["ability"] | undefined;
+      skill?: string | undefined;
+      formula?: string | undefined;
+      label?: string | undefined;
+      dc?: number | undefined;
+      showDc: boolean;
+      adv: RollRequest["adv"];
+      visibility: RollRequest["visibility"];
+      purpose?: RollRequest["purpose"];
+    },
+  ): RollRequest {
+    const base = requestFormula(p as Parameters<typeof requestFormula>[0]);
+    const targets: RequestTarget[] = [...new Set(p.targets)].map((id) => {
+      const x = this.requestTarget(id);
+      const formula = targetFormula(base, creatureRefs(x.token, x.sheet), p.adv);
+      try {
+        parseFormula(formula);
+      } catch (e) {
+        if (e instanceof DiceError) throw new GloamError("INVALID", e.message);
+        throw e;
+      }
+      return { ...x.target, formula };
+    });
+    const r = this.requests.create({
+      campaignId: this.campaignId,
+      createdBy,
+      type: p.type,
+      ...(p.ability ? { ability: p.ability } : {}),
+      ...(p.skill ? { skill: p.skill as RollRequest["skill"] & string } : {}),
+      label: requestLabel(p as Parameters<typeof requestLabel>[0]),
+      ...(p.dc !== undefined ? { dc: p.dc } : {}),
+      showDc: p.showDc,
+      adv: p.adv,
+      visibility: p.visibility,
+      targets,
+      ...(p.purpose ? { purpose: p.purpose } : {}),
+    });
+    this.sendRequest(r);
+    return r;
+  }
+
+  /** A request the rules ask for (a concentration save, a death saving throw): the DC shown, no advantage. */
+  private askForRules(r: SystemRequest): RollRequest {
+    return this.createRequest(r.createdBy, {
+      targets: r.targets,
+      type: r.type,
+      ...(r.ability ? { ability: r.ability } : {}),
+      ...(r.formula ? { formula: r.formula } : {}),
+      label: r.label,
+      dc: r.dc,
+      showDc: true,
+      adv: "none",
+      visibility: r.visibility,
+      purpose: r.purpose,
+    });
+  }
+
+  /**
+   * An answer to a request the rules asked for: what it brings (health.ts); and once every creature has answered,
+   * the request closes (nothing more to wait for).
+   */
+  private answeredForRules(
+    r: RollRequest,
+    t: RequestTarget,
+    res: RequestResponse,
+    roll: RollRecord | null,
+  ): void {
+    if (!r.purpose) return;
+    try {
+      this.health.answered(r, t, res, roll);
+    } catch (err) {
+      roomCtx().log.error({ err }, "health follow-up of a roll failed");
+    }
+    if (r.targets.every((x) => r.responses[x.id]?.state !== "pending")) {
+      r.status = "closed";
+      r.closedAt = Date.now();
+    }
+  }
+
   /** A request's target: a token on the board or a character — its name, who answers for it, its sheet. */
   private requestTarget(id: string): {
     target: Omit<RequestTarget, "formula">;
@@ -747,7 +847,9 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
 
   /** A request as it stands: each controller its targets' cards, DMs the whole board. */
   private sendRequest(r: RollRequest): void {
-    for (const t of r.targets) for (const u of t.controllers) this.toUser(u, "request.card", cardFor(r, t));
+    for (const t of r.targets)
+      for (const u of t.controllers)
+        this.toUser(u, "request.card", cardFor(r, t, this.health.cardExtra(r, t)));
     this.toDms("request.status", r);
   }
 
@@ -760,7 +862,8 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
     }
     for (const r of open)
       for (const t of r.targets)
-        if (t.controllers.includes(auth.userId)) client.send("request.card", cardFor(r, t));
+        if (t.controllers.includes(auth.userId))
+          client.send("request.card", cardFor(r, t, this.health.cardExtra(r, t)));
   }
 
   /** A proposal as it's shown: what approving it would change on the sheet now. */
@@ -925,7 +1028,22 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
   }
 
   actorFor(auth: ClientAuth): CommandActor {
-    return { userId: auth.userId, role: auth.role, name: auth.name, actingAs: null };
+    const actor: CommandActor = { userId: auth.userId, role: auth.role, name: auth.name, actingAs: null };
+    // What a player may aim at: the tokens one of their connections can see now (§13.4).
+    if (auth.role === "player" || auth.role === "spectator")
+      actor.sees = (tokenId) =>
+        [...(this.clientsByUser.get(auth.userId) ?? [])].some((c) =>
+          this.views.grantsOf(c)?.tokens.has(tokenId),
+        );
+    return actor;
+  }
+
+  /** Someone at this table as a command's actor, by id (their membership role and profile name now). */
+  private actorOfUser(userId: string): CommandActor {
+    const ctx = roomCtx();
+    const role = ctx.campaigns.membership(this.campaignId, userId);
+    if (!role) return SYSTEM_ACTOR;
+    return { userId, role, name: ctx.profiles.get(userId)?.displayName ?? "someone", actingAs: null };
   }
 
   /** One room message per command type; the bus parses, authorizes, plans and commits. */
@@ -970,6 +1088,8 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
     this.views.sync(client, { userId: auth.userId, role: auth.role }, this.projector.activeSceneId);
     this.sheets.join(client, { userId: auth.userId, role: auth.role });
     this.sendOpenRequests(client, auth);
+    if (auth.role === "admin" || auth.role === "dm")
+      for (const p of this.health.list()) client.send("prompt.update", p);
     client.send("welcome", {
       userId: auth.userId,
       role: auth.role,
@@ -1182,8 +1302,17 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
   }
 
   /** Delivers command events (§14.1 post-commit): to a token's viewers, to users, or to the DMs. */
-  private deliver(events: RoomEvent[]): void {
+  private deliver(events: RoomEvent[], info?: CommitInfo): void {
     for (const e of events) {
+      // A health command's prompts and concentration saves (created after its commit, remembering its entry).
+      if (e.name === FOLLOWUPS) {
+        try {
+          this.health.followups(e.payload as Followups, info?.entry?.id ?? null);
+        } catch (err) {
+          roomCtx().log.error({ err }, "health follow-ups failed");
+        }
+        continue;
+      }
       if (e.name === "token.moved" && "viewersOf" in e.to) {
         this.deliverMove(e.payload as { id: string; path: { x: number; y: number }[]; durationMs: number });
         continue;

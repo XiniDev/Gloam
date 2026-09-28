@@ -200,3 +200,86 @@ export function deathSave(
   failures = Math.min(3, failures);
   return { successes, failures, regain: false, stable: successes >= 3, dying: failures >= 3 };
 }
+
+/** A consequence in words for the DM's prompt and the damage preview, with the choice it offers (if any). */
+export function describeConsequence(c: Consequence): {
+  label: string;
+  choices?: { id: string; label: string }[];
+  choice?: string;
+} {
+  switch (c.kind) {
+    case "down": {
+      const names = c.conditions.map((id) => id[0]?.toUpperCase() + id.slice(1));
+      return {
+        label: names.length ? `${names.join(" and ")}; death saves start` : "Death saves start",
+      };
+    }
+    case "deathSaveFailures":
+      return {
+        label: `${c.n === 2 ? "Two death-save failures" : "A death-save failure"} (${c.failures} of 3)`,
+      };
+    case "dying":
+      return {
+        label:
+          c.reason === "massive"
+            ? "Instant death? (massive damage)"
+            : c.reason === "exhaustion"
+              ? "Dead? (Exhaustion 6)"
+              : "Mark dead? (three failed death saves)",
+        choices: [
+          { id: "dead", label: "Dead" },
+          { id: "keep", label: c.reason === "failures" ? "Keep dying" : "Not dead" },
+        ],
+        choice: "dead",
+      };
+    case "npcAtZero":
+      return {
+        label: "At 0 HP",
+        choices: [
+          { id: "dead", label: "Dead" },
+          { id: "unconscious", label: "Unconscious" },
+          { id: "keep", label: "Keep at 0" },
+        ],
+        choice: c.choice,
+      };
+    case "concentrationSave":
+      return { label: `Concentration save, DC ${c.dc}` };
+    case "concentrationEnds":
+      return { label: `Concentration ends (${c.reason})` };
+    case "revive":
+      return { label: "Conscious again; death saves cleared" };
+    case "bloodied":
+      return { label: c.on ? "Bloodied" : "No longer Bloodied" };
+  }
+}
+
+/**
+ * Which consequences apply now and which are put to the DM (§19.1): the DM's own decisions when they made them in the
+ * preview; under Manual only the Bloodied marker (its own campaign toggle); under Auto everything but a death (the DM
+ * still decides that); under Assist the marker and the concentration save (the owner's roll — its failure is what the
+ * DM confirms), the rest asked.
+ */
+export function sortConsequences(
+  all: readonly Consequence[],
+  automation: "manual" | "assist" | "auto",
+  decided?: { keep: readonly string[]; choices?: Record<string, string> | undefined },
+): { apply: { consequence: Consequence; choice?: string }[]; ask: Consequence[] } {
+  if (decided) {
+    const apply = all
+      .filter((c) => decided.keep.includes(c.kind))
+      .map((c) => {
+        const choice = decided.choices?.[c.kind];
+        return choice ? { consequence: c, choice } : { consequence: c };
+      });
+    return { apply, ask: [] };
+  }
+  if (automation === "manual")
+    return { apply: all.filter((c) => c.kind === "bloodied").map((c) => ({ consequence: c })), ask: [] };
+  if (automation === "auto")
+    return {
+      apply: all.filter((c) => !isDecision(c)).map((c) => ({ consequence: c })),
+      ask: all.filter(isDecision),
+    };
+  const now = (c: Consequence) => c.kind === "bloodied" || c.kind === "concentrationSave";
+  return { apply: all.filter(now).map((c) => ({ consequence: c })), ask: all.filter((c) => !now(c)) };
+}

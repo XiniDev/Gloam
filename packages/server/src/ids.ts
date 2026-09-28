@@ -15,6 +15,7 @@ export type IdPrefix =
   | "inv"
   | "rol"
   | "req"
+  | "prm"
   | "his"
   | "snp"
   | "hnd"

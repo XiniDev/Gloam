@@ -467,6 +467,20 @@ export const HpApply = z.strictObject({
   /** Temporary HP when some are there already (they don't stack): keep, replace, or the higher. */
   tempChoice: z.enum(["keep", "replace", "best"]).default("best"),
   label: z.string().trim().max(80).optional(),
+  /**
+   * The DM's decisions about what follows, made in the preview before applying (AC-HP-12): per target, the
+   * consequences kept (by kind) and a choice where one is offered (an NPC at 0 HP: dead / unconscious / keep).
+   * Targets it names get no prompt; a player's are ignored.
+   */
+  decide: z
+    .record(
+      Id,
+      z.strictObject({
+        keep: z.array(z.string().max(40)).max(12),
+        choices: z.record(z.string().max(40), z.string().max(20)).optional(),
+      }),
+    )
+    .optional(),
 });
 /** A status id: a condition, a marker, or a DM's custom marker. */
 const StatusId = z.union([
@@ -502,15 +516,52 @@ export const StatusChange = z
     concentration: z.string().trim().min(1).max(80).nullable().optional(),
   })
   .refine((v) => Boolean(v.tokenId) !== Boolean(v.actorId), "A token or a character, one of them.");
-/** The DM's answer to a prompt: apply it (only the items kept; a choice where it offers one) or skip it. */
+/**
+ * The DM's answer to a prompt: apply it (only the items kept, by their keys; a choice where an item offers one) or
+ * skip it. For a player's damage put to the DM: the total as the DM edits it, and what follows as decided.
+ */
 export const PromptResolve = z.strictObject({
   promptId: Id,
   apply: z.boolean(),
   keep: z.array(z.string().max(40)).max(20).optional(),
-  choice: z.string().max(20).optional(),
-  /** For a player's damage put to the DM: the total as the DM edits it. */
+  choices: z.record(z.string().max(40), z.string().max(20)).optional(),
   total: z.number().int().min(0).max(99_999).optional(),
 });
+/** What follows from a change of HP (rules/consequences.ts), as the server carries it to apply. */
+export const ConsequenceIn = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("down"), conditions: z.array(z.enum(CONDITION_IDS)).max(4) }),
+  z.strictObject({
+    kind: z.literal("deathSaveFailures"),
+    n: z.union([z.literal(1), z.literal(2)]),
+    failures: z.number().int().min(0).max(3),
+  }),
+  z.strictObject({ kind: z.literal("dying"), reason: z.enum(["failures", "massive", "exhaustion"]) }),
+  z.strictObject({ kind: z.literal("npcAtZero"), choice: z.enum(["dead", "unconscious", "keep"]) }),
+  z.strictObject({ kind: z.literal("concentrationSave"), dc: z.number().int().min(10).max(30) }),
+  z.strictObject({ kind: z.literal("concentrationEnds"), reason: z.string().max(80) }),
+  z.strictObject({ kind: z.literal("revive") }),
+  z.strictObject({ kind: z.literal("bloodied"), on: z.boolean() }),
+]);
+/**
+ * `health.consequences` (internal: run by the room for the DM's answer to a prompt, a failed concentration save or a
+ * death save): what follows, applied to a creature's status as it is now — one undoable step.
+ */
+export const HealthConsequences = z
+  .strictObject({
+    tokenId: Id.optional(),
+    actorId: Id.optional(),
+    items: z
+      .array(z.strictObject({ consequence: ConsequenceIn, choice: z.string().max(20).optional() }))
+      .max(12),
+    /** Death saves as they now stand (a death save's roll), and HP regained (a natural 20: 1 HP). */
+    deathSaves: z
+      .strictObject({ successes: z.number().int().min(0).max(3), failures: z.number().int().min(0).max(3) })
+      .optional(),
+    stable: z.boolean().optional(),
+    regain: z.number().int().min(1).max(99_999).optional(),
+    summary: z.string().max(200),
+  })
+  .refine((v) => Boolean(v.tokenId) !== Boolean(v.actorId), "A token or a character, one of them.");
 /** Outside combat: the DM asks the dying for a death saving throw (§8.11). */
 export const DeathSaveRequest = z.strictObject({ targets: z.array(Id).min(1).max(20) });
 export type DiceRoll = z.infer<typeof DiceRoll>;

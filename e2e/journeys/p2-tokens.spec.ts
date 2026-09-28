@@ -615,7 +615,11 @@ test.describe("P2 — tokens (TOK)", () => {
         ...hp(7, 7),
       })),
     ];
-    for (const t of tokens) await req(admin, "token.create", { sceneId, ...t });
+    for (const t of tokens) {
+      const { tokenId } = await req<{ tokenId: string }>(admin, "token.create", { sceneId, ...t });
+      // The fallen lie down (dead, P7: marked so — 0 HP alone no longer means dead, §8.11).
+      if (t.name.startsWith("Fallen")) await req(admin, "status.change", { tokenId, add: [{ id: "dead" }] });
+    }
 
     type R = { x0: number; y0: number; x1: number; y1: number };
     type O = {
