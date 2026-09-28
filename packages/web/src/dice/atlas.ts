@@ -4,8 +4,17 @@
  * (Fraunces, 6 and 9 underlined), the d4's three corner numbers pointing to their corners, "?" for masked rolls, and
  * 00–90 on a percentile tens die. Geometry per die kind with each face's UVs in its cell.
  */
+
+import { DATA_TEXTURE } from "@gloam/shared/constants";
 import type { DiceSkin } from "@gloam/shared/dice";
-import { BufferGeometry, CanvasTexture, Float32BufferAttribute, SRGBColorSpace, Vector3 } from "three";
+import {
+  BufferGeometry,
+  CanvasTexture,
+  Float32BufferAttribute,
+  NoColorSpace,
+  SRGBColorSpace,
+  Vector3,
+} from "three";
 import { C } from "../board/colors.ts";
 import type { Solid } from "./solids.ts";
 
@@ -58,16 +67,39 @@ const atlases = new Map<string, CanvasTexture>();
 
 /** The face texture for a die kind, skin and face set (cached). */
 export function faceAtlas(s: Solid, skin: DiceSkin, set: FaceSet): CanvasTexture {
-  const key = `${s.kind}|${skin.body}|${skin.number}|${skin.material}|${set}`;
+  const key = `${s.kind}|${skin.body}|${skin.number}|${set}`;
   const hit = atlases.get(key);
   if (hit) return hit;
+  const tex = new CanvasTexture(drawFaces(s, set, skin.body, skin.number, true));
+  tex.colorSpace = SRGBColorSpace;
+  tex.anisotropy = 4;
+  atlases.set(key, tex);
+  return tex;
+}
+
+/**
+ * Where a die kind's numbers are (cached per kind and face set): white body, black numerals, laid out as its atlas —
+ * a metal die's metalness map, so its numbers read as enamel filled into the metal.
+ */
+export function faceMask(s: Solid, set: FaceSet): CanvasTexture {
+  const key = `${s.kind}|mask|${set}`;
+  const hit = atlases.get(key);
+  if (hit) return hit;
+  const tex = new CanvasTexture(drawFaces(s, set, DATA_TEXTURE.on, DATA_TEXTURE.off, false));
+  tex.colorSpace = NoColorSpace;
+  tex.anisotropy = 4;
+  atlases.set(key, tex);
+  return tex;
+}
+
+function drawFaces(s: Solid, set: FaceSet, body: string, number: string, bevel: boolean): HTMLCanvasElement {
   const n = s.faces.length;
   const rows = Math.ceil(n / COLS);
   const canvas = document.createElement("canvas");
   canvas.width = CELL * COLS;
   canvas.height = CELL * rows;
   const g = canvas.getContext("2d") as CanvasRenderingContext2D;
-  g.fillStyle = skin.body;
+  g.fillStyle = body;
   g.fillRect(0, 0, canvas.width, canvas.height);
   for (let f = 0; f < n; f++) {
     const cx = (f % COLS) * CELL + CELL / 2;
@@ -75,24 +107,26 @@ export function faceAtlas(s: Solid, skin: DiceSkin, set: FaceSet): CanvasTexture
     const L = layout(s, f);
     const pts = L.corners.map(([x, y]) => [cx + x * L.k, cy - y * L.k] as const);
     // The bevel: the rim of the face a little darker, shading inward.
-    g.save();
-    g.beginPath();
-    pts.forEach(([x, y], i) => {
-      if (i) g.lineTo(x, y);
-      else g.moveTo(x, y);
-    });
-    g.closePath();
-    g.clip();
-    // Ink at 5 % per stroke, five strokes narrowing: darkest at the very edge.
-    g.strokeStyle = C.ink950;
-    g.lineJoin = "round";
-    for (let w = 26; w > 0; w -= 6) {
-      g.lineWidth = w;
-      g.globalAlpha = 0.05;
-      g.stroke();
+    if (bevel) {
+      g.save();
+      g.beginPath();
+      pts.forEach(([x, y], i) => {
+        if (i) g.lineTo(x, y);
+        else g.moveTo(x, y);
+      });
+      g.closePath();
+      g.clip();
+      // Ink at 5 % per stroke, five strokes narrowing: darkest at the very edge.
+      g.strokeStyle = C.ink950;
+      g.lineJoin = "round";
+      for (let w = 26; w > 0; w -= 6) {
+        g.lineWidth = w;
+        g.globalAlpha = 0.05;
+        g.stroke();
+      }
+      g.restore();
     }
-    g.restore();
-    g.fillStyle = skin.number;
+    g.fillStyle = number;
     g.textAlign = "center";
     g.textBaseline = "middle";
     if (s.kind === "d4" && set !== "masked") {
@@ -121,11 +155,7 @@ export function faceAtlas(s: Solid, skin: DiceSkin, set: FaceSet): CanvasTexture
       }
     }
   }
-  const tex = new CanvasTexture(canvas);
-  tex.colorSpace = SRGBColorSpace;
-  tex.anisotropy = 4;
-  atlases.set(key, tex);
-  return tex;
+  return canvas;
 }
 
 const geometries = new Map<string, BufferGeometry>();

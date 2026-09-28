@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   addDie,
   advOf,
+  countOf,
   modifierOf,
   refAt,
   removeDie,
@@ -42,6 +43,11 @@ describe("the dice tray's formula editing (SPEC §8.9)", () => {
     expect(stepModifier("1d20", -2)).toBe("1d20 - 2");
     expect(modifierOf("1d20 - 2")).toBe(-2);
     expect(modifierOf("2d6")).toBe(0);
+    // What the count stepper shows: the term it steps; nothing to step without dice.
+    expect(countOf("1d20 + 2d6")).toEqual({ count: 2, die: "d6" });
+    expect(countOf("d20 adv")).toEqual({ count: 1, die: "d20" });
+    expect(countOf("3d% + 1")).toEqual({ count: 3, die: "d100" });
+    expect(countOf("5")).toBeNull();
   });
 
   it("advantage is a trailing keyword kept through edits, and the result always parses", () => {

@@ -1,10 +1,12 @@
 import type { RollVisibility } from "@gloam/shared/dice";
 import { checkFormula, parseFormula } from "@gloam/shared/dice";
-import { Dices, Hand, Minus, Pin, PinOff, Plus, X } from "lucide-react";
+import { Hand, Minus, Pin, PinOff, Plus, Repeat, X } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   addDie,
   advOf,
+  countOf,
   modifierOf,
   REFS,
   refAt,
@@ -14,14 +16,17 @@ import {
   stepModifier,
   tokenize,
 } from "../dice/formulaEdit.ts";
+import { D20Icon } from "../icons/dice.tsx";
 import { enterManual, rollDice } from "../net/dice.ts";
 import { useTable } from "../net/table.ts";
 import { useBoard } from "../state/entities.ts";
+import { useSettings } from "../state/settings.ts";
 import { useUi } from "../state/ui.ts";
+import { BottomSheet } from "../ui/BottomSheet.tsx";
 import { Button, IconButton } from "../ui/Button.tsx";
 import { Segmented } from "../ui/controls.tsx";
 import { toast } from "../ui/Toast.tsx";
-import { useIsPhone } from "./insets.ts";
+import { useIsPhone, useObstacle } from "./insets.ts";
 
 const QUICK = [4, 6, 8, 10, 12, 20, "%"] as const;
 
@@ -49,28 +54,134 @@ function storeSaved(userId: string, s: Saved): void {
 }
 
 /**
- * The dice tray (SPEC §8.9; hotkey D): quick dice (click adds, right-click removes), count and modifier steppers,
- * advantage/disadvantage, the formula with highlighting, `@` completion and inline errors, a label, who sees it,
- * Roll, and "I rolled physically…" for a real die. The server rolls; the dice tumble on everyone's screen.
+ * The dice tray (SPEC §8.9; hotkey D; a bottom sheet on phones): quick dice (click adds, right-click removes), count
+ * and modifier steppers, advantage/disadvantage, the formula with highlighting, `@` completion and inline errors, a
+ * label, who sees it, Roll, and "I rolled physically…" for a real die. The server rolls; the dice tumble on everyone's
+ * screen. Rolling closes the tray so the dice have the board (a tray over the middle of the screen would leave them a
+ * sliver beside it) — what's in it is kept, so D and Enter roll it again — unless it's pinned open, when the dice come
+ * to rest clear of it.
  */
 export function DiceTray() {
   const open = useUi((s) => s.diceTray);
   const me = useTable((s) => s.me);
   const phone = useIsPhone();
   if (!open || !me) return null;
+  const dm = me.role === "dm" || me.role === "admin";
+  const close = () => useUi.getState().set({ diceTray: false });
+  const rolled = () => {
+    if (!useSettings.getState().diceTrayKeepOpen) close();
+  };
+  if (phone) return <PhoneTray userId={me.userId} dm={dm} onClose={close} onRolled={rolled} />;
+  return <DesktopTray userId={me.userId} dm={dm} onClose={close} onRolled={rolled} />;
+}
+
+function PhoneTray({
+  userId,
+  dm,
+  onClose,
+  onRolled,
+}: {
+  userId: string;
+  dm: boolean;
+  onClose: () => void;
+  onRolled: () => void;
+}) {
+  // Roll stays in view under the scrolling tray, at any height.
+  const [actions, setActions] = useState<HTMLDivElement | null>(null);
   return (
-    <div
-      className={`pointer-events-none absolute z-40 flex justify-center px-3 ${phone ? "inset-x-0 bottom-0" : "bottom-[76px] left-0 right-0"}`}
+    <BottomSheet
+      label="Dice tray"
+      testId="dice-tray"
+      initialSnap={1}
+      footer={<div ref={setActions} />}
+      header={
+        <header className="flex w-full items-center gap-2 pb-1 pl-1">
+          <D20Icon size={18} className="text-brass" />
+          <h2 className="caps text-13 text-bone">Dice</h2>
+          <span className="ml-auto" />
+          <KeepOpen />
+          <IconButton label="Close the tray" onClick={onClose}>
+            <X size={18} />
+          </IconButton>
+        </header>
+      }
     >
-      <TrayPanel userId={me.userId} dm={me.role === "dm" || me.role === "admin"} phone={phone} />
+      <TrayBody userId={userId} dm={dm} onRolled={onRolled} actionsIn={actions} />
+    </BottomSheet>
+  );
+}
+
+/** Keeps the tray open after rolling (for a run of rolls), remembered on this device. */
+function KeepOpen() {
+  const keep = useSettings((s) => s.diceTrayKeepOpen);
+  return (
+    <IconButton
+      label={keep ? "Close the tray after rolling" : "Keep the tray open after rolling"}
+      active={keep}
+      onClick={() => useSettings.getState().update({ diceTrayKeepOpen: !keep })}
+    >
+      <Repeat size={16} />
+    </IconButton>
+  );
+}
+
+function DesktopTray({
+  userId,
+  dm,
+  onClose,
+  onRolled,
+}: {
+  userId: string;
+  dm: boolean;
+  onClose: () => void;
+  onRolled: () => void;
+}) {
+  const ref = useRef<HTMLElement>(null);
+  // The dice come to rest clear of it.
+  useObstacle("tray", ref);
+  return (
+    <div className="pointer-events-none absolute right-0 bottom-[76px] left-0 z-40 flex justify-center px-3">
+      <section
+        ref={ref}
+        aria-label="Dice tray"
+        data-testid="dice-tray"
+        className="panel pointer-events-auto flex w-full max-w-[520px] flex-col gap-3 p-3"
+      >
+        <header className="flex items-center gap-2">
+          <D20Icon size={18} className="text-brass" />
+          <h2 className="caps text-13 text-bone">Dice</h2>
+          <span className="ml-auto" />
+          <KeepOpen />
+          <IconButton label="Close the tray" shortcut="Esc" onClick={onClose}>
+            <X size={16} />
+          </IconButton>
+        </header>
+        <TrayBody userId={userId} dm={dm} onRolled={onRolled} />
+      </section>
     </div>
   );
 }
 
-function TrayPanel({ userId, dm, phone }: { userId: string; dm: boolean; phone: boolean }) {
-  const [formula, setFormula] = useState("1d20");
-  const [label, setLabel] = useState("");
-  const [visibility, setVisibility] = useState<RollVisibility>("public");
+function TrayBody({
+  userId,
+  dm,
+  onRolled,
+  actionsIn,
+}: {
+  userId: string;
+  dm: boolean;
+  onRolled?: () => void;
+  /** Where the Roll row goes (a sheet's footer); in the tray otherwise. */
+  actionsIn?: HTMLElement | null;
+}) {
+  const draft = useUi((s) => s.diceDraft);
+  const { formula, label, visibility } = draft;
+  const setDraft = (p: Partial<typeof draft>) =>
+    useUi.getState().set({ diceDraft: { ...useUi.getState().diceDraft, ...p } });
+  const setFormula = (f: string | ((f: string) => string)) =>
+    setDraft({ formula: typeof f === "function" ? f(useUi.getState().diceDraft.formula) : f });
+  const setLabel = (l: string) => setDraft({ label: l });
+  const setVisibility = (v: RollVisibility) => setDraft({ visibility: v });
   const [manual, setManual] = useState(false);
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState<Saved>(() => loadSaved(userId));
@@ -78,7 +189,7 @@ function TrayPanel({ userId, dm, phone }: { userId: string; dm: boolean; phone: 
   const [caret, setCaret] = useState(0);
   const error = formula.trim() ? checkFormula(formula) : null;
   const adv = advOf(formula);
-  const close = () => useUi.getState().set({ diceTray: false });
+  const count = countOf(formula);
   // The selected token the roller controls: its numbers answer `@` references.
   const selected = useUi((s) => (s.selection.length === 1 ? s.selection[0] : undefined));
   const token = useBoard((d) => (selected ? d.tokens.get(selected) : undefined));
@@ -116,6 +227,7 @@ function TrayPanel({ userId, dm, phone }: { userId: string; dm: boolean; phone: 
         ...(tokenId ? { tokenId } : {}),
       });
       remember(formula.trim(), label.trim());
+      onRolled?.();
     } catch (e) {
       toast.danger("Couldn't roll", (e as Error).message);
     } finally {
@@ -138,32 +250,42 @@ function TrayPanel({ userId, dm, phone }: { userId: string; dm: boolean; phone: 
     storeSaved(userId, next);
   };
 
+  const actions = (
+    <div className="flex items-center gap-2">
+      <Button
+        variant="ghost"
+        size="S"
+        icon={<Hand size={15} />}
+        disabled={!formula.trim() || error !== null}
+        onClick={() => setManual(true)}
+      >
+        I rolled physically…
+      </Button>
+      <span className="ml-auto" />
+      <Button
+        variant="primary"
+        loading={busy}
+        disabled={!formula.trim() || error !== null}
+        onClick={() => void roll()}
+      >
+        Roll
+      </Button>
+    </div>
+  );
+
   const ref = refAt(formula, caret);
   const suggestions = ref
     ? REFS.filter((r) => r.ref.startsWith(ref.text.toLowerCase()) && r.ref !== ref.text)
     : [];
 
   return (
-    <section
-      aria-label="Dice tray"
-      data-testid="dice-tray"
-      className={`panel pointer-events-auto flex w-full max-w-[520px] flex-col gap-3 p-3 ${phone ? "rounded-b-none pb-6" : ""}`}
-    >
-      <header className="flex items-center gap-2">
-        <Dices size={18} className="text-brass" aria-hidden />
-        <h2 className="caps text-13 text-bone">Dice</h2>
-        <span className="ml-auto" />
-        <IconButton label="Close the tray" shortcut="Esc" onClick={close}>
-          <X size={16} />
-        </IconButton>
-      </header>
-
-      <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Quick dice">
+    <div className="flex flex-col gap-3">
+      <div className="grid grid-cols-7 gap-1" role="group" aria-label="Quick dice">
         {QUICK.map((s) => (
           <button
             key={s}
             type="button"
-            className="tabular h-9 min-h-[var(--touch-min)] min-w-11 rounded-[var(--radius-control)] border border-line bg-ink-900 px-2 text-13 font-bold text-bone hover:border-brass hover:text-brass-bright"
+            className="tabular h-9 min-h-[var(--touch-min)] min-w-0 rounded-[var(--radius-control)] border border-line bg-ink-900 px-1 text-13 font-bold text-bone hover:border-brass hover:text-brass-bright"
             aria-label={`Add a d${s === "%" ? "100" : s} (right-click removes one)`}
             onClick={() => setFormula((f) => addDie(f, s))}
             onContextMenu={(e) => {
@@ -179,10 +301,11 @@ function TrayPanel({ userId, dm, phone }: { userId: string; dm: boolean; phone: 
       <div className="flex flex-wrap items-center gap-3">
         <Stepper
           label="Dice"
+          disabled={count === null}
           onMinus={() => setFormula((f) => stepCount(f, -1))}
           onPlus={() => setFormula((f) => stepCount(f, 1))}
         >
-          #
+          {count ? `${count.count} × ${count.die}` : "—"}
         </Stepper>
         <Stepper
           label="Modifier"
@@ -262,7 +385,7 @@ function TrayPanel({ userId, dm, phone }: { userId: string; dm: boolean; phone: 
           <p
             id="dice-formula-error"
             data-testid="dice-formula-error"
-            className="text-12 text-danger"
+            className="text-12 text-danger-text"
             role="alert"
           >
             {error.message}
@@ -337,32 +460,16 @@ function TrayPanel({ userId, dm, phone }: { userId: string; dm: boolean; phone: 
           onDone={() => {
             remember(formula.trim(), label.trim());
             setManual(false);
+            onRolled?.();
           }}
           onCancel={() => setManual(false)}
         />
+      ) : actionsIn ? (
+        createPortal(actions, actionsIn)
       ) : (
-        <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="S"
-            icon={<Hand size={15} />}
-            disabled={!formula.trim() || error !== null}
-            onClick={() => setManual(true)}
-          >
-            I rolled physically…
-          </Button>
-          <span className="ml-auto" />
-          <Button
-            variant="primary"
-            loading={busy}
-            disabled={!formula.trim() || error !== null}
-            onClick={() => void roll()}
-          >
-            Roll
-          </Button>
-        </div>
+        actions
       )}
-    </section>
+    </div>
   );
 }
 
@@ -371,20 +478,26 @@ function Stepper({
   children,
   onMinus,
   onPlus,
+  disabled = false,
 }: {
   label: string;
   children: ReactNode;
   onMinus: () => void;
   onPlus: () => void;
+  disabled?: boolean;
 }) {
   return (
     <div className="flex items-center gap-1" role="group" aria-label={label}>
       <span className="caps pr-1 text-12 text-fog">{label}</span>
-      <IconButton label={`${label} down`} onClick={onMinus}>
+      <IconButton label={`${label} down`} onClick={onMinus} disabled={disabled}>
         <Minus size={14} />
       </IconButton>
-      <span className="tabular min-w-[3ch] text-center text-13 font-bold text-bone">{children}</span>
-      <IconButton label={`${label} up`} onClick={onPlus}>
+      <span
+        className={`tabular min-w-[3ch] whitespace-nowrap text-center text-13 font-bold ${disabled ? "text-faint" : "text-bone"}`}
+      >
+        {children}
+      </span>
+      <IconButton label={`${label} up`} onClick={onPlus} disabled={disabled}>
         <Plus size={14} />
       </IconButton>
     </div>
@@ -399,7 +512,7 @@ const KIND_CLASS: Record<string, string> = {
   tag: "text-ember",
   keyword: "text-verdigris",
   space: "",
-  other: "text-danger",
+  other: "text-danger-text",
 };
 
 /** The formula's colours, under a transparent input (the input keeps the caret, selection and typing). */
@@ -415,7 +528,7 @@ function Highlight({ formula, error }: { formula: string; error: { at: number; e
         return (
           <span
             key={`${p.at}`}
-            className={`${KIND_CLASS[p.kind]} ${bad ? "underline decoration-[var(--danger)] decoration-wavy" : ""}`}
+            className={`${KIND_CLASS[p.kind]} ${bad ? "underline decoration-[var(--danger-text)] decoration-wavy" : ""}`}
           >
             {p.text}
           </span>

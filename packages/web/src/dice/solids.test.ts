@@ -92,4 +92,48 @@ describe("dice solids (SPEC §18.4)", () => {
     const s = solid("d10");
     expect(s.labels[markerFor(s, 10)]).toBe(0);
   });
+
+  it("numbered as real dice are: opposite faces sum to n + 1, and highs and lows mixed round every corner — a d20's corners all within one of 52.5, a d8's and d12's as even as that rule allows", () => {
+    const perms = (a: number[]): number[][] =>
+      a.length <= 1
+        ? [a]
+        : a.flatMap((x, i) => perms([...a.slice(0, i), ...a.slice(i + 1)]).map((p) => [x, ...p]));
+    for (const kind of ["d8", "d12", "d20"] as const) {
+      const s = solid(kind);
+      const n = s.labels.length;
+      const opp = s.normals.map((m, i) => s.normals.findIndex((o, q) => q !== i && o.dot(m) < -0.999));
+      for (const [i, l] of s.labels.entries())
+        expect(l + (s.labels[opp[i] as number] as number), kind).toBe(n + 1);
+      const corners = new Map<number, number[]>();
+      s.faces.forEach((f, fi) => {
+        for (const vi of f) corners.set(vi, [...(corners.get(vi) ?? []), fi]);
+      });
+      const around = [...corners.values()];
+      const mean = (around[0] as number[]).length * ((n + 1) / 2);
+      const cost = (L: readonly number[]) =>
+        around.reduce((c, fs) => c + (fs.reduce((t, fi) => t + (L[fi] as number), 0) - mean) ** 2, 0);
+      if (kind === "d20") {
+        for (const fs of around)
+          expect(Math.abs(fs.reduce((t, fi) => t + (s.labels[fi] as number), 0) - mean)).toBeLessThanOrEqual(
+            0.5,
+          );
+        continue;
+      }
+      // Every numbering with opposite faces summing to n + 1: none evens the corners out more.
+      const reps = s.labels.map((_, i) => i).filter((i) => i < (opp[i] as number));
+      let best = Number.POSITIVE_INFINITY;
+      for (const p of perms(reps.map((_, k) => k + 1)))
+        for (let m = 0; m < 1 << reps.length; m++) {
+          const L = new Array<number>(n).fill(0);
+          reps.forEach((i, q) => {
+            const low = p[q] as number;
+            const flip = (m >> q) & 1;
+            L[i] = flip ? n + 1 - low : low;
+            L[opp[i] as number] = flip ? low : n + 1 - low;
+          });
+          best = Math.min(best, cost(L));
+        }
+      expect(cost(s.labels), kind).toBe(best);
+    }
+  });
 });

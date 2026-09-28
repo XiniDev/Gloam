@@ -86,12 +86,15 @@ test.describe("P5 — dice (DICE)", () => {
     // AC-DICE-03: every kind of die at once, a d100 as its two d10s.
     await formula.fill("1d4 + 1d6 + 1d8 + 1d10 + 1d12 + 1d20 + 1d100");
     await expect(dave.getByTestId("dice-formula-error")).toHaveCount(0);
-    // Enter rolls; the card waits for the dice; Escape puts the tray away while they tumble.
+    // Enter rolls and puts the tray away (the dice get the board); the card waits for the dice — its chips empty
+    // until they settle, so they never tell the result first.
     await formula.press("Enter");
     await expect.poll(async () => (await feed(dave)).length, { intervals: [50] }).toBe(1);
     const r = (await feed(dave))[0] as Roll;
     await expect(card(dave, r.id)).toHaveAttribute("data-settled", "0");
-    await dave.keyboard.press("Escape");
+    await expect(card(dave, r.id).getByTestId("roll-pending")).toBeVisible();
+    await expect(card(dave, r.id).locator('[data-testid="die-chip"]:not([data-empty])')).toHaveCount(0);
+    await expect(dave.getByTestId("dice-tray")).toHaveCount(0);
     await dave.screenshot({ path: `${SHOTS}/dice-tumbling.png` });
     expect(r.tumble.map((d) => d.kind)).toEqual(["d4", "d6", "d8", "d10", "d12", "d20", "d10", "d10"]);
     for (const [p, name] of [
@@ -199,7 +202,10 @@ test.describe("P5 — dice (DICE)", () => {
     // Masked dice still tumble — with "?" faces.
     await expect.poll(async () => (await throwOf(erin, priv.id))?.masked, { timeout: 20_000 }).toBe(true);
 
-    // Self: Dave alone; the DM is told; Erin gets nothing.
+    // Self: Dave alone; the DM is told; Erin gets nothing. (The tray closed on rolling and opens as it was left.)
+    tray = await openTray(dave);
+    await expect(dave.getByTestId("dice-formula")).toHaveValue("1d20+4");
+    await expect(tray.getByRole("radio", { name: "Private to DM" })).toHaveAttribute("aria-checked", "true");
     await tray.getByRole("radio", { name: "Self" }).click();
     await dave.getByTestId("dice-formula").fill("1d8");
     await dave.waitForTimeout(250);
@@ -213,17 +219,26 @@ test.describe("P5 — dice (DICE)", () => {
     expect((await feed(erin)).some((x) => x.id === self.id)).toBe(false);
     await dave.keyboard.press("Escape");
 
-    // The DM's private roll: players see "The DM rolls…".
+    // The DM's private roll: players see "The DM rolls…" under the seal — not the DM's label, which is information
+    // too (§18.3 "no values"). The DM's own card says it was private.
     tray = await openTray(admin);
     await tray.getByRole("radio", { name: "Private" }).click();
     await admin.getByTestId("dice-formula").fill("1d20");
+    await tray.getByLabel("Label").fill("Ambush");
     await tray.getByRole("button", { name: "Roll", exact: true }).click();
     await expect.poll(async () => (await feed(admin)).length).toBe(4);
     const dmRoll = (await feed(admin))[0] as Roll;
-    for (const p of [dave, erin])
+    for (const p of [dave, erin]) {
       await expect
         .poll(async () => (await feed(p)).find((x) => x.id === dmRoll.id))
         .toMatchObject({ masked: true, text: "The DM rolls…" });
+      expect(JSON.stringify((await feed(p)).find((x) => x.id === dmRoll.id))).not.toContain("Ambush");
+      await expect(card(p, dmRoll.id)).toContainText("The DM");
+      await expect(card(p, dmRoll.id)).not.toContainText("Ambush");
+      await expect(card(p, dmRoll.id).getByRole("img", { name: "DM" })).toBeVisible();
+    }
+    await expect(card(admin, dmRoll.id)).toContainText("Ambush");
+    await expect(card(admin, dmRoll.id).getByTestId("roll-private")).toHaveText("Private");
     await admin.keyboard.press("Escape");
 
     // AC-DICE-05: Erin rolled real dice: entered by hand, recorded with a hand, seen by everyone like any roll.
@@ -242,5 +257,134 @@ test.describe("P5 — dice (DICE)", () => {
     }
     await dave.screenshot({ path: `${SHOTS}/dice-feed-player.png` });
     await admin.screenshot({ path: `${SHOTS}/dice-feed-dm.png` });
+  });
+
+  test("dice come to rest where they're seen — clear of the feed, the action bar and a tray kept open, one throw at a time — and read large on a phone, whose dice button the feed never covers", async ({
+    admin,
+    browser,
+    gloam,
+    guardLog,
+  }) => {
+    interface Stage {
+      easing: boolean;
+      throws: {
+        id: string;
+        done: boolean;
+        dice: { visible: boolean; screen: [number, number]; sizePx: number }[];
+      }[];
+    }
+    const code = await adminAtTable(admin);
+    await introDone(admin);
+    const sceneId = await createScene(admin, {
+      name: "Hall",
+      mapKind: "procedural",
+      floorStyle: "stone",
+      widthFt: 40,
+      heightFt: 30,
+    });
+    await boardSettled(admin, sceneId);
+    const rested = (p: Page, id: string) =>
+      expect
+        .poll(async () => (await throwOf(p, id))?.settled, { timeout: 20_000, intervals: [100] })
+        .toBe(true);
+    /** Every die of a throw on screen and clear of the named HUD pieces (each die as the square round it). */
+    const clearOf = async (p: Page, id: string, pieces: string[]) => {
+      // Where they finally show: the dice camera done easing in on them.
+      await expect
+        .poll(async () => (await hook<Stage>(p, "diceStage")).easing, { timeout: 5_000 })
+        .toBe(false);
+      const t = (await hook<Stage>(p, "diceStage")).throws.find((x) => x.id === id);
+      expect(t, "the throw is on the stage").toBeTruthy();
+      const vp = p.viewportSize() as { width: number; height: number };
+      const boxes: { name: string; x: number; y: number; width: number; height: number }[] = [];
+      for (const name of pieces) {
+        const b = await p.getByTestId(name).first().boundingBox();
+        if (b) boxes.push({ name, ...b });
+      }
+      for (const d of t?.dice ?? []) {
+        const [x, y] = d.screen;
+        const r = d.sizePx / 2;
+        expect(x - r, "on screen").toBeGreaterThanOrEqual(0);
+        expect(y - r, "on screen").toBeGreaterThanOrEqual(0);
+        expect(x + r, "on screen").toBeLessThanOrEqual(vp.width);
+        expect(y + r, "on screen").toBeLessThanOrEqual(vp.height);
+        for (const b of boxes)
+          expect(
+            x + r > b.x && x - r < b.x + b.width && y + r > b.y && y - r < b.y + b.height,
+            `a die at ${Math.round(x)},${Math.round(y)} under the ${b.name}`,
+          ).toBe(false);
+      }
+      return t?.dice ?? [];
+    };
+
+    // The DM's feed fills (three cards along the bottom-left); the dice stay at rest while they're checked.
+    await hook(admin, "diceHold", 60_000);
+    for (const formula of ["1d20", "2d6", "1d8"]) {
+      const { id } = await req<{ id: string }>(admin, "dice.roll", { formula });
+      await rested(admin, id);
+    }
+    // Seven dice from the tray: it closes as they're thrown; they land clear of the feed and the action bar.
+    let tray = await openTray(admin);
+    await admin.getByTestId("dice-formula").fill("1d20 + 1d12 + 1d10 + 1d8 + 2d6 + 1d4");
+    await admin.getByTestId("dice-formula").press("Enter");
+    await expect(admin.getByTestId("dice-tray")).toHaveCount(0);
+    await expect.poll(async () => (await feed(admin)).length).toBe(4);
+    const seven = ((await feed(admin))[0] as Roll).id;
+    await rested(admin, seven);
+    await clearOf(admin, seven, ["roll-feed", "action-bar"]);
+
+    // Kept open for a run of rolls: the dice come to rest clear of the tray too — and the last throw's dice made way.
+    tray = await openTray(admin);
+    await tray.getByRole("button", { name: "Keep the tray open after rolling" }).click();
+    await admin.getByTestId("dice-formula").fill("1d20 + 1d12 + 1d10 + 2d6");
+    await admin.getByTestId("dice-formula").press("Enter");
+    await expect.poll(async () => (await feed(admin)).length).toBe(5);
+    await expect(tray).toBeVisible();
+    const kept = ((await feed(admin))[0] as Roll).id;
+    await rested(admin, kept);
+    await clearOf(admin, kept, ["roll-feed", "action-bar", "dice-tray"]);
+    await expect
+      .poll(
+        async () => (await hook<Stage>(admin, "diceStage")).throws.find((x) => x.id === seven)?.done ?? true,
+      )
+      .toBe(true);
+    await admin.screenshot({ path: `${SHOTS}/dice-beside-tray.png` });
+    await tray.getByRole("button", { name: "Close the tray after rolling" }).click();
+    await admin.keyboard.press("Escape");
+
+    // A phone: the tray is a bottom sheet at 60 %; rolling closes it; a pair of dice lands large (≥ 48 px) and in
+    // view, clear of the feed — which sits above the action bar, the dice button uncovered.
+    const pia = await admitPlayer(admin, browser, gloam, guardLog, code, "Pia", {
+      viewport: { width: 390, height: 844 },
+    });
+    await boardSettled(pia, sceneId);
+    await hook(pia, "diceHold", 60_000);
+    await pia.getByTestId("dice-button").click();
+    await expect(pia.getByTestId("dice-tray")).toHaveAttribute("data-snap", "0.6");
+    await pia.getByTestId("dice-formula").fill("2d20");
+    await pia.getByTestId("dice-formula").press("Enter");
+    await expect(pia.getByTestId("dice-tray")).toHaveCount(0);
+    await expect.poll(async () => (await feed(pia)).length).toBeGreaterThan(0);
+    const pair = ((await feed(pia))[0] as Roll).id;
+    await rested(pia, pair);
+    const dice = await clearOf(pia, pair, ["roll-feed", "action-bar"]);
+    expect(dice.length).toBe(2);
+    for (const d of dice) expect(d.sizePx, "a phone die's size (px)").toBeGreaterThanOrEqual(48);
+    const button = (await pia.getByTestId("dice-button").boundingBox()) as {
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+    };
+    const onTop = await pia.evaluate(
+      ([x, y]) =>
+        document
+          .elementFromPoint(x as number, y as number)
+          ?.closest("[data-testid]")
+          ?.getAttribute("data-testid"),
+      [button.x + button.width / 2, button.y + button.height / 2],
+    );
+    expect(onTop, "what's on top of the dice button").toBe("dice-button");
+    await pia.screenshot({ path: `${SHOTS}/dice-phone-pair.png` });
   });
 });

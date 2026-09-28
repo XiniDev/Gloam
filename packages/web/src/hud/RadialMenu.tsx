@@ -313,7 +313,7 @@ export function RadialMenu() {
                 onClick={() => choose(s)}
                 className={`panel pointer-events-auto absolute flex h-[62px] w-[74px] -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center gap-1 px-1 transition-colors duration-[var(--dur-fast)] focus-visible:border-brass ${
                   s.danger
-                    ? "text-[var(--blood-500)] hover:bg-[var(--danger-soft)]"
+                    ? "text-danger-text hover:bg-[var(--danger-soft)]"
                     : "text-bone hover:bg-raised hover:text-brass-bright"
                 }`}
                 style={{ left: Math.cos(a) * R, top: Math.sin(a) * R }}

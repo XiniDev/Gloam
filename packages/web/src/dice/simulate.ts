@@ -19,10 +19,18 @@ export const POSE = 7;
 export const RESTITUTION = 0.3;
 export const FRICTION = 0.6;
 /**
- * The tray every client throws in (cm): the same for everyone, or the same seed wouldn't give the same tumble. Square,
- * so it fills a portrait phone as well as a landscape screen (a 30 × 19 tray left dice 20 px across on a phone).
+ * The tray a throw of n dice lands in (cm): x across, z deep along the throw. Every client derives the same tray from
+ * the same dice, or the same seed wouldn't give the same tumble. Dice come to rest spread over nearly all of it
+ * (measured: within about a centimetre of its walls from three dice up), so its size is how large they can be drawn:
+ * a pair lands close together and reads large, a fistful gets room. Deeper than wide, as a tray you throw along —
+ * a portrait phone's narrow screen frames its width, a landscape screen's spare height its depth.
  */
-export const TRAY = { w: 20, d: 20 } as const;
+export function trayFor(n: number): { w: number; d: number } {
+  const w = n <= 2 ? 9 : n <= 4 ? 10 : n <= 8 ? 11 : 12.5;
+  return { w, d: w * 1.5 };
+}
+/** The largest tray (twenty dice). */
+export const TRAY_MAX = trayFor(20);
 
 export interface ThrowInput {
   dice: DieKind[];
@@ -95,16 +103,16 @@ export async function simulate(input: ThrowInput): Promise<ThrowResult> {
   const bodies: RAPIER.RigidBody[] = [];
   const handleToDie = new Map<number, number>();
   const edge = input.from === "near" ? d / 2 - 3 : -d / 2 + 3;
+  // Rows of five 2.4 cm apart need 12 cm across; a narrower tray throws rows of four.
+  const perRow = w >= 12 ? 5 : 4;
   const toward = input.from === "near" ? -1 : 1;
   for (let i = 0; i < n; i++) {
     const s = solid(input.dice[i] as DieKind);
-    // Tossed from the thrower's edge: up and forward in an arc, spinning, landing mid-tray and tumbling on — about
-    // 1.1–1.8 s from the throw to rest (measured; §8.9 asks 1.2–2.5 s).
-    // Released low from the thrower's edge, in rows of five (never overlapping), and skimmed across the tray with a
-    // strong spin: they tumble along the table and stay in view, instead of arcing up out of it.
-    const row = Math.floor(i / 5);
-    const col = i % 5;
-    const across = Math.min(5, n - row * 5);
+    // Released from the thrower's edge in rows (never overlapping) and tossed up and forward in an arc, spinning,
+    // landing mid-tray and tumbling on — about 1.0–1.6 s from the throw to rest (measured; §8.9 asks 1.2–2.5 s).
+    const row = Math.floor(i / perRow);
+    const col = i % perRow;
+    const across = Math.min(perRow, n - row * perRow);
     const x = (col - (across - 1) / 2) * 2.4 + (r() - 0.5) * 0.8;
     const y = 9 + r() * 3;
     const z = edge + toward * row * 2.3 + (r() - 0.5) * 0.6;

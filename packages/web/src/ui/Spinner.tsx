@@ -1,4 +1,6 @@
-/** A small spinning d20 outline (SPEC §28 Button loading state). */
+import { D20_EDGES, D20_FACE, D20_OUTLINE } from "../icons/dice.tsx";
+
+/** A small spinning d20 (SPEC §28 Button loading state; a roll waiting on its dice): the d20 glyph, turning. */
 export function D20Spinner({ size = 16, label }: { size?: number; label?: string }) {
   return (
     <svg
@@ -12,14 +14,12 @@ export function D20Spinner({ size = 16, label }: { size?: number; label?: string
       fill="none"
       stroke="currentColor"
       strokeWidth="1.8"
+      strokeLinecap="round"
       strokeLinejoin="round"
     >
-      <path d="M12 2.5 20.6 7.4v9.2L12 21.5 3.4 16.6V7.4z" />
-      <path
-        d="M12 2.5 7.4 10h9.2zM7.4 10 3.4 16.6M16.6 10l4 6.6M7.4 10 12 21.5 16.6 10"
-        strokeWidth="1.2"
-        opacity=".7"
-      />
+      <path d={D20_OUTLINE} />
+      <path d={D20_FACE} strokeWidth="1.5" />
+      <path d={D20_EDGES} strokeWidth="1.1" opacity=".7" />
     </svg>
   );
 }

@@ -94,9 +94,7 @@ export function Menu({
                 it.onSelect();
               }}
               className={`flex w-full items-center gap-2.5 px-3 py-2 text-left text-14 transition-colors duration-[var(--dur-fast)] disabled:opacity-40 ${
-                it.danger
-                  ? "text-[var(--blood-500)] hover:bg-[var(--danger-soft)]"
-                  : "text-bone hover:bg-raised"
+                it.danger ? "text-danger-text hover:bg-[var(--danger-soft)]" : "text-bone hover:bg-raised"
               }`}
             >
               {it.icon ? <span className="text-muted">{it.icon}</span> : null}

@@ -13,7 +13,7 @@ const VARIANT: Record<ButtonVariant, string> = {
     "bg-accent text-[var(--on-accent)] shadow-[inset_0_1px_0_var(--brass-300),0_6px_16px_var(--glow-brass-soft)] hover:bg-brass-bright",
   secondary: "border border-brass-deep/70 bg-raised text-text hover:border-brass hover:bg-ink-700",
   ghost: "text-muted hover:bg-raised hover:text-text",
-  danger: "border border-danger text-[var(--blood-500)] hover:bg-danger hover:text-bone",
+  danger: "border border-danger text-danger-text hover:bg-danger hover:text-bone",
 };
 
 const SIZE: Record<ButtonSize, string> = {
@@ -73,7 +73,7 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(functio
 ) {
   const toneCls =
     tone === "danger"
-      ? "text-[var(--blood-500)] hover:bg-[var(--danger-soft)]"
+      ? "text-danger-text hover:bg-[var(--danger-soft)]"
       : tone === "accent"
         ? "text-accent hover:bg-[var(--glow-brass-soft)]"
         : // Selected (§27.4): a brass icon inside a 1-px brass hairline with a 2-px outer glow — louder than a hover,

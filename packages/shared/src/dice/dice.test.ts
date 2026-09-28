@@ -254,4 +254,20 @@ describe("who sees a roll (SPEC §18.3, AC-DICE-04)", () => {
     });
     expect(viewOfRoll(rec("self"), bob, false)).toBeNull();
   });
+  it("a masked card never carries the label to anyone but its roller, and says when the DM rolled", () => {
+    const labelled = (v: RollVisibility, userId = "anna") => ({ ...rec(v, userId), label: "Ambush" });
+    for (const [v, viewer, dmRoller] of [
+      ["dm", bob, true],
+      ["dm", bob, false],
+      ["blind", bob, true],
+      ["blind", bob, false],
+      ["self", dm, false],
+    ] as const) {
+      const m = viewOfRoll(labelled(v, dmRoller ? "dm" : "anna"), viewer, dmRoller);
+      expect(JSON.stringify(m), `${v} for ${viewer.userId}`).not.toContain("Ambush");
+      expect(m).toMatchObject({ masked: true, byDm: dmRoller });
+    }
+    // A player's own blind roll: they typed the label, so they keep it (their dice still show "?").
+    expect(viewOfRoll(labelled("blind"), anna, false)).toMatchObject({ masked: true, label: "Ambush" });
+  });
 });

@@ -1,3 +1,4 @@
+import type { RollVisibility } from "@gloam/shared/dice";
 import { create } from "zustand";
 
 /** Board tools (SPEC §29.3 left toolbar). DM-only tools arrive with their phases. */
@@ -38,6 +39,8 @@ interface UiStore {
   lineWidthFt: number;
   /** The dice tray is open (SPEC §8.9, hotkey D). */
   diceTray: boolean;
+  /** What's in the tray: kept while it's closed (a phone's tray closes to show the dice; it opens again as it was). */
+  diceDraft: { formula: string; label: string; visibility: RollVisibility };
   set(p: Partial<UiStore>): void;
   select(ids: string[], mode?: "replace" | "toggle"): void;
   rememberCamera(sceneId: string, cam: CameraMemory): void;
@@ -91,6 +94,7 @@ export const useUi = create<UiStore>((set, get) => ({
   measureShape: "ruler",
   lineWidthFt: 5,
   diceTray: false,
+  diceDraft: { formula: "1d20", label: "", visibility: "public" },
   set(p) {
     set(p);
     persist();

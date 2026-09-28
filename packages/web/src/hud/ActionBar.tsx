@@ -1,9 +1,9 @@
-import { Dices } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { prefetchDice } from "../dice/throws.ts";
+import { D20Icon } from "../icons/dice.tsx";
 import { useTable } from "../net/table.ts";
 import { useUi } from "../state/ui.ts";
-import { IconButton } from "../ui/Button.tsx";
+import { Tooltip } from "../ui/Tooltip.tsx";
 import { ElevationControl } from "./ElevationControl.tsx";
 import { insetMeasures, useMeasuredInset } from "./insets.ts";
 
@@ -51,16 +51,30 @@ function Bar({ tray }: { tray: boolean }) {
         className="panel pointer-events-auto flex items-center gap-1 p-1"
       >
         <ElevationControl />
-        <IconButton
-          label="Dice tray"
-          shortcut="D"
-          active={tray}
-          data-testid="dice-button"
-          onClick={() => useUi.getState().set({ diceTray: !tray })}
-        >
-          <Dices size={18} />
-        </IconButton>
+        <DiceButton open={tray} />
       </div>
     </div>
+  );
+}
+
+/** The dice button (SPEC §27.4: the one round button — circles are for portraits, pips and the dice), a d20 on it. */
+function DiceButton({ open }: { open: boolean }) {
+  return (
+    <Tooltip label="Dice tray" shortcut="D">
+      <button
+        type="button"
+        aria-label="Dice tray"
+        aria-pressed={open || undefined}
+        data-testid="dice-button"
+        onClick={() => useUi.getState().set({ diceTray: !open })}
+        className={`hit grid h-11 w-11 place-items-center rounded-full border transition-[background-color,color,border-color,box-shadow] duration-[var(--dur-fast)] ${
+          open
+            ? "border-brass bg-[var(--glow-brass-soft)] text-brass-bright shadow-[0_0_0_2px_var(--glow-brass)]"
+            : "border-brass-deep/70 bg-ink-900 text-brass hover:border-brass hover:text-brass-bright"
+        }`}
+      >
+        <D20Icon size={24} />
+      </button>
+    </Tooltip>
   );
 }

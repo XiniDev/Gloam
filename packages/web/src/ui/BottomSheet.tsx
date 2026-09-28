@@ -17,14 +17,20 @@ export function BottomSheet({
   label,
   header,
   testId,
+  initialSnap = 0,
+  footer,
   children,
 }: {
   label: string;
   header?: ReactNode;
   testId?: string;
+  /** Stays in view under the scrolling content: the sheet's main action (Roll) at any height. */
+  footer?: ReactNode;
+  /** The height it opens at (an index into SHEET_SNAPS): 30 % unless its content needs more to be of use. */
+  initialSnap?: number;
   children: ReactNode;
 }) {
-  const [snap, setSnap] = useState(0);
+  const [snap, setSnap] = useState(() => Math.max(0, Math.min(SHEET_SNAPS.length - 1, initialSnap)));
   const [dragPx, setDragPx] = useState<number | null>(null);
   const drag = useRef<{ y0: number; h0: number; last: { y: number; t: number }[] } | null>(null);
   const ref = useRef<HTMLElement>(null);
@@ -99,6 +105,7 @@ export function BottomSheet({
       </button>
       {header ? <div className="shrink-0 px-3">{header}</div> : null}
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-3">{children}</div>
+      {footer ? <div className="shrink-0 border-t border-line px-3 py-2">{footer}</div> : null}
     </section>
   );
 }

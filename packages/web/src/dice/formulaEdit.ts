@@ -50,6 +50,16 @@ export function stepCount(formula: string, delta: number): string {
   return withAdv(`${f.slice(0, last.index)}${n}d${last[2]}${f.slice(last.index + last[0].length)}`, formula);
 }
 
+/** The dice term the count stepper steps (the last one), for its display: `2d6 + 1d20` → 1 × d20; none → null. */
+export function countOf(formula: string): { count: number; die: string } | null {
+  const re = /(\d*)d(\d+|%)/gi;
+  let last: RegExpExecArray | null = null;
+  const f = stripAdv(formula);
+  for (let m = re.exec(f); m; m = re.exec(f)) last = m;
+  if (!last) return null;
+  return { count: Number(last[1] || "1"), die: `d${last[2] === "%" ? "100" : last[2]}` };
+}
+
 /** The trailing modifier stepped: `1d20 + 5` → `1d20 + 6`; a new one added, a zero one removed. */
 export function stepModifier(formula: string, delta: number): string {
   const f = stripAdv(formula).trim();

@@ -7,30 +7,27 @@ import {
   DirectionalLight,
   type Material,
   Mesh,
-  MeshPhysicalMaterial,
-  MeshStandardMaterial,
+  MeshBasicMaterial,
   PerspectiveCamera,
   PlaneGeometry,
-  PMREMGenerator,
   Quaternion,
   Scene,
   ShadowMaterial,
-  type Texture,
   Vector3,
 } from "three";
-import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { audio } from "../audio/engine.ts";
 import type { SfxName } from "../audio/recipes.ts";
 import { again } from "../board/frames.ts";
 import { frameBounds } from "../board/framing.ts";
 import type { TierSpec } from "../board/tiers.ts";
-import { clearArea, isPhoneNow, useHudInsets } from "../hud/insets.ts";
+import { clearArea, isPhoneNow, largestClear, useHudInsets, useHudObstacles } from "../hud/insets.ts";
 import { useTable } from "../net/table.ts";
 import { prefersReducedMotion } from "../state/settings.ts";
 import { provideTestHook } from "../test/hooks.ts";
-import { dieGeometry, type FaceSet, faceAtlas } from "./atlas.ts";
+import { dieGeometry, type FaceSet } from "./atlas.ts";
+import { contactShadowTexture, diceEnvironment, diceMaterial } from "./materials.ts";
 import type { ThrowResult } from "./simulate.ts";
-import { POSE, STEP_S, TRAY } from "./simulate.ts";
+import { POSE, STEP_S, TRAY_MAX, trayFor } from "./simulate.ts";
 import { type DieKind, landedMarker, markerFor, remap, type Solid, solid } from "./solids.ts";
 import { type FeedRoll, isMasked, useRolls } from "./state.ts";
 import { throwDice } from "./throws.ts";
@@ -44,6 +41,9 @@ import { throwDice } from "./throws.ts";
  * card's total appears as they settle; they fade 2.5 s later. Clacks come from the recorded contacts (loudness and
  * brightness from each impulse, per skin material), a settle tick as each die stops, a flourish for a natural 20 or 1.
  * Reduced motion shows the dice where they come to rest. The first 20 dice are thrown; the rest stay chips on the card.
+ * One throw is in the tray at a time: dice at rest fade as the next throw is released (they'd pass through each
+ * other, and the view would have to take in both). Each die has a soft contact shadow under it — the only shadow on
+ * tiers without shadow maps.
  */
 
 const HOLD_MS = 2500;
@@ -59,17 +59,23 @@ const PHYSICAL_MAX = 20;
 interface Throw {
   roll: FeedRoll;
   kinds: DieKind[];
+  /** Its tray (the same on every client: sized by the dice). */
+  tray: { w: number; d: number };
   tumble: Pick<TumbleDie, "kind" | "percentile">[];
   /** The marker each die must show (null: a masked die, any face — they all read "?"). */
   wanted: (number | null)[];
   result: ThrowResult | null;
   meshes: Mesh[];
   materials: Material[];
+  /** Each die's contact shadow. */
+  shadows: Mesh[];
   /** The symmetry per die (the mesh is drawn at q_body · S). */
   sym: Quaternion[];
   start: number;
   /** When it came to rest (all dice), and the eased rest pose for dice that hadn't slept. */
   settledAt: number | null;
+  /** When it starts to fade: its hold after settling, or sooner when the next throw is released. */
+  fadeAt: number | null;
   rest: (Quaternion | null)[];
   contact: number;
   ticked: boolean[];
@@ -92,8 +98,6 @@ export const diceLog: {
   /** Each clack played: its contact's step, the die, what it struck, and the gain from its impulse. */
   clacks: { step: number; die: number; other: "tray" | "die"; gain: number }[];
 }[] = [];
-
-const envByRenderer = new WeakMap<object, Texture>();
 
 export function DiceOverlay({ tier }: { tier: TierSpec }) {
   // Mounted only while there are dice to show: its render pass (after the board's) exists only then.
@@ -134,36 +138,38 @@ function DiceStage({ tier, onIdle }: { tier: TierSpec; onIdle: () => void }) {
     key.shadow.bias = -0.0008;
     scene.add(key, key.target, new AmbientLight(0xffffff, 0.12));
     const floor = new Mesh(
-      new PlaneGeometry(TRAY.w + 16, TRAY.d + 16),
+      new PlaneGeometry(TRAY_MAX.w + 40, TRAY_MAX.d + 40),
       new ShadowMaterial({ opacity: 0.32, depthWrite: false }),
     );
     floor.rotation.x = -Math.PI / 2;
     floor.receiveShadow = shadows;
+    floor.visible = shadows;
     scene.add(floor);
-    return { scene, camera, floor };
+    const blobGeometry = new PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
+    return { scene, camera, floor, blobGeometry };
   }, [shadows]);
-  useEffect(() => {
-    // Reflections for metal and gems: a small procedural room, made once per renderer (no files, no network).
-    let env = envByRenderer.get(gl);
-    if (!env) {
-      const pmrem = new PMREMGenerator(gl);
-      env = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-      pmrem.dispose();
-      envByRenderer.set(gl, env);
-    }
-    stage.scene.environment = env;
-    // The room lights the dice softly (reflections for metal and gems) without washing their colour out.
-    stage.scene.environmentIntensity = 0.45;
-  }, [gl, stage]);
+  // Reflections for metal and glassy skins: the lantern-lit room, made once per renderer.
+  const env = useMemo(() => diceEnvironment(gl), [gl]);
   useEffect(
     () => () => {
       stage.floor.geometry.dispose();
       (stage.floor.material as Material).dispose();
+      stage.blobGeometry.dispose();
     },
     [stage],
   );
 
   const throws = useMemo<Throw[]>(() => [], []);
+  // The HUD moving (a sheet opening over the bottom, the feed growing) re-frames dice already at rest: a frame is asked
+  // for, and the camera eases them into the new clear area — they'd otherwise stay put under the new panel.
+  useEffect(() => {
+    const a = useHudInsets.subscribe(() => again());
+    const b = useHudObstacles.subscribe(() => again());
+    return () => {
+      a();
+      b();
+    };
+  }, []);
   // A new round of dice starts from the tray's framing, not wherever the last ones came to rest.
   useEffect(() => {
     camReady = false;
@@ -186,6 +192,11 @@ function DiceStage({ tier, onIdle }: { tier: TierSpec; onIdle: () => void }) {
     const start = (roll: FeedRoll) => {
       const tumble = roll.tumble.slice(0, PHYSICAL_MAX);
       const kinds = tumble.map((d) => d.kind as DieKind);
+      const tray = trayFor(kinds.length);
+      // Dice at rest make way for the new throw.
+      const now = performance.now();
+      for (const o of throws)
+        if (!o.done && o.settledAt !== null) o.fadeAt = Math.min(o.fadeAt ?? Number.POSITIVE_INFINITY, now);
       const masked = isMasked(roll);
       const wanted = tumble.map((d) => {
         if (masked) return null;
@@ -194,28 +205,46 @@ function DiceStage({ tier, onIdle }: { tier: TierSpec; onIdle: () => void }) {
       });
       const skin = roll.skin;
       const materials: Material[] = [];
+      const shadowsOf: Mesh[] = [];
       const meshes = tumble.map((d) => {
         const s = solid(d.kind as DieKind);
         const set: FaceSet = masked ? "masked" : d.percentile === "tens" ? "tens" : "values";
-        const m = diceMaterial(s, skin, set, high);
+        const m = diceMaterial(s, skin, set, high, env);
         materials.push(m);
         const mesh = new Mesh(dieGeometry(s), m);
         mesh.castShadow = shadows;
         mesh.visible = false;
         stage.scene.add(mesh);
+        const blob = new Mesh(
+          stage.blobGeometry,
+          new MeshBasicMaterial({
+            map: contactShadowTexture(),
+            color: 0x000000,
+            transparent: true,
+            depthWrite: false,
+            opacity: 0,
+          }),
+        );
+        blob.visible = false;
+        blob.renderOrder = -1;
+        stage.scene.add(blob);
+        shadowsOf.push(blob);
         return mesh;
       });
       const t: Throw = {
         roll,
         kinds,
+        tray,
         tumble,
         wanted,
         result: null,
         meshes,
         materials,
+        shadows: shadowsOf,
         sym: [],
         start: 0,
         settledAt: null,
+        fadeAt: null,
         rest: kinds.map(() => null),
         contact: 0,
         ticked: kinds.map(() => false),
@@ -226,7 +255,7 @@ function DiceStage({ tier, onIdle }: { tier: TierSpec; onIdle: () => void }) {
       };
       throws.push(t);
       const seed = roll.seed ?? hashId(roll.id);
-      throwDice({ dice: kinds, seed, tray: TRAY, from: roll.userId === me ? "near" : "far" })
+      throwDice({ dice: kinds, seed, tray, from: roll.userId === me ? "near" : "far" })
         .then((res) => {
           t.result = res;
           t.sym = kinds.map((k, i) => {
@@ -246,28 +275,42 @@ function DiceStage({ tier, onIdle }: { tier: TierSpec; onIdle: () => void }) {
     };
     pull();
     return useRolls.subscribe(pull);
-  }, [throws, stage, high, shadows, me]);
+  }, [throws, stage, high, shadows, me, env]);
 
   // Diagnostics (test builds): the dice camera and where each die is drawn on screen.
   useEffect(() => {
     provideTestHook("diceStage", () => {
       const cam = stage.camera;
       const v = new Vector3();
+      const W = gl.domElement.clientWidth;
+      const H = gl.domElement.clientHeight;
+      const f = 1 / Math.tan(((cam.fov / 2) * Math.PI) / 180);
       return {
         camera: cam.position.toArray(),
         aspect: cam.aspect,
+        easing: camEasing,
         throws: throws.map((t) => ({
           id: t.roll.id,
           done: t.done,
           settledAt: t.settledAt,
+          tray: t.tray,
           dice: t.meshes.map((m) => {
             v.copy(m.position).project(cam);
-            return { visible: m.visible, ndc: [v.x, v.y, v.z], pos: m.position.toArray() };
+            const ndc = [v.x, v.y, v.z];
+            // Where it's drawn (CSS px) and how large: its 1.6-cm width seen from the camera's distance.
+            const dist = m.position.distanceTo(cam.position);
+            return {
+              visible: m.visible,
+              ndc,
+              pos: m.position.toArray(),
+              screen: [((v.x + 1) / 2) * W, ((1 - v.y) / 2) * H],
+              sizePx: (1.6 / dist) * f * (H / 2),
+            };
           }),
         })),
       };
     });
-  }, [stage, throws]);
+  }, [stage, throws, gl]);
   const up = useMemo(() => new Vector3(0, 1, 0), []);
   const qa = useMemo(() => new Quaternion(), []);
   const qb = useMemo(() => new Quaternion(), []);
@@ -318,6 +361,14 @@ function DiceStage({ tier, onIdle }: { tier: TierSpec; onIdle: () => void }) {
             qa.slerp(rest, t.reduced ? 1 : e);
           }
           mesh.quaternion.copy(qa).multiply(t.sym[i] as Quaternion);
+          // Its contact shadow: under it on the floor, widening and fading as it rises.
+          const blob = t.shadows[i] as Mesh;
+          const lift = Math.min(1, Math.max(0, (mesh.position.y - 0.8) / 10));
+          blob.visible = true;
+          blob.position.set(mesh.position.x, 0.02, mesh.position.z);
+          blob.scale.setScalar(2.3 + lift * 2.4);
+          (blob.material as MeshBasicMaterial).opacity =
+            (shadows ? 0.3 : 0.62) * (1 - lift) ** 2 * fade(t, now);
           // Its settle tick, once, as it stops.
           if (!t.ticked[i] && k >= (res.restStep[i] ?? res.steps)) {
             t.ticked[i] = true;
@@ -345,14 +396,17 @@ function DiceStage({ tier, onIdle }: { tier: TierSpec; onIdle: () => void }) {
         if (t.settledAt === null && (t.reduced || now - t.start >= restMs)) finish(t, now);
         // Held, then faded out.
         if (t.settledAt !== null) {
-          const since = now - t.settledAt;
-          const a = since <= holdMs ? 1 : Math.max(0, 1 - (since - holdMs) / FADE_MS);
+          const a = fade(t, now);
           for (const m of t.materials) {
             m.transparent = a < 1;
             m.opacity = a;
           }
           if (a <= 0) {
             for (const mesh of t.meshes) stage.scene.remove(mesh);
+            for (const b of t.shadows) {
+              stage.scene.remove(b);
+              (b.material as Material).dispose();
+            }
             for (const m of t.materials) m.dispose();
             t.done = true;
           }
@@ -361,14 +415,10 @@ function DiceStage({ tier, onIdle }: { tier: TierSpec; onIdle: () => void }) {
       const easing = frameDice(stage, throws, W, H, now);
       // Frames only while something moves — dice in the air, the camera easing in, a fade; dice at rest hold still
       // without drawing (a laptop's battery, a phone's, the host PC also running the server), until their fade.
-      const moving = throws.some((t) => !t.done && (t.settledAt === null || now - t.settledAt >= holdMs));
+      const moving = throws.some((t) => !t.done && (t.settledAt === null || now >= fadeStart(t)));
       if (moving || easing) again();
       else if (live) {
-        const fadeAt = Math.min(
-          ...throws
-            .filter((t) => !t.done && t.settledAt !== null)
-            .map((t) => (t.settledAt as number) + holdMs),
-        );
+        const fadeAt = Math.min(...throws.filter((t) => !t.done && t.settledAt !== null).map(fadeStart));
         if (Number.isFinite(fadeAt) && !holdTimer) {
           holdTimer = setTimeout(
             () => {
@@ -409,6 +459,17 @@ function DiceStage({ tier, onIdle }: { tier: TierSpec; onIdle: () => void }) {
   return null;
 }
 
+/** When a throw at rest starts to fade (its hold, or sooner when the next throw came). */
+function fadeStart(t: Throw): number {
+  return Math.min((t.settledAt as number) + holdMs, t.fadeAt ?? Number.POSITIVE_INFINITY);
+}
+/** A throw's opacity: whole in the air and while held, then fading out. */
+function fade(t: Throw, now: number): number {
+  if (t.settledAt === null) return 1;
+  const since = now - fadeStart(t);
+  return since <= 0 ? 1 : Math.max(0, 1 - since / FADE_MS);
+}
+
 /** A throw at rest: its card shows the total, the flourish sounds, the log records what each die showed. */
 function finish(t: Throw, now: number) {
   t.settledAt = now;
@@ -439,10 +500,15 @@ function finish(t: Throw, now: number) {
   again();
 }
 
-/** The dice camera's pitch (°): steep enough to read the tops, low enough to see the dice as solids. */
-const DICE_PITCH = 64;
-/** Never framed tighter than this (cm): a lone die at rest reads large, not enormous. */
-const MIN_FRAME_CM = 12;
+/** The dice camera's pitch (°): steep enough that the numbers on top read square-on, low enough to see solids. */
+const DICE_PITCH = 72;
+/**
+ * Never framed tighter than this: a lone die at rest reads large, not enormous — at most 12 cm across, and on a
+ * small screen tight enough that it's drawn at least about 64 px (a phone's clear area is ~320 px across).
+ */
+const MAX_MIN_FRAME_CM = 12;
+const MIN_DIE_PX = 64;
+const DIE_CM = 1.6;
 const DIE_R = 1.2;
 /**
  * How far ahead (steps of 1/120 s) the dice camera looks: 0.8 s — a throw's whole rise and fall is framed from the
@@ -455,6 +521,8 @@ const camPos = new Vector3();
 const camTarget = new Vector3();
 let camReady = false;
 let camAt = 0;
+/** The dice camera is still moving to its framing (test hook: dice are checked where they finally show). */
+let camEasing = false;
 
 /**
  * Frames the dice, not the tray: every die's footprint, and where its height carries it on screen (a die up in the
@@ -485,7 +553,8 @@ function frameDice(
   };
   for (const t of throws) {
     const res = t.result;
-    if (t.done || !res) continue;
+    // Dice fading out (the next throw is coming) are no longer framed.
+    if (t.done || !res || (t.settledAt !== null && now >= fadeStart(t))) continue;
     reduced ||= t.reduced;
     // Where the dice are, and where they'll be over the next 0.3 s (the recording says): the view is there first.
     const n = t.kinds.length;
@@ -502,15 +571,27 @@ function frameDice(
     for (const m of t.meshes) take(m.position.x, m.position.y, m.position.z);
   }
   if (!Number.isFinite(x0)) {
-    // Nothing in the air yet: the tray.
-    x0 = -TRAY.w / 2;
-    x1 = TRAY.w / 2;
-    z0 = -TRAY.d / 2;
-    z1 = TRAY.d / 2;
+    // Nothing in the air yet: the latest throw's tray.
+    const last = throws[throws.length - 1];
+    const tray = last?.tray ?? TRAY_MAX;
+    x0 = -tray.w / 2;
+    x1 = tray.w / 2;
+    z0 = -tray.d / 2;
+    z1 = tray.d / 2;
   }
+  // The screen the HUD leaves clear, and within it the largest part clear of the feed and an open tray for the
+  // latest throw's tray (across, and in depth as the pitch foreshortens it) — chosen by the tray, which a throw keeps,
+  // not by the dice's momentary spread: an arc in flight and a spread at rest want different parts of the screen, and
+  // the view swung across the HUD between them.
+  const area = clearArea(useHudInsets.getState(), W, H, isPhoneNow());
+  const shape = throws[throws.length - 1]?.tray ?? TRAY_MAX;
+  const aspect = shape.w / (shape.d * Math.sin((DICE_PITCH * Math.PI) / 180));
+  const visible = largestClear(area, Object.values(useHudObstacles.getState().rects), aspect);
+  const short = Math.max(1, Math.min(visible.right - visible.left, visible.bottom - visible.top) - 48);
+  const minFrame = Math.min(MAX_MIN_FRAME_CM, (short / MIN_DIE_PX) * DIE_CM);
   const grow = (a: number, b: number) => {
     const c = (a + b) / 2;
-    const h = Math.max(MIN_FRAME_CM, b - a) / 2;
+    const h = Math.max(minFrame, b - a) / 2;
     return [c - h, c + h] as const;
   };
   const [minX, maxX] = grow(x0, x1);
@@ -522,7 +603,7 @@ function frameDice(
     height: H,
     fovDeg: 30,
     pitchDeg: DICE_PITCH,
-    visible: clearArea(useHudInsets.getState(), W, H, isPhoneNow()),
+    visible,
     margin: 24,
     minDistance: (top + 12) / Math.sin((DICE_PITCH * Math.PI) / 180),
   });
@@ -538,6 +619,7 @@ function frameDice(
     camTarget.lerp(tmpV.set(...f.target), k);
   }
   const easing = camPos.distanceTo(tmpV.set(...f.position)) > 0.02;
+  camEasing = easing;
   cam.aspect = W / Math.max(1, H);
   cam.position.copy(camPos);
   cam.lookAt(camTarget);
@@ -577,39 +659,4 @@ function hashId(id: string): number {
   let h = 2166136261;
   for (let i = 0; i < id.length; i++) h = Math.imul(h ^ id.charCodeAt(i), 16777619) >>> 0;
   return h;
-}
-
-const materialCache = new Map<string, Material>();
-/** A die's material for a skin (§8.9 Dice skins): cached per die kind, skin and face set; each throw fades a clone. */
-function diceMaterial(s: Solid, skin: DiceSkin, set: FaceSet, high: boolean): Material {
-  const key = `${s.kind}|${skin.body}|${skin.number}|${skin.material}|${set}|${high ? "h" : "l"}`;
-  let base = materialCache.get(key);
-  if (!base) {
-    const map = faceAtlas(s, skin, set);
-    base =
-      skin.material === "gemstone" && high
-        ? new MeshPhysicalMaterial({
-            map,
-            roughness: 0.08,
-            metalness: 0,
-            transmission: 0.55,
-            thickness: 1.2,
-            ior: 1.54,
-            envMapIntensity: 1.1,
-          })
-        : new MeshStandardMaterial({
-            map,
-            ...(skin.material === "metal"
-              ? { metalness: 0.85, roughness: 0.3 }
-              : skin.material === "bone"
-                ? { metalness: 0, roughness: 0.72 }
-                : skin.material === "obsidian"
-                  ? { metalness: 0.05, roughness: 0.14 }
-                  : skin.material === "gemstone"
-                    ? { metalness: 0.1, roughness: 0.12 }
-                    : { metalness: 0, roughness: 0.36 }),
-          });
-    materialCache.set(key, base);
-  }
-  return base.clone();
 }

@@ -1,6 +1,6 @@
 import { Quaternion } from "three";
 import { describe, expect, it } from "vitest";
-import { MAX_STEPS, POSE, STEP_S, simulate, TRAY } from "./simulate.ts";
+import { MAX_STEPS, POSE, STEP_S, simulate, trayFor } from "./simulate.ts";
 import { type DieKind, landedMarker, markerFor, remap, solid } from "./solids.ts";
 
 function hash(a: Float32Array): number {
@@ -12,7 +12,12 @@ function hash(a: Float32Array): number {
 
 describe("dice throws (SPEC §18.4, AC-DICE-03)", () => {
   it("the same seed throws the same way, frame for frame (every client sees one tumble)", async () => {
-    const input = { dice: ["d20", "d6", "d6"] as DieKind[], seed: 12345, tray: TRAY, from: "near" as const };
+    const input = {
+      dice: ["d20", "d6", "d6"] as DieKind[],
+      seed: 12345,
+      tray: trayFor(3),
+      from: "near" as const,
+    };
     const a = await simulate(input);
     const b = await simulate(input);
     expect(b.steps).toBe(a.steps);
@@ -20,6 +25,29 @@ describe("dice throws (SPEC §18.4, AC-DICE-03)", () => {
     expect(b.landed).toEqual(a.landed);
     const c = await simulate({ ...input, seed: 12346 });
     expect(hash(c.frames)).not.toBe(hash(a.frames));
+  });
+
+  it("the tray is sized by the dice (the same for every client): each count's throw starts clear of its walls", async () => {
+    let wider = 0;
+    for (let n = 1; n <= 20; n++) {
+      const tray = trayFor(n);
+      // Deeper than wide (thrown along it), never shrinking as dice are added.
+      expect(tray.d).toBeGreaterThan(tray.w);
+      expect(tray.w).toBeGreaterThanOrEqual(wider);
+      wider = tray.w;
+      const res = await simulate({
+        dice: Array(n).fill("d20") as DieKind[],
+        seed: 77 + n,
+        tray,
+        from: "near",
+      });
+      for (let i = 0; i < n; i++) {
+        const o = i * POSE;
+        // Every die's circumradius is 0.8 cm: all of it inside the walls at release.
+        expect(Math.abs(res.frames[o] as number) + 0.8, `die ${i} of ${n}`).toBeLessThan(tray.w / 2);
+        expect(Math.abs(res.frames[o + 2] as number) + 0.8, `die ${i} of ${n}`).toBeLessThan(tray.d / 2);
+      }
+    }
   });
 
   it("every die type comes to rest on the server's number: 60 throws of d4 to d20 and d100's pair, each shown by the remapped pose", {
@@ -31,7 +59,8 @@ describe("dice throws (SPEC §18.4, AC-DICE-03)", () => {
     const times: number[] = [];
     for (let k = 0; k < 60; k++) {
       const dice = sets[k % sets.length] as DieKind[];
-      const res = await simulate({ dice, seed: 1000 + k * 7919, tray: TRAY, from: k % 2 ? "near" : "far" });
+      const tray = trayFor(dice.length);
+      const res = await simulate({ dice, seed: 1000 + k * 7919, tray, from: k % 2 ? "near" : "far" });
       throws++;
       if (res.settled) settled++;
       times.push(res.steps * STEP_S);
@@ -43,8 +72,8 @@ describe("dice throws (SPEC §18.4, AC-DICE-03)", () => {
         const o = (last * n + i) * POSE;
         const f = res.frames;
         // In the tray, resting on the floor.
-        expect(Math.abs(f[o] as number)).toBeLessThan(TRAY.w / 2);
-        expect(Math.abs(f[o + 2] as number)).toBeLessThan(TRAY.d / 2);
+        expect(Math.abs(f[o] as number)).toBeLessThan(tray.w / 2);
+        expect(Math.abs(f[o + 2] as number)).toBeLessThan(tray.d / 2);
         expect(f[o + 1] as number).toBeGreaterThan(0);
         expect(f[o + 1] as number).toBeLessThan(2);
         const q = new Quaternion(f[o + 3], f[o + 4], f[o + 5], f[o + 6]);

@@ -1,8 +1,8 @@
 import { DICE_BODY_COLORS, DICE_NUMBER_COLORS } from "@gloam/shared";
 import { DEFAULT_SKIN, type DiceSkin } from "@gloam/shared/dice";
 import { useEffect, useRef, useState } from "react";
+import { drawDiePreview } from "../dice/preview.ts";
 import { request, useTable } from "../net/table.ts";
-import { Segmented } from "../ui/controls.tsx";
 import { toast } from "../ui/Toast.tsx";
 
 const MATERIALS: { value: DiceSkin["material"]; label: string }[] = [
@@ -31,7 +31,8 @@ export function parseSkin(json: string | undefined): DiceSkin {
 
 /**
  * Your dice (SPEC §8.9 Dice skins): body colour, material and number colour, saved to your profile — everyone sees
- * your rolls in them (AC-DICE-07). A small d20 shows the choice as you make it.
+ * your rolls in them (AC-DICE-07). A d20 drawn as the table draws it — its material, reflections and all — shows the
+ * choice as you make it.
  */
 export function DiceSkinPicker() {
   const me = useTable((s) => s.me?.userId ?? "");
@@ -51,16 +52,30 @@ export function DiceSkinPicker() {
       });
   };
   return (
-    <div className="flex flex-col gap-2.5" data-testid="dice-skin">
-      <div className="flex items-center gap-3">
+    <div className="flex flex-col gap-3" data-testid="dice-skin">
+      <div className="flex items-center gap-4">
         <DiePreview skin={skin} />
-        <Segmented<DiceSkin["material"]>
-          label="Dice material"
-          size="S"
-          value={skin.material}
-          onChange={(material) => save({ ...skin, material })}
-          options={MATERIALS}
-        />
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5" role="radiogroup" aria-label="Dice material">
+          {MATERIALS.map((m) => {
+            const active = m.value === skin.material;
+            return (
+              <button
+                key={m.value}
+                type="button"
+                role="radio"
+                aria-checked={active}
+                onClick={() => save({ ...skin, material: m.value })}
+                className={`flex h-8 min-h-[var(--touch-min)] items-center rounded-chip px-3 text-left text-13 font-bold transition-[background-color,color,box-shadow] duration-[var(--dur-fast)] ${
+                  active
+                    ? "bg-raised text-brass-bright shadow-[inset_2px_0_0_var(--brass-400)]"
+                    : "text-muted shadow-[inset_2px_0_0_transparent] hover:text-bone"
+                }`}
+              >
+                {m.label}
+              </button>
+            );
+          })}
+        </div>
       </div>
       <Swatches
         label="Dice colour"
@@ -90,61 +105,88 @@ function Swatches({
   onChange: (hex: string) => void;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-0.5" role="radiogroup" aria-label={label}>
-      <span className="caps w-16 text-12 text-fog" aria-hidden>
+    <div className="flex items-start gap-1">
+      <span className="caps w-16 shrink-0 pt-2.5 text-12 text-fog" aria-hidden>
         {label.split(" ")[0]}
       </span>
-      {colors.map((c) => {
-        const active = c.hex.toLowerCase() === value.toLowerCase();
-        return (
-          <button
-            key={c.hex}
-            type="button"
-            role="radio"
-            aria-checked={active}
-            aria-label={c.name}
-            title={c.name}
-            onClick={() => onChange(c.hex)}
-            className="group grid h-8 min-h-[var(--touch-min)] w-8 min-w-[var(--touch-min)] place-items-center"
-          >
-            <span
-              className={`grid h-7 w-7 place-items-center rounded-full border-2 ${active ? "border-bone" : "border-transparent group-hover:border-line-strong"}`}
-              aria-hidden
+      {/* Rows of five: the ten body colours are two full rows, never a straggler on a third. */}
+      <div className="grid grid-cols-5 gap-0.5" role="radiogroup" aria-label={label}>
+        {colors.map((c) => {
+          const active = c.hex.toLowerCase() === value.toLowerCase();
+          return (
+            <button
+              key={c.hex}
+              type="button"
+              role="radio"
+              aria-checked={active}
+              aria-label={c.name}
+              title={c.name}
+              onClick={() => onChange(c.hex)}
+              className="group grid h-8 min-h-[var(--touch-min)] w-8 min-w-[var(--touch-min)] place-items-center"
             >
-              <span className="block h-5 w-5 rounded-full border border-line" style={{ background: c.hex }} />
-            </span>
-          </button>
-        );
-      })}
+              <span
+                className={`grid h-7 w-7 place-items-center rounded-full border-2 ${active ? "border-bone" : "border-transparent group-hover:border-line-strong"}`}
+                aria-hidden
+              >
+                {/* A fog hairline round every swatch: the near-black ones stay visible on the ink. */}
+                <span
+                  className="block h-5 w-5 rounded-full"
+                  style={{
+                    background: c.hex,
+                    boxShadow: "0 0 0 1px color-mix(in srgb, var(--fog-300) 55%, transparent)",
+                  }}
+                />
+              </span>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
 
-/** A d20 face-on in the skin: the body's colour, "20" in the number colour, a sheen for metal and gems. */
+const PREVIEW_PX = 88;
+
+/** Your d20 as the table draws it; a flat glyph where there's no WebGL. */
 function DiePreview({ skin }: { skin: DiceSkin }) {
-  const sheen = skin.material === "metal" || skin.material === "gemstone" || skin.material === "obsidian";
+  const canvas = useRef<HTMLCanvasElement>(null);
+  const [flat, setFlat] = useState(false);
+  useEffect(() => {
+    const c = canvas.current;
+    if (!c) return;
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    c.width = Math.round(PREVIEW_PX * dpr);
+    c.height = Math.round(PREVIEW_PX * dpr);
+    if (!drawDiePreview(c, skin)) setFlat(true);
+  }, [skin]);
+  const name = `Your dice: ${MATERIALS.find((m) => m.value === skin.material)?.label ?? ""}`;
+  if (flat)
+    return (
+      <svg width={PREVIEW_PX} height={PREVIEW_PX} viewBox="0 0 40 40" role="img" aria-label={name}>
+        <polygon points="20,2 36,11 36,29 20,38 4,29 4,11" fill={skin.body} />
+        <polygon points="20,8 32,28 8,28" fill={skin.body} stroke="var(--ink-950)" strokeOpacity="0.35" />
+        <text
+          x="20"
+          y="24"
+          textAnchor="middle"
+          fontFamily="var(--font-display)"
+          fontWeight="700"
+          fontSize="10"
+          fill={skin.number}
+        >
+          20
+        </text>
+      </svg>
+    );
   return (
-    <svg width="40" height="40" viewBox="0 0 40 40" role="img" aria-label="Your dice">
-      <polygon points="20,2 36,11 36,29 20,38 4,29 4,11" fill={skin.body} />
-      <polygon points="20,8 32,28 8,28" fill={skin.body} stroke="var(--ink-950)" strokeOpacity="0.35" />
-      {sheen ? (
-        <polygon
-          points="20,2 36,11 20,8"
-          fill="var(--bone-100)"
-          opacity={skin.material === "metal" ? 0.3 : 0.18}
-        />
-      ) : null}
-      <text
-        x="20"
-        y="24"
-        textAnchor="middle"
-        fontFamily="var(--font-display)"
-        fontWeight="700"
-        fontSize="10"
-        fill={skin.number}
-      >
-        20
-      </text>
-    </svg>
+    <canvas
+      ref={canvas}
+      role="img"
+      aria-label={name}
+      data-testid="dice-preview"
+      data-material={skin.material}
+      style={{ width: PREVIEW_PX, height: PREVIEW_PX }}
+      className="shrink-0"
+    />
   );
 }

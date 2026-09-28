@@ -99,9 +99,9 @@ export function Segmented<T extends string>({
             disabled={o.disabled}
             title={o.hint}
             onClick={() => onChange(o.value)}
-            className={`relative inline-flex min-h-[var(--touch-min)] min-w-[var(--touch-min)] items-center justify-center whitespace-nowrap rounded-chip px-3 font-bold transition-colors duration-[var(--dur-fast)] disabled:opacity-40 ${
+            className={`relative inline-flex min-h-[var(--touch-min)] min-w-[var(--touch-min)] items-center justify-center whitespace-nowrap rounded-chip px-3 font-bold transition-[background-color,color,box-shadow] duration-[var(--dur-fast)] ease-[var(--ease-out)] disabled:opacity-40 ${
               size === "S" ? "h-8 text-13" : "h-9 text-14"
-            } ${active ? "bg-raised text-brass-bright shadow-[inset_0_-2px_0_var(--brass-400)]" : "text-muted hover:text-bone"}`}
+            } ${active ? "bg-raised text-brass-bright shadow-[inset_0_-2px_0_var(--brass-400)]" : "text-muted shadow-[inset_0_-2px_0_transparent] hover:text-bone"}`}
           >
             {o.label}
           </button>

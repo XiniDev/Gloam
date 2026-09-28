@@ -45,6 +45,9 @@ export interface MaskedRoll {
   masked: true;
   /** "Mira rolled privately", "The DM rolls…", "Mira rolled for the DM", "Mira rolled for themselves". */
   text: string;
+  /** Rolled by a DM: the card reads "The DM" with the seal, not the host's name. */
+  byDm: boolean;
+  /** The roll's label, only on the roller's own masked view (a player's blind roll): to anyone else it's information. */
   label?: string;
   seed: number;
   tumble: { kind: TumbleDie["kind"]; percentile?: TumbleDie["percentile"] }[];
@@ -83,7 +86,8 @@ export function viewOfRoll(
     skin: r.skin,
     masked: true,
     text,
-    ...(r.label !== undefined ? { label: r.label } : {}),
+    byDm: rollerIsDm,
+    ...(own && r.label !== undefined ? { label: r.label } : {}),
     seed: r.seed,
     tumble: r.tumble.map((d) => ({ kind: d.kind, ...(d.percentile ? { percentile: d.percentile } : {}) })),
     manual: r.manual,

@@ -94,6 +94,9 @@ export const CB_COLORS = {
   dispNeutral: "#F0E442",
 } as const;
 
+/** Values written into data textures (masks read as numbers by shaders — metalness 1 / 0), not colours shown. */
+export const DATA_TEXTURE = { on: "#FFFFFF", off: "#000000" } as const;
+
 /** Board colours used by shaders and WebGL overlays (mirrors of the CSS tokens). */
 export const BOARD_COLORS = {
   ink950: "#07090C",

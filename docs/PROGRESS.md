@@ -240,3 +240,20 @@ PASSING 28/224 · DISPUTED 0 · FAILING 196
 - E2E note: under the machine's current load (open browser tabs ~2.3 cores) the token-crossfade timing journey can't
   catch two frames inside 200 ms (frames ~110 ms on software GL, the same on the last commit); everything else passes
   run on its own. The full run is repeated when the machine is quieter.
+
+## 2026-09-28 — P5 visual review, round 1 (critic 5/10)
+
+- Fixed every BLOCKING and IMPORTANT item and the NICEs (details and reasons in DECISIONS, "Critic round 1 (P5)"):
+  masked rolls no longer carry their label to other players (a §13.4 leak) and read "The DM" under the seal; dice
+  come to rest clear of the feed, the action bar and a tray kept open (HUD obstacles + the largest clear rectangle, one
+  throw in the tray at a time, re-framed when the HUD moves); trays sized by the dice so a pair on a phone is ≥ 48 px;
+  a steeper dice camera; rolling closes the tray (draft kept; "keep open" pin); the phone tray and feed are bottom
+  sheets with Roll always in view; custom d20 and spark glyphs, a round dice button; roller portraits, empty chips
+  until the dice settle, the turning d20 while pending, private tags, a fading top edge on the open feed;
+  `--danger-text` for small danger text app-wide; contact shadows; metal, resin, gem and bone that look different
+  (per-material reflections of a lantern-lit room, enamel numbers on metal); a live die in the skin picker; balanced
+  d8/d12/d20 numbering; the Settings popover clear of the dock.
+- Tests: new journey "dice come to rest where they're seen" (desktop feed/action bar/kept-open tray, phone size ≥ 48 px,
+  the dice button uncovered), masked-label unit test and journey checks, `largestClear` against brute force, trays
+  (release clear of the walls for 1–20 dice), dice numbering against every arrangement, `countOf`. `pnpm check` 326
+  tests; p5-dice, p4-phone, p1-lobby journeys pass. Key screens re-shot (transitions finish before each capture).

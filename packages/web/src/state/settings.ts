@@ -16,6 +16,8 @@ export interface DeviceSettings {
   units: "campaign" | "ft" | "m";
   /** With a token you control selected, hovering the floor previews a move and a click commits it (SPEC §8.6). */
   clickToMove: boolean;
+  /** The dice tray stays open after a roll (it closes by default, so the dice have the board). */
+  diceTrayKeepOpen: boolean;
 }
 
 const KEY = "gloam.settings.v1";
@@ -34,6 +36,7 @@ export const DEFAULT_SETTINGS: DeviceSettings = {
   diceAnimation: true,
   units: "campaign",
   clickToMove: true,
+  diceTrayKeepOpen: false,
 };
 
 function load(): DeviceSettings {

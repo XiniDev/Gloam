@@ -1,4 +1,4 @@
-import { type RefObject, useEffect, useState } from "react";
+import { type RefObject, useEffect, useLayoutEffect, useState } from "react";
 import { create } from "zustand";
 
 /**
@@ -46,7 +46,21 @@ export const useHudInsets = create<HudInsets & { set(p: Partial<HudInsets>): voi
 
 const GAP = 8;
 
-/** Keeps one inset in step with an element's box (ResizeObserver + window resizes); 0 again on unmount. */
+/** Bands that only exist while an element claims them (the others keep their last value). */
+const TRANSIENT = new Set<keyof HudInsets>(["banner", "cornerLeft", "cornerRight", "bottom"]);
+/** Each element's claim on each inset: the inset is the largest (a sheet over the action bar, both along the bottom). */
+const claims = new Map<keyof HudInsets, Map<object, number>>();
+function settle(key: keyof HudInsets): void {
+  const mine = claims.get(key);
+  const v = mine?.size ? Math.max(...mine.values()) : TRANSIENT.has(key) ? 0 : null;
+  if (v !== null && useHudInsets.getState()[key] !== v) useHudInsets.getState().set({ [key]: v });
+}
+
+/**
+ * Keeps one inset in step with an element's box (ResizeObserver + window resizes). Several elements may claim the same
+ * inset — the action bar and an open bottom sheet both hold the bottom band — and it is the largest of their claims;
+ * an element's claim goes with it.
+ */
 export function useMeasuredInset(
   key: keyof HudInsets,
   ref: RefObject<HTMLElement | null>,
@@ -56,9 +70,15 @@ export function useMeasuredInset(
   useEffect(() => {
     const el = ref.current;
     if (!el || !enabled) return;
+    const id = {};
+    let mine = claims.get(key);
+    if (!mine) {
+      mine = new Map();
+      claims.set(key, mine);
+    }
     const update = () => {
-      const v = Math.max(0, Math.round(measure(el.getBoundingClientRect())));
-      if (useHudInsets.getState()[key] !== v) useHudInsets.getState().set({ [key]: v });
+      mine.set(id, Math.max(0, Math.round(measure(el.getBoundingClientRect()))));
+      settle(key);
     };
     update();
     const ro = new ResizeObserver(update);
@@ -67,9 +87,8 @@ export function useMeasuredInset(
     return () => {
       ro.disconnect();
       window.removeEventListener("resize", update);
-      // Bands that only exist while their element does go back to nothing.
-      if (key === "banner" || key === "cornerLeft" || key === "cornerRight" || key === "bottom")
-        useHudInsets.getState().set({ [key]: 0 });
+      mine.delete(id);
+      settle(key);
     };
   }, [key, ref, measure, enabled]);
 }
@@ -106,6 +125,112 @@ export function clearArea(hud: HudInsets, W: number, H: number, phone: boolean):
       bottom,
     };
   return { left: hud.left, top: hud.top + hud.banner, right: W - hud.right, bottom };
+}
+
+/**
+ * HUD pieces floating over the board away from its edges — the roll feed, the open dice tray — by name, in screen
+ * pixels (+ a gap): things drawn over the board (the 3D dice) come to rest clear of them.
+ */
+export const useHudObstacles = create<{
+  rects: Record<string, ScreenArea>;
+  put(name: string, r: ScreenArea | null): void;
+}>((set, get) => ({
+  rects: {},
+  put(name, r) {
+    const cur = get().rects[name];
+    if (!r) {
+      if (!cur) return;
+      const { [name]: _, ...rest } = get().rects;
+      set({ rects: rest });
+      return;
+    }
+    if (cur && cur.left === r.left && cur.top === r.top && cur.right === r.right && cur.bottom === r.bottom)
+      return;
+    set({ rects: { ...get().rects, [name]: r } });
+  },
+}));
+
+/** An element's box with a gap round it, or null while it isn't laid out. */
+function obstacleBox(el: HTMLElement): ScreenArea | null {
+  const r = el.getBoundingClientRect();
+  if (r.width <= 0 || r.height <= 0) return null;
+  return {
+    left: Math.round(r.left - GAP),
+    top: Math.round(r.top - GAP),
+    right: Math.round(r.right + GAP),
+    bottom: Math.round(r.bottom + GAP),
+  };
+}
+
+/**
+ * Keeps an element's box registered as a HUD obstacle while it's on screen: measured after every render (it may have
+ * moved without resizing — the feed follows the toolbar's edge) and on every resize.
+ */
+export function useObstacle(name: string, ref: RefObject<HTMLElement | null>, enabled = true): void {
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (el && enabled) useHudObstacles.getState().put(name, obstacleBox(el));
+  });
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || !enabled) return;
+    const update = () => useHudObstacles.getState().put(name, obstacleBox(el));
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    window.addEventListener("resize", update);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", update);
+      useHudObstacles.getState().put(name, null);
+    };
+  }, [name, ref, enabled]);
+}
+
+/**
+ * The part of `area` clear of every obstacle that holds content of the given aspect (width ÷ height) largest: of the
+ * rectangles bounded by the area's and the obstacles' edges that no obstacle overlaps, the one in which such content
+ * scales up furthest (ties: the larger rectangle). The whole area when nothing is in the way.
+ */
+export function largestClear(area: ScreenArea, obstacles: readonly ScreenArea[], aspect: number): ScreenArea {
+  const inside = obstacles
+    .map((o) => ({
+      left: Math.max(area.left, o.left),
+      top: Math.max(area.top, o.top),
+      right: Math.min(area.right, o.right),
+      bottom: Math.min(area.bottom, o.bottom),
+    }))
+    .filter((o) => o.right > o.left && o.bottom > o.top);
+  if (!inside.length) return area;
+  const xs = [...new Set([area.left, area.right, ...inside.flatMap((o) => [o.left, o.right])])].sort(
+    (a, b) => a - b,
+  );
+  const ys = [...new Set([area.top, area.bottom, ...inside.flatMap((o) => [o.top, o.bottom])])].sort(
+    (a, b) => a - b,
+  );
+  const a = Math.max(1e-3, aspect);
+  let best: ScreenArea | null = null;
+  let bestFit = -1;
+  let bestSize = -1;
+  for (let i = 0; i < xs.length; i++)
+    for (let j = xs.length - 1; j > i; j--) {
+      const left = xs[i] as number;
+      const right = xs[j] as number;
+      for (let k = 0; k < ys.length; k++)
+        for (let l = ys.length - 1; l > k; l--) {
+          const top = ys[k] as number;
+          const bottom = ys[l] as number;
+          const w = right - left;
+          const h = bottom - top;
+          const fit = Math.min(w / a, h);
+          if (fit < bestFit || (fit === bestFit && w * h <= bestSize)) continue;
+          if (inside.some((o) => o.left < right && o.right > left && o.top < bottom && o.bottom > top))
+            continue;
+          best = { left, top, right, bottom };
+          bestFit = fit;
+          bestSize = w * h;
+        }
+    }
+  return best ?? area;
 }
 
 /** Whether the screen is a phone's now (outside React). */

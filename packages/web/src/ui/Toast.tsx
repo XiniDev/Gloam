@@ -128,7 +128,7 @@ export function Toaster() {
                           a.variant === "primary"
                             ? "bg-accent text-[var(--on-accent)] hover:bg-brass-bright"
                             : a.variant === "danger"
-                              ? "border border-danger text-[var(--blood-500)] hover:bg-danger hover:text-bone"
+                              ? "border border-danger text-danger-text hover:bg-danger hover:text-bone"
                               : "border border-line bg-raised text-bone hover:border-brass"
                         }`}
                       >

@@ -8,7 +8,7 @@ import { type DeviceSettings, useSettings } from "../state/settings.ts";
 import { Button, IconButton } from "../ui/Button.tsx";
 import { Segmented, Slider, Toggle } from "../ui/controls.tsx";
 import { DiceSkinPicker } from "./DiceSkinPicker.tsx";
-import { useIsPhone } from "./insets.ts";
+import { useHudInsets, useIsPhone } from "./insets.ts";
 
 const CHANNEL_LABEL: Record<Channel, string> = {
   master: "Master",
@@ -96,6 +96,11 @@ export function SettingsPopover() {
     };
   }, [open]);
 
+  const dockEdge = useHudInsets((h) => h.right);
+  const cornerRight = useHudInsets((h) => h.cornerRight);
+  const place = phone
+    ? { right: 12, top: Math.max(64, cornerRight) }
+    : { right: Math.max(12, dockEdge), top: 64 };
   return (
     <div className="relative">
       <IconButton
@@ -115,8 +120,10 @@ export function SettingsPopover() {
           role="dialog"
           aria-label="Settings"
           tabIndex={-1}
-          // Aligned with the screen's edge like the dock beneath it, so it covers the dock cleanly.
-          className="panel fixed right-3 top-[64px] z-50 flex max-h-[calc(100dvh-80px)] w-[min(340px,calc(100vw-24px))] flex-col overflow-y-auto outline-none"
+          // Beside the dock's rail on a desktop, below the corner buttons on a phone: over nothing it would half-hide (a
+          // rail button showing at its rounded corner read as a glitch).
+          className="panel fixed z-50 flex w-[min(340px,calc(100vw-24px))] flex-col overflow-y-auto outline-none"
+          style={{ right: place.right, top: place.top, maxHeight: `calc(100dvh - ${place.top + 16}px)` }}
         >
           {phone && role === "admin" ? (
             // On a phone the top bar has no room for it (TopBar).

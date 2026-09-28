@@ -67,7 +67,7 @@ function Card({ a }: { a: AssetItem }) {
         pending
       </span>
     ) : a.status === "rejected" ? (
-      <span className="caps rounded-chip border border-[var(--blood-500)] px-1 text-12 text-[var(--blood-500)]">
+      <span className="caps rounded-chip border border-[var(--blood-500)] px-1 text-12 text-danger-text">
         rejected
       </span>
     ) : null;

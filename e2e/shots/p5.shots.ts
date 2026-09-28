@@ -23,6 +23,19 @@ test("P5 key screens", async ({ admin, browser, gloam, guardLog }, info) => {
   const notes: string[] = [];
   const viewport = info.project.use.viewport as { width: number; height: number };
   const shot = async (page: Page, name: string) => {
+    // Transitions finish first (a control caught mid-change looks like two selected at once); the turning d20 of a
+    // pending roll runs forever and isn't waited for.
+    await page.evaluate(() =>
+      Promise.race([
+        Promise.all(
+          document
+            .getAnimations()
+            .filter((a) => Number.isFinite(a.effect?.getComputedTiming().endTime ?? Number.POSITIVE_INFINITY))
+            .map((a) => a.finished.catch(() => undefined)),
+        ),
+        new Promise((r) => setTimeout(r, 2000)),
+      ]),
+    );
     await page.screenshot({ path: join(dir, `${name}.png`) });
   };
   const step = async (name: string, page: Page, fn: () => Promise<unknown>) => {

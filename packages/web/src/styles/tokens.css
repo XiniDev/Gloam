@@ -51,6 +51,9 @@
   --accent-deep: var(--brass-600);
   --focus: var(--brass-300);
   --danger: var(--blood-500);
+  /* Danger as small text (errors under fields): the hostile red lifted to ≥ 4.5:1 on panels and raised surfaces
+     (AC-A11Y-04; blood-500 is 3.6:1 on a panel). */
+  --danger-text: #e8675c;
   --warning: var(--ember-400);
   --success: var(--verdigris-400);
   --magic: var(--arcane-400);
@@ -200,6 +203,7 @@
   --hp-mid: #f0e442;
   --hp-low: #d55e00;
   --disp-hostile: #d55e00;
+  --danger-text: #e07010;
   --disp-friendly: #009e73;
   --disp-neutral: #f0e442;
 }
@@ -243,6 +247,7 @@
   --color-faint: var(--text-faint);
   --color-accent: var(--accent);
   --color-danger: var(--danger);
+  --color-danger-text: var(--danger-text);
   --color-warning: var(--warning);
   --color-success: var(--success);
   --color-magic: var(--magic);

@@ -108,6 +108,94 @@ function oppositeLabels(markers: Vector3[]): number[] {
   return labels;
 }
 
+/**
+ * Opposite-pair labels balanced round the corners, as real dice are numbered: opposite faces still sum to n + 1, and
+ * the pairs are arranged so the faces meeting at each vertex add up as nearly alike as they can — highs and lows
+ * mixed round every corner, never 1 to 5 fanned round one point. A deterministic climb from the plain numbering
+ * (every client lays its dice out the same): swap two pairs' values, or turn a pair over, while that evens the
+ * corners out.
+ */
+function balancedLabels(markers: Vector3[], faces: number[][]): number[] {
+  const plain = oppositeLabels(markers);
+  const n = plain.length;
+  const opposite = plain.map((l) => plain.indexOf(n + 1 - l));
+  const corners = new Map<number, number[]>();
+  faces.forEach((f, fi) => {
+    for (const vi of f) corners.set(vi, [...(corners.get(vi) ?? []), fi]);
+  });
+  const around = [...corners.values()];
+  const mean = (around[0]?.length ?? 0) * ((n + 1) / 2);
+  // One face of each pair stands for it.
+  const pairs = plain.map((_, i) => i).filter((i) => i < (opposite[i] as number));
+  const climb = (labels: number[]): { labels: number[]; cost: number } => {
+    const cost = () =>
+      around.reduce((c, fs) => {
+        const d = fs.reduce((t, fi) => t + (labels[fi] as number), 0) - mean;
+        return c + d * d;
+      }, 0);
+    const setPair = (i: number, low: number) => {
+      labels[i] = low;
+      labels[opposite[i] as number] = n + 1 - low;
+    };
+    let best = cost();
+    for (let improved = true; improved; ) {
+      improved = false;
+      for (let a = 0; a < pairs.length; a++)
+        for (let b = a; b < pairs.length; b++) {
+          const i = pairs[a] as number;
+          const j = pairs[b] as number;
+          const li = labels[i] as number;
+          const lj = labels[j] as number;
+          // b === a: turn the pair over; otherwise swap the two pairs' values (either way round).
+          const tries: [number, number][] =
+            a === b
+              ? [[n + 1 - li, li]]
+              : [
+                  [lj, li],
+                  [n + 1 - lj, n + 1 - li],
+                ];
+          for (const [ni, nj] of tries) {
+            setPair(i, ni);
+            if (a !== b) setPair(j, nj);
+            const c = cost();
+            if (c < best - 1e-9) {
+              best = c;
+              improved = true;
+              break;
+            }
+            setPair(i, li);
+            if (a !== b) setPair(j, lj);
+          }
+        }
+    }
+    return { labels, cost: best };
+  };
+  // Climbs from the plain numbering and from a fixed series of shuffles of it (a climb can stall short of the best).
+  let best = climb([...plain]);
+  let seed = 0x9e3779b9;
+  const rand = () => {
+    seed = (Math.imul(seed ^ (seed >>> 15), 0x2c1b3c6d) + 0x6d2b79f5) >>> 0;
+    return seed / 4294967296;
+  };
+  for (let r = 0; r < 40 && best.cost > 1e-9; r++) {
+    const labels = [...plain];
+    const lows = pairs.map((_, k) => k + 1);
+    for (let k = lows.length - 1; k > 0; k--) {
+      const q = Math.floor(rand() * (k + 1));
+      [lows[k], lows[q]] = [lows[q] as number, lows[k] as number];
+    }
+    pairs.forEach((i, k) => {
+      const low = lows[k] as number;
+      const flip = rand() < 0.5;
+      labels[i] = flip ? n + 1 - low : low;
+      labels[opposite[i] as number] = flip ? low : n + 1 - low;
+    });
+    const c = climb(labels);
+    if (c.cost < best.cost - 1e-9) best = c;
+  }
+  return best.labels;
+}
+
 function tetrahedron(): Solid {
   const vs = scaled([v(1, 1, 1), v(1, -1, -1), v(-1, 1, -1), v(-1, -1, 1)]);
   // Face i is the one opposite vertex i: when it's down, vertex i is up.
@@ -172,7 +260,7 @@ function octahedron(): Solid {
     faces: oriented,
     normals,
     markers: normals.map((n) => n.clone()),
-    labels: oppositeLabels(normals),
+    labels: balancedLabels(normals, oriented),
     group: closeGroup([rot(v(1, 0, 0), 90), rot(v(0, 1, 0), 90)]),
   };
 }
@@ -213,7 +301,7 @@ function icosahedron(): Solid {
     faces,
     normals,
     markers: normals.map((n) => n.clone()),
-    labels: oppositeLabels(normals),
+    labels: balancedLabels(normals, faces),
     group: ICO_GROUP(),
   };
 }
@@ -253,7 +341,7 @@ function dodecahedron(): Solid {
     faces: oriented,
     normals,
     markers: normals.map((n) => n.clone()),
-    labels: oppositeLabels(normals),
+    labels: balancedLabels(normals, oriented),
     group: ICO_GROUP(),
   };
 }
