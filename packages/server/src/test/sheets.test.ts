@@ -30,6 +30,7 @@ interface ActorView {
   sheet: Sheet;
 }
 interface Player {
+  agent: Agent;
   room: TableRoomClient;
   id: string;
   msgs: Msg[];
@@ -95,7 +96,7 @@ describe("P6 — character sheets on the server (SHEET, SCN-06)", () => {
     const msgs: Msg[] = [];
     const sheets = new Map<string, ActorView>();
     mirror(r, msgs, sheets);
-    return { room: r, id: p.userId, msgs, sheets };
+    return { agent: p.agent, room: r, id: p.userId, msgs, sheets };
   }
 
   beforeAll(async () => {
@@ -332,32 +333,134 @@ describe("P6 — character sheets on the server (SHEET, SCN-06)", () => {
         .filter((x) => x.actorId === thorin).length,
     ).toBe(1);
 
-    // Her sheet's HP, speed, darkvision, size and light reach the token everyone sees, fast.
+    // Every field §8.10 lists reaches the linked token as its controller sees it, each within 200 ms of the change:
+    // the play-state (HP, temp HP, conditions) as the player changes it, the rest (speeds, senses, size, light) as
+    // the DM does (they're core-locked for her).
     await waitFor(() => anna.room.state.tokens?.get(placed.id)?.hp);
-    const t0 = Date.now();
+    const view = () => anna.room.state.tokens.get(placed.id);
+    let t0 = Date.now();
     await rq(anna.room, "actor.change", {
       actorId: thorin,
       changes: [
         { path: ["core", "hp", "current"], after: 11 },
         { path: ["core", "hp", "temp"], after: 4 },
-      ],
-    });
-    await waitFor(() => anna.room.state.tokens.get(placed.id)?.hp?.hp === 11, 2000, 5);
-    expect(Date.now() - t0).toBeLessThan(200);
-    expect(anna.room.state.tokens.get(placed.id)?.hp?.hpTemp).toBe(4);
-    await rq(dm, "actor.change", {
-      actorId: thorin,
-      changes: [
-        { path: ["core", "size"], after: "large" },
-        { path: ["core", "light"], after: "torch" },
         { path: ["core", "conditions"], after: ["prone"] },
       ],
     });
+    await waitFor(
+      () => view()?.hp?.hp === 11 && view()?.hp?.hpTemp === 4 && view()?.conditions.includes("prone"),
+      2000,
+      5,
+    );
+    expect(Date.now() - t0, "HP, temp HP and conditions on the token (ms)").toBeLessThan(200);
+    t0 = Date.now();
+    await rq(dm, "actor.change", {
+      actorId: thorin,
+      changes: [
+        { path: ["core", "speeds", "walk"], after: 35 },
+        { path: ["core", "speeds", "fly"], after: 20 },
+        { path: ["core", "senses", "darkvision"], after: 120 },
+        { path: ["core", "size"], after: "large" },
+        { path: ["core", "light"], after: "torch" },
+      ],
+    });
+    await waitFor(
+      () =>
+        view()?.own?.speedWalk === 35 &&
+        view()?.own?.speedFly === 20 &&
+        view()?.vis?.darkvision === 120 &&
+        view()?.sizeFt === 10 &&
+        view()?.lightOn === true,
+      2000,
+      5,
+    );
+    expect(Date.now() - t0, "speeds, senses, size and light on the token (ms)").toBeLessThan(200);
     const tok = room().model.get("token", placed.id);
-    expect(tok?.sizeFt).toBe(10);
-    expect(tok?.lightId).toBeTruthy();
     expect(room().model.get("light", tok?.lightId as string)?.preset).toBe("torch");
-    await waitFor(() => dm.state.tokens.get(placed.id)?.conditions.includes("prone"));
+    // The same character on another scene shows the same state (linked: one sheet, every token).
+    const other = await rq<{ sceneId: string }>(dm, "scene.create", { name: "Road", mapKind: "blank" });
+    const { tokenId } = await rq<{ tokenId: string }>(dm, "token.create", {
+      sceneId: other.sceneId,
+      name: "Thorin",
+      actorId: thorin,
+      pos: { x: 10, y: 10 },
+    });
+    expect(room().model.get("token", tokenId)?.link).toBe("linked");
+    expect(room().model.get("token", tokenId)?.stats).toBeNull();
+  });
+
+  it("AC-TOK-13 (server): tokens from one creature keep their own HP and conditions; unlinking copies; relinking asks before overwriting", async () => {
+    const sceneId = room().projector.activeSceneId;
+    const { actorId: goblin } = await rq<{ actorId: string }>(dm, "actor.create", {
+      kind: "npc",
+      sheet: {
+        core: {
+          name: "Goblin",
+          size: "small",
+          hp: { max: 7, current: 7 },
+          ac: { value: 15 },
+          speeds: { walk: 30 },
+        },
+      },
+    });
+    const make = async (x: number) =>
+      (
+        await rq<{ tokenId: string }>(dm, "token.create", {
+          sceneId,
+          name: "Goblin",
+          actorId: goblin,
+          link: "unlinked",
+          pos: { x, y: 5 },
+          disposition: "hostile",
+        })
+      ).tokenId;
+    const g1 = await make(5);
+    const g2 = await make(10);
+    const tok = (id: string) => room().model.get("token", id);
+    // Each starts with a copy of the creature's numbers.
+    expect(tok(g1)?.stats).toMatchObject({ hp: 7, hpMax: 7, ac: 15, size: "small" });
+    expect(tok(g2)?.stats?.hp).toBe(7);
+    // One is hurt; the other isn't. The creature's sheet changing reaches neither.
+    await rq(dm, "token.update", { tokenId: g1, stats: { hp: 2 } });
+    await rq(dm, "actor.change", {
+      actorId: goblin,
+      changes: [{ path: ["core", "conditions"], after: ["frightened"] }],
+    });
+    expect(tok(g1)?.stats?.hp).toBe(2);
+    expect(tok(g2)?.stats?.hp).toBe(7);
+    expect(tok(g1)?.status?.conditions).toEqual([]);
+    expect(tok(g2)?.status?.conditions).toEqual([]);
+
+    // Thorin's linked token: unlinking copies his current values; after that it's its own.
+    const thorinTok = room()
+      .model.inScene("token", sceneId)
+      .find((x) => x.actorId === thorin) as { id: string };
+    const hpNow = sheetOf(thorin).core.hp.current;
+    await rq(dm, "token.setLink", { tokenId: thorinTok.id, link: "unlinked" });
+    expect(tok(thorinTok.id)?.link).toBe("unlinked");
+    expect(tok(thorinTok.id)?.stats?.hp).toBe(hpNow);
+    expect(tok(thorinTok.id)?.status?.conditions.map((c) => c.id)).toEqual(["prone"]);
+    await rq(dm, "actor.change", {
+      actorId: thorin,
+      changes: [{ path: ["core", "hp", "current"], after: 40 }],
+    });
+    expect(tok(thorinTok.id)?.stats?.hp).toBe(hpNow);
+    // Relinking would throw away its own HP: refused until the DM says so.
+    const asked = await refusal(rq(dm, "token.setLink", { tokenId: thorinTok.id, link: "linked" }));
+    expect(asked?.code).toBe("CONFLICT");
+    expect(asked?.message).toContain("HP");
+    expect(tok(thorinTok.id)?.link).toBe("unlinked");
+    await rq(dm, "token.setLink", { tokenId: thorinTok.id, link: "linked", overwrite: true });
+    expect(tok(thorinTok.id)?.link).toBe("linked");
+    expect(tok(thorinTok.id)?.stats).toBeNull();
+    // Nothing to lose: relinking straight away needs no asking.
+    await rq(dm, "token.setLink", { tokenId: thorinTok.id, link: "unlinked" });
+    await rq(dm, "token.setLink", { tokenId: thorinTok.id, link: "linked" });
+    expect(tok(thorinTok.id)?.link).toBe("linked");
+    // Players can't.
+    await expect(rq(anna.room, "token.setLink", { tokenId: thorinTok.id, link: "unlinked" })).rejects.toThrow(
+      /FORBIDDEN/,
+    );
   });
 
   it("AC-SHEET-04: a sheet's custom blocks save as a template, and new characters start from it (values cleared)", async () => {
@@ -397,6 +500,40 @@ describe("P6 — character sheets on the server (SHEET, SCN-06)", () => {
     // Only its maker or a DM deletes it.
     await expect(rq(bob.room, "template.delete", { templateId })).rejects.toThrow(/FORBIDDEN/);
     await rq(anna.room, "template.delete", { templateId });
+  });
+
+  it("AC-SCN-06: a player coming to the table finds their characters placed round the spawn, clear of every token", async () => {
+    // Bob's character (made from the template while he was at the table) was placed then.
+    const bram = room()
+      .model.all("actor")
+      .find((a) => (a.sheet as Sheet).core.name === "Bram");
+    expect(bram).toBeTruthy();
+    const sceneId = room().projector.activeSceneId;
+    const first = await waitFor(() =>
+      room()
+        .model.inScene("token", sceneId)
+        .find((x) => x.actorId === bram?.id),
+    );
+    // He leaves; the DM clears his token away; he comes back to the table: placed again.
+    await bob.room.leave();
+    await rq(dm, "token.delete", { tokenIds: [first.id] });
+    bob.room = (await bob.agent.colyseus().joinById(campaignId, {}, Table)) as unknown as TableRoomClient;
+    mirror(bob.room, bob.msgs, bob.sheets);
+    const again = await waitFor(() =>
+      room()
+        .model.inScene("token", sceneId)
+        .find((x) => x.actorId === bram?.id),
+    );
+    const spawn = room().model.get("scene", sceneId)?.spawn as { x: number; y: number };
+    expect(Math.hypot(again.pos.x - spawn.x, again.pos.y - spawn.y)).toBeLessThanOrEqual(15);
+    for (const o of room().model.inScene("token", sceneId)) {
+      if (o.id === again.id) continue;
+      const reach = (o.sizeFt + again.sizeFt) / 2 - 1e-6;
+      expect(
+        Math.abs(o.pos.x - again.pos.x) < reach && Math.abs(o.pos.y - again.pos.y) < reach,
+        `overlaps ${o.name}`,
+      ).toBe(false);
+    }
   });
 
   it("AC-SHEET-06: an import is checked against the whole schema with readable paths; export → import round-trips", async () => {

@@ -7,10 +7,17 @@ import {
   TokenElevation,
   TokenFacing,
   TokenPlace,
+  TokenSetLink,
   TokenUpdate,
 } from "@gloam/shared/protocol";
-import { controlsToken, isDm } from "@gloam/shared/rules";
-import { DEFAULT_SPEEDS, EMPTY_STATUS, type TokenEntity, type TokenStats } from "@gloam/shared/schemas";
+import { type ActorLike, controlsToken, effectiveTokenState, isDm } from "@gloam/shared/rules";
+import {
+  DEFAULT_SPEEDS,
+  EMPTY_STATUS,
+  type TokenEntity,
+  type TokenStats,
+  type TokenStatusT,
+} from "@gloam/shared/schemas";
 import { and, eq, isNull } from "drizzle-orm";
 import type { z } from "zod";
 import { assets } from "../../db/schema.ts";
@@ -78,11 +85,19 @@ export const tokenCreate: CommandDef<z.infer<typeof TokenCreate>, { tokenId: str
     const actor = p.actorId ? mustGet(ctx, "actor", p.actorId) : null;
     const isCharacter = actor?.kind === "character";
     const link = p.link ?? (isCharacter ? "linked" : "unlinked");
-    const size = p.stats?.size ?? p.size;
+    // An unlinked token made from a character or creature starts with a copy of its sheet's numbers and status (ten
+    // goblins from one entry each keep their own HP, AC-TOK-13); otherwise from the defaults for its size.
+    const fromActor =
+      actor && link === "unlinked" ? effectiveTokenState({ link: "linked" } as TokenEntity, actor) : null;
+    const size = p.stats?.size ?? (fromActor ? fromActor.stats.size : p.size);
     const stats: TokenStats | null =
       link === "linked"
         ? null
-        : ({ ...defaultStats(size), ...(p.stats ? clone(p.stats) : {}), size } as TokenStats);
+        : ({
+            ...(fromActor ? clone(fromActor.stats) : defaultStats(size)),
+            ...(p.stats ? clone(p.stats) : {}),
+            size,
+          } as TokenStats);
     const hr = ctx.model.campaign.houseRules;
     const token: TokenEntity = {
       id: newId("tok"),
@@ -101,7 +116,7 @@ export const tokenCreate: CommandDef<z.infer<typeof TokenCreate>, { tokenId: str
       revealTo: "vision",
       hpDisplay: p.hpDisplay ?? (isCharacter || p.stats?.isPC ? "exact" : hr.npcHpDisplay),
       stats,
-      status: link === "linked" ? null : clone(EMPTY_STATUS),
+      status: link === "linked" ? null : clone(fromActor ? fromActor.status : EMPTY_STATUS),
       overrides: {},
       lightId: null,
       locked: false,
@@ -251,6 +266,77 @@ export const tokenDelete: CommandDef<z.infer<typeof TokenDelete>> = {
   },
 };
 
+/** What a relink would replace: the token's own numbers that differ from its character's. */
+function relinkLosses(t: TokenEntity, actor: ActorLike): string[] {
+  if (!t.stats) return [];
+  const own = { stats: t.stats, status: t.status ?? EMPTY_STATUS };
+  const sheet = effectiveTokenState({ ...t, link: "linked" }, actor);
+  const out: string[] = [];
+  if (own.stats.hp !== sheet.stats.hp || own.stats.hpMax !== sheet.stats.hpMax)
+    out.push(`HP ${own.stats.hp}/${own.stats.hpMax} (the sheet has ${sheet.stats.hp}/${sheet.stats.hpMax})`);
+  if (own.stats.hpTemp !== sheet.stats.hpTemp) out.push(`temporary HP ${own.stats.hpTemp}`);
+  if (own.stats.ac !== sheet.stats.ac) out.push(`AC ${own.stats.ac}`);
+  const conds = (s: TokenStatusT) =>
+    s.conditions
+      .map((c) => c.id)
+      .sort()
+      .join(",");
+  if (conds(own.status) !== conds(sheet.status))
+    out.push(
+      own.status.conditions.length
+        ? `conditions (${own.status.conditions.map((c) => c.id).join(", ")})`
+        : "conditions",
+    );
+  if (own.status.exhaustion !== sheet.status.exhaustion) out.push(`exhaustion ${own.status.exhaustion}`);
+  return out;
+}
+
+/**
+ * `token.setLink` (DM) — a token becomes a view of its character, or its own copy (SPEC §8.5, AC-TOK-13): unlinking
+ * copies the current values; relinking replaces the token's own values with the sheet's, so it asks first — refused
+ * as CONFLICT listing what would be lost, unless `overwrite`. A relinked token takes its character's name and size.
+ */
+export const tokenSetLink: CommandDef<z.infer<typeof TokenSetLink>> = {
+  type: "token.setLink",
+  schema: TokenSetLink,
+  undoable: true,
+  authorize: requireDm,
+  plan(ctx, p) {
+    const t = mustGet(ctx, "token", p.tokenId);
+    if (t.link === p.link) return { ops: [], summary: "", sceneId: t.sceneId };
+    const actor = t.actorId ? ctx.model.get("actor", t.actorId) : undefined;
+    if (!actor || actor.deletedAt !== null)
+      throw new GloamError("INVALID", "This token has no character sheet to link to.");
+    if (p.link === "unlinked") {
+      const cur = effectiveTokenState(t, actor);
+      const ops = setOps("token", t, {
+        link: "unlinked",
+        stats: clone(cur.stats),
+        status: clone(cur.status),
+      });
+      return { ops, summary: `Unlinked ${t.name} from its sheet`, sceneId: t.sceneId };
+    }
+    const losses = relinkLosses(t, actor);
+    if (losses.length && !p.overwrite)
+      throw new GloamError(
+        "CONFLICT",
+        `Relinking replaces this token's ${losses.join(", ")} with the sheet's.`,
+        {
+          losses,
+        },
+      );
+    const core = (actor.sheet as { core?: { name?: string; size?: Size } }).core;
+    const ops = setOps("token", t, {
+      link: "linked",
+      stats: null,
+      status: null,
+      ...(core?.name ? { name: core.name } : {}),
+      ...(core?.size ? { sizeFt: SIZE_BASE_FT[core.size] } : {}),
+    });
+    return { ops, summary: `Linked ${t.name} to its sheet`, sceneId: t.sceneId };
+  },
+};
+
 /** `token.duplicate` — copies tokens (with their own stats) at an offset or at the cursor (Ctrl/Cmd+V). */
 export const tokenDuplicate: CommandDef<z.infer<typeof TokenDuplicate>, { tokenIds: string[] }> = {
   type: "token.duplicate",
@@ -327,6 +413,7 @@ export const tokenFacing: CommandDef<z.infer<typeof TokenFacing>> = {
 };
 
 export const TOKEN_COMMANDS = [
+  tokenSetLink,
   tokenElevation,
   tokenFacing,
   tokenCreate,

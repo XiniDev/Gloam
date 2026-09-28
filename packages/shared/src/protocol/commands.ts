@@ -443,6 +443,16 @@ export const CameraSpotlight = z.strictObject({ x: z.number().finite(), y: z.num
 
 export type SceneCreate = z.infer<typeof SceneCreate>;
 export type SceneUpdate = z.infer<typeof SceneUpdate>;
+/**
+ * Link or unlink a token from its character (SPEC §8.5 Linked and unlinked tokens; AC-TOK-13): unlinking copies the
+ * current values into the token; relinking replaces the token's own values with the sheet's — refused as `CONFLICT`
+ * (with what would be lost) unless `overwrite` says the DM agreed.
+ */
+export const TokenSetLink = z.strictObject({
+  tokenId: Id,
+  link: z.enum(["linked", "unlinked"]),
+  overwrite: z.boolean().default(false),
+});
 export type TokenCreate = z.infer<typeof TokenCreate>;
 export type MoveCommit = z.infer<typeof MoveCommit>;
 export type MovePreview = z.infer<typeof MovePreview>;

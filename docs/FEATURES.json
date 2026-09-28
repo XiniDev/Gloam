@@ -272,10 +272,10 @@
       "code": "SCN",
       "phase": "P6",
       "text": "Newly admitted players' characters without a token on the active scene are auto-placed around the party spawn point without overlapping walls or other tokens.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/sheets.test.ts › AC-SCN-06 / AC-SHEET-09 (placed round the spawn as a scene becomes active, once, clear of a token on the spawn) and › AC-SCN-06: a player coming to the table finds their characters placed round the spawn, clear of every token (a character made for someone at the table is placed at once; rejoining places it again); packages/shared/src/movement/spawn.test.ts (nearest spots first, inside the scene, no overlaps with tokens or each other, large footprints, never on or through a movement-blocking wall, an open door lets through)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-28T14:06:51.911Z"
     },
     {
       "id": "AC-SCN-07",
@@ -1163,10 +1163,10 @@
       "code": "SHEET",
       "phase": "P6",
       "text": "Sheet changes to HP, temp HP, conditions, speeds, senses, size and light update the linked token within 200 ms.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/sheets.test.ts › AC-SCN-06 / AC-SHEET-09: HP, temp HP and conditions (changed by the player) and speeds, senses, size and light (changed by the DM) each reach the linked token in the controller's own state within 200 ms (measured from the request); the same character linked on another scene reads the one sheet; packages/shared/src/rules/sheetPatch.test.ts (a linked token's numbers from the sheet's derived values, overrides included; status has one home)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-28T14:06:51.985Z"
     },
     {
       "id": "AC-SHEET-10",
