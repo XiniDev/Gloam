@@ -171,13 +171,13 @@ export function RequestCards() {
       className="pointer-events-none absolute left-1/2 z-30 flex w-[340px] max-w-[calc(100vw-24px)] -translate-x-1/2 flex-col gap-2"
       style={{ top: (phone ? Math.max(top, corners) : top) + banner + 8 }}
     >
-      {shown.slice(0, 3).map((c) => {
+      {shown.slice(0, phone ? 1 : 3).map((c) => {
         const key = `${c.requestId}|${c.targetId}`;
         return <Card key={key} c={c} onDismiss={() => setDismissed((d) => new Set(d).add(key))} />;
       })}
-      {shown.length > 3 ? (
+      {shown.length > (phone ? 1 : 3) ? (
         <li className="panel pointer-events-auto self-center px-3 py-1 text-13 text-muted">
-          {shown.length - 3} more waiting
+          {shown.length - (phone ? 1 : 3)} more waiting
         </li>
       ) : null}
     </ol>

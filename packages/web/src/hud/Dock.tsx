@@ -45,6 +45,7 @@ export function Dock() {
   const asideRef = useRef<HTMLElement>(null);
   const phone = useIsPhone();
   const banner = useHudInsets((s) => s.banner);
+  const actionBand = useHudInsets((s) => s.bottom);
   useMeasuredInset("right", asideRef, insetMeasures.right);
   useCover("dock", asideRef);
   // On a phone the rail takes the top-right corner, not a column down the side.
@@ -68,10 +69,15 @@ export function Dock() {
     <aside
       ref={asideRef}
       {...order}
-      className="pointer-events-none absolute bottom-3 right-3 z-30 flex items-stretch gap-2"
-      // Below the top bar — and on phones below the prep banner, which spans the screen there. (Merged with the
-      // intro's stagger variable, which a second `style` prop would drop.)
-      style={{ ...order.style, top: 68 + (phone ? banner : 0) }}
+      className="pointer-events-none absolute right-3 z-30 flex items-stretch gap-2"
+      // Below the top bar — and on phones below the prep banner, which spans the screen there, and above the action
+      // bar (its dice button stood on the sheet). (Merged with the intro's stagger variable, which a second `style`
+      // prop would drop.)
+      style={{
+        ...order.style,
+        top: 68 + (phone ? banner : 0),
+        bottom: phone ? Math.max(12, actionBand) : 12,
+      }}
       data-hud="dock"
     >
       {tab ? (

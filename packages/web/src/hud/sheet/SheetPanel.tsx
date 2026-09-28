@@ -312,10 +312,12 @@ function SheetHeader({ ctx, onImport }: { ctx: SheetCtx; onImport: (m: "json" | 
                 label="Name"
                 value={c.name}
                 onCommit={(v) => v.trim() && void ctx.set(["core", "name"], v.trim())}
-                className="display h-9 border-transparent bg-transparent px-1 text-22 leading-tight"
+                className="display h-9 border-transparent bg-transparent px-1 text-22 leading-tight max-sm:text-18"
               />
             ) : (
-              <h2 className="display truncate text-22 leading-tight text-paper-ink">{c.name}</h2>
+              <h2 className="display truncate text-22 leading-tight text-paper-ink max-sm:text-18">
+                {c.name}
+              </h2>
             )}
             <LockMark show={ctx.canEdit && !ctx.free(["core", "name"])} />
           </div>
@@ -400,7 +402,10 @@ function SheetHeader({ ctx, onImport }: { ctx: SheetCtx; onImport: (m: "json" | 
             disabled={!ctx.canEdit}
             onCommit={(v) => void ctx.set(["core", "hp", "max"], v)}
           />
-          <span className="caps ml-1 text-12 text-paper-muted">temp</span>
+        </div>
+        {/* Its own item: on a narrow sheet it wraps to the next line instead of running off the page. */}
+        <div className="flex items-center gap-1">
+          <span className="caps text-12 text-paper-muted">temp</span>
           <NumberField
             label="Temporary HP"
             value={c.hp.temp}
