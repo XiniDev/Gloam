@@ -1,6 +1,6 @@
 import type { RollVisibility } from "@gloam/shared/dice";
 import { checkFormula, parseFormula } from "@gloam/shared/dice";
-import { Hand, Minus, Pin, PinOff, Plus, Repeat, X } from "lucide-react";
+import { Minus, Plus, X } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -16,7 +16,7 @@ import {
   stepModifier,
   tokenize,
 } from "../dice/formulaEdit.ts";
-import { D20Icon } from "../icons/dice.tsx";
+import { D20Icon, HandDieIcon, PinGlyph } from "../icons/dice.tsx";
 import { enterManual, rollDice } from "../net/dice.ts";
 import { useTable } from "../net/table.ts";
 import { useBoard } from "../state/entities.ts";
@@ -24,9 +24,10 @@ import { useSettings } from "../state/settings.ts";
 import { useUi } from "../state/ui.ts";
 import { BottomSheet } from "../ui/BottomSheet.tsx";
 import { Button, IconButton } from "../ui/Button.tsx";
-import { Segmented } from "../ui/controls.tsx";
+import { Segmented, Toggle } from "../ui/controls.tsx";
+import { BrassPin } from "../ui/ornaments.tsx";
 import { toast } from "../ui/Toast.tsx";
-import { useIsPhone, useObstacle } from "./insets.ts";
+import { useHudInsets, useIsPhone, useObstacle } from "./insets.ts";
 
 const QUICK = [4, 6, 8, 10, 12, 20, "%"] as const;
 
@@ -115,13 +116,14 @@ function PhoneTray({
 function KeepOpen() {
   const keep = useSettings((s) => s.diceTrayKeepOpen);
   return (
-    <IconButton
-      label={keep ? "Close the tray after rolling" : "Keep the tray open after rolling"}
-      active={keep}
-      onClick={() => useSettings.getState().update({ diceTrayKeepOpen: !keep })}
-    >
-      <Repeat size={16} />
-    </IconButton>
+    <span title="The tray stays open after rolling (it closes by default, so the dice have the board)">
+      <Toggle
+        compact
+        label="Keep open"
+        checked={keep}
+        onChange={(v) => useSettings.getState().update({ diceTrayKeepOpen: v })}
+      />
+    </span>
   );
 }
 
@@ -139,8 +141,15 @@ function DesktopTray({
   const ref = useRef<HTMLElement>(null);
   // The dice come to rest clear of it.
   useObstacle("tray", ref);
+  // Kept open for a run of rolls, it stands beside the dock rather than over the middle of the board, where the dice
+  // come to rest.
+  const keep = useSettings((s) => s.diceTrayKeepOpen);
+  const right = useHudInsets((s) => s.right);
   return (
-    <div className="pointer-events-none absolute right-0 bottom-[76px] left-0 z-40 flex justify-center px-3">
+    <div
+      className={`pointer-events-none absolute right-0 bottom-[76px] left-0 z-40 flex px-3 ${keep ? "justify-end" : "justify-center"}`}
+      style={keep ? { paddingRight: right } : undefined}
+    >
       <section
         ref={ref}
         aria-label="Dice tray"
@@ -255,7 +264,7 @@ function TrayBody({
       <Button
         variant="ghost"
         size="S"
-        icon={<Hand size={15} />}
+        icon={<HandDieIcon size={16} />}
         disabled={!formula.trim() || error !== null}
         onClick={() => setManual(true)}
       >
@@ -298,7 +307,7 @@ function TrayBody({
         ))}
       </div>
 
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="grid grid-cols-2 gap-3">
         <Stepper
           label="Dice"
           disabled={count === null}
@@ -314,18 +323,19 @@ function TrayBody({
         >
           {modifierOf(formula) >= 0 ? `+${modifierOf(formula)}` : modifierOf(formula)}
         </Stepper>
-        <Segmented
-          label="Advantage"
-          size="S"
-          value={adv ?? "none"}
-          onChange={(v) => setFormula((f) => setAdv(f, v === "none" ? null : v))}
-          options={[
-            { value: "none", label: "Normal" },
-            { value: "adv", label: "Advantage" },
-            { value: "dis", label: "Disadvantage" },
-          ]}
-        />
       </div>
+      <Segmented
+        label="Advantage"
+        size="S"
+        fill
+        value={adv ?? "none"}
+        onChange={(v) => setFormula((f) => setAdv(f, v === "none" ? null : v))}
+        options={[
+          { value: "none", label: "Normal" },
+          { value: "adv", label: "Advantage" },
+          { value: "dis", label: "Disadvantage" },
+        ]}
+      />
 
       <div className="relative flex flex-col gap-1">
         <label className="sr-only" htmlFor="dice-formula">
@@ -357,7 +367,7 @@ function TrayBody({
             }}
             aria-invalid={error ? true : undefined}
             aria-describedby={error ? "dice-formula-error" : undefined}
-            className="mono relative h-10 w-full rounded-[var(--radius-control)] border border-line bg-transparent px-3 text-16 text-transparent caret-[var(--bone-100)] focus:border-brass focus:outline-none"
+            className={`mono relative h-10 w-full rounded-[var(--radius-control)] border bg-transparent px-3 text-16 text-transparent caret-[var(--bone-100)] focus:outline-none ${error ? "border-[var(--danger-text)]" : "border-line focus:border-brass"}`}
           />
         </div>
         {suggestions.length > 0 ? (
@@ -403,13 +413,14 @@ function TrayBody({
           className="h-9 min-h-[var(--touch-min)] min-w-0 flex-1 rounded-[var(--radius-control)] border border-line bg-ink-900 px-3 text-14 text-bone placeholder:text-faint focus:border-brass focus:outline-none"
         />
         <IconButton label={pinned ? "Unpin this roll" : "Pin this roll"} active={pinned} onClick={togglePin}>
-          {pinned ? <PinOff size={16} /> : <Pin size={16} />}
+          <PinGlyph size={17} />
         </IconButton>
       </div>
 
       <Segmented
         label="Who sees it"
         size="S"
+        fill
         value={visibility}
         onChange={setVisibility}
         options={
@@ -445,7 +456,7 @@ function TrayBody({
                 }}
                 className={`flex h-7 min-h-[var(--touch-min)] items-center gap-1 rounded-chip border px-2.5 text-12 ${c.pin ? "border-brass-deep text-brass-bright" : "border-line text-muted"} hover:text-bone`}
               >
-                {c.pin ? <Pin size={11} aria-hidden /> : null}
+                {c.pin ? <BrassPin size={12} /> : null}
                 <span className="mono">{c.label ? `${c.label} · ${c.formula}` : c.formula}</span>
               </button>
             ))}
@@ -487,19 +498,21 @@ function Stepper({
   disabled?: boolean;
 }) {
   return (
-    <div className="flex items-center gap-1" role="group" aria-label={label}>
-      <span className="caps pr-1 text-12 text-fog">{label}</span>
-      <IconButton label={`${label} down`} onClick={onMinus} disabled={disabled}>
-        <Minus size={14} />
-      </IconButton>
-      <span
-        className={`tabular min-w-[3ch] whitespace-nowrap text-center text-13 font-bold ${disabled ? "text-faint" : "text-bone"}`}
-      >
-        {children}
-      </span>
-      <IconButton label={`${label} up`} onClick={onPlus} disabled={disabled}>
-        <Plus size={14} />
-      </IconButton>
+    <div className="flex min-w-0 flex-col gap-1" role="group" aria-label={label}>
+      <span className="caps text-12 text-fog">{label}</span>
+      <div className="flex items-center gap-1 rounded-[var(--radius-control)] border border-line bg-ink-900">
+        <IconButton label={`${label} down`} onClick={onMinus} disabled={disabled}>
+          <Minus size={14} />
+        </IconButton>
+        <span
+          className={`tabular min-w-[3ch] flex-1 whitespace-nowrap text-center text-13 font-bold ${disabled ? "text-faint" : "text-bone"}`}
+        >
+          {children}
+        </span>
+        <IconButton label={`${label} up`} onClick={onPlus} disabled={disabled}>
+          <Plus size={14} />
+        </IconButton>
+      </div>
     </div>
   );
 }

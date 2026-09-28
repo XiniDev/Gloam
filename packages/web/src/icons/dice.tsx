@@ -42,3 +42,51 @@ export function SparkIcon({ size = 12, ...rest }: P) {
     </svg>
   );
 }
+
+/**
+ * A roll made by hand (SPEC §8.9 "a hand icon for manual entries"; "I rolled physically…"): a cupped hand holding a
+ * die — a cube seen corner-on, so it isn't the d20 and the hand isn't the Pan tool's open palm.
+ */
+export function HandDieIcon({ size = 16, ...rest }: P) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.75}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      {...rest}
+    >
+      <path d="M14.2 2.6 18.6 5.1v5L14.2 12.6 9.8 10.1v-5z" />
+      <path d="M9.8 5.1 14.2 7.6l4.4-2.5M14.2 7.6v5" strokeWidth={1.2} opacity={0.75} />
+      <path d="M2.5 14h3c1 0 1.9.3 2.6.9l1.4 1h3.2a1.5 1.5 0 0 1 0 3H9" />
+      <path d="M2.5 21h9.4c1.3 0 2.5-.5 3.4-1.3l5.1-4.6a1.5 1.5 0 0 0-2-2.3l-3.4 2.8" />
+    </svg>
+  );
+}
+
+/** A pushpin (pinning a roll to the tray's chips; §27.4's brass pin for pinned items), in the current colour. */
+export function PinGlyph({ size = 16, ...rest }: P) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.75}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      {...rest}
+    >
+      <circle cx="14.5" cy="8.5" r="4.2" />
+      <path d="M11.6 11.4 6 17M5 19l1-2" />
+      <path d="M12.9 4.6c-1 .1-1.9.6-2.5 1.3" strokeWidth={1.2} opacity={0.7} />
+    </svg>
+  );
+}

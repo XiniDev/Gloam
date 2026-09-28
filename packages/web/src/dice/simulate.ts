@@ -22,12 +22,12 @@ export const FRICTION = 0.6;
  * The tray a throw of n dice lands in (cm): x across, z deep along the throw. Every client derives the same tray from
  * the same dice, or the same seed wouldn't give the same tumble. Dice come to rest spread over nearly all of it
  * (measured: within about a centimetre of its walls from three dice up), so its size is how large they can be drawn:
- * a pair lands close together and reads large, a fistful gets room. Deeper than wide, as a tray you throw along —
- * a portrait phone's narrow screen frames its width, a landscape screen's spare height its depth.
+ * a pair lands close together and reads large, up to eight dice share a 10-cm tray, a fistful gets room. A little
+ * deeper than wide (1.3 : 1), as a tray you throw along — shaped for a portrait phone, the tightest screen to frame.
  */
 export function trayFor(n: number): { w: number; d: number } {
-  const w = n <= 2 ? 9 : n <= 4 ? 10 : n <= 8 ? 11 : 12.5;
-  return { w, d: w * 1.5 };
+  const w = n <= 2 ? 9 : n <= 8 ? 10 : 12.5;
+  return { w, d: Math.round(w * 13) / 10 };
 }
 /** The largest tray (twenty dice). */
 export const TRAY_MAX = trayFor(20);

@@ -109,6 +109,15 @@ export function DiceOverlay({ tier }: { tier: TierSpec }) {
   useEffect(() => {
     provideTestHook("diceThrows", () => diceLog.slice(-20));
     // Test builds: dice rest this long before fading (key-screen shots under software GL can't catch a 2.5-s rest).
+    // Test builds: a throw's playback held at this many ms in (a mid-air frame, photographed however slow the page
+    // is), then let go from where it stood.
+    provideTestHook("diceFreeze", (ms: number | null) => {
+      const now = performance.now();
+      if (ms === null && freezeMs !== null)
+        for (const t of liveThrows) if (t.result && t.settledAt === null) t.start = now - playedMs(t, now);
+      freezeMs = ms;
+      again();
+    });
     provideTestHook("diceHold", (ms: number | null) => {
       holdMs = ms ?? HOLD_MS;
     });
@@ -160,6 +169,7 @@ function DiceStage({ tier, onIdle }: { tier: TierSpec; onIdle: () => void }) {
   );
 
   const throws = useMemo<Throw[]>(() => [], []);
+  liveThrows = throws;
   // The HUD moving (a sheet opening over the bottom, the feed growing) re-frames dice already at rest: a frame is asked
   // for, and the camera eases them into the new clear area — they'd otherwise stay put under the new panel.
   useEffect(() => {
@@ -330,7 +340,8 @@ function DiceStage({ tier, onIdle }: { tier: TierSpec; onIdle: () => void }) {
         const res = t.result;
         if (!res) continue;
         const n = t.kinds.length;
-        const stepF = t.reduced ? res.steps : Math.min(res.steps, (now - t.start) / (STEP_S * 1000));
+        const played = playedMs(t, now);
+        const stepF = t.reduced ? res.steps : Math.min(res.steps, played / (STEP_S * 1000));
         const k = Math.floor(stepF);
         const u = stepF - k;
         const k1 = Math.min(res.steps, k + 1);
@@ -357,7 +368,7 @@ function DiceStage({ tier, onIdle }: { tier: TierSpec; onIdle: () => void }) {
               rest = new Quaternion().setFromUnitVectors(m, up).multiply(qa);
               t.rest[i] = rest;
             }
-            const e = Math.min(1, (now - t.start - res.steps * STEP_S * 1000) / REST_TWEEN_MS);
+            const e = Math.min(1, (played - res.steps * STEP_S * 1000) / REST_TWEEN_MS);
             qa.slerp(rest, t.reduced ? 1 : e);
           }
           mesh.quaternion.copy(qa).multiply(t.sym[i] as Quaternion);
@@ -365,10 +376,12 @@ function DiceStage({ tier, onIdle }: { tier: TierSpec; onIdle: () => void }) {
           const blob = t.shadows[i] as Mesh;
           const lift = Math.min(1, Math.max(0, (mesh.position.y - 0.8) / 10));
           blob.visible = true;
-          blob.position.set(mesh.position.x, 0.02, mesh.position.z);
+          // Cast away from the key light (at −8, 30, 14): further off the higher the die.
+          const h = mesh.position.y;
+          blob.position.set(mesh.position.x + h * 0.27, 0.02, mesh.position.z - h * 0.47);
           blob.scale.setScalar(2.3 + lift * 2.4);
           (blob.material as MeshBasicMaterial).opacity =
-            (shadows ? 0.3 : 0.62) * (1 - lift) ** 2 * fade(t, now);
+            (shadows ? 0.35 : 0.8) * (1 - lift) ** 2 * fade(t, now);
           // Its settle tick, once, as it stops.
           if (!t.ticked[i] && k >= (res.restStep[i] ?? res.steps)) {
             t.ticked[i] = true;
@@ -393,7 +406,7 @@ function DiceStage({ tier, onIdle }: { tier: TierSpec; onIdle: () => void }) {
             });
           }
         const restMs = res.steps * STEP_S * 1000 + (res.settled ? 0 : REST_TWEEN_MS);
-        if (t.settledAt === null && (t.reduced || now - t.start >= restMs)) finish(t, now);
+        if (t.settledAt === null && (t.reduced || played >= restMs)) finish(t, now);
         // Held, then faded out.
         if (t.settledAt !== null) {
           const a = fade(t, now);
@@ -459,6 +472,17 @@ function DiceStage({ tier, onIdle }: { tier: TierSpec; onIdle: () => void }) {
   return null;
 }
 
+/** Test builds: playback held at this many ms into each throw (null: playing). */
+let freezeMs: number | null = null;
+/** The throws on the stage now (the freeze hook lets them go from where they stood). */
+let liveThrows: Throw[] = [];
+
+/** How far into its recording a throw has played (ms). */
+function playedMs(t: Throw, now: number): number {
+  const ms = now - t.start;
+  return freezeMs === null ? ms : Math.min(ms, freezeMs);
+}
+
 /** When a throw at rest starts to fade (its hold, or sooner when the next throw came). */
 function fadeStart(t: Throw): number {
   return Math.min((t.settledAt as number) + holdMs, t.fadeAt ?? Number.POSITIVE_INFINITY);
@@ -509,7 +533,8 @@ const DICE_PITCH = 72;
 const MAX_MIN_FRAME_CM = 12;
 const MIN_DIE_PX = 64;
 const DIE_CM = 1.6;
-const DIE_R = 1.2;
+/** Room kept round each die's centre in the frame (cm): its circumradius (0.8) and a little. */
+const DIE_R = 0.95;
 /**
  * How far ahead (steps of 1/120 s) the dice camera looks: 0.8 s — a throw's whole rise and fall is framed from the
  * start, and as the dice settle the view closes in on where they rest.
@@ -558,7 +583,7 @@ function frameDice(
     reduced ||= t.reduced;
     // Where the dice are, and where they'll be over the next 0.3 s (the recording says): the view is there first.
     const n = t.kinds.length;
-    const k = t.reduced ? res.steps : Math.min(res.steps, Math.floor((now - t.start) / (STEP_S * 1000)));
+    const k = t.reduced ? res.steps : Math.min(res.steps, Math.floor(playedMs(t, now) / (STEP_S * 1000)));
     if (!t.framed) {
       t.framed = true;
       fresh = true;
@@ -587,7 +612,12 @@ function frameDice(
   const shape = throws[throws.length - 1]?.tray ?? TRAY_MAX;
   const aspect = shape.w / (shape.d * Math.sin((DICE_PITCH * Math.PI) / 180));
   const visible = largestClear(area, Object.values(useHudObstacles.getState().rects), aspect);
-  const short = Math.max(1, Math.min(visible.right - visible.left, visible.bottom - visible.top) - 48);
+  // A phone keeps less margin round the dice (its screen is the tightest); obstacles already carry their own gap.
+  const margin = isPhoneNow() ? 12 : 24;
+  const short = Math.max(
+    1,
+    Math.min(visible.right - visible.left, visible.bottom - visible.top) - 2 * margin,
+  );
   const minFrame = Math.min(MAX_MIN_FRAME_CM, (short / MIN_DIE_PX) * DIE_CM);
   const grow = (a: number, b: number) => {
     const c = (a + b) / 2;
@@ -604,7 +634,7 @@ function frameDice(
     fovDeg: 30,
     pitchDeg: DICE_PITCH,
     visible,
-    margin: 24,
+    margin,
     minDistance: (top + 12) / Math.sin((DICE_PITCH * Math.PI) / 180),
   });
   const dt = camReady ? Math.min(100, now - camAt) : 0;

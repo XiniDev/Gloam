@@ -45,11 +45,8 @@ function Bar({ tray }: { tray: boolean }) {
   useMeasuredInset("bottom", ref, insetMeasures.bottom);
   return (
     <div className="pointer-events-none absolute bottom-4 left-1/2 z-30 flex -translate-x-1/2 items-end gap-2">
-      <div
-        ref={ref}
-        data-testid="action-bar"
-        className="panel pointer-events-auto flex items-center gap-1 p-1"
-      >
+      {/* The creature's controls in their own panel; the dice button stands on its own, round (no tile round it). */}
+      <div ref={ref} data-testid="action-bar" className="flex items-center gap-2">
         <ElevationControl />
         <DiceButton open={tray} />
       </div>
@@ -67,10 +64,10 @@ function DiceButton({ open }: { open: boolean }) {
         aria-pressed={open || undefined}
         data-testid="dice-button"
         onClick={() => useUi.getState().set({ diceTray: !open })}
-        className={`hit grid h-11 w-11 place-items-center rounded-full border transition-[background-color,color,border-color,box-shadow] duration-[var(--dur-fast)] ${
+        className={`hit pointer-events-auto grid h-12 w-12 place-items-center rounded-full border shadow-[var(--shadow-float)] transition-[background-color,color,border-color,box-shadow] duration-[var(--dur-fast)] ${
           open
-            ? "border-brass bg-[var(--glow-brass-soft)] text-brass-bright shadow-[0_0_0_2px_var(--glow-brass)]"
-            : "border-brass-deep/70 bg-ink-900 text-brass hover:border-brass hover:text-brass-bright"
+            ? "border-brass bg-ink-850 text-brass-bright shadow-[0_0_0_2px_var(--glow-brass),var(--shadow-float)]"
+            : "border-brass-deep/70 bg-ink-850 text-brass hover:border-brass hover:text-brass-bright"
         }`}
       >
         <D20Icon size={24} />

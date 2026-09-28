@@ -192,6 +192,8 @@
   :root {
     --hit-target: 44px;
     --touch-min: 44px;
+    /* Minimum HUD text on touch is 13 px (SPEC §27.3): the scale's smallest step rises. */
+    --text-12: 13px;
   }
 }
 

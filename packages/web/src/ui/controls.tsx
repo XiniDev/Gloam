@@ -7,18 +7,24 @@ export function Toggle({
   label,
   description,
   disabled = false,
+  compact = false,
 }: {
   checked: boolean;
   onChange: (v: boolean) => void;
   label: ReactNode;
   description?: ReactNode;
   disabled?: boolean;
+  /** A small caps label beside the switch (a panel header), not a settings row. */
+  compact?: boolean;
 }) {
   const id = useId();
   return (
-    <div className="flex items-start justify-between gap-4">
+    <div className={`flex justify-between ${compact ? "items-center gap-2" : "items-start gap-4"}`}>
       <div className="min-w-0">
-        <label htmlFor={id} className="block text-16 font-medium text-bone">
+        <label
+          htmlFor={id}
+          className={compact ? "caps block text-12 text-fog" : "block text-16 font-medium text-bone"}
+        >
           {label}
         </label>
         {description ? <p className="mt-0.5 text-13 text-muted">{description}</p> : null}
@@ -65,6 +71,7 @@ export function Segmented<T extends string>({
   label,
   size = "M",
   phoneColumns,
+  fill = false,
 }: {
   value: T;
   onChange: (v: T) => void;
@@ -73,9 +80,12 @@ export function Segmented<T extends string>({
   size?: "S" | "M";
   /** On phones, lay the segments out in this many even columns instead of letting the row wrap unevenly. */
   phoneColumns?: 2 | 3 | 4;
+  /** The full width of its row, every segment the same width (a panel's own row, not a toolbar's). */
+  fill?: boolean;
 }) {
-  const layout =
-    phoneColumns === 2
+  const layout = fill
+    ? "grid w-full grid-flow-col auto-cols-fr"
+    : phoneColumns === 2
       ? "grid grid-cols-2 sm:inline-flex sm:flex-wrap"
       : phoneColumns === 3
         ? "grid grid-cols-3 sm:inline-flex sm:flex-wrap"

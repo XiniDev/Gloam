@@ -83,9 +83,12 @@ test.describe("P5 — dice (DICE)", () => {
     await dave.waitForTimeout(300);
     expect(await feed(dave)).toEqual([]);
 
+    // (At rest long enough to photograph under software GL; the product's rest is 2.5 s.)
+    for (const p of [dave, admin]) await hook(p, "diceHold", 30_000);
     // AC-DICE-03: every kind of die at once, a d100 as its two d10s.
     await formula.fill("1d4 + 1d6 + 1d8 + 1d10 + 1d12 + 1d20 + 1d100");
     await expect(dave.getByTestId("dice-formula-error")).toHaveCount(0);
+    await hook(dave, "diceFreeze", 300);
     // Enter rolls and puts the tray away (the dice get the board); the card waits for the dice — its chips empty
     // until they settle, so they never tell the result first.
     await formula.press("Enter");
@@ -95,7 +98,23 @@ test.describe("P5 — dice (DICE)", () => {
     await expect(card(dave, r.id).getByTestId("roll-pending")).toBeVisible();
     await expect(card(dave, r.id).locator('[data-testid="die-chip"]:not([data-empty])')).toHaveCount(0);
     await expect(dave.getByTestId("dice-tray")).toHaveCount(0);
+    // Photographed mid-air: the page holds the throw 0.3 s in (near the top of its arc) however slowly it draws.
+    await expect
+      .poll(
+        async () =>
+          (
+            await hook<{ throws: { id: string; dice: { visible: boolean; pos: number[] }[] }[] }>(
+              dave,
+              "diceStage",
+            )
+          ).throws
+            .find((t) => t.id === r.id)
+            ?.dice.some((d) => d.visible && (d.pos[1] as number) > 1.5) ?? false,
+        { timeout: 15_000, intervals: [100] },
+      )
+      .toBe(true);
     await dave.screenshot({ path: `${SHOTS}/dice-tumbling.png` });
+    await hook(dave, "diceFreeze", null);
     expect(r.tumble.map((d) => d.kind)).toEqual(["d4", "d6", "d8", "d10", "d12", "d20", "d10", "d10"]);
     for (const [p, name] of [
       [dave, "dice-settled"],
@@ -104,7 +123,6 @@ test.describe("P5 — dice (DICE)", () => {
       await expect
         .poll(async () => (await throwOf(p, r.id))?.settled, { timeout: 20_000, intervals: [100] })
         .toBe(true);
-      // (At rest for 2.5 s before they fade.)
       await p.screenshot({ path: `${SHOTS}/${name}.png` });
     }
     // Resting on exactly the server's faces — for the roller (thrown from the bottom) and the DM (from the top).
@@ -114,6 +132,7 @@ test.describe("P5 — dice (DICE)", () => {
       );
     await expect(card(dave, r.id)).toHaveAttribute("data-settled", "1");
     await expect(card(dave, r.id).getByTestId("roll-total")).toHaveText(String(r.total));
+    for (const p of [dave, admin]) await hook(p, "diceHold", null);
 
     // AC-DICE-08: the clacks are the simulation's contacts — tray or another die — each as loud as its impulse.
     const t = (await throwOf(dave, r.id)) as Throw;
@@ -265,6 +284,7 @@ test.describe("P5 — dice (DICE)", () => {
     gloam,
     guardLog,
   }) => {
+    test.setTimeout(300_000);
     interface Stage {
       easing: boolean;
       throws: {
@@ -335,7 +355,7 @@ test.describe("P5 — dice (DICE)", () => {
 
     // Kept open for a run of rolls: the dice come to rest clear of the tray too — and the last throw's dice made way.
     tray = await openTray(admin);
-    await tray.getByRole("button", { name: "Keep the tray open after rolling" }).click();
+    await tray.getByRole("switch", { name: "Keep open" }).click();
     await admin.getByTestId("dice-formula").fill("1d20 + 1d12 + 1d10 + 2d6");
     await admin.getByTestId("dice-formula").press("Enter");
     await expect.poll(async () => (await feed(admin)).length).toBe(5);
@@ -349,7 +369,7 @@ test.describe("P5 — dice (DICE)", () => {
       )
       .toBe(true);
     await admin.screenshot({ path: `${SHOTS}/dice-beside-tray.png` });
-    await tray.getByRole("button", { name: "Close the tray after rolling" }).click();
+    await tray.getByRole("switch", { name: "Keep open" }).click();
     await admin.keyboard.press("Escape");
 
     // A phone: the tray is a bottom sheet at 60 %; rolling closes it; a pair of dice lands large (≥ 48 px) and in
@@ -370,6 +390,22 @@ test.describe("P5 — dice (DICE)", () => {
     const dice = await clearOf(pia, pair, ["roll-feed", "action-bar"]);
     expect(dice.length).toBe(2);
     for (const d of dice) expect(d.sizePx, "a phone die's size (px)").toBeGreaterThanOrEqual(48);
+    // A handful reads large too: three dice, then seven — each clear of the HUD, each die at least 48 px.
+    for (const [formula, n] of [
+      ["3d6", 3],
+      ["1d20 + 1d12 + 1d10 + 1d8 + 2d6 + 1d4", 7],
+    ] as const) {
+      const before = (await feed(pia)).length;
+      await pia.getByTestId("dice-button").click();
+      await pia.getByTestId("dice-formula").fill(formula);
+      await pia.getByTestId("dice-formula").press("Enter");
+      await expect.poll(async () => (await feed(pia)).length).toBe(before + 1);
+      const id = ((await feed(pia))[0] as Roll).id;
+      await rested(pia, id);
+      const handful = await clearOf(pia, id, ["roll-feed", "action-bar"]);
+      expect(handful.length).toBe(n);
+      for (const d of handful) expect(d.sizePx, `a die of ${n} on a phone (px)`).toBeGreaterThanOrEqual(48);
+    }
     const button = (await pia.getByTestId("dice-button").boundingBox()) as {
       x: number;
       y: number;

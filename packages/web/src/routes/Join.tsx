@@ -232,7 +232,12 @@ function IdentityStep({
       </div>
       <div className="mt-5" role="tabpanel">
         {tab === "new" ? (
-          <NewProfile busy={busy} error={error} onSubmit={(b) => void submit({ mode: "new", ...b })} />
+          <NewProfile
+            busy={busy}
+            error={error}
+            taken={info.profiles.map((p) => p.color.toLowerCase())}
+            onSubmit={(b) => void submit({ mode: "new", ...b })}
+          />
         ) : (
           <Returning
             profiles={info.profiles}
@@ -262,14 +267,19 @@ function PinInput({
 function NewProfile({
   busy,
   error,
+  taken,
   onSubmit,
 }: {
   busy: boolean;
   error: string | null;
+  /** Colours the table's players already have (hex): a newcomer starts on one nobody has. */
+  taken: string[];
   onSubmit: (b: { name: string; color: string; pin?: string }) => void;
 }) {
   const [name, setName] = useState("");
-  const [color, setColor] = useState<string>(PLAYER_COLORS[0].id);
+  const [color, setColor] = useState<string>(
+    () => (PLAYER_COLORS.find((c) => !taken.includes(c.hex.toLowerCase())) ?? PLAYER_COLORS[0]).id,
+  );
   const [pin, setPin] = useState("");
   const nameOk = /^[\p{L}\p{M}\p{N} \-'_.]{2,24}$/u.test(name.trim());
   const pinOk = pin === "" || /^\d{4,8}$/.test(pin);

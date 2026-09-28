@@ -18,7 +18,7 @@ import {
   type Texture,
   type WebGLRenderer,
 } from "three";
-import { type FaceSet, faceAtlas, faceMask } from "./atlas.ts";
+import { type FaceSet, faceAtlas, faceMask, faceRoughness, outlinedNumerals } from "./atlas.ts";
 import type { Solid } from "./solids.ts";
 
 /**
@@ -67,6 +67,8 @@ export function diceEnvironment(gl: WebGLRenderer): Texture {
   // little away), set off-centre so its edge runs across them — faces catch a highlight or its falloff, not one flat
   // tone; the key window where the dice's light comes from (the stage's key light is at −8, 30, 14); a cool fill.
   panel(5, 4, new Color(1.0, 0.8, 0.52).multiplyScalar(4), -5.2, 12.4, -4);
+  // A thin hot strip across where flat tops mirror the room: a specular band that moves over them as they tumble.
+  panel(9, 0.7, new Color(1.0, 0.9, 0.72).multiplyScalar(9), 0.8, 13.2, -4.4);
   panel(9, 6, new Color(1.0, 0.82, 0.56).multiplyScalar(3.5), -5, 15, 8);
   panel(6, 10, new Color(0.55, 0.62, 0.8).multiplyScalar(0.9), 15, 6, -6);
   const pmrem = new PMREMGenerator(gl);
@@ -128,8 +130,9 @@ export function diceMaterial(s: Solid, skin: DiceSkin, set: FaceSet, high: boole
           envMap: env,
           envMapIntensity: 1.5,
           metalness: 1,
-          metalnessMap: faceMask(s, set),
-          roughness: 0.2,
+          metalnessMap: faceMask(s, set, outlinedNumerals(skin.number)),
+          roughness: 1,
+          roughnessMap: faceRoughness(s),
         });
         break;
       case "bone":
@@ -175,13 +178,19 @@ export function contactShadowTexture(): CanvasTexture {
   const c = document.createElement("canvas");
   c.width = c.height = N;
   const g = c.getContext("2d") as CanvasRenderingContext2D;
-  // Alpha only (the material is black): dense under the die, falling off smoothly to nothing at the edge.
+  // Alpha only (the material is black): a dense core where the die meets the floor (the inner three quarters) inside
+  // a soft penumbra falling to nothing at the edge.
+  const smooth = (e0: number, e1: number, v: number) => {
+    const t = Math.min(1, Math.max(0, (v - e0) / (e1 - e0)));
+    return t * t * (3 - 2 * t);
+  };
   const img = g.createImageData(N, N);
   for (let y = 0; y < N; y++)
     for (let x = 0; x < N; x++) {
       const r = Math.min(1, Math.hypot(x + 0.5 - N / 2, y + 0.5 - N / 2) / (N / 2));
-      const s = r * r * (3 - 2 * r);
-      img.data[(y * N + x) * 4 + 3] = Math.round(255 * (1 - s) ** 1.6);
+      const core = 0.8 * (1 - smooth(0.35, 0.74, r));
+      const penumbra = 0.5 * (1 - smooth(0.2, 1, r)) ** 1.4;
+      img.data[(y * N + x) * 4 + 3] = Math.round(255 * Math.min(1, core + penumbra));
     }
   g.putImageData(img, 0, 0);
   blob = new CanvasTexture(c);

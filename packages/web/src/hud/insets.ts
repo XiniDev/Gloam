@@ -150,15 +150,18 @@ export const useHudObstacles = create<{
   },
 }));
 
+/** Room kept round a floating HUD piece (px): what's framed beside it never crowds it. */
+const OBSTACLE_GAP = 16;
+
 /** An element's box with a gap round it, or null while it isn't laid out. */
 function obstacleBox(el: HTMLElement): ScreenArea | null {
   const r = el.getBoundingClientRect();
   if (r.width <= 0 || r.height <= 0) return null;
   return {
-    left: Math.round(r.left - GAP),
-    top: Math.round(r.top - GAP),
-    right: Math.round(r.right + GAP),
-    bottom: Math.round(r.bottom + GAP),
+    left: Math.round(r.left - OBSTACLE_GAP),
+    top: Math.round(r.top - OBSTACLE_GAP),
+    right: Math.round(r.right + OBSTACLE_GAP),
+    bottom: Math.round(r.bottom + OBSTACLE_GAP),
   };
 }
 

@@ -1,4 +1,5 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { insetMeasures, useMeasuredInset } from "../hud/insets.ts";
 
 /** Snap heights, as shares of the screen's height (SPEC §28 BottomSheet: 30 / 60 / 95 %). */
@@ -64,7 +65,9 @@ export function BottomSheet({
     setDragPx(null);
   };
 
-  return (
+  // On the page itself, not inside whatever HUD piece opened it: an ancestor with a backdrop filter or a transform
+  // would otherwise be the fixed sheet's frame (the Settings sheet laid itself out inside the top bar).
+  return createPortal(
     <section
       ref={ref}
       aria-label={label}
@@ -106,6 +109,7 @@ export function BottomSheet({
       {header ? <div className="shrink-0 px-3">{header}</div> : null}
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-3">{children}</div>
       {footer ? <div className="shrink-0 border-t border-line px-3 py-2">{footer}</div> : null}
-    </section>
+    </section>,
+    document.body,
   );
 }

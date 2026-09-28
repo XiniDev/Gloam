@@ -29,6 +29,8 @@ export function Tooltip({
 
   const show = () => {
     if (timer.current) window.clearTimeout(timer.current);
+    // Touch screens have no hover: a tooltip there only lingers over the thing just tapped.
+    if (typeof matchMedia === "function" && matchMedia("(hover: none)").matches) return;
     timer.current = window.setTimeout(() => {
       const el = ref.current;
       if (!el) return;

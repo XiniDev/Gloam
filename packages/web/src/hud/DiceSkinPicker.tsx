@@ -52,9 +52,12 @@ export function DiceSkinPicker() {
       });
   };
   return (
-    <div className="flex flex-col gap-3" data-testid="dice-skin">
-      <div className="flex items-center gap-4">
-        <DiePreview skin={skin} />
+    // One column of labels, one of choices: every row starts at the same line.
+    <div className="grid grid-cols-[4.5rem_1fr] items-start gap-x-3 gap-y-3" data-testid="dice-skin">
+      <span className="caps pt-2.5 text-12 text-fog" aria-hidden>
+        Material
+      </span>
+      <div className="flex items-center gap-3">
         <div className="flex min-w-0 flex-1 flex-col gap-0.5" role="radiogroup" aria-label="Dice material">
           {MATERIALS.map((m) => {
             const active = m.value === skin.material;
@@ -76,13 +79,20 @@ export function DiceSkinPicker() {
             );
           })}
         </div>
+        <DiePreview skin={skin} />
       </div>
+      <span className="caps pt-2.5 text-12 text-fog" aria-hidden>
+        Dice
+      </span>
       <Swatches
         label="Dice colour"
         value={skin.body}
         colors={DICE_BODY_COLORS}
         onChange={(body) => save({ ...skin, body })}
       />
+      <span className="caps pt-2.5 text-12 text-fog" aria-hidden>
+        Number
+      </span>
       <Swatches
         label="Number colour"
         value={skin.number}
@@ -105,42 +115,37 @@ function Swatches({
   onChange: (hex: string) => void;
 }) {
   return (
-    <div className="flex items-start gap-1">
-      <span className="caps w-16 shrink-0 pt-2.5 text-12 text-fog" aria-hidden>
-        {label.split(" ")[0]}
-      </span>
-      {/* Rows of five: the ten body colours are two full rows, never a straggler on a third. */}
-      <div className="grid grid-cols-5 gap-0.5" role="radiogroup" aria-label={label}>
-        {colors.map((c) => {
-          const active = c.hex.toLowerCase() === value.toLowerCase();
-          return (
-            <button
-              key={c.hex}
-              type="button"
-              role="radio"
-              aria-checked={active}
-              aria-label={c.name}
-              title={c.name}
-              onClick={() => onChange(c.hex)}
-              className="group grid h-8 min-h-[var(--touch-min)] w-8 min-w-[var(--touch-min)] place-items-center"
+    // Rows of five: the ten body colours are two full rows, never a straggler on a third.
+    <div className="grid w-fit grid-cols-5 gap-0.5" role="radiogroup" aria-label={label}>
+      {colors.map((c) => {
+        const active = c.hex.toLowerCase() === value.toLowerCase();
+        return (
+          <button
+            key={c.hex}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            aria-label={c.name}
+            title={c.name}
+            onClick={() => onChange(c.hex)}
+            className="group grid h-8 min-h-[var(--touch-min)] w-8 min-w-[var(--touch-min)] place-items-center"
+          >
+            <span
+              className={`grid h-7 w-7 place-items-center rounded-full border-2 ${active ? "border-bone" : "border-transparent group-hover:border-line-strong"}`}
+              aria-hidden
             >
+              {/* A fog hairline round every swatch: the near-black ones stay visible on the ink. */}
               <span
-                className={`grid h-7 w-7 place-items-center rounded-full border-2 ${active ? "border-bone" : "border-transparent group-hover:border-line-strong"}`}
-                aria-hidden
-              >
-                {/* A fog hairline round every swatch: the near-black ones stay visible on the ink. */}
-                <span
-                  className="block h-5 w-5 rounded-full"
-                  style={{
-                    background: c.hex,
-                    boxShadow: "0 0 0 1px color-mix(in srgb, var(--fog-300) 55%, transparent)",
-                  }}
-                />
-              </span>
-            </button>
-          );
-        })}
-      </div>
+                className="block h-5 w-5 rounded-full"
+                style={{
+                  background: c.hex,
+                  boxShadow: "0 0 0 1px color-mix(in srgb, var(--fog-300) 55%, transparent)",
+                }}
+              />
+            </span>
+          </button>
+        );
+      })}
     </div>
   );
 }

@@ -95,3 +95,27 @@ export function Sparkle({ size = 18 }: { size?: number }) {
     </svg>
   );
 }
+
+/** The brass pin (SPEC §27.4 ornaments: "a brass pin for pinned items"): a domed brass head on a short needle. */
+export function BrassPin({ size = 12 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden>
+      <path d="M11 13 5 19" stroke="var(--brass-600)" strokeWidth="2.2" strokeLinecap="round" />
+      <circle
+        cx="14.5"
+        cy="9.5"
+        r="5.5"
+        fill="var(--brass-400)"
+        stroke="var(--brass-600)"
+        strokeWidth="1.2"
+      />
+      <path
+        d="M12.3 6.7c.8-.7 1.8-1 2.9-.9"
+        stroke="var(--brass-300)"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        fill="none"
+      />
+    </svg>
+  );
+}

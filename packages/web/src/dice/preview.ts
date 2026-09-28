@@ -39,7 +39,8 @@ function getStage(): typeof stage {
     const camera = new PerspectiveCamera(30, 1, 0.1, 50);
     // As the dice camera sees them: from above at a steep pitch.
     const pitch = (72 * Math.PI) / 180;
-    camera.position.set(0, Math.sin(pitch) * 4.6, Math.cos(pitch) * 4.6);
+    // Close enough that the die fills about 85 % of the picture.
+    camera.position.set(0, Math.sin(pitch) * 3.6, Math.cos(pitch) * 3.6);
     camera.lookAt(0, 0, 0);
     const s = solid("d20");
     const mesh = new Mesh(dieGeometry(s));

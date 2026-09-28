@@ -1,8 +1,8 @@
 import type { MaskedRoll, RollRecord, RollTerm, RollVisibility } from "@gloam/shared/dice";
-import { ChevronDown, ChevronUp, EyeOff, Hand, X } from "lucide-react";
+import { ChevronDown, ChevronUp, EyeOff, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { type FeedRoll, isMasked, useRolls } from "../dice/state.ts";
-import { SparkIcon } from "../icons/dice.tsx";
+import { HandDieIcon, SparkIcon } from "../icons/dice.tsx";
 import { useTable } from "../net/table.ts";
 import { useBoard } from "../state/entities.ts";
 import { BottomSheet } from "../ui/BottomSheet.tsx";
@@ -40,7 +40,6 @@ function DesktopFeed({ feed }: { feed: FeedRoll[] }) {
   const [expanded, setExpanded] = useState<string | null>(null);
   const ref = useRef<HTMLElement>(null);
   const scroller = useRef<HTMLOListElement>(null);
-  const [cut, setCut] = useState(false);
   // Tool option bars start to the right of the feed (they share the bottom edge).
   useLayoutEffect(() => {
     const el = ref.current;
@@ -59,22 +58,42 @@ function DesktopFeed({ feed }: { feed: FeedRoll[] }) {
   }, []);
   // The dice come to rest clear of it.
   useObstacle("feed", ref);
-  // Open with more above: its top edge fades, so a card cut by it reads as "more above", not as a broken card.
-  // Measured after every render (a new card grows the list without resizing the scroller) and on scrolling.
-  const measureCut = () => {
+  // Open, the list is as tall as the newest whole cards that fit in 55 % of the screen, and scrolls a card at a time
+  // (snapping card tops to its edge): a card is never cut through. An edge with more beyond it fades over 12 px.
+  const [limit, setLimit] = useState<number | null>(null);
+  const [more, setMore] = useState<{ above: boolean; below: boolean }>({ above: false, below: false });
+  const measure = () => {
     const el = scroller.current;
-    setCut(Boolean(el && open && el.scrollHeight - el.clientHeight - Math.abs(el.scrollTop) > 2));
+    if (!el || !open) {
+      setLimit(null);
+      setMore((m) => (m.above || m.below ? { above: false, below: false } : m));
+      return;
+    }
+    const cap = window.innerHeight * 0.55;
+    let h = 0;
+    for (const [i, li] of (Array.from(el.children) as HTMLElement[]).entries()) {
+      const add = li.offsetHeight + (i ? 6 : 0);
+      if (h + add > cap) break;
+      h += add;
+    }
+    setLimit(h > 0 ? h : null);
+    const up = Math.abs(el.scrollTop);
+    const above = el.scrollHeight - el.clientHeight - up > 2;
+    const below = up > 2;
+    setMore((m) => (m.above === above && m.below === below ? m : { above, below }));
   };
-  useLayoutEffect(measureCut);
+  // After every render (a new card grows the list without resizing it) and on scrolling.
+  useLayoutEffect(measure);
   useEffect(() => {
     const el = scroller.current;
     if (!el || !open) return;
-    const on = () => {
-      setCut(el.scrollHeight - el.clientHeight - Math.abs(el.scrollTop) > 2);
-    };
-    el.addEventListener("scroll", on, { passive: true });
-    return () => el.removeEventListener("scroll", on);
-  }, [open]);
+    el.addEventListener("scroll", measure, { passive: true });
+    return () => el.removeEventListener("scroll", measure);
+  });
+  const fade =
+    more.above || more.below
+      ? `linear-gradient(to bottom, ${more.above ? "transparent 0, black 12px" : "black 0"}, ${more.below ? "black calc(100% - 12px), transparent 100%" : "black 100%"})`
+      : undefined;
   const shown = feed.slice(0, open ? 30 : 3);
   return (
     <section
@@ -95,18 +114,14 @@ function DesktopFeed({ feed }: { feed: FeedRoll[] }) {
       </button>
       <ol
         ref={scroller}
-        className={`flex flex-col-reverse gap-1.5 ${open ? "max-h-[55vh] overflow-y-auto" : ""}`}
-        style={
-          cut
-            ? {
-                maskImage: "linear-gradient(to bottom, transparent 0, black 28px)",
-                WebkitMaskImage: "linear-gradient(to bottom, transparent 0, black 28px)",
-              }
-            : undefined
-        }
+        className={`flex flex-col-reverse gap-1.5 ${open ? "snap-y snap-mandatory overflow-y-auto" : ""}`}
+        style={{
+          ...(open && limit ? { maxHeight: limit } : {}),
+          ...(fade ? { maskImage: fade, WebkitMaskImage: fade } : {}),
+        }}
       >
         {shown.map((r) => (
-          <li key={r.id} className="pointer-events-auto">
+          <li key={r.id} className="pointer-events-auto snap-start">
             <RollCard
               roll={r}
               settled={!rolling.has(r.id)}
@@ -225,8 +240,10 @@ function RollCard({
   const role = useTable((s) => s.presence.find((p) => p.userId === roll.userId)?.role);
   const mine = roll.userId === me;
   const masked = isMasked(roll);
-  const dmMasked = isMasked(roll) && roll.byDm;
-  const name = dmMasked ? "The DM" : mine ? "You" : roll.name;
+  // The DM's rolls, public or masked, carry the seal and the wax bar: one look for the DM wherever they roll.
+  const byDm = isMasked(roll) ? roll.byDm : role === "dm" || role === "admin";
+  // A masked card says its sentence once ("The DM rolls…", "Dave rolled privately"), as its heading.
+  const name = isMasked(roll) ? roll.text : mine ? "You" : roll.name;
   const hidden = !masked && roll.visibility !== "public" ? PRIVATE[roll.visibility] : null;
   return (
     <button
@@ -236,20 +253,21 @@ function RollCard({
       data-roll={roll.id}
       data-settled={settled ? "1" : "0"}
       className="panel flex w-full flex-col gap-1 border-l-4 px-3 py-2 text-left"
-      style={{ borderLeftColor: dmMasked ? "var(--wax-500)" : roll.color || "var(--border)" }}
+      style={{ borderLeftColor: byDm ? "var(--wax-500)" : roll.color || "var(--border)" }}
     >
       <div className="flex w-full items-center gap-2">
-        {dmMasked ? (
-          <WaxSeal size={24} label="DM" />
-        ) : (
-          <RollerPortrait
-            roll={roll}
-            dm={role === "dm" || role === "admin" ? (role === "admin" ? "Host" : "DM") : undefined}
+        {byDm ? <WaxSeal size={24} label="DM" /> : <RollerPortrait roll={roll} />}
+        <span className="min-w-0 truncate text-13 font-bold text-bone">{name}</span>
+        {roll.label ? <span className="min-w-0 truncate text-13 text-bone/80">{roll.label}</span> : null}
+        {roll.manual ? (
+          <HandDieIcon
+            size={15}
+            className="shrink-0 text-muted"
+            role="img"
+            aria-hidden={false}
+            aria-label="Rolled by hand"
           />
-        )}
-        <span className="truncate text-13 font-bold text-bone">{name}</span>
-        {roll.label ? <span className="truncate text-12 text-muted">{roll.label}</span> : null}
-        {roll.manual ? <Hand size={13} className="shrink-0 text-muted" aria-label="Rolled by hand" /> : null}
+        ) : null}
         {hidden ? (
           <span
             data-testid="roll-private"
@@ -274,16 +292,14 @@ function RollCard({
 }
 
 /** The roller: the token they rolled for when it has art this viewer can see, else themselves. */
-function RollerPortrait({ roll, dm }: { roll: FeedRoll; dm?: "DM" | "Host" | undefined }) {
+function RollerPortrait({ roll }: { roll: FeedRoll }) {
   const tokenId = isMasked(roll) ? undefined : roll.tokenId;
   const art = useBoard((d) => {
     const t = tokenId ? d.tokens.get(tokenId) : undefined;
     return t ? t.portraitAssetId || t.assetId || null : null;
   });
   const src = useAssetImage(art, 64);
-  return (
-    <Portrait name={roll.name} color={roll.color} size={24} src={src} sealRoom {...(dm ? { dm } : {})} />
-  );
+  return <Portrait name={roll.name} color={roll.color} size={24} src={src} />;
 }
 
 function Total({ roll, settled }: { roll: RollRecord; settled: boolean }) {
@@ -304,7 +320,6 @@ function Total({ roll, settled }: { roll: RollRecord; settled: boolean }) {
 function MaskedBody({ roll }: { roll: MaskedRoll }) {
   return (
     <div className="flex flex-col gap-1">
-      <span className="text-12 italic text-muted">{roll.text}</span>
       {roll.tumble.length ? (
         <div className="flex flex-wrap gap-1">
           {roll.tumble.slice(0, 12).map((d, i) => (
@@ -317,17 +332,59 @@ function MaskedBody({ roll }: { roll: MaskedRoll }) {
 }
 
 function Body({ roll, settled, expanded }: { roll: RollRecord; settled: boolean; expanded: boolean }) {
+  const open = settled && expanded;
   return (
     <div className="flex flex-col gap-1">
-      <span className="mono truncate text-12 text-faint">{roll.normalized || roll.formula}</span>
-      <div className="flex flex-wrap items-center gap-1">
+      <span className={`mono text-12 text-faint ${open ? "break-words" : "truncate"}`}>
+        {roll.normalized || roll.formula}
+      </span>
+      {open ? (
+        <Breakdown roll={roll} />
+      ) : (
+        <div className="flex flex-wrap items-center gap-1">
+          {roll.terms.map((t, i) => (
+            <TermChips key={`${roll.id}-${i}`} term={t} settled={settled} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const signed = (v: number) => (v >= 0 ? `+${v}` : `−${Math.abs(v)}`);
+
+/**
+ * The full breakdown (§8.9 "click to expand"): a row per term — its dice as rolled, what each came to after rerolls,
+ * which were dropped and which exploded, and the term's subtotal; modifiers and sheet references by name; the totals
+ * per damage type.
+ */
+function Breakdown({ roll }: { roll: RollRecord }) {
+  const tags = Object.entries(roll.byTag);
+  return (
+    <div data-testid="roll-breakdown" className="flex flex-col gap-1.5 pt-0.5">
+      {/* Three columns — the term, its dice, its value — the term column as wide as its longest name. */}
+      <ul className="grid grid-cols-[auto_1fr_auto] items-center gap-x-2 gap-y-1">
         {roll.terms.map((t, i) => (
-          <TermChips key={`${roll.id}-${i}`} term={t} settled={settled} />
+          <li key={`${roll.id}-b${i}`} className="contents">
+            <span className="mono truncate text-12 text-muted">
+              {t.kind === "dice"
+                ? `${t.count}d${t.sides}${t.tag ? ` ${t.tag}` : ""}`
+                : t.kind === "ref"
+                  ? `@${t.ref}`
+                  : "modifier"}
+            </span>
+            <span className="flex min-w-0 flex-wrap items-center gap-1">
+              {t.kind === "dice" ? <TermChips term={t} settled showRerolls /> : null}
+            </span>
+            <span className="tabular text-right text-13 font-bold text-bone">
+              {t.kind === "dice" ? t.subtotal : signed(t.value)}
+            </span>
+          </li>
         ))}
-      </div>
-      {settled && expanded && Object.keys(roll.byTag).length > 1 ? (
-        <ul className="flex flex-wrap gap-x-3 text-12 text-muted">
-          {Object.entries(roll.byTag).map(([tag, v]) => (
+      </ul>
+      {tags.length > 1 || (tags.length === 1 && tags[0]?.[0] !== "untyped") ? (
+        <ul className="flex flex-wrap gap-x-3 border-t border-line pt-1 text-12 text-muted">
+          {tags.map(([tag, v]) => (
             <li key={tag}>
               <span className="tabular font-bold text-bone">{v}</span> {tag}
             </li>
@@ -338,7 +395,16 @@ function Body({ roll, settled, expanded }: { roll: RollRecord; settled: boolean;
   );
 }
 
-function TermChips({ term, settled }: { term: RollTerm; settled: boolean }) {
+function TermChips({
+  term,
+  settled,
+  showRerolls = false,
+}: {
+  term: RollTerm;
+  settled: boolean;
+  /** The faces a die rolled before its reroll, struck through before it (the breakdown). */
+  showRerolls?: boolean;
+}) {
   if (term.kind === "const")
     return (
       <span className="tabular text-12 text-muted">{term.value >= 0 ? `+${term.value}` : term.value}</span>
@@ -363,6 +429,7 @@ function TermChips({ term, settled }: { term: RollTerm; settled: boolean }) {
       {term.dice.map((d, i) => (
         <Chip
           key={i}
+          before={showRerolls ? d.rerolledFrom : undefined}
           text={String(d.value)}
           kind={`d${term.sides}`}
           dropped={!d.kept}
@@ -388,12 +455,15 @@ function Chip({
   dropped = false,
   exploded = false,
   natural,
+  before,
 }: {
   text: string;
   kind: string;
   dropped?: boolean;
   exploded?: boolean;
   natural?: "crit" | "fumble";
+  /** Faces rolled before a reroll, oldest first. */
+  before?: number[] | undefined;
 }) {
   const tone =
     natural === "crit"
@@ -401,16 +471,27 @@ function Chip({
       : natural === "fumble"
         ? "border-ember text-ember"
         : "border-line text-bone";
-  return (
+  const chip = (
     <span
       data-testid="die-chip"
       data-kind={kind}
       data-empty={text === "" ? "1" : undefined}
-      className={`tabular relative inline-flex h-6 min-w-6 items-center justify-center rounded-[var(--radius-chip)] border px-1 text-12 font-bold ${text === "" ? "border-dashed border-line bg-transparent" : `bg-ink-900 ${tone}`} ${dropped ? "text-faint line-through opacity-60" : ""}`}
+      className={`tabular relative inline-flex h-6 min-w-6 items-center justify-center rounded-[var(--radius-chip)] border px-1 text-12 font-bold pointer-coarse:h-7 pointer-coarse:min-w-7 max-sm:h-7 max-sm:min-w-7 ${text === "" ? "border-dashed border-line bg-transparent" : `bg-ink-900 ${tone}`} ${dropped ? "text-faint line-through opacity-60" : ""}`}
       title={`${kind}${dropped ? " (dropped)" : ""}${exploded ? " (exploded)" : ""}`}
     >
       {text}
       {exploded ? <SparkIcon size={10} className="absolute -top-1 -right-1 text-brass-bright" /> : null}
+    </span>
+  );
+  if (!before?.length) return chip;
+  return (
+    <span className="inline-flex items-center gap-0.5" title={`Rerolled from ${before.join(", ")}`}>
+      {before.map((v, i) => (
+        <span key={i} className="tabular text-12 text-faint line-through">
+          {v}
+        </span>
+      ))}
+      {chip}
     </span>
   );
 }

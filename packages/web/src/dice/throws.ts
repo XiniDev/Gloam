@@ -2,6 +2,7 @@
  * Throwing dice from the main thread: one worker (made on first use, or prefetched when the table is idle — SPEC
  * §18.4 "prefetched after the table first renders"), one request per throw.
  */
+import { preloadDiceFace } from "./atlas.ts";
 import type { ThrowInput, ThrowResult } from "./simulate.ts";
 
 let worker: Worker | null = null;
@@ -31,6 +32,7 @@ function ensure(): Worker {
 /** Loads the physics when the browser is idle, so the first throw doesn't wait for it. */
 export function prefetchDice(): void {
   const go = () => {
+    preloadDiceFace();
     const id = ++seq;
     pending.set(id, { ok: () => {}, fail: () => {} });
     ensure().postMessage({ id, warm: true });

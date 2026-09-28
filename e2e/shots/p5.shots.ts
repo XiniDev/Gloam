@@ -55,7 +55,23 @@ test("P5 key screens", async ({ admin, browser, gloam, guardLog }, info) => {
         intervals: [100],
       })
       .toBe(true);
-  const latest = async (p: Page) => ((await hook<{ id: string }[]>(p, "rollFeed"))[0] as { id: string }).id;
+  /** The newest roll once it has arrived (a roll is asked for, then comes back from the server). */
+  const latest = async (p: Page) => {
+    await expect.poll(async () => (await hook<{ id: string }[]>(p, "rollFeed")).length).toBeGreaterThan(0);
+    return ((await hook<{ id: string }[]>(p, "rollFeed"))[0] as { id: string }).id;
+  };
+  /** The throw's dice drawn and up in the air (the worker's recording back, a die above the tray). */
+  type Stage = { throws: { id: string; dice: { visible: boolean; pos: number[] }[] }[] };
+  const inTheAir = (p: Page, id: string) =>
+    expect
+      .poll(
+        async () =>
+          (await hook<Stage>(p, "diceStage")).throws
+            .find((t) => t.id === id)
+            ?.dice.some((d) => d.visible && (d.pos[1] as number) > 1.5) ?? false,
+        { timeout: 15_000, intervals: [100] },
+      )
+      .toBe(true);
 
   const code = await adminAtTable(admin);
   await introDone(admin);
@@ -87,11 +103,14 @@ test("P5 key screens", async ({ admin, browser, gloam, guardLog }, info) => {
   // (Held at rest while they're photographed: a screenshot under software GL outlasts the 2.5-s rest.)
   for (const p of [dave, admin]) await hook(p, "diceHold", 60_000);
   await dave.getByTestId("dice-formula").fill("1d20 + 1d12 + 1d10 + 1d8 + 2d6 + 1d4");
+  // Held 0.3 s into the throw for the tumbling shot (near the top of the arc), then let go.
+  await hook(dave, "diceFreeze", 300);
   await dave.getByTestId("dice-formula").press("Enter");
   await dave.keyboard.press("Escape");
   await step("03-dice-tumbling", dave, async () => {
-    await dave.waitForTimeout(250);
+    await inTheAir(dave, await latest(dave));
   });
+  await hook(dave, "diceFreeze", null);
   await step("04-dice-at-rest", dave, async () => {
     await settled(dave, await latest(dave));
   });
@@ -123,6 +142,25 @@ test("P5 key screens", async ({ admin, browser, gloam, guardLog }, info) => {
   await step("08-feed-player", dave, async () => {
     await dave.waitForTimeout(600);
     await dave.getByTestId("roll-feed").getByRole("button", { name: /Rolls/ }).click();
+  });
+
+  // Every chip treatment (§8.9) and the full breakdown: a kept natural 20 beside its dropped twin, an exploding d6, a
+  // rerolled d8 of fire, a flat bonus — entered by hand so the faces are known — and a natural 1.
+  await req(admin, "dice.manual", {
+    formula: "2d20kh1 + 4d6! + 1d8r1 [fire] + 3",
+    values: [20, 7, 6, 2, 3, 5, 1, 1, 6],
+    label: "Firebrand",
+  });
+  await req(admin, "dice.manual", { formula: "1d20", values: [1], label: "Stealth" });
+  await step("09-chips-and-breakdown", admin, async () => {
+    const feedEl = admin.getByTestId("roll-feed");
+    if (viewport.width < 640) {
+      if ((await admin.getByTestId("roll-card").count()) === 0 || !(await feedEl.getAttribute("data-snap")))
+        await feedEl.getByRole("button", { name: /Rolls/ }).click();
+    }
+    const card = admin.locator('[data-testid="roll-card"]').filter({ hasText: "Firebrand" }).first();
+    await card.click();
+    await expect(card.getByTestId("roll-breakdown")).toBeVisible();
   });
 
   for (const p of [dave, admin]) await hook(p, "diceHold", null);

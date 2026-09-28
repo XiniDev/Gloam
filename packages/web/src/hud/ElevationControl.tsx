@@ -28,7 +28,7 @@ export function ElevationControl() {
     <section
       aria-label={`Elevation of ${token.name}`}
       data-testid="elevation-stepper"
-      className="flex items-center gap-1 py-1 pr-1 pl-3"
+      className="panel pointer-events-auto flex items-center gap-1 py-1 pr-1 pl-3"
     >
       <span className="caps pr-1 text-12 text-fog" aria-hidden>
         Height

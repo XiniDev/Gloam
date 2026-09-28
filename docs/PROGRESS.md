@@ -257,3 +257,14 @@ PASSING 28/224 · DISPUTED 0 · FAILING 196
   the dice button uncovered), masked-label unit test and journey checks, `largestClear` against brute force, trays
   (release clear of the walls for 1–20 dice), dice numbering against every arrangement, `countOf`. `pnpm check` 326
   tests; p5-dice, p4-phone, p1-lobby journeys pass. Key screens re-shot (transitions finish before each capture).
+
+## 2026-09-28 — P5 visual review, round 2 (critic 6.5/10, final round)
+
+- Fixed the BLOCKING and IMPORTANT items and most NICEs (DECISIONS, "Critic round 2 (P5)"): the dice numerals now in
+  Fraunces (they were Georgia), outlined and on metal with a sheen; 13-px text on touch; custom glyphs for physical
+  rolls and pins, a labelled Keep-open switch; tighter trays so a handful of dice on a phone is ≥ 48 px; a pinned tray
+  beside the dock; the DM's cards under one seal; a whole-card feed with an expanded breakdown; an explicit tray
+  layout; Settings as a phone bottom sheet and a dice obstacle; sheets and popovers rendered on the page (a backdrop
+  filter had captured them); new players on an unused colour; contact shadows with a core, cast from the key light.
+- Tests: the HUD-clear journey now checks 2, 3 and 7 dice ≥ 48 px on a phone; tumbling captures hold the throw
+  mid-air (`diceFreeze`); key screen 09 shows every chip treatment and the breakdown. p5-dice (3), p4-phone pass.
