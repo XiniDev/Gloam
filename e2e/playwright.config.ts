@@ -35,9 +35,9 @@ export default defineConfig({
   },
   projects: [
     { name: "chromium", grepInvert: /@timing/, use: { browserName: "chromium" } },
-    // Latency and animation-timing journeys (≤ 1 s admissions, 400/600 ms camera tweens, 2 s scene travel, 500 ms
-    // light and fog changes, 200 ms door → vision) run one at a time: software GL shares one CPU, and a neighbour
-    // decoding a 16 384² map would be measured instead.
+    // Latency and animation-timing journeys (≤ 1 s admissions, 400/600 ms camera tweens, 200 ms token crossfades,
+    // 2 s scene travel, 500 ms light and fog changes, 200 ms door → vision) run one at a time: software GL shares one
+    // CPU, and a neighbour decoding a 16 384² map would be measured instead.
     // `pnpm test:e2e` runs this project after the main one (tools/e2e.mjs).
     { name: "timing", grep: /@timing/, workers: 1, use: { browserName: "chromium" } },
   ],

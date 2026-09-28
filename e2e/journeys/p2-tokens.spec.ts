@@ -213,7 +213,7 @@ test.describe("P2 — tokens (TOK)", () => {
     ).toBeVisible();
   });
 
-  test("AC-TOK-01 / AC-TOK-02 / AC-TOK-11: model, standee, coin and auto modes switch at once and persist; bases follow size; rings show owner or disposition colours; auto crossfades at 70°", async ({
+  test("AC-TOK-01 / AC-TOK-02 / AC-TOK-11: model, standee, coin and auto modes switch at once and persist; bases follow size; rings show owner or disposition colours; auto crossfades at 70° @timing", async ({
     admin,
     browser,
     gloam,
