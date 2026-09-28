@@ -6,7 +6,7 @@
  * request. Creatures no player controls are the DM's to roll. Stored in SQLite (`roll_requests`).
  */
 import type { Ability, SkillId } from "@gloam/shared";
-import { GloamError } from "@gloam/shared/protocol";
+import { GloamError, type RequestCard } from "@gloam/shared/protocol";
 import { desc, eq } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import { rollRequests } from "../db/schema.ts";
@@ -192,7 +192,7 @@ export class RequestService {
  * A target's card for one of its controllers (never another target's result, never a hidden DC, never the total of a
  * blind roll — the player sees "?" for those).
  */
-export function cardFor(r: RollRequest, t: RequestTarget) {
+export function cardFor(r: RollRequest, t: RequestTarget): RequestCard {
   const res = r.responses[t.id] ?? { state: "pending" as const };
   const blind = r.visibility === "blind";
   return {
@@ -210,4 +210,3 @@ export function cardFor(r: RollRequest, t: RequestTarget) {
     open: r.status === "open",
   };
 }
-export type RequestCard = ReturnType<typeof cardFor>;

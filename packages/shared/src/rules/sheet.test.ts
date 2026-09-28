@@ -142,3 +142,28 @@ describe("the sheet document (Appendix F.3)", () => {
     expect(js).toContain("pinToToken");
   });
 });
+
+describe("the Import-with-AI prompt (Appendix F.3, AC-SHEET-07)", () => {
+  it("is F.3's prompt with the published schema in place of its marker, and reads a fenced reply", async () => {
+    const { CHARACTER_AI_PROMPT, CHARACTER_SCHEMA_MARKER, fillPrompt, jsonFromReply } = await import(
+      "../schemas/prompts.ts"
+    );
+    const schema = characterJsonSchema();
+    const text = fillPrompt(CHARACTER_AI_PROMPT, CHARACTER_SCHEMA_MARKER, schema);
+    expect(text).not.toContain("{{");
+    expect(text).toContain(JSON.stringify(schema, null, 2));
+    for (const rule of [
+      "Output ONLY one JSON object that validates against the JSON Schema below",
+      "Never invent\n   values",
+      "Put everything that doesn't fit",
+      "Ability scores are the scores, not modifiers.",
+      'Tag damage types in brackets, e.g. "1d8 + @str [slashing]".',
+      "Keep names of spells, features and items exactly as written.",
+      'List anything you were unsure about in "importNotes".',
+    ])
+      expect(text).toContain(rule);
+    const reply = 'Here it is:\n```json\n{"core": {"name": "Mira"}}\n```';
+    expect(Sheet.parse(JSON.parse(jsonFromReply(reply) as string)).core.name).toBe("Mira");
+    expect(jsonFromReply("no json here")).toBeNull();
+  });
+});

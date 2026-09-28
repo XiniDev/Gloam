@@ -1,4 +1,5 @@
 import type { Client } from "@colyseus/core";
+import type { ActorView } from "@gloam/shared/protocol";
 import { diffSheet, type JsonPatchOp, patchOf } from "@gloam/shared/rules";
 import type { Sheet } from "@gloam/shared/schemas";
 import type { ActorEntity } from "../engine/codecs.ts";
@@ -7,16 +8,7 @@ import type { CampaignModel } from "../engine/model.ts";
 import type { Op } from "../engine/ops.ts";
 import type { Role } from "../services/campaigns.ts";
 
-/** A character as a client holds it: who plays it, its lock, and its sheet as read (status filled in). */
-export interface ActorView {
-  id: string;
-  kind: "character" | "npc";
-  ownerUserId: string | null;
-  lockLevel: "unlocked" | "core" | "full";
-  templateId: string | null;
-  updatedAt: number;
-  sheet: Sheet;
-}
+export type { ActorView };
 
 interface Viewer {
   userId: string;

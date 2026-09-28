@@ -191,7 +191,12 @@ function TrayBody({
     setDraft({ formula: typeof f === "function" ? f(useUi.getState().diceDraft.formula) : f });
   const setLabel = (l: string) => setDraft({ label: l });
   const setVisibility = (v: RollVisibility) => setDraft({ visibility: v });
-  const [manual, setManual] = useState(false);
+  // Opened for a physical roll (a sheet's long-press menu): straight to entering what landed.
+  const [manual, setManual] = useState(() => useUi.getState().diceDraft.manual === true);
+  useEffect(() => {
+    const d = useUi.getState().diceDraft;
+    if (d.manual) useUi.getState().set({ diceDraft: { ...d, manual: false } });
+  }, []);
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState<Saved>(() => loadSaved(userId));
   const input = useRef<HTMLInputElement>(null);

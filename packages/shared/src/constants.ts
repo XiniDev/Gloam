@@ -75,6 +75,26 @@ export const DICE_NUMBER_COLORS = [
   { name: "Frost", hex: "#BFE3F2" },
 ] as const;
 
+/** The drawing pad's 16 swatches (SPEC §8.10 Character art): inks, earths, skins and a painter's brights. */
+export const DRAWING_SWATCHES = [
+  { name: "Ink", hex: "#16120E" },
+  { name: "Charcoal", hex: "#4A4640" },
+  { name: "Stone", hex: "#8C877E" },
+  { name: "Chalk", hex: "#F7F3EA" },
+  { name: "Blood", hex: "#A8261E" },
+  { name: "Ember", hex: "#E0702A" },
+  { name: "Ochre", hex: "#D9A441" },
+  { name: "Moss", hex: "#5E7F2F" },
+  { name: "Verdigris", hex: "#2F8F7A" },
+  { name: "Sky", hex: "#4F8FCB" },
+  { name: "Indigo", hex: "#34407F" },
+  { name: "Heather", hex: "#7D4F9A" },
+  { name: "Rose", hex: "#D8738A" },
+  { name: "Umber", hex: "#6B4424" },
+  { name: "Sand", hex: "#D9BF8C" },
+  { name: "Skin", hex: "#E9B894" },
+] as const;
+
 /** NPC disposition ring colours (SPEC §27.2). Party tokens use the owner's player colour. */
 export const DISPOSITION_COLORS = {
   friendly: "#5FBF9A",

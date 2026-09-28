@@ -60,8 +60,13 @@ export function tokenView(t: TokenEntity, ctx: ProjectionCtx): TokenView {
   const max = Math.max(1, stats.hpMax);
   const light = t.lightId ? ctx.model.get("light", t.lightId) : undefined;
   const owner = t.ownerIds[0];
+  // Counters pinned to the token (§8.10 custom blocks) — the sheet's, so only a linked token wears them; an
+  // unlinked copy keeps its own numbers and the sheet's counters aren't its own.
   const pinned: string[] = [];
-  const custom = actor && Array.isArray(actor.sheet.custom) ? (actor.sheet.custom as unknown[]) : [];
+  const custom =
+    actor && t.link === "linked" && Array.isArray(actor.sheet.custom)
+      ? (actor.sheet.custom as unknown[])
+      : [];
   for (const b of custom) {
     const c = b as { type?: string; title?: string; value?: number; max?: number; pinToToken?: boolean };
     if (c.type === "counter" && c.pinToToken) pinned.push(`${c.title ?? ""}|${c.value ?? 0}|${c.max ?? 0}`);

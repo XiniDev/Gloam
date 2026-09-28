@@ -1,5 +1,6 @@
 import { Suspense, useEffect, useState } from "react";
 import { assetUrl } from "../../net/assets.ts";
+import { pendingProposals, useSheets } from "../../net/sheets.ts";
 import { request } from "../../net/table.ts";
 import { type AssetItem, useLibrary } from "../../state/library.ts";
 import { Button } from "../../ui/Button.tsx";
@@ -7,6 +8,7 @@ import { EmptyState } from "../../ui/EmptyState.tsx";
 import { lazyPage } from "../../ui/lazyPage.ts";
 import { toast } from "../../ui/Toast.tsx";
 import { useAssetImage } from "../useAssetImage.ts";
+import { SheetProposals } from "./SheetProposals.tsx";
 
 const ModelPreview = lazyPage(() => import("./ModelPreview.tsx"));
 
@@ -96,8 +98,12 @@ function Pending({ a, open, onOpen }: { a: AssetItem; open: boolean; onOpen: () 
   );
 }
 
-/** The Approvals inbox (SPEC §8.16): players' uploads wait here; approving is not undoable (AC-UNDO-05). */
+/**
+ * The Approvals inbox (SPEC §8.16): players' proposed sheet changes (§8.10) and their uploads wait here; approving an
+ * upload is not undoable (AC-UNDO-05).
+ */
 export function ApprovalsPanel() {
+  const proposals = useSheets(pendingProposals);
   const all = useLibrary((s) => s.assets);
   const [open, setOpen] = useState<string | null>(null);
   useEffect(() => {
@@ -109,16 +115,24 @@ export function ApprovalsPanel() {
   const pending = [...all.values()]
     .filter((a) => a.status === "pending" && !a.deleted)
     .sort((x, y) => x.createdAt - y.createdAt);
-  return pending.length === 0 ? (
-    <EmptyState art="door" title="Nothing waiting. Players' uploads appear here for you to approve." />
+  return pending.length === 0 && proposals === 0 ? (
+    <EmptyState
+      art="door"
+      title="Nothing waiting. Players' uploads and proposed sheet changes appear here for you to approve."
+    />
   ) : (
-    <ul
-      className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-3 py-3"
-      aria-label="Uploads waiting for approval"
-    >
-      {pending.map((a) => (
-        <Pending key={a.id} a={a} open={open === a.id} onOpen={() => setOpen(a.id)} />
-      ))}
-    </ul>
+    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-3 py-3">
+      <SheetProposals />
+      {pending.length ? (
+        <section className="flex flex-col gap-2">
+          {proposals ? <h3 className="caps text-12 text-muted">Uploads</h3> : null}
+          <ul className="flex flex-col gap-2" aria-label="Uploads waiting for approval">
+            {pending.map((a) => (
+              <Pending key={a.id} a={a} open={open === a.id} onOpen={() => setOpen(a.id)} />
+            ))}
+          </ul>
+        </section>
+      ) : null}
+    </div>
   );
 }

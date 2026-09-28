@@ -1,5 +1,6 @@
-import { Users } from "lucide-react";
+import { ScrollText, Users } from "lucide-react";
 import { type ReactElement, Suspense, useEffect, useRef, useState } from "react";
+import { pendingProposals, useSheets } from "../net/sheets.ts";
 import { useTable } from "../net/table.ts";
 import { pendingCount, useLibrary } from "../state/library.ts";
 import { type DockTab, useUi } from "../state/ui.ts";
@@ -10,6 +11,7 @@ import { Sparkle } from "../ui/ornaments.tsx";
 import { hudOrder } from "./Intro.tsx";
 import { insetMeasures, useHudInsets, useIsPhone, useMeasuredInset } from "./insets.ts";
 import { PartyPanel } from "./PartyPanel.tsx";
+import { SheetPanel } from "./sheet/SheetPanel.tsx";
 
 const DmPanel = lazyPage(() => import("./dm/DmPanel.tsx"));
 
@@ -37,7 +39,7 @@ export function Dock() {
   const tab = useUi((s) => s.dock);
   const role = useTable((s) => s.me?.role);
   const dm = role === "dm" || role === "admin";
-  const pending = useLibrary(pendingCount);
+  const pending = useLibrary(pendingCount) + useSheets(pendingProposals);
   const [width, setWidth] = useState(loadWidth);
   const drag = useRef<{ x: number; w: number } | null>(null);
   const asideRef = useRef<HTMLElement>(null);
@@ -54,6 +56,7 @@ export function Dock() {
 
   const tabs: { id: DockTab; label: string; icon: ReactElement; badge?: number }[] = [
     { id: "party", label: "Party", icon: <Users size={19} /> },
+    { id: "sheet", label: "Sheet", icon: <ScrollText size={19} /> },
     ...(dm ? [{ id: "dm" as const, label: "DM panel", icon: <Sparkle size={18} />, badge: pending }] : []),
   ];
 
@@ -76,7 +79,7 @@ export function Dock() {
           // Never wider than the screen leaves beside the rail (phones: nearly full width, over the toolbar, until
           // P14's bottom sheets).
           style={{ width: `min(${width}px, calc(100vw - ${RAIL_ROOM}px))` }}
-          aria-label={tab === "dm" ? "DM panel" : "Party"}
+          aria-label={tab === "dm" ? "DM panel" : tab === "sheet" ? "Character sheet" : "Party"}
         >
           {/* Resize handle on the panel's left edge. */}
           <div
@@ -111,6 +114,7 @@ export function Dock() {
           />
           <ErrorBoundary where={tab}>
             {tab === "party" ? <PartyPanel /> : null}
+            {tab === "sheet" ? <SheetPanel /> : null}
             {tab === "dm" && dm ? (
               <Suspense fallback={null}>
                 <DmPanel />

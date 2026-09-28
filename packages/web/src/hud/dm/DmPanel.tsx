@@ -1,20 +1,23 @@
+import { pendingProposals, useSheets } from "../../net/sheets.ts";
 import { pendingCount, useLibrary } from "../../state/library.ts";
 import { type DmSection, useUi } from "../../state/ui.ts";
 import { WaxSeal } from "../../ui/ornaments.tsx";
 import { ApprovalsPanel } from "./ApprovalsPanel.tsx";
 import { LibraryPanel } from "./LibraryPanel.tsx";
+import { RequestsPanel } from "./RequestsPanel.tsx";
 import { ScenesPanel } from "./ScenesPanel.tsx";
 
 const SECTIONS: { id: DmSection; label: string }[] = [
   { id: "scenes", label: "Scenes" },
   { id: "library", label: "Library" },
+  { id: "requests", label: "Requests" },
   { id: "approvals", label: "Approvals" },
 ];
 
 /** The DM panel (SPEC §8.3 DM scene tools, §8.16 Library and Approvals). Later phases add their sections here. */
 export default function DmPanel() {
   const section = useUi((s) => s.dmSection);
-  const pending = useLibrary(pendingCount);
+  const pending = useLibrary(pendingCount) + useSheets(pendingProposals);
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <header className="flex items-center gap-2 border-b border-line px-4 pb-0 pt-3">
@@ -49,6 +52,7 @@ export default function DmPanel() {
       <div role="tabpanel" className="flex min-h-0 flex-1 flex-col">
         {section === "scenes" ? <ScenesPanel /> : null}
         {section === "library" ? <LibraryPanel /> : null}
+        {section === "requests" ? <RequestsPanel /> : null}
         {section === "approvals" ? <ApprovalsPanel /> : null}
       </div>
     </div>

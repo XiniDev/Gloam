@@ -18,6 +18,7 @@ import { MoveLabel } from "../hud/MoveLabel.tsx";
 import { PrepBanner } from "../hud/PrepBanner.tsx";
 import { QuickUnitDialog } from "../hud/QuickUnitDialog.tsx";
 import { RadialMenu } from "../hud/RadialMenu.tsx";
+import { RequestCards } from "../hud/RequestCards.tsx";
 import { RollFeed } from "../hud/RollFeed.tsx";
 import { SceneTransition } from "../hud/SceneTransition.tsx";
 import { TopBar } from "../hud/TopBar.tsx";
@@ -29,6 +30,7 @@ import { ZoneEditor, ZonesPanel } from "../hud/ZonesPanel.tsx";
 import { joinErrorCode } from "../net/colyseus.ts";
 import { watchDice } from "../net/dice.ts";
 import { watchFog } from "../net/fog.ts";
+import { watchSheets } from "../net/sheets.ts";
 import { connectTable, disconnectTable, request, tableEvents, useTable } from "../net/table.ts";
 import { useSession } from "../state/session.ts";
 import { useUi } from "../state/ui.ts";
@@ -54,6 +56,7 @@ export default function TableRoute() {
   // The fog of the active scene: a snapshot whenever the scene or its fog mode changes, then patches (SPEC §15.8).
   useEffect(() => watchFog(), []);
   useEffect(() => watchDice(), []);
+  useEffect(() => watchSheets(), []);
   useEffect(() => {
     let cancelled = false;
     const offs: (() => void)[] = [];
@@ -138,6 +141,7 @@ export default function TableRoute() {
       <MeasureLabels />
       <ActionBar />
       <RollFeed />
+      <RequestCards />
       <DiceTray />
       <MeasurePanel />
       <WallsPanel />

@@ -68,6 +68,26 @@ function isCounterValue(change: SheetChange, before: unknown): boolean {
   return block?.type === "counter";
 }
 
+/** Whether a path is play-state (changeable under "core locked"); `sheet` is the sheet it's in. */
+export function isPlayState(path: (string | number)[], sheet: unknown): boolean {
+  return (
+    PLAY_STATE.some((p) => matches(p, path)) ||
+    isCounterValue({ path, before: undefined, after: undefined }, sheet)
+  );
+}
+
+/** Whether a player may change this path at this lock level (DMs always may). */
+export function editableAt(
+  level: LockLevel,
+  path: (string | number)[],
+  sheet: unknown,
+  dm: boolean,
+): boolean {
+  if (dm || level === "unlocked") return true;
+  if (level === "full") return false;
+  return isPlayState(path, sheet);
+}
+
 /**
  * The changes a player isn't allowed to make at a lock level (empty: the edit may go through as it is). DMs pass
  * `dm: true` and are never refused.
@@ -76,7 +96,7 @@ export function lockedChanges(level: LockLevel, before: unknown, after: unknown,
   const changes = diffSheet(before, after);
   if (dm || level === "unlocked") return [];
   if (level === "full") return changes;
-  return changes.filter((c) => !PLAY_STATE.some((p) => matches(p, c.path)) && !isCounterValue(c, before));
+  return changes.filter((c) => !isPlayState(c.path, before));
 }
 
 /** A readable path: core.abilities.str, core.inventory[2].qty. */

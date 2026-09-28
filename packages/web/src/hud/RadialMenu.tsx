@@ -4,6 +4,7 @@ import {
   ArrowUp,
   Backpack,
   Copy,
+  Dices,
   Eye,
   EyeOff,
   Flame,
@@ -13,6 +14,7 @@ import {
   Palette,
   RotateCcw,
   RotateCw,
+  ScrollText,
   Trash2,
   Unlock,
 } from "lucide-react";
@@ -27,6 +29,7 @@ import { KeyHint } from "../ui/KeyHint.tsx";
 import { toast } from "../ui/Toast.tsx";
 import { toastUndo } from "./dm/ScenesPanel.tsx";
 import { clearArea, isPhoneNow, useHudInsets } from "./insets.ts";
+import { openSheetFor, sheetOfToken } from "./sheet/open.ts";
 
 interface Slice {
   id: string;
@@ -71,6 +74,29 @@ export function RadialMenu() {
     const controls = dm || token.ownerIds.includes(me.userId);
     const out: Slice[] = [];
     const id = token.id;
+    // The character sheet behind it, when this person may read it (§8.5 radial: Sheet).
+    if (sheetOfToken(id))
+      out.push({
+        id: "sheet",
+        label: "Sheet",
+        icon: <ScrollText size={18} />,
+        run: () => void openSheetFor(id),
+      });
+    // A DM asks for a roll: the selection (this token among it) goes to DM panel → Requests (§8.9 Roll requests).
+    if (dm)
+      out.push({
+        id: "request",
+        label: "Request a roll",
+        icon: <Dices size={18} />,
+        run: () => {
+          const sel = useUi.getState().selection;
+          useUi.getState().set({
+            dock: "dm",
+            dmSection: "requests",
+            requestTargets: sel.includes(id) ? sel : [id],
+          });
+        },
+      });
     if (controls && (dm || !token.locked)) {
       out.push({
         id: "elevation",

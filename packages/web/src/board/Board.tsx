@@ -11,6 +11,7 @@ import {
 } from "react";
 import { PCFShadowMap, PCFSoftShadowMap } from "three";
 import { DiceOverlay } from "../dice/DiceOverlay.tsx";
+import { openSheetFor } from "../hud/sheet/open.ts";
 import { request, send, useTable } from "../net/table.ts";
 import { boardData, useBoard, useEntities } from "../state/entities.ts";
 import { ASSET_DRAG_TYPE, type AssetDragPayload } from "../state/library.ts";
@@ -497,6 +498,11 @@ export default function Board() {
         else if (t === "walls" && dm) wallsDoubleClick(e.nativeEvent);
         else if (t === "zones" && dm) zonesDoubleClick();
         else if (t === "fog" && dm && useFogTool.getState().shape === "polygon") closeFogPolygon();
+        // Double-clicking a token opens its sheet (§8.5 Interaction).
+        else if (t === "select") {
+          const { hover } = useUi.getState();
+          if (hover) openSheetFor(hover);
+        }
       }}
       onContextMenu={(e) => e.preventDefault()}
       onDragOver={onDragOver}

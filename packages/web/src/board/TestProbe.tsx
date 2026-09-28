@@ -382,7 +382,12 @@ export function TestProbe() {
       obj.updateWorldMatrix(true, true);
       const parts: Record<
         string,
-        { diameter?: number; visible: boolean; bounds?: { min: number[]; max: number[] } }
+        {
+          diameter?: number;
+          visible: boolean;
+          bounds?: { min: number[]; max: number[] };
+          pin?: { label: string; value: number; max: number };
+        }
       > = {};
       let ring: string | null = null;
       let opacity: number | null = null;
@@ -392,6 +397,8 @@ export function TestProbe() {
           let visible = o.visible;
           for (let p = o.parent; p && visible; p = p.parent) visible = p.visible;
           parts[part] = { diameter: o.userData.diameter as number | undefined, visible };
+          if (o.userData.pin)
+            parts[part].pin = o.userData.pin as { label: string; value: number; max: number };
           if (part === "mini") {
             const b = new Box3().setFromObject(o);
             parts[part].bounds = { min: b.min.toArray(), max: b.max.toArray() };

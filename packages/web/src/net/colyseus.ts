@@ -10,10 +10,18 @@ export function colyseus(): Client {
 }
 
 /** Turns a rejected `room.request()` into a friendly message (SPEC §13.5 rejection codes → toasts). */
-export function rejectionMessage(err: unknown): { code: ErrorCode | "NETWORK"; message: string } {
+export function rejectionMessage(err: unknown): {
+  code: ErrorCode | "NETWORK";
+  message: string;
+  detail?: unknown;
+} {
   const e = err as { name?: string; reason?: Rejection; message?: string };
   if (e?.name === "rejected" && e.reason?.code) {
-    return { code: e.reason.code, message: e.reason.message || ERROR_TOAST[e.reason.code] };
+    return {
+      code: e.reason.code,
+      message: e.reason.message || ERROR_TOAST[e.reason.code],
+      ...(e.reason.detail !== undefined ? { detail: e.reason.detail } : {}),
+    };
   }
   return { code: "NETWORK", message: "The table didn't answer — trying again may help." };
 }

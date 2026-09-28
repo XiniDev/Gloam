@@ -140,6 +140,8 @@ export const MESSAGE_RATES = {
   "actor.propose": rate(1, 5),
   "proposal.decide": rate(5, 10),
   "proposal.list": rate(1, 3),
+  "sheets.sync": rate(1, 3),
+  "template.list": rate(1, 3),
   // Roll requests (§13.5): the DM asks, targets answer.
   "request.create": rate(2, 4),
   "request.close": rate(2, 4),
@@ -149,3 +151,4 @@ export const MESSAGE_RATES = {
 } as const satisfies Record<string, RateSpec>;
 
 export * from "./commands.ts";
+export * from "./sheets.ts";

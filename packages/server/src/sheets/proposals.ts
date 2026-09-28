@@ -3,7 +3,7 @@
  * who sees it as a before/after diff and approves it (applied onto the sheet as it is then) or denies it with a note.
  * Stored in SQLite so an unanswered proposal survives the table closing.
  */
-import { GloamError } from "@gloam/shared/protocol";
+import { GloamError, type ProposalView } from "@gloam/shared/protocol";
 import { applyChanges, diffSheet, pathLabel, type SheetChange } from "@gloam/shared/rules";
 import { Sheet } from "@gloam/shared/schemas";
 import { and, desc, eq } from "drizzle-orm";
@@ -140,7 +140,11 @@ export class ProposalService {
  * its readable path, the value now and the one proposed — or, when it no longer fits the sheet (someone changed it
  * since), that it doesn't.
  */
-export function proposalView(p: Proposal, names: { actor: string; user: string }, now: Sheet | null) {
+export function proposalView(
+  p: Proposal,
+  names: { actor: string; user: string },
+  now: Sheet | null,
+): ProposalView {
   let changes: { path: (string | number)[]; label: string; before: unknown; after: unknown }[] = [];
   let fits = now !== null;
   if (now) {
@@ -169,4 +173,3 @@ export function proposalView(p: Proposal, names: { actor: string; user: string }
     changes,
   };
 }
-export type ProposalView = ReturnType<typeof proposalView>;

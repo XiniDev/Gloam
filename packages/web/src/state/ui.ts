@@ -5,7 +5,17 @@ import { create } from "zustand";
 export type Tool = "select" | "pan" | "measure" | "ping" | "target" | "walls" | "zones" | "lights" | "fog";
 export type WallDrawKind = "wall" | "door" | "window" | "curtain" | "invisible" | "secret";
 export type DockTab = "party" | "sheet" | "spells" | "log" | "dm";
-export type DmSection = "scenes" | "library" | "approvals";
+export type DmSection = "scenes" | "library" | "requests" | "approvals";
+export type SheetTab =
+  | "overview"
+  | "abilities"
+  | "actions"
+  | "spells"
+  | "inventory"
+  | "features"
+  | "custom"
+  | "notes"
+  | "token";
 
 export interface CameraMemory {
   position: [number, number, number];
@@ -39,8 +49,20 @@ interface UiStore {
   lineWidthFt: number;
   /** The dice tray is open (SPEC §8.9, hotkey D). */
   diceTray: boolean;
+  /** The character the Sheet panel shows (null: your own, or the selected token's). */
+  sheetActor: string | null;
+  /** The Sheet panel's tab. */
+  sheetTab: SheetTab;
+  /** Creatures to ask for a roll (the radial menu's Request a roll): the Requests form takes them, then clears it. */
+  requestTargets: string[] | null;
   /** What's in the tray: kept while it's closed (a phone's tray closes to show the dice; it opens again as it was). */
-  diceDraft: { formula: string; label: string; visibility: RollVisibility };
+  diceDraft: {
+    formula: string;
+    label: string;
+    visibility: RollVisibility;
+    /** Open on "I rolled physically…" (a sheet's Physical roll); cleared as the tray takes it. */
+    manual?: boolean;
+  };
   set(p: Partial<UiStore>): void;
   select(ids: string[], mode?: "replace" | "toggle"): void;
   rememberCamera(sceneId: string, cam: CameraMemory): void;
@@ -94,6 +116,9 @@ export const useUi = create<UiStore>((set, get) => ({
   measureShape: "ruler",
   lineWidthFt: 5,
   diceTray: false,
+  sheetActor: null,
+  sheetTab: "overview",
+  requestTargets: null,
   diceDraft: { formula: "1d20", label: "", visibility: "public" },
   set(p) {
     set(p);

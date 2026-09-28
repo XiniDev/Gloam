@@ -47,7 +47,14 @@ import { canRaise, heightLabel } from "./elevation.ts";
 import { cylinder, plane, torus } from "./geometries.ts";
 import { hiddenBadgeTexture, initialsTexture } from "./glyphs.ts";
 import { type MiniInstance, useAssetMeta, useAssetTexture, useMini } from "./hooks.ts";
-import { createHpBarMaterial, HpGhost, setHpBar } from "./hpBar.ts";
+import {
+  createGaugeMaterial,
+  createHpBarMaterial,
+  HpGhost,
+  parsePinned,
+  setGauge,
+  setHpBar,
+} from "./hpBar.ts";
 import { CHIP_GEOMETRY, createChipMaterial, setChip } from "./plateChip.ts";
 
 /** Pitch above which Auto mode shows the coin (SPEC §8.5, AC-TOK-11) and the crossfade time. */
@@ -136,6 +143,17 @@ const NAME_GAP = 0.14;
 const CHIP_PAD_X = 0.34;
 const CHIP_PAD_Y = 0.2;
 const CHIP_OPACITY = 0.82;
+/**
+ * Counters pinned to the token (§8.10 custom blocks, AC-SHEET-03): under the HP bar, each a caps label and its
+ * numbers (12 px like the rest) over a thin gauge; at most three, so a plate never becomes a sheet.
+ */
+const PIN_MAX = 3;
+const PIN_TEXT = 0.66;
+const PIN_LINE = 0.78;
+const PIN_ROW_GAP = 0.16;
+const PIN_BAR_H = 0.26;
+const PIN_BAR_GAP = 0.06;
+const PIN_LABEL_MAX = 18;
 
 export const hpBarState = new Map<
   string,
@@ -837,6 +855,29 @@ function Overlay({
     !showBar && token.hpDisplay === "descriptor" && token.hpBand !== HP_BAND_HIDDEN
       ? (HP_BAND_LABELS[token.hpBand as 0 | 1 | 2 | 3 | 4] ?? null)
       : null;
+  const pinKey = JSON.stringify(token.pinnedBars.slice(0, PIN_MAX));
+  const pins = useMemo(
+    () =>
+      (JSON.parse(pinKey) as string[]).map((s) => {
+        const p = parsePinned(s);
+        return {
+          ...p,
+          label: p.label.length > PIN_LABEL_MAX ? `${p.label.slice(0, PIN_LABEL_MAX - 1)}…` : p.label,
+        };
+      }),
+    [pinKey],
+  );
+  const pinMats = useMemo(() => Array.from({ length: PIN_MAX }, createGaugeMaterial), []);
+  useEffect(() => () => disposeLater(...pinMats), [pinMats]);
+  const pinRows = useRef<{ label: TroikaText | null; value: TroikaText | null; bar: Mesh | null }[]>([]);
+  const pinRow = (i: number) => {
+    let r = pinRows.current[i];
+    if (!r) {
+      r = { label: null, value: null, bar: null };
+      pinRows.current[i] = r;
+    }
+    return r;
+  };
 
   // Decluttering: this overlay competes for its spot on screen with its neighbours' (declutter.ts).
   const latest = useRef({ token, viewer });
@@ -960,6 +1001,16 @@ function Overlay({
         t.outlineOpacity = a;
       }
     if (badge.current) badge.current.opacity = fade;
+    for (const [i, p] of pins.entries()) {
+      const r = pinRows.current[i];
+      for (const t of [r?.label, r?.value])
+        if (t && (t.fillOpacity !== a || t.outlineOpacity !== a)) {
+          t.fillOpacity = a;
+          t.outlineOpacity = a;
+        }
+      const m = pinMats[i];
+      if (m) setGauge(m, p.max > 0 ? Math.min(1, Math.max(0, p.value / p.max)) : 0, a);
+    }
     (leader.line.material as LineBasicMaterial).opacity = 0.85 * a;
     (leader.dot.material as MeshBasicMaterial).opacity = 0.85 * a;
     overlayFade.set(token.id, { far, clear: clear.current, target, a });
@@ -997,8 +1048,29 @@ function Overlay({
     const wordW = wordB ? wordB[2] - wordB[0] : 0;
     const bm = barMesh.current;
     if (bm) bm.scale.set(barW, BAR_H, 1);
-    const bottom = showBar || descriptor ? -BAR_H / 2 : BAR_H / 2 + NAME_GAP;
-    const w = Math.max(nameW, barW, wordW) + 2 * CHIP_PAD_X;
+    let bottom = showBar || descriptor ? -BAR_H / 2 : BAR_H / 2 + NAME_GAP;
+    // Pinned counters stack under the bar: label left, numbers right, the gauge as wide as the bar (or its text).
+    let pinW = 0;
+    for (let i = 0; i < pins.length; i++) {
+      const r = pinRows.current[i];
+      const lb = r?.label?.textRenderInfo?.blockBounds;
+      const vb = r?.value?.textRenderInfo?.blockBounds;
+      pinW = Math.max(pinW, (lb ? lb[2] - lb[0] : 0) + (vb ? vb[2] - vb[0] : 0) + 0.6);
+    }
+    const gaugeW = pins.length ? Math.max(barW || BAR_W, pinW) : 0;
+    for (let i = 0; i < pins.length; i++) {
+      const r = pinRows.current[i];
+      const textY = bottom - PIN_ROW_GAP - PIN_LINE / 2;
+      const barY = textY - PIN_LINE / 2 - PIN_BAR_GAP - PIN_BAR_H / 2;
+      r?.label?.position.set(-gaugeW / 2, textY, 0);
+      r?.value?.position.set(gaugeW / 2, textY, 0);
+      if (r?.bar) {
+        r.bar.position.set(0, barY, 0);
+        r.bar.scale.set(gaugeW, PIN_BAR_H, 1);
+      }
+      bottom = barY - PIN_BAR_H / 2;
+    }
+    const w = Math.max(nameW, barW, wordW, gaugeW) + 2 * CHIP_PAD_X;
     const h = nameTop - bottom + 2 * CHIP_PAD_Y;
     const cm = chipMesh.current;
     if (cm) {
@@ -1108,6 +1180,53 @@ function Overlay({
               {descriptor}
             </BoardText>
           ) : null}
+          {pins.map((p, i) => (
+            <group key={i} userData={{ part: `pinned:${i}`, pin: p }}>
+              <BoardText
+                ref={(t) => {
+                  pinRow(i).label = t as TroikaText | null;
+                }}
+                font={CAPS_FONT}
+                fontSize={PIN_TEXT}
+                letterSpacing={0.06}
+                color={C.brass300}
+                outlineWidth={0.02}
+                outlineColor={C.ink950}
+                anchorX="left"
+                anchorY="middle"
+                raycast={() => null}
+              >
+                {p.label}
+              </BoardText>
+              <BoardText
+                ref={(t) => {
+                  pinRow(i).value = t as TroikaText | null;
+                }}
+                font={NUMBER_FONT}
+                fontSize={PIN_TEXT}
+                color={C.bone100}
+                outlineWidth={0.022}
+                outlineBlur={0.12}
+                outlineOpacity={0.9}
+                outlineColor={C.ink950}
+                anchorX="right"
+                anchorY="middle"
+                raycast={() => null}
+              >
+                {`${p.value}/${p.max}`}
+              </BoardText>
+              <mesh
+                ref={(m) => {
+                  pinRow(i).bar = m;
+                }}
+                material={pinMats[i] as ShaderMaterial}
+                geometry={CHIP_GEOMETRY}
+                renderOrder={20}
+                raycast={() => null}
+                dispose={null}
+              />
+            </group>
+          ))}
         </group>
       </Billboard>
     </group>

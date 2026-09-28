@@ -473,6 +473,23 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
           r.targets.filter((t) => t.controllers.includes(auth.userId)).map((t) => cardFor(r, t)),
         );
       }),
+      // Sheet templates (§8.10 Templates): anyone at the table may start a character from one.
+      "template.list": def(z.strictObject({}), MESSAGE_RATES["template.list"], ({ auth }) => {
+        if (auth.role === "spectator") return [];
+        return this.model
+          .all("template")
+          .sort((a, b) => a.name.localeCompare(b.name))
+          .map((tpl) => ({
+            id: tpl.id,
+            name: tpl.name,
+            createdBy: tpl.createdBy,
+            blocks: tpl.blocks.length,
+          }));
+      }),
+      // A client that lost track (a reconnect, a patch that didn't fit) gets its sheets whole again.
+      "sheets.sync": def(z.strictObject({}), MESSAGE_RATES["sheets.sync"], ({ client, auth }) => {
+        this.sheets.join(client, { userId: auth.userId, role: auth.role });
+      }),
       // DMs: the campaign's proposals; players: their own.
       "proposal.list": def(z.strictObject({}), MESSAGE_RATES["proposal.list"], ({ auth }) => {
         const dm = auth.role === "admin" || auth.role === "dm";

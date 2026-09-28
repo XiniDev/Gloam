@@ -98,6 +98,54 @@ export function createHpBarMaterial(): ShaderMaterial {
   });
 }
 
+const GAUGE_FRAG = /* glsl */ `
+uniform float uFrac; uniform float uOpacity; uniform vec3 uFill; uniform vec3 uBg; uniform vec3 uEdge;
+varying vec2 vUv;
+void main() {
+  vec3 c = vUv.x < uFrac ? uFill : uBg;
+  float border = max(max(step(vUv.y, 0.2), step(0.8, vUv.y)), max(step(vUv.x, 0.01), step(0.99, vUv.x)));
+  c = mix(c, uEdge, border * 0.9);
+  gl_FragColor = vec4(c, 0.96 * uOpacity);
+  #include <colorspace_fragment>
+}`;
+
+/** A pinned counter's thin gauge under the HP bar (SPEC §8.10 custom blocks: "Sanity 8/10"). */
+export function createGaugeMaterial(): ShaderMaterial {
+  return new ShaderMaterial({
+    vertexShader: VERT,
+    fragmentShader: GAUGE_FRAG,
+    transparent: true,
+    depthTest: false,
+    depthWrite: false,
+    side: DoubleSide,
+    uniforms: {
+      uFrac: { value: 1 },
+      uOpacity: { value: 1 },
+      uFill: { value: col(C.arcane400) },
+      uBg: { value: col(C.ink900) },
+      uEdge: { value: col(C.ink950) },
+    },
+  });
+}
+
+export function setGauge(m: ShaderMaterial, frac: number, opacity: number): void {
+  const u = m.uniforms as Record<string, { value: number }>;
+  (u.uFrac as { value: number }).value = frac;
+  (u.uOpacity as { value: number }).value = opacity;
+}
+
+/** "label|value|max" (the projector's encoding; a label may itself hold "|"). */
+export function parsePinned(s: string): { label: string; value: number; max: number } {
+  const parts = s.split("|");
+  const max = Number(parts.pop());
+  const value = Number(parts.pop());
+  return {
+    label: parts.join("|"),
+    value: Number.isFinite(value) ? value : 0,
+    max: Number.isFinite(max) ? max : 0,
+  };
+}
+
 export function setHpBar(
   m: ShaderMaterial,
   v: { frac: number; temp: number; ghost: number; opacity: number },

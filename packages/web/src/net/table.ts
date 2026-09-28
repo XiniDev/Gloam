@@ -428,7 +428,7 @@ export async function request<T = unknown>(type: string, payload: unknown = {}):
     return (await room.request(type, payload, { timeout: 8000 })) as T;
   } catch (err) {
     const r = rejectionMessage(err);
-    throw Object.assign(new Error(r.message), { code: r.code });
+    throw Object.assign(new Error(r.message), { code: r.code, detail: r.detail });
   }
 }
 

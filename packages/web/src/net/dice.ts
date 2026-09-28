@@ -66,11 +66,16 @@ export interface RollRequest {
   label?: string;
   visibility: RollVisibility;
   purpose?: string;
+  /** Rolled for a creature: its `@` references answer from its token and sheet. */
   tokenId?: string;
+  /** Rolled from a character's sheet. */
+  actorId?: string;
 }
 
 export function rollDice(p: RollRequest): Promise<RollRecord> {
-  return request<RollRecord>("dice.roll", p);
+  const { tokenId, actorId, ...rest } = p;
+  const context = { ...(tokenId ? { tokenId } : {}), ...(actorId ? { actorId } : {}) };
+  return request<RollRecord>("dice.roll", { ...rest, ...(tokenId || actorId ? { context } : {}) });
 }
 
 export function enterManual(p: {
