@@ -1,4 +1,5 @@
 import { buildMoveWorld, type MoveWorld } from "@gloam/shared/movement";
+import { effectWalls } from "../vision/sources.ts";
 import type { CampaignModel } from "./model.ts";
 
 /**
@@ -30,6 +31,7 @@ export function moveWorldOf(model: CampaignModel, sceneId: string, creature: { s
       zones: model.inScene("zone", sceneId),
       bounds: scene.bounds,
       creature,
+      solid: effectWalls(model, sceneId, "move"),
     });
     entry.byKind.set(key, world);
   }

@@ -35,6 +35,7 @@ export interface Viewer {
 export interface Perception {
   perceives(userId: string, token: TokenEntity): boolean;
   seesLight?(userId: string | null, lightId: string): boolean;
+  glowsFor?(userId: string | null): { id: string }[];
   sensedFor?(userId: string | null): { id: string }[];
 }
 
@@ -135,12 +136,13 @@ export class ViewManager {
         out.lights.set(l.id, VISIBLE);
         continue;
       }
-      // A carried light is in view while its carrier is perceivable (with its token link), or while its light
-      // reaches the viewer's sight (without: the glow round the corner, not who holds it).
+      // A carried light is in view while its carrier is perceivable, with its token link. Its glow round a corner
+      // (the carrier unseen) comes below as the viewer's own stand-in: another id, nothing that ties it to its carrier.
       if (visibleTokens.has(l.tokenId)) out.lights.set(l.id, TAG_LINK);
-      else if (this.perception.seesLight?.(spectator ? null : viewer.userId, l.id))
-        out.lights.set(l.id, VISIBLE);
     }
+    if (!dm)
+      for (const g of this.perception.glowsFor?.(spectator ? null : viewer.userId) ?? [])
+        out.lights.set(g.id, VISIBLE);
     if (!dm)
       for (const m of this.perception.sensedFor?.(spectator ? null : viewer.userId) ?? [])
         out.sensed.set(m.id, VISIBLE);

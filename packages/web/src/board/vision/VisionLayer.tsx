@@ -3,6 +3,7 @@ import { type VisPoly, visRing } from "@gloam/shared/geometry";
 import type { LightView, TokenView, WallView } from "@gloam/shared/state";
 import {
   facingAngle,
+  groundRadii,
   rleDecode,
   VisionGeometry,
   type VisionLight,
@@ -348,8 +349,7 @@ export function VisionLayer({ bounds }: { bounds: Bounds }) {
     for (const t of viewersOf(tokens, dmView, viewAs?.viewers ?? null)) {
       if (t.vis?.unconscious) continue;
       if (!t.vis?.blinded) geo.losSight(t.pos.x, t.pos.y, sight);
-      if ((t.vis?.blindsight ?? 0) > 0)
-        geo.losBlind(t.pos.x, t.pos.y, (t.vis?.blindsight ?? 0) + t.elevation + 1);
+      if ((t.vis?.blindsight ?? 0) > 0) geo.losBlind(t.pos.x, t.pos.y, (t.vis?.blindsight ?? 0) + 1);
     }
     visionDiag.computedAt = performance.now();
   }, [geo]);
@@ -502,7 +502,7 @@ export function VisionLayer({ bounds }: { bounds: Bounds }) {
             (u.uKind as { value: number }).value = 0;
           });
         if (v.blindsight > 0)
-          passes.vision.add(geo.losBlind(v.x, v.y, v.blindsight + v.elevation + 1), (u) => {
+          passes.vision.add(geo.losBlind(v.x, v.y, v.blindsight + 1), (u) => {
             (u.uEye as { value: number[] }).value = [v.x, v.y];
             (u.uElev as { value: number }).value = v.elevation;
             (u.uRange as { value: number[] }).value = [0, 0, v.blindsight];
@@ -623,12 +623,15 @@ function lightsOf(lights: Map<string, LightView>, tokens: Map<string, TokenView>
         if (t) p = t.pos;
       }
     }
+    // Its circles where they meet the table (a light up high lights less of the floor; the server's rule too).
+    const g = groundRadii(l.bright, l.dim, l.elevation);
+    if (g.bright + g.dim <= 0) continue;
     out.push({
       id: l.id,
       x: p.x,
       y: p.y,
-      bright: l.bright,
-      dim: l.dim,
+      bright: g.bright,
+      dim: g.dim,
       coneDeg: l.coneDeg >= 360 || l.coneDeg <= 0 ? null : l.coneDeg,
       directionDeg: dir,
       magical: l.magical,

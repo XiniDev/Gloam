@@ -1,5 +1,7 @@
 import { LIMITS } from "@gloam/shared";
 import { GloamError } from "@gloam/shared/protocol";
+import { controlsToken } from "@gloam/shared/rules";
+import type { TokenEntity } from "@gloam/shared/schemas";
 import type { Raster } from "@gloam/shared/vision";
 import { and, desc, eq, gt, isNull } from "drizzle-orm";
 import type { z } from "zod";
@@ -412,6 +414,35 @@ export class CommandBus {
     return out;
   }
 
+  /**
+   * Undo and redo re-apply stored ops rather than run a command, so no command's permission check runs again: for a
+   * player, every token the ops touch must still be theirs to change — theirs, and not locked by the DM since — and
+   * every light must be carried by such a token (SPEC §8.14; a DM's lock can't be undone around).
+   */
+  private authorizeReplay(actor: CommandActor, ops: readonly Op[]): void {
+    if (actor.role === "admin" || actor.role === "dm") return;
+    const check = (t: TokenEntity | undefined) => {
+      if (!t || !controlsToken(actor.role, actor.userId, t))
+        throw new GloamError("FORBIDDEN", "That isn't yours to change.");
+      if (t.locked) throw new GloamError("FORBIDDEN", "The DM locked this token.");
+    };
+    for (const op of ops) {
+      if (op.k === "fog" || op.k === "sheet") continue;
+      if (op.e === "token")
+        check(
+          this.model.get("token", op.id) ??
+            ((op.k === "delete" ? op.prev : undefined) as TokenEntity | undefined),
+        );
+      else if (op.e === "light") {
+        const l =
+          this.model.get("light", op.id) ??
+          (op.k === "delete" ? (op.prev as { tokenId?: string | null }) : undefined);
+        const carrier = l?.tokenId ? this.model.get("token", l.tokenId) : undefined;
+        check(carrier);
+      }
+    }
+  }
+
   private markUndone(id: number, by: string): void {
     this.app.db.update(history).set({ undoneAt: Date.now(), undoneBy: by }).where(eq(history.id, id)).run();
   }
@@ -423,6 +454,7 @@ export class CommandBus {
   ): HistoryEntry {
     if (!e.undoable) throw new GloamError("INVALID", "That can't be undone.");
     if (e.undoneAt !== null) throw new GloamError("CONFLICT", "That was already undone.");
+    this.authorizeReplay(actor, e.inverse);
     const isDm = actor.role === "admin" || actor.role === "dm";
     const conflicts = this.conflicts(e).filter((c) => !opts.ignore?.has(c.id));
     let ops: Op[];
@@ -461,6 +493,8 @@ export class CommandBus {
       }
       const ids = new Set(entries.map((e) => e.id));
       const isDm = actor.role === "admin" || actor.role === "dm";
+      // The whole step, before any of it changes.
+      for (const e of entries) this.authorizeReplay(actor, e.inverse);
       if (!(isDm && opts.force)) {
         for (const e of entries) {
           const c = this.conflicts(e).filter((x) => !ids.has(x.id));
@@ -505,6 +539,7 @@ export class CommandBus {
         }
       }
     }
+    for (const e of entries as HistoryEntry[]) this.authorizeReplay(actor, e.ops);
     const redone: number[] = [];
     let next: HistoryEntry | null = null;
     for (const e of entries as HistoryEntry[]) {

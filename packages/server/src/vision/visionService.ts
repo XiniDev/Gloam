@@ -1,4 +1,13 @@
-import { type P, pathLength, pointAtLength, type VisPoly, visOverlap } from "@gloam/shared/geometry";
+import {
+  type P,
+  pathLength,
+  pointAtLength,
+  samplePath,
+  type VisPoly,
+  visOverlap,
+} from "@gloam/shared/geometry";
+import { maxMoveLength } from "@gloam/shared/movement";
+import { GloamError } from "@gloam/shared/protocol";
 import type { SceneEntity, TokenEntity } from "@gloam/shared/schemas";
 import {
   type CellRect,
@@ -20,8 +29,10 @@ import {
   VisionWorld,
 } from "@gloam/shared/vision";
 import type { FogApplier } from "../engine/commandBus.ts";
+import { moveDurationMs } from "../engine/commands/move.ts";
 import type { CampaignModel } from "../engine/model.ts";
 import type { Op, Rect } from "../engine/ops.ts";
+import { newId } from "../ids.ts";
 import type { Perception } from "../rooms/views.ts";
 import { FogStore } from "./fogStore.ts";
 import { sceneEffects, sceneLights, sceneWalls, tokenCreature, tokenViewer } from "./sources.ts";
@@ -84,7 +95,18 @@ interface Player {
   /** What the explored raster was last marked with: raster version, viewer key and sights, light version. */
   marked: Marked;
   /** Whether a carried light reaches this player's sight, by the regions it was worked out from. */
-  reach: Map<string, { lit: VisPoly; cone: string; sights: (VisPoly | null)[]; hit: boolean }>;
+  reach: Map<string, Reach>;
+  /** The player's glows: each light in `lights` → its opaque stand-in id (a new one each time it comes back). */
+  glows: Map<string, string>;
+}
+
+/** A carried light's reach for one player, and what it was worked out from (the fog version for painted fog). */
+interface Reach {
+  lit: VisPoly;
+  cone: string;
+  sights: (VisPoly | null)[];
+  fog: number;
+  hit: boolean;
 }
 
 interface Marked {
@@ -104,7 +126,15 @@ const newPlayer = (): Player => ({
   explored: null,
   marked: UNMARKED,
   reach: new Map(),
+  glows: new Map(),
 });
+
+/** Stand-in ids for glows: kept while a light stays a glow, new when it becomes one again (nothing to link across). */
+function rekey(lights: ReadonlySet<string>, was: ReadonlyMap<string, string>): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const id of lights) out.set(id, was.get(id) ?? newId("lgt"));
+  return out;
+}
 
 /** The pseudo-player whose sensed markers spectators hold (the union of the players'). */
 const SPECTATORS = "*spectators";
@@ -130,6 +160,9 @@ export class VisionService implements Perception, FogApplier {
   private darkKey = "";
   /** Bumped when lights change; `refreshed` holds the cells the latest change re-lit. */
   private lightVersion = 0;
+  /** Bumped whenever a fog layer or explored memory changes; snapshots are cached against it. */
+  private fogVersion = 0;
+  private readonly snapshots = new Map<string, { version: number; sceneId: string; snap: FogSnapshot }>();
   private refreshed: CellRect[] = [];
   private readonly players = new Map<string, Player>();
   /** Painted layers of the active scene (loaded on demand), by layer name. */
@@ -193,6 +226,24 @@ export class VisionService implements Perception, FogApplier {
     return this.player(userId).lights.has(lightId);
   }
 
+  /**
+   * The glows a user holds: carried lights whose carrier they don't perceive but whose light reaches what they see
+   * (players: their own; spectators: the union) — each as an opaque stand-in id, never the light's own.
+   */
+  glowsFor(userId: string | null): { id: string; lightId: string }[] {
+    if (!this.scene || this.scene.fogMode === "off") return [];
+    const p = this.player(userId ?? SPECTATORS);
+    return [...p.glows].map(([lightId, id]) => ({ id, lightId }));
+  }
+
+  /** Every stand-in any user holds (the state carries exactly these). */
+  allGlows(): { id: string; lightId: string }[] {
+    if (!this.scene || this.scene.fogMode === "off") return [];
+    const out: { id: string; lightId: string }[] = [];
+    for (const p of this.players.values()) for (const [lightId, id] of p.glows) out.push({ id, lightId });
+    return out;
+  }
+
   /** The sensed markers a user holds (players: their own; spectators: the union). */
   sensedFor(userId: string | null): SensedMark[] {
     if (this.scene?.fogMode !== "dynamic") return [];
@@ -202,6 +253,11 @@ export class VisionService implements Perception, FogApplier {
   /** The players whose vision is computed. */
   playerIds(): string[] {
     return [...this.players.keys()].filter((u) => u !== SPECTATORS);
+  }
+
+  /** Whether a user plays in this campaign (a player the table knows, or someone who owns or shares a token). */
+  private playsHere(userId: string): boolean {
+    return this.host.players().includes(userId) || this.viewerOwners().includes(userId);
   }
 
   /** Every sensed marker held by anyone (the state's `sensed` collection). */
@@ -262,6 +318,7 @@ export class VisionService implements Perception, FogApplier {
 
   /** Loads the active scene: geometry, lights, layers; recomputes every player. */
   private activate(): void {
+    this.fogVersion++;
     const active = this.model.activeScene;
     const scene = active && !active.deletedAt ? active : null;
     this.sceneId = scene?.id ?? "";
@@ -301,7 +358,7 @@ export class VisionService implements Perception, FogApplier {
     }
     const fx = sceneEffects(this.model, this.sceneId);
     if (geoChanged || !this.geo)
-      this.geo = VisionGeometry.after(this.geo, sceneWalls(this.model, this.sceneId), fx.opaque);
+      this.geo = VisionGeometry.after(this.geo, sceneWalls(this.model, this.sceneId), fx.opaque, fx.solid);
     const lights = [...sceneLights(this.model, this.sceneId), ...fx.lights];
     const world = new VisionWorld(
       this.geo,
@@ -436,6 +493,7 @@ export class VisionService implements Perception, FogApplier {
     p.perceived = perceived;
     p.sensed = sensed;
     p.lights = lights;
+    p.glows = rekey(lights, p.glows);
     return changed;
   }
 
@@ -451,29 +509,36 @@ export class VisionService implements Perception, FogApplier {
     const scene = this.scene;
     if (!world || !scene) return out;
     const revealed = scene.fogMode === "painted" ? this.revealedFor(userId) : null;
-    const reach = new Map<string, { lit: VisPoly; cone: string; sights: (VisPoly | null)[]; hit: boolean }>();
+    const reach = new Map<string, Reach>();
     for (const l of world.lights) {
       if (l.id.startsWith("fx:")) continue;
       const tokenId = this.model.get("light", l.id)?.tokenId;
       if (!tokenId || perceived.has(tokenId)) continue;
       const lit = world.litOf(l);
       const cone = coneOf(l);
+      const coneKey = cone ? `${cone.dir},${cone.half}` : "";
+      const was = p.reach.get(l.id);
+      let hit: boolean;
       if (revealed) {
-        // Painted fog is cells: a revealed cell whose centre the light reaches.
-        let hit = false;
-        fillVis(this.light?.raster as Raster, lit, (_k, cx, cy) => {
-          if (world.levelFrom(l, cx, cy) > DARK && revealed(cx, cy)) hit = true;
-          return hit;
-        });
+        // Painted fog is cells: a revealed cell whose centre the light reaches (again only when the light's area or
+        // the revealed cells changed).
+        if (was && was.lit === lit && was.cone === coneKey && was.fog === this.fogVersion) hit = was.hit;
+        else {
+          let found = false;
+          fillVis(this.light?.raster as Raster, lit, (_k, cx, cy) => {
+            if (world.levelFrom(l, cx, cy) > DARK && revealed(cx, cy)) found = true;
+            return found;
+          });
+          hit = found;
+        }
+        reach.set(l.id, { lit, cone: coneKey, sights: [], fog: this.fogVersion, hit });
         if (hit) out.add(l.id);
         continue;
       }
       const sights = p.viewers.map((v) => v.sight);
-      const coneKey = cone ? `${cone.dir},${cone.half}` : "";
-      const was = p.reach.get(l.id);
-      let hit: boolean;
       if (
         was &&
+        was.fog < 0 &&
         was.lit === lit &&
         was.cone === coneKey &&
         was.sights.length === sights.length &&
@@ -481,7 +546,7 @@ export class VisionService implements Perception, FogApplier {
       )
         hit = was.hit;
       else hit = sights.some((s) => s !== null && visOverlap(lit, s, cone));
-      reach.set(l.id, { lit, cone: coneKey, sights, hit });
+      reach.set(l.id, { lit, cone: coneKey, sights, fog: -1, hit });
       if (hit) out.add(l.id);
     }
     p.reach = reach;
@@ -512,8 +577,22 @@ export class VisionService implements Perception, FogApplier {
       const prev = p.sensed.get(tokenId);
       sensed.set(tokenId, { id: prev?.id ?? `s${(++this.sensedSeq).toString(36)}v`, ...xy });
     }
-    const changed = !sameSensed(sensed, p.sensed);
+    // Glows: any player's, unless some player perceives the carrier (then spectators hold the light itself).
+    const perceivedByAny = new Set<string>();
+    for (const [u, q] of this.players)
+      if (u !== SPECTATORS) for (const id of q.perceived) perceivedByAny.add(id);
+    const lights = new Set<string>();
+    for (const [u, q] of this.players) {
+      if (u === SPECTATORS) continue;
+      for (const id of q.lights) {
+        const carrier = this.model.get("light", id)?.tokenId;
+        if (carrier && !perceivedByAny.has(carrier)) lights.add(id);
+      }
+    }
+    const changed = !sameSensed(sensed, p.sensed) || !sameSet(lights, p.lights);
     p.sensed = sensed;
+    p.lights = lights;
+    p.glows = rekey(lights, p.glows);
     return changed;
   }
 
@@ -562,6 +641,7 @@ export class VisionService implements Perception, FogApplier {
     const old = new Raster(0, 0, 1, rect.w, rect.h, sliceRect(before, raster.w, rect));
     // Only the newly seen cells travel: clients OR them in (spectators and DMs get everyone's).
     for (let k = 0; k < cells.length; k++) if (old.data[k]) cells[k] = 0;
+    this.fogVersion++;
     const payload = { sceneId: this.sceneId, ...rect, runs: rleEncode(cells) };
     this.host.toUser(userId, "explored.patch", payload);
     this.host.toOverseers("explored.patch", payload);
@@ -649,6 +729,7 @@ export class VisionService implements Perception, FogApplier {
   }
 
   commit(): void {
+    if (this.pendingWrites.size) this.fogVersion++;
     for (const [key, staged] of this.pendingWrites) {
       const [sceneId, layer] = key.split("|") as [string, string];
       if (sceneId !== this.sceneId) continue; // stored; inactive scenes aren't kept in memory
@@ -695,6 +776,17 @@ export class VisionService implements Perception, FogApplier {
     const scene = this.scene;
     const shape = this.shape(this.sceneId);
     if (!scene || !shape) return null;
+    // Nothing changed since the last ask: the same answer (the work is proportional to the scene's cells).
+    const cacheKey = overseer ? "" : userId;
+    const hit = this.snapshots.get(cacheKey);
+    if (hit && hit.version === this.fogVersion && hit.sceneId === this.sceneId) return hit.snap;
+    const snap = this.buildSnapshot(userId, overseer, scene, shape);
+    if (this.snapshots.size > 64) this.snapshots.clear();
+    this.snapshots.set(cacheKey, { version: this.fogVersion, sceneId: this.sceneId, snap });
+    return snap;
+  }
+
+  private buildSnapshot(userId: string, overseer: boolean, scene: SceneEntity, shape: Raster): FogSnapshot {
     const names = overseer ? this.revealLayers() : ["reveal:all", `reveal:${userId}`];
     const layers = names.map((layer) => ({ layer, runs: rleEncode(this.layer(this.sceneId, layer).data) }));
     let explored: number[] | null = null;
@@ -707,7 +799,9 @@ export class VisionService implements Perception, FogApplier {
           ...this.store.layers(this.sceneId, "explored:").map((l) => l.slice(9)),
         ]);
         for (const u of users) {
-          const r = this.layer(this.sceneId, `explored:${u}`);
+          // Someone not in play is read from the store, not made a player (who'd be recomputed on every commit).
+          const live = this.players.get(u)?.explored;
+          const r = live ?? this.store.load(this.sceneId, `explored:${u}`, shape);
           for (let k = 0; k < union.length; k++) if (r.data[k]) union[k] = 1;
         }
         explored = rleEncode(union);
@@ -733,6 +827,8 @@ export class VisionService implements Perception, FogApplier {
     viewers: string[];
     fog: FogSnapshot | null;
   } {
+    // Only someone who plays here: an arbitrary id would become a player recomputed on every commit.
+    if (!this.playsHere(userId)) throw new GloamError("NOT_FOUND", "No such player.");
     const scene = this.scene;
     const tokens: string[] = [];
     for (const t of this.model.inScene("token", this.sceneId)) {
@@ -761,49 +857,81 @@ export class VisionService implements Perception, FogApplier {
   clipMove(userId: string, tokenId: string, path: P[], durationMs: number): MoveSeen | null {
     const t = this.model.get("token", tokenId);
     const full = { id: tokenId, path, durationMs, delayMs: 0, appear: false, disappear: false };
+    const sees = this.sighting(userId, t);
+    if (sees === null) return null;
+    if (sees === true) return full;
+    const L = pathLength(path);
+    // Every foot of the way (§15.6); a route is at most MAX_MOVE_FT long (move.commit), so this is bounded.
+    const n = Math.max(1, Math.ceil(L / MOVE_SAMPLE_FT));
+    const samples = samplePath(path, n);
+    let first = -1;
+    let last = -1;
+    for (let k = 0; k < samples.length; k++) {
+      if (sees(samples[k] as P)) {
+        if (first < 0) first = k;
+        last = k;
+      }
+    }
+    if (first < 0) return null;
+    if (first === 0 && last === samples.length - 1) return full;
+    const s0 = (first * L) / n;
+    const s1 = (last * L) / n;
+    const seen = subPath(path, s0, s1);
+    // Timed from what's seen alone: the unseen part's length (before it appears, after it vanishes, or in all) isn't
+    // told by a delay or a pace.
+    return {
+      id: tokenId,
+      path: seen,
+      delayMs: 0,
+      durationMs: moveDurationMs(pathLength(seen)),
+      appear: first > 0,
+      disappear: last < samples.length - 1,
+    };
+  }
+
+  /**
+   * What a viewer may see of a drag preview (§15.6 applied to planning): the route up to where they'd lose sight of
+   * the token — never where it's heading beyond that — or null when they don't perceive it where it stands.
+   */
+  clipPreview(userId: string, tokenId: string, points: P[]): { points: P[]; full: boolean } | null {
+    const t = this.model.get("token", tokenId);
+    const sees = this.sighting(userId, t);
+    if (sees === null) return null;
+    if (sees === true || points.length < 2) return { points, full: true };
+    const L = Math.min(pathLength(points), this.scene ? maxMoveLength(this.scene.bounds) : 0);
+    const n = Math.max(1, Math.ceil(L / MOVE_SAMPLE_FT));
+    const samples = samplePath(points, n);
+    let last = -1;
+    for (let k = 0; k < samples.length && sees(samples[k] as P); k++) last = k;
+    if (last < 0) return null;
+    if (last === samples.length - 1 && L >= pathLength(points) - 1e-6) return { points, full: true };
+    return { points: subPath(points, 0, (last * L) / n), full: false };
+  }
+
+  /**
+   * Whether a viewer perceives a token standing at a point: `true` (everywhere: fog off, their own, revealed to
+   * them), `null` (never: DM-hidden, another scene) or a test per point.
+   */
+  private sighting(userId: string, t: TokenEntity | undefined): ((at: P) => boolean) | true | null {
     // DM-hidden tokens never reach players, moving or not (AC-TOK-08).
     if (!t || t.hidden) return null;
-    if (!this.scene || this.scene.fogMode === "off" || t.sceneId !== this.sceneId) return full;
+    if (!this.scene || this.scene.fogMode === "off" || t.sceneId !== this.sceneId) return true;
     if (
       t.ownerIds.includes(userId) ||
       t.revealTo === "all" ||
       (Array.isArray(t.revealTo) && t.revealTo.includes(userId))
     )
-      return full;
-    const L = pathLength(path);
-    const n = Math.max(1, Math.ceil(L / MOVE_SAMPLE_FT));
+      return true;
     const creature = tokenCreature(this.model, t);
     const lit = this.ownLight(t);
     const p = this.player(userId);
     // The mover's own light travels with it: lights at its destination don't light the path behind.
     const world = this.world && t.lightId ? this.worldWithout(t.lightId) : this.world;
     const revealed = this.scene.fogMode === "painted" ? this.revealedFor(userId) : null;
-    const sees = (s: number): boolean => {
-      const at = pointAtLength(path, s).point;
+    return (at: P) => {
       const c = { ...creature, x: at.x, y: at.y };
       if (revealed) return creatureSamples(c).some((q) => revealed(q.x, q.y));
       return world !== null && perceiveCreature(world, p.viewers, c, lit) === "seen";
-    };
-    let first = -1;
-    let last = -1;
-    for (let k = 0; k <= n; k++) {
-      const s = Math.min(L, (k * L) / n);
-      if (sees(s)) {
-        if (first < 0) first = k;
-        last = k;
-      }
-    }
-    if (first < 0) return null;
-    if (first === 0 && last === n) return full;
-    const s0 = (first * L) / n;
-    const s1 = (last * L) / n;
-    return {
-      id: tokenId,
-      path: subPath(path, s0, s1),
-      delayMs: L > 0 ? Math.round((durationMs * s0) / L) : 0,
-      durationMs: L > 0 ? Math.max(1, Math.round((durationMs * (s1 - s0)) / L)) : durationMs,
-      appear: first > 0,
-      disappear: last < n,
     };
   }
 
@@ -821,7 +949,7 @@ export class VisionService implements Perception, FogApplier {
 }
 
 function lightKey(l: VisionLight): string {
-  return `${l.x},${l.y},${l.bright},${l.dim},${l.coneDeg},${l.directionDeg},${l.magical},${l.pierceDarkness}`;
+  return `${l.x},${l.y},${l.bright},${l.dim},${l.coneDeg},${l.directionDeg},${l.magical},${l.pierceDarkness},${l.z ?? 0}`;
 }
 function areaOf(key: string): number[] {
   const [x, y, b, d] = key.split(",").map(Number) as [number, number, number, number];
@@ -830,7 +958,7 @@ function areaOf(key: string): number[] {
 }
 function viewerKey(v: ViewerSight): string {
   const s = v.v.senses;
-  return `${v.v.x},${v.v.y},${v.v.elevation},${s.darkvision},${s.blindsight},${s.truesight},${s.tremorsense},${v.v.blinded ? 1 : 0}${v.v.unconscious ? 1 : 0}`;
+  return `${v.v.x},${v.v.y},${v.v.elevation},${s.darkvision},${s.blindsight},${s.truesight},${s.tremorsense},${v.v.blinded ? 1 : 0}${v.v.unconscious ? 1 : 0}${v.v.flying ? 1 : 0},${v.v.sizeFt ?? ""}`;
 }
 function sameSet(a: Set<string>, b: Set<string>): boolean {
   if (a.size !== b.size) return false;

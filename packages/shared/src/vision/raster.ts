@@ -305,7 +305,7 @@ export class LightRaster {
         (k, cx, cy) => {
           const cur = r.data[k] as LightLevel;
           if (cur === BRIGHT) return;
-          if (dark && !(l.magical && l.pierceDarkness) && world.inMagicalDarkness(cx, cy)) return;
+          if (dark && world.inMagicalDarkness(cx, cy)) return;
           const lv = world.levelFrom(l, cx, cy);
           if (lv > cur) r.data[k] = lv;
         },

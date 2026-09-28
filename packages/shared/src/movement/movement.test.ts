@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { dist, type P, pathLength, pointSegDist } from "../geometry/index.ts";
 import { blocksLight, blocksMove, blocksSight, clearanceRadius } from "./blocking.ts";
+import { buildMoveWorld } from "./build.ts";
 import { navFor } from "./nav.ts";
-import { pathCost, pointClear, relaxFrom, route, segmentClear } from "./route.ts";
+import { flightCost, pathCost, pointClear, relaxFrom, route, segmentClear } from "./route.ts";
 import { clampToBudget, maxReachPoint, truncateAtCollision, validateMove } from "./validate.ts";
 import { MoveWorld } from "./world.ts";
 
@@ -259,6 +260,53 @@ describe("cost (§16.4, AC-MOV-03)", () => {
         { crawl: true },
       ).cost,
     ).toBeCloseTo(40 * 2 + 20 * 3, 9);
+  });
+
+  it("water without a swimming speed: +1 per foot, +2 in difficult terrain (SRD 5.2.1 p. 189); not counted as difficult", () => {
+    const lake = { ...swamp, kind: "swim" as const };
+    const reeds = {
+      poly: [
+        { x: 50, y: 0 },
+        { x: 60, y: 0 },
+        { x: 60, y: 100 },
+        { x: 50, y: 100 },
+      ],
+    };
+    const world = new MoveWorld({ walls: [], regions: [lake, reeds], bounds });
+    const c = pathCost(
+      world,
+      [
+        { x: 20, y: 50 },
+        { x: 80, y: 50 },
+      ],
+      {},
+    );
+    // 40 ft dry (×1), 10 ft of open water (×2), 10 ft of water in reeds (×3).
+    expect(c.cost).toBeCloseTo(40 + 10 * 2 + 10 * 3, 9);
+    expect(c.difficultFt).toBeCloseTo(10, 9);
+  });
+
+  it("flying costs the 3D length (§16.4): 40 ft across while climbing 30 ft is 50 ft; ground terrain doesn't slow it", () => {
+    expect(
+      flightCost(
+        [
+          { x: 0, y: 0 },
+          { x: 40, y: 0 },
+          { x: 40, y: 10 },
+        ],
+        [0, 30, 30],
+      ),
+    ).toBeCloseTo(50 + 10, 9);
+  });
+
+  it("solid effect walls block movement like walls", () => {
+    const world = buildMoveWorld({
+      walls: [],
+      zones: [],
+      bounds,
+      solid: [{ a: { x: 50, y: 0 }, b: { x: 50, y: 100 } }],
+    });
+    expect(segmentClear(world, { x: 40, y: 50 }, { x: 60, y: 50 }, 0)).toBe(false);
   });
 
   it("the route prefers going around difficult terrain when that's cheaper", () => {

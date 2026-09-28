@@ -1,10 +1,11 @@
 import type { Room } from "@colyseus/sdk";
-import type { P } from "@gloam/shared/geometry";
+import { type P, pathLength } from "@gloam/shared/geometry";
 import { Table, type TableState } from "@gloam/shared/state";
 import { Raster, rleDecode } from "@gloam/shared/vision";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { moveDurationMs } from "../engine/commands/move.ts";
 import type { TableRoom } from "../rooms/TableRoom.ts";
-import type { FogSnapshot, MoveSeen } from "../vision/visionService.ts";
+import type { FogSnapshot, MoveSeen, VisionService } from "../vision/visionService.ts";
 import {
   Agent,
   createCampaign,
@@ -193,6 +194,9 @@ describe("P4 — vision, light and fog on the server (VIS)", () => {
     await expect(rq(bob.room, "light.carry", { tokenId: human, preset: "candle" })).rejects.toThrow(
       /FORBIDDEN/,
     );
+    // …not even by undoing his last step (lighting it) around the lock.
+    await expect(rq(bob.room, "history.undo", {})).rejects.toThrow(/FORBIDDEN/);
+    expect(room().model.get("light", lightId as string)?.enabled).toBe(true);
     await rq(dm, "token.update", { tokenId: human, locked: false });
     await rq(bob.room, "light.toggle", { lightId, enabled: false });
     await waitFor(() => !sees(bob, goblin));
@@ -235,7 +239,9 @@ describe("P4 — vision, light and fog on the server (VIS)", () => {
     const again = anna.msgs.slice(back).find((m) => m.type === "token.moved")?.payload as unknown as MoveSeen;
     expect(again.appear).toBe(true);
     expect(Math.hypot((again.path[0] as P).x - 55, (again.path[0] as P).y - 32)).toBeGreaterThan(2);
-    expect(again.delayMs).toBeGreaterThan(0);
+    // Timed by what she sees alone: no delay or pace that tells how far it came unseen.
+    expect(again.delayMs).toBe(0);
+    expect(again.durationMs).toBe(moveDurationMs(pathLength(again.path)));
     // Standing in the doorway's line of sight; shutting the door hides it, opening shows it again — fast.
     await toggleDoor("close");
     await waitFor(() => !sees(anna, goblin), 3000, 5);
@@ -248,6 +254,102 @@ describe("P4 — vision, light and fog on the server (VIS)", () => {
       { x: 30, y: 20 },
     ]);
     await waitFor(() => room().model.get("token", goblin)?.pos.x === 30);
+  });
+
+  it("AC-VIS-11 (previews): a drag's preview reaches a player only as far as they'd see the token go, without its cost; a route longer than four crossings of the scene is refused, and clipping the longest one is quick", async () => {
+    const previews = (p: Player, from: number) =>
+      p.msgs
+        .slice(from)
+        .filter((m) => m.type === "move.preview" && m.payload.tokenId === goblin)
+        .map((m) => m.payload as { points: P[]; cost: number });
+    // Out through the door and round the corner: Anna sees the route to where the goblin would leave her sight.
+    let a0 = anna.msgs.length;
+    let b0 = bob.msgs.length;
+    const out = [
+      { x: 30, y: 20 },
+      { x: 45, y: 20 },
+      { x: 55, y: 32 },
+    ];
+    dm.send("move.preview", { tokenId: goblin, points: out, cost: 31 });
+    await waitFor(() => previews(anna, a0).length === 1);
+    const cut = previews(anna, a0)[0] as { points: P[]; cost: number };
+    const end = cut.points.at(-1) as P;
+    expect(Math.hypot(end.x - 55, end.y - 32)).toBeGreaterThan(2);
+    expect(cut.points[0]).toEqual({ x: 30, y: 20 });
+    expect(cut.cost).toBe(0);
+    // Within her sight: the whole route, with its cost.
+    await sleep(120);
+    a0 = anna.msgs.length;
+    dm.send("move.preview", { tokenId: goblin, points: [out[0], { x: 22, y: 26 }], cost: 10 });
+    await waitFor(() => previews(anna, a0).length === 1);
+    expect(previews(anna, a0)[0]).toMatchObject({ points: [out[0], { x: 22, y: 26 }], cost: 10 });
+    // Bob, who doesn't see the goblin, gets none of it.
+    await sleep(150);
+    expect(previews(bob, b0)).toEqual([]);
+    b0 = bob.msgs.length;
+    // Longer than four crossings of the 60 × 40 scene (4 × 72 ft): refused, even for the DM.
+    const zigzag = [{ x: 30, y: 20 }];
+    for (let i = 0; i < 5; i++) zigzag.push(i % 2 ? { x: 1, y: 1 } : { x: 59, y: 39 });
+    await expect(move(dm, goblin, zigzag)).rejects.toThrow(/too long/);
+    // Just inside the limit, the per-foot clipping for a player stays quick.
+    const legal = [{ x: 30, y: 20 }];
+    for (let i = 0; legal.length < 40 && pathLength(legal) < 280; i++)
+      legal.push(i % 2 ? { x: 2, y: 20 } : { x: 38, y: 20 });
+    const vision = (room() as unknown as { vision: VisionService }).vision;
+    const t0 = performance.now();
+    vision.clipMove(bob.id, goblin, legal, 2000);
+    vision.clipMove(anna.id, goblin, legal, 2000);
+    expect(performance.now() - t0).toBeLessThan(250);
+  });
+
+  it("AC-SEC-07 / §13.4 (glows): a torch round the corner reaches a player as their own stand-in — another id each time, no carrier, to the foot, no height — and a DM-hidden carrier's light not at all", async () => {
+    type LightState = { id: string; x: number; y: number; elevation: number; link?: { tokenId: string } };
+    const lightsOf = (p: Player) => [...((p.room.state.lights?.values?.() ?? []) as Iterable<LightState>)];
+    const mark = anna.socket.frames.length;
+    // A goblin with a torch in the corridor, north of the doorway: out of Anna's sight, its light into it.
+    const lurker = (
+      await rq<{ tokenId: string }>(dm, "token.create", {
+        sceneId,
+        name: "Torch Goblin",
+        pos: { x: 58, y: 5 },
+      })
+    ).tokenId;
+    const { lightId } = await rq<{ lightId: string }>(dm, "light.carry", {
+      tokenId: lurker,
+      preset: "torch",
+    });
+    const glow = async () => {
+      await waitFor(() => lightsOf(anna).some((l) => l.id !== lightId && !l.link?.tokenId && l.x === 58));
+      return lightsOf(anna).find((l) => l.x === 58 && l.y === 5) as LightState;
+    };
+    const g1 = await glow();
+    expect(sees(anna, lurker)).toBe(false);
+    expect(g1.id).not.toBe(lightId);
+    expect(g1.elevation).toBe(0); // no height: the circle it lights on the table
+    expect(lightsOf(anna).some((l) => l.id === lightId)).toBe(false);
+    for (const needle of [lightId as string, lurker, "Torch Goblin"])
+      expect(anna.socket.receivedSince(mark, needle)).toBe(false);
+    // Into her sight: the light itself, with its carrier; the stand-in goes.
+    await move(dm, lurker, [
+      { x: 58, y: 5 },
+      { x: 52, y: 21 },
+    ]);
+    await waitFor(() => sees(anna, lurker) && lightsOf(anna).some((l) => l.id === lightId));
+    await waitFor(() => !lightsOf(anna).some((l) => l.id === g1.id));
+    expect(lightsOf(anna).find((l) => l.id === lightId)?.link?.tokenId).toBe(lurker);
+    // Out again: a new stand-in, not the old one — nothing ties it to the light she saw carried.
+    await move(dm, lurker, [
+      { x: 52, y: 21 },
+      { x: 58, y: 5 },
+    ]);
+    const g2 = await glow();
+    expect(g2.id).not.toBe(g1.id);
+    expect(g2.id).not.toBe(lightId);
+    await waitFor(() => !lightsOf(anna).some((l) => l.id === lightId));
+    // Hidden by the DM: its light is the DM's too — no glow for anyone.
+    await rq(dm, "token.update", { tokenId: lurker, hidden: true });
+    await waitFor(() => !lightsOf(anna).some((l) => l.x === 58 && l.y === 5));
+    await rq(dm, "token.delete", { tokenIds: [lurker] });
   });
 
   it("AC-VIS-09 (server): tremorsense gives a sensed marker — an opaque id and a position to 1 ft, nothing else — for grounded creatures only", async () => {

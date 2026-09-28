@@ -39,6 +39,9 @@ export function markSeen(
             v.senses.truesight ** 2 >= d2 + v.elevation * v.elevation);
       }
       if (!seen) return;
+      // Seen only if the sight line gets there (§15.3): not through fog or across magical darkness (truesight aside),
+      // though a viewer inside fog still sees its own space.
+      if (checkDarkness && !lineClear(world, vs, cx, cy)) return;
       out.data[k] = 1;
       const i = k % out.w;
       const j = (k - i) / out.w;
@@ -51,4 +54,17 @@ export function markSeen(
     else for (const c of clips) if (c.w > 0 && c.h > 0) fillVis(out, vs.sight, mark, c);
   }
   return i1 < 0 ? null : { x: i0, y: j0, w: i1 - i0 + 1, h: j1 - j0 + 1 };
+}
+
+/** Whether no obscurer on the line from a viewer to a floor point hides that point from it (§15.3's volume test). */
+function lineClear(world: VisionWorld, vs: ViewerSight, x: number, y: number): boolean {
+  const v = vs.v;
+  const d = Math.hypot(x - v.x, y - v.y, v.elevation);
+  const truesight = v.senses.truesight >= d;
+  const ownSpace = v.sizeFt !== undefined && Math.hypot(x - v.x, y - v.y) <= v.sizeFt / 2;
+  for (const o of world.obscurersOn({ x: v.x, y: v.y, z: v.elevation }, { x, y, z: 0 })) {
+    if (o.kind === "magicalDarkness" && !truesight) return false;
+    if (o.kind === "heavy" && !ownSpace) return false;
+  }
+  return true;
 }

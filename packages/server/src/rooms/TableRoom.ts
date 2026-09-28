@@ -1,5 +1,6 @@
 import { type AuthContext, type Client, Room, ServerError } from "@colyseus/core";
 import { StateView } from "@colyseus/schema";
+import type { P } from "@gloam/shared/geometry";
 import {
   AdminBan,
   AdminUnban,
@@ -32,7 +33,14 @@ import {
   type MessageDef,
   parseCookies,
 } from "./dispatch.ts";
-import { type ProjectionCtx, prepSnapshot, StateProjector, tokenView } from "./projector.ts";
+import {
+  glowView,
+  lightView,
+  type ProjectionCtx,
+  prepSnapshot,
+  StateProjector,
+  tokenView,
+} from "./projector.ts";
 import { CLOSE, type TableRoomApi } from "./registry.ts";
 import { roomCtx } from "./roomContext.ts";
 import { type Viewer, ViewManager } from "./views.ts";
@@ -146,13 +154,39 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
         this.requireDm(auth);
         this.prepSubs.delete(client);
       }),
-      // A controller's drag, relayed to everyone else who can see the token (SPEC §8.6 Others see planning).
+      // A controller's drag, relayed to everyone else who can see the token (SPEC §8.6 Others see planning) — each
+      // player only as far as they'd see the token go (§15.6): never where it's heading out of their sight.
       "move.preview": def(MovePreview, MESSAGE_RATES["move.preview"], ({ client, auth }, p) => {
         const t = this.model.get("token", p.tokenId);
         if (!t || t.sceneId !== this.projector.activeSceneId) throw new GloamError("NOT_FOUND");
         if (!controlsToken(auth.role, auth.userId, t)) throw new GloamError("FORBIDDEN");
         const color = roomCtx().profiles.get(auth.userId)?.color ?? "";
-        this.toViewersOf(p.tokenId, "move.preview", { ...p, by: auth.userId, color }, client);
+        const msg = { ...p, by: auth.userId, color };
+        const clips = new Map<string, { points: P[]; full: boolean } | null>();
+        const clipFor = (userId: string) => {
+          if (!clips.has(userId)) clips.set(userId, this.vision.clipPreview(userId, p.tokenId, p.points));
+          return clips.get(userId) ?? null;
+        };
+        for (const c of this.clients) {
+          if (c === client) continue;
+          const a = c.auth as ClientAuth | undefined;
+          if (!a) continue;
+          if (a.role === "admin" || a.role === "dm") {
+            c.send("move.preview", msg);
+            continue;
+          }
+          if (this.views.grantsOf(c)?.tokens.has(p.tokenId) !== true) continue;
+          let clip: { points: P[]; full: boolean } | null = null;
+          if (a.role === "spectator")
+            for (const u of this.vision.playerIds()) {
+              const q = clipFor(u);
+              if (q && (!clip || q.full || q.points.length > clip.points.length)) clip = q;
+            }
+          else clip = clipFor(a.userId);
+          if (!clip) continue;
+          // A cut route's cost would tell how far it goes: only a whole one carries it.
+          c.send("move.preview", clip.full ? msg : { ...msg, points: clip.points, cost: 0 });
+        }
       }),
       // A finished measurement, shown to everyone else for 3 s (SPEC §8.6 Measurement tools).
       "measure.share": def(MeasureShare, MESSAGE_RATES["measure.share"], ({ client, auth }, p) => {
@@ -299,6 +333,7 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
     this.views = new ViewManager(this.state, model, this.vision);
     this.projector.loadActive();
     this.syncSensed();
+    this.syncGlows();
     this.syncAllViews();
   }
 
@@ -370,6 +405,8 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
     const res = this.projector.apply(info.ops);
     const seen = this.vision.onCommitted(info.ops);
     if (seen) this.syncSensed();
+    // Carriers move and lights change without anyone's perception changing: the stand-ins follow every commit.
+    this.syncGlows();
     if (res.switched) {
       // Everyone travels (SPEC §8.3): DMs who were prepping the new active scene now see it live.
       for (const [client, sceneId] of this.prepSubs) if (sceneId === nextActive) this.prepSubs.delete(client);
@@ -567,6 +604,23 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
   }
 
   // ── TableRoomApi ──────────────────────────────────────────────────────────────────────────────────────
+
+  /** Glow stand-ins in the state: exactly the ones someone holds, each drawn from its light as it is now. */
+  private readonly glowIds = new Set<string>();
+  private syncGlows(): void {
+    const want = new Map(this.vision.allGlows().map((g) => [g.id, g.lightId] as const));
+    for (const id of [...this.glowIds])
+      if (!want.has(id)) {
+        this.projector.removeGlow(id);
+        this.glowIds.delete(id);
+      }
+    for (const [id, lightId] of want) {
+      const l = this.model.get("light", lightId);
+      if (!l) continue;
+      this.projector.upsertGlow(glowView(lightView(l, this.projectionCtx()), id));
+      this.glowIds.add(id);
+    }
+  }
 
   /** The state's tremorsense markers: exactly the ones someone holds (views decide who). */
   private syncSensed(): void {

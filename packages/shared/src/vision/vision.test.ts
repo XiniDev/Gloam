@@ -19,6 +19,7 @@ import {
   BRIGHT,
   DARK,
   DIM,
+  groundRadii,
   VisionGeometry,
   type VisionLight,
   type VisionWall,
@@ -175,7 +176,7 @@ describe("perceive a point (§15.3)", () => {
     expect(perceiveCreature(w, [out], goblin(15, 30))).toBe("none");
   });
 
-  it("magical darkness blocks darkvision and ordinary light; truesight sees through; only a piercing magical light lights it", () => {
+  it("magical darkness blocks darkvision and every light; truesight sees through (Daylight doesn't light Darkness — it dispels a lower-level one, an effect of spells, P9)", () => {
     const orb = { kind: "magicalDarkness" as const, poly: square(40, 20, 20), zMin: -1, zMax: 40 };
     const w = new VisionWorld(new VisionGeometry([]), [torch(50, 30)], "dark", bounds, [orb]);
     expect(w.lightLevel(50, 30)).toBe(DARK);
@@ -191,7 +192,10 @@ describe("perceive a point (§15.3)", () => {
       bounds,
       [orb],
     );
-    expect(day.lightLevel(50, 30)).toBe(BRIGHT);
+    // (SRD 5.2.1 Darkness: nonmagical light can't illuminate it; Daylight dispels Darkness of level 3 or lower.
+    // Lighting it in place was a mistake the P4 rules audit found: the perception test said NONE regardless.)
+    expect(day.lightLevel(50, 30)).toBe(DARK);
+    expect(perceivePoint(day, prepareViewer(day, viewer(10, 30)), 50, 30)).toBe(NONE);
   });
 
   it("heavy obscurement blocks sight into and through it; a viewer inside perceives nothing around (blindsight aside)", () => {
@@ -206,6 +210,98 @@ describe("perceive a point (§15.3)", () => {
     expect(perceivePoint(w, inside, 55, 30)).toBe(BLIND);
     const haze = new VisionWorld(new VisionGeometry([]), [], "bright", bounds, [{ ...fog, kind: "light" }]);
     expect(perceivePoint(haze, prepareViewer(haze, viewer(10, 30)), 50, 30)).toBe(SEE_BRIGHT);
+  });
+});
+
+describe("rules audit, P4 (SRD 5.2.1)", () => {
+  it("blindsight reaches its full range below the table's level too (a creature in a pit, underwater)", () => {
+    const w = new VisionWorld(new VisionGeometry([]), [], "dark", bounds);
+    const v = prepareViewer(w, viewer(10, 30, { blindsight: 30 }, { elevation: -10 }));
+    expect(perceivePoint(w, v, 35, 30, -10)).toBe(BLIND);
+    expect(perceivePoint(w, v, 45, 30, -10)).toBe(NONE);
+  });
+
+  it("tremorsense: both on the same surface — a flying or raised viewer feels nothing; one on a balcony feels those beside it", () => {
+    const w = new VisionWorld(new VisionGeometry([wall(20, 0, 20, 60)]), [], "dark", bounds);
+    const up = prepareViewer(w, viewer(10, 30, { tremorsense: 60 }, { elevation: 20, flying: true }));
+    expect(perceiveCreature(w, [up], goblin(30, 30))).toBe("none");
+    const balcony = prepareViewer(w, viewer(10, 30, { tremorsense: 60 }, { elevation: 10 }));
+    expect(perceiveCreature(w, [balcony], goblin(30, 30))).toBe("none");
+    expect(perceiveCreature(w, [balcony], goblin(30, 30, { elevation: 10 }))).toBe("sensed");
+  });
+
+  it("inside fog a viewer still sees its own space (AC-VIS-07), nothing beyond it; in magical darkness not even that", () => {
+    const fog = { kind: "heavy" as const, poly: square(40, 20, 20), zMin: -1, zMax: 40 };
+    const w = new VisionWorld(new VisionGeometry([]), [], "bright", bounds, [fog]);
+    const v = prepareViewer(w, viewer(50, 30, {}, { sizeFt: 5 }));
+    expect(perceivePoint(w, v, 51.5, 30)).toBe(SEE_BRIGHT);
+    expect(perceivePoint(w, v, 54, 30)).toBe(NONE);
+    const dark = new VisionWorld(new VisionGeometry([]), [], "bright", bounds, [
+      { ...fog, kind: "magicalDarkness" },
+    ]);
+    expect(perceivePoint(dark, prepareViewer(dark, viewer(50, 30, {}, { sizeFt: 5 })), 51.5, 30)).toBe(NONE);
+  });
+
+  it("a sight line passing over a fog bank isn't in it: the heights along the part over its footprint decide", () => {
+    const bank = { kind: "heavy" as const, poly: square(40, 20, 20), zMin: 0, zMax: 20 };
+    const w = new VisionWorld(new VisionGeometry([]), [], "bright", bounds, [bank]);
+    // 100 ft up at x = 10, looking at the ground beyond the bank (x = 80): over x 40–60 the line is 37–62 ft up.
+    const high = prepareViewer(w, viewer(10, 30, {}, { elevation: 100 }));
+    expect(perceivePoint(w, high, 80, 30)).toBe(SEE_BRIGHT);
+    // From the ground it's through the bank.
+    expect(perceivePoint(w, prepareViewer(w, viewer(10, 30)), 80, 30)).toBe(NONE);
+  });
+
+  it("explored memory never marks ground hidden behind fog (only what the sight line reaches)", () => {
+    const bank = { kind: "heavy" as const, poly: square(40, 20, 20), zMin: -1, zMax: 20 };
+    const w = new VisionWorld(new VisionGeometry([]), [], "bright", bounds, [bank]);
+    const light = new LightRaster(bounds, 1);
+    light.build(w);
+    const out = Raster.over(bounds, 1);
+    markSeen(w, light, [prepareViewer(w, viewer(10, 30))], out);
+    expect(out.at(30, 30)).toBe(1); // in front
+    expect(out.at(50, 30)).toBe(0); // inside
+    expect(out.at(80, 30)).toBe(0); // behind
+    expect(out.at(80, 5)).toBe(1); // round it
+  });
+
+  it("light radii are spheres round the source: a torch carried 45 ft up lights nothing on the floor; its ground circles shrink with height", () => {
+    const high = new VisionWorld(new VisionGeometry([]), [torch(50, 30, { z: 45 })], "dark", bounds);
+    expect(high.lightLevel(50, 30)).toBe(DARK);
+    expect(high.lightLevel(50, 30, 45)).toBe(BRIGHT);
+    expect(high.lightLevel(50, 30, 25)).toBe(BRIGHT);
+    expect(high.lightLevel(50, 30, 10)).toBe(DIM);
+    const low = new VisionWorld(new VisionGeometry([]), [torch(50, 30, { z: 12 })], "dark", bounds);
+    const g = groundRadii(20, 20, 12);
+    expect(g.bright).toBeCloseTo(16, 9);
+    expect(g.bright + g.dim).toBeCloseTo(Math.sqrt(40 * 40 - 12 * 12), 9);
+    expect(low.lightLevel(50 + 15.9, 30)).toBe(BRIGHT);
+    expect(low.lightLevel(50 + 16.1, 30)).toBe(DIM);
+    expect(low.lightLevel(50 + g.bright + g.dim + 0.1, 30)).toBe(DARK);
+    expect(groundRadii(20, 20, 0)).toEqual({ bright: 20, dim: 20 });
+    expect(groundRadii(20, 20, 45)).toEqual({ bright: 0, dim: 0 });
+  });
+
+  it("solid effect walls (Wall of Force) stop blindsight but not sight", () => {
+    const force = [{ a: { x: 30, y: 0 }, b: { x: 30, y: 60 } }];
+    const geo = new VisionGeometry([], [], force);
+    const w = new VisionWorld(geo, [], "bright", bounds);
+    const v = prepareViewer(w, viewer(20, 30, { blindsight: 30 }));
+    expect(perceivePoint(w, v, 40, 30)).toBe(SEE_BRIGHT); // seen through it
+    const blind = prepareViewer(w, viewer(20, 30, { blindsight: 30 }, { blinded: true }));
+    expect(perceivePoint(w, blind, 25, 30)).toBe(BLIND);
+    expect(perceivePoint(w, blind, 40, 30)).toBe(NONE); // blindsight stops at it
+  });
+
+  it("a light's area is round to the last hair: every point within its radius is lit, however its polygon is cut", () => {
+    const w = new VisionWorld(new VisionGeometry([]), [torch(50, 30)], "dark", bounds);
+    let unlit = 0;
+    for (let k = 0; k < 720; k++) {
+      const a = (k / 720) * 2 * Math.PI;
+      if (w.lightLevel(50 + Math.cos(a) * 39.97, 30 + Math.sin(a) * 39.97) !== DIM) unlit++;
+    }
+    expect(unlit).toBe(0);
+    expect(w.lightLevel(50 + 40.05, 30)).toBe(DARK);
   });
 });
 

@@ -28,6 +28,7 @@ import {
   ZoneS,
   type ZoneView,
 } from "@gloam/shared/state";
+import { groundRadii } from "@gloam/shared/vision";
 import type { CampaignModel } from "../engine/model.ts";
 import type { EntityKind, Op } from "../engine/ops.ts";
 
@@ -184,7 +185,8 @@ export function lightView(l: LightEntity, ctx: ProjectionCtx): LightView {
     id: l.id,
     x: pos.x,
     y: pos.y,
-    elevation: carrier ? carrier.elevation + 3 : l.elevation,
+    // The height its radii are measured from (the carrier's for a carried light; clients draw its ground circle).
+    elevation: carrier ? carrier.elevation : l.elevation,
     bright: l.shuttered ? 0 : l.bright,
     dim: l.shuttered ? 5 : l.dim,
     color: l.color,
@@ -201,6 +203,26 @@ export function lightView(l: LightEntity, ctx: ProjectionCtx): LightView {
   };
   if (l.tokenId) v.link = { tokenId: l.tokenId, casterId: "" };
   return v;
+}
+
+/**
+ * A carried light seen only by its glow (SPEC §13.4): the viewer's own stand-in id, where it shines to the foot, at a
+ * torch's height, facing only if it's a cone — nothing that ties it to its carrier or says how high it is.
+ */
+export function glowView(v: LightView, id: string): LightView {
+  const { link: _link, ...rest } = v;
+  // What reaches the table, as a light on the table: the circle a player sees lit, not the height it comes from.
+  const g = groundRadii(v.bright, v.dim, v.elevation);
+  return {
+    ...rest,
+    id,
+    x: Math.round(v.x),
+    y: Math.round(v.y),
+    elevation: 0,
+    bright: g.bright,
+    dim: g.dim,
+    dirDeg: v.coneDeg < 360 ? v.dirDeg : 0,
+  };
 }
 
 /** A zone's outline as points (circles as 48-gons) plus its exact shape as JSON. */
@@ -236,7 +258,7 @@ export function effectView(e: EffectEntity, ctx: ProjectionCtx): EffectView {
   const round = ctx.roundOf?.(e.sceneId) ?? 0;
   const v: EffectView = {
     id: e.id,
-    shapeJson: JSON.stringify(e.shape),
+    shapeJson: JSON.stringify(shapeForView(e, ctx)),
     propsJson: JSON.stringify(e.props),
     vfx: e.vfx,
     roundsLeft: "never" in e.expires ? -1 : Math.max(0, e.expires.round - round),
@@ -246,6 +268,23 @@ export function effectView(e: EffectEntity, ctx: ProjectionCtx): EffectView {
   const casterId = e.source.casterTokenId ?? "";
   if (tokenId || casterId) v.link = { tokenId, casterId };
   return v;
+}
+
+/**
+ * An effect's shape as clients get it. An emanation is placed where its source stands (centre, height and the
+ * source's reach from its centre) instead of naming the source token: who it comes from is the link, sent only to
+ * those who perceive the source (TAG_LINK).
+ */
+function shapeForView(e: EffectEntity, ctx: ProjectionCtx): unknown {
+  const sh = e.shape;
+  if (sh.kind !== "emanation") return sh;
+  const t = ctx.model.get("token", sh.sourceTokenId);
+  return {
+    kind: "emanation",
+    distance: sh.distance,
+    at: t ? { x: t.pos.x, y: t.pos.y, z: t.elevation } : null,
+    baseRadius: t ? t.sizeFt / 2 : 0,
+  };
 }
 
 export function sceneView(s: SceneEntity, seq: number): SceneView {
@@ -431,6 +470,17 @@ export class StateProjector {
     for (const c of COLLECTIONS) for (const v of all[c]) this.upsert(c, v as unknown as Obj);
   }
 
+  /** Glow stand-ins (the room keeps them in step with the vision service); a reload clears them with the rest. */
+  upsertGlow(view: LightView): void {
+    this.upsert("lights", view as unknown as Obj);
+  }
+  removeGlow(id: string): void {
+    (this.state as unknown as Record<CollectionName, Map<string, Obj>>).lights.delete(id);
+  }
+  hasLight(id: string): boolean {
+    return (this.state as unknown as Record<CollectionName, Map<string, Obj>>).lights.has(id);
+  }
+
   private upsert(c: CollectionName, view: Obj): void {
     const map = (this.state as unknown as Record<CollectionName, Map<string, Obj>>)[c];
     const id = view.id as string;
@@ -514,6 +564,11 @@ export class StateProjector {
       if (op.e === "token") {
         const t = m.get("token", op.id);
         if (t?.lightId) touch("lights", t.lightId, t.sceneId);
+        // Emanations go where their source goes.
+        if (t)
+          for (const e of m.inScene("effect", t.sceneId))
+            if (e.shape.kind === "emanation" && e.shape.sourceTokenId === t.id)
+              touch("effects", e.id, e.sceneId);
       }
     }
     for (const { c, id, scenes } of touched.values()) {

@@ -249,4 +249,26 @@ export function pointAtLength(points: P[], s: number): { point: P; index: number
   return { point: points[points.length - 1] as P, index: points.length - 1 };
 }
 
+/** n + 1 points evenly spaced along a path (by length), start and end included — one walk along it. */
+export function samplePath(points: P[], n: number): P[] {
+  const out: P[] = [];
+  const L = pathLength(points);
+  if (points.length === 0) return out;
+  if (n < 1 || L < EPS) return [points[0] as P];
+  let i = 1;
+  let acc = 0;
+  for (let k = 0; k <= n; k++) {
+    const s = k === n ? L : (k * L) / n;
+    while (i < points.length - 1 && acc + dist(points[i - 1] as P, points[i] as P) < s) {
+      acc += dist(points[i - 1] as P, points[i] as P);
+      i++;
+    }
+    const a = points[i - 1] as P;
+    const b = points[i] as P;
+    const l = dist(a, b);
+    out.push(l < EPS ? b : lerp(a, b, Math.min(1, Math.max(0, (s - acc) / l))));
+  }
+  return out;
+}
+
 export * from "./visibility.ts";

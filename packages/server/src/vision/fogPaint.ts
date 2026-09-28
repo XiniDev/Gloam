@@ -1,8 +1,64 @@
-import type { FogShapeIn } from "@gloam/shared/protocol";
+import { type FogShapeIn, GloamError } from "@gloam/shared/protocol";
 import { type CellRect, fillRing, type Raster, VisionGeometry, type VisionWall } from "@gloam/shared/vision";
 import type { z } from "zod";
 
 type FogShape = z.infer<typeof FogShapeIn>;
+
+/** A brush stroke may cover at most this many times the raster's cells (the sum over its segments). */
+const BRUSH_COVER_MAX = 64;
+
+/**
+ * The x-range where a horizontal line at y meets the capsule of radius R around segment ab (all points within R of
+ * it), or null. The capsule is convex, so it's one interval: the hull of where the line meets the two end discs and
+ * the band along the segment.
+ */
+export function capsuleRow(
+  a: { x: number; y: number },
+  b: { x: number; y: number },
+  R: number,
+  y: number,
+): [number, number] | null {
+  let lo = Number.POSITIVE_INFINITY;
+  let hi = Number.NEGATIVE_INFINITY;
+  for (const p of [a, b]) {
+    const dy = y - p.y;
+    if (dy * dy <= R * R) {
+      const w = Math.sqrt(R * R - dy * dy);
+      lo = Math.min(lo, p.x - w);
+      hi = Math.max(hi, p.x + w);
+    }
+  }
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const L = Math.hypot(dx, dy);
+  if (L > 0) {
+    // The band: the rectangle a ± nR, b ± nR (n the unit normal); where the line crosses its edges.
+    const nx = (-dy / L) * R;
+    const ny = (dx / L) * R;
+    const q = [
+      { x: a.x + nx, y: a.y + ny },
+      { x: b.x + nx, y: b.y + ny },
+      { x: b.x - nx, y: b.y - ny },
+      { x: a.x - nx, y: a.y - ny },
+    ];
+    for (let k = 0; k < 4; k++) {
+      const p = q[k] as { x: number; y: number };
+      const s = q[(k + 1) % 4] as { x: number; y: number };
+      if ((p.y - y) * (s.y - y) > 0) continue;
+      if (p.y === s.y) {
+        if (p.y === y) {
+          lo = Math.min(lo, p.x, s.x);
+          hi = Math.max(hi, p.x, s.x);
+        }
+        continue;
+      }
+      const x = p.x + ((y - p.y) * (s.x - p.x)) / (s.y - p.y);
+      lo = Math.min(lo, x);
+      hi = Math.max(hi, x);
+    }
+  }
+  return lo <= hi ? [lo, hi] : null;
+}
 
 /**
  * The cells a fog shape covers (by cell centre) on a scene's fog raster (SPEC §8.8 DM fog tools): a mask over the
@@ -33,28 +89,32 @@ export function fogCover(
       );
       break;
     case "brush": {
-      // Circles at the points and the capsules between them.
-      const R2 = shape.radius * shape.radius;
+      // Capsules between the points (a circle where it's one point), filled a row at a time: the work is the cells
+      // covered, not the boxes around long segments. A stroke that would cover the raster many times over is refused.
+      const R = shape.radius;
       const pts = shape.points;
+      let work = 0;
+      const budget = BRUSH_COVER_MAX * r.w * r.h;
       for (let i = 0; i < pts.length; i++) {
         const a = pts[i] as { x: number; y: number };
         const b = (pts[i + 1] ?? a) as { x: number; y: number };
         const c = r.cellsIn(
-          Math.min(a.x, b.x) - shape.radius,
-          Math.min(a.y, b.y) - shape.radius,
-          Math.max(a.x, b.x) + shape.radius,
-          Math.max(a.y, b.y) + shape.radius,
+          Math.min(a.x, b.x) - R,
+          Math.min(a.y, b.y) - R,
+          Math.max(a.x, b.x) + R,
+          Math.max(a.y, b.y) + R,
         );
-        const dx = b.x - a.x;
-        const dy = b.y - a.y;
-        const L2 = dx * dx + dy * dy;
         for (let j = c.y; j < c.y + c.h; j++) {
           const cy = r.y0 + (j + 0.5) * r.cell;
-          for (let q = c.x; q < c.x + c.w; q++) {
-            const cx = r.x0 + (q + 0.5) * r.cell;
-            const t = L2 > 0 ? Math.max(0, Math.min(1, ((cx - a.x) * dx + (cy - a.y) * dy) / L2)) : 0;
-            if ((a.x + t * dx - cx) ** 2 + (a.y + t * dy - cy) ** 2 <= R2) mask[j * r.w + q] = 1;
-          }
+          const span = capsuleRow(a, b, R, cy);
+          if (!span) continue;
+          const i0 = Math.max(c.x, Math.ceil((span[0] - r.x0) / r.cell - 0.5));
+          const i1 = Math.min(c.x + c.w - 1, Math.floor((span[1] - r.x0) / r.cell - 0.5));
+          if (i1 < i0) continue;
+          work += i1 - i0 + 1;
+          if (work > budget)
+            throw new GloamError("INVALID", "That stroke covers too much at once — paint it in parts.");
+          mask.fill(1, j * r.w + i0, j * r.w + i1 + 1);
         }
       }
       break;

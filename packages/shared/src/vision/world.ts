@@ -4,6 +4,7 @@
  * legitimately has.
  */
 import {
+  BOUND_SIDES,
   inCone,
   inPolygon,
   type P,
@@ -67,9 +68,10 @@ export class VisionGeometry {
   /** Each input segment with what it blocks, as a key (to tell what a change touched). */
   private readonly inputs: Map<string, Seg>;
 
-  constructor(walls: readonly VisionWall[], opaque: readonly Seg[] = []) {
+  /** `solid`: effect walls that block movement and blindsight (Wall of Force…), not sight or light. */
+  constructor(walls: readonly VisionWall[], opaque: readonly Seg[] = [], solid: readonly Seg[] = []) {
     const sight: Seg[] = [...opaque];
-    const blind: Seg[] = [];
+    const blind: Seg[] = [...solid];
     const light: Seg[] = [...opaque];
     this.inputs = new Map();
     let dup = 0;
@@ -78,6 +80,7 @@ export class VisionGeometry {
       this.inputs.set(this.inputs.has(k) ? `${k}#${++dup}` : k, s);
     };
     for (const s of opaque) input(s, "sl");
+    for (const s of solid) input(s, "b");
     for (const w of walls) {
       const bs = blocksSight(w.kind, w.door);
       const bm = blocksMove(w.kind, w.door);
@@ -102,8 +105,9 @@ export class VisionGeometry {
     prev: VisionGeometry | null,
     walls: readonly VisionWall[],
     opaque: readonly Seg[] = [],
+    solid: readonly Seg[] = [],
   ): VisionGeometry {
-    const next = new VisionGeometry(walls, opaque);
+    const next = new VisionGeometry(walls, opaque, solid);
     if (!prev) return next;
     const changed: Seg[] = [];
     for (const [k, s] of prev.inputs) if (!next.inputs.has(k)) changed.push(s);
@@ -148,6 +152,8 @@ export interface VisionLight {
   id: string;
   x: number;
   y: number;
+  /** Height of the source above the table (ft): its radii are spheres round it (SRD 5.2.1). Carried: the carrier's. */
+  z?: number;
   bright: number;
   /** Dim light beyond the bright radius (ft). */
   dim: number;
@@ -198,9 +204,13 @@ export class VisionWorld {
     this.sightRadius = Math.max(1, Math.hypot(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY));
   }
 
-  /** The area a light reaches (`LIT`), all around; cones are applied by `lights at`. */
+  /**
+   * The area a light reaches (`LIT`), all around; cones are applied by `lights at`. Its bounding polygon is drawn
+   * round the circle (its edges touch it), so nothing within the radius falls outside; the radius itself is exact in
+   * `levelFrom` and `lightLevel`.
+   */
   litOf(l: VisionLight): VisPoly {
-    return this.geo.lit(l.x, l.y, l.bright + l.dim);
+    return this.geo.lit(l.x, l.y, (l.bright + l.dim) / Math.cos(Math.PI / BOUND_SIDES));
   }
 
   /** Whether point p is inside some magical darkness volume. */
@@ -228,11 +238,11 @@ export class VisionWorld {
     return v;
   }
 
-  /** The level a light gives at a point it reaches (by distance and cone; LIT is the caller's). */
-  levelFrom(l: VisionLight, x: number, y: number): LightLevel {
+  /** The level a light gives at a point it reaches (by 3-D distance and cone; LIT is the caller's). */
+  levelFrom(l: VisionLight, x: number, y: number, z = 0): LightLevel {
     const dx = x - l.x;
     const dy = y - l.y;
-    const r = Math.hypot(dx, dy);
+    const r = Math.hypot(dx, dy, z - (l.z ?? 0));
     const lv: LightLevel =
       l.bright > 0 && r <= l.bright ? BRIGHT : l.dim > 0 && r <= l.bright + l.dim ? DIM : DARK;
     if (lv === DARK) return DARK;
@@ -273,10 +283,12 @@ export class VisionWorld {
     if (!list) return level;
     for (const i of list) {
       const l = this.lights[i] as VisionLight;
-      if (darkness && !(l.magical && l.pierceDarkness)) continue;
+      // No light lights magical darkness (SRD 5.2.1 Darkness); Daylight's answer is to dispel it, which is the
+      // effects' business (P9), not a light's.
+      if (darkness) continue;
       const dx = x - l.x;
       const dy = y - l.y;
-      const r = Math.hypot(dx, dy);
+      const r = Math.hypot(dx, dy, z - (l.z ?? 0));
       // A radius of 0 lights nothing (a lowered hood: bright 0), not even the light's own spot.
       const lv: LightLevel =
         l.bright > 0 && r <= l.bright ? BRIGHT : l.dim > 0 && r <= l.bright + l.dim ? DIM : DARK;
@@ -295,16 +307,43 @@ export class VisionWorld {
     return level;
   }
 
-  /** The obscuring volumes met by the sight line v→p (crossing it, or holding either end), vertically overlapping. */
+  /**
+   * The obscuring volumes the sight line v→p passes through (§15.3: "crossed by segment v→p", its ends included):
+   * some stretch of it over a volume's footprint at a height within the volume's — a line passing over a fog bank
+   * isn't in it.
+   */
   obscurersOn(v: { x: number; y: number; z: number }, p: { x: number; y: number; z: number }): Obscurer[] {
     const out: Obscurer[] = [];
     for (const o of this.obscurers) {
       if (Math.max(v.z, p.z) < o.zMin || Math.min(v.z, p.z) > o.zMax) continue;
-      if (inPolygon(v, o.poly) || inPolygon(p, o.poly) || polygonCrossings(v, p, o.poly).length > 0)
-        out.push(o);
+      // The stretches between boundary crossings; those over the footprint (by their middle) and their heights.
+      const ts = [0, ...polygonCrossings(v, p, o.poly), 1];
+      for (let k = 1; k < ts.length; k++) {
+        const t0 = ts[k - 1] as number;
+        const t1 = ts[k] as number;
+        const tm = (t0 + t1) / 2;
+        if (!inPolygon({ x: v.x + (p.x - v.x) * tm, y: v.y + (p.y - v.y) * tm }, o.poly)) continue;
+        const z0 = v.z + (p.z - v.z) * t0;
+        const z1 = v.z + (p.z - v.z) * t1;
+        if (Math.max(z0, z1) >= o.zMin && Math.min(z0, z1) <= o.zMax) {
+          out.push(o);
+          break;
+        }
+      }
     }
     return out;
   }
 }
 
 const key = (x: number, y: number) => (x + 1e6) * 4e6 + (y + 1e6);
+
+/**
+ * Where a light meets the table: its bright and dim radii on the ground for a source `h` ft up (the spheres' circles
+ * at ground level; none when they don't reach down).
+ */
+export function groundRadii(bright: number, dim: number, h: number): { bright: number; dim: number } {
+  const b = bright > 0 && bright > Math.abs(h) ? Math.sqrt(bright * bright - h * h) : 0;
+  const reach = bright + dim;
+  const all = reach > Math.abs(h) ? Math.sqrt(reach * reach - h * h) : 0;
+  return { bright: b, dim: dim > 0 ? Math.max(0, all - b) : 0 };
+}

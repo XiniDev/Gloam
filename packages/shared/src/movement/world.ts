@@ -11,6 +11,11 @@ export interface Region {
   /** Difficult terrain (×2, never cumulative), or a passable non-ally's space (also ×2). */
   poly?: P[];
   circle?: { c: P; r: number };
+  /**
+   * "swim": water for a creature without a swimming speed — +1 per foot, on top of difficult terrain (SRD 5.2.1
+   * p. 189: 2 extra feet in Difficult Terrain). Otherwise difficult.
+   */
+  kind?: "difficult" | "swim";
 }
 export interface Bounds {
   minX: number;
@@ -178,11 +183,20 @@ export class MoveWorld {
 
   /** Is p inside any cost region? */
   inRegion(p: P): boolean {
-    for (const r of this.regions) {
-      if (r.poly && inPolygon(p, r.poly)) return true;
-      if (r.circle && Math.hypot(p.x - r.circle.c.x, p.y - r.circle.c.y) < r.circle.r) return true;
-    }
+    for (const r of this.regions) if (regionHolds(r, p)) return true;
     return false;
+  }
+
+  /** The cost regions p is in: difficult terrain (never cumulative) and water to swim (stacking with it). */
+  regionsAt(p: P): { difficult: boolean; swim: boolean } {
+    let difficult = false;
+    let swim = false;
+    for (const r of this.regions) {
+      if (!regionHolds(r, p)) continue;
+      if (r.kind === "swim") swim = true;
+      else difficult = true;
+    }
+    return { difficult, swim };
   }
 
   /** Every t ∈ (0, 1) where pq crosses a region boundary, sorted. */
@@ -194,4 +208,9 @@ export class MoveWorld {
     }
     return ts.sort((a, b) => a - b);
   }
+}
+
+function regionHolds(r: Region, p: P): boolean {
+  if (r.poly && inPolygon(p, r.poly)) return true;
+  return r.circle !== undefined && Math.hypot(p.x - r.circle.c.x, p.y - r.circle.c.y) < r.circle.r;
 }

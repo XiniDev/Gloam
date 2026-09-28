@@ -101,7 +101,11 @@ export class CampaignModel {
     const id = (entity as { id: string }).id;
     const prev = map.get(id) as { sceneId?: string } | undefined;
     map.set(id, entity);
-    if (kind === "wall" || kind === "zone") {
+    if (
+      kind === "wall" ||
+      kind === "zone" ||
+      (kind === "effect" && (isWallEffect(entity) || isWallEffect(prev)))
+    ) {
       this.touchGeometry((entity as { sceneId: string }).sceneId);
       if (prev?.sceneId) this.touchGeometry(prev.sceneId);
     } else if (kind === "scene") this.touchGeometry(id);
@@ -123,7 +127,8 @@ export class CampaignModel {
     const map = this.maps[kind as CollectionKind] as Map<string, { sceneId?: string }>;
     const prev = map.get(id);
     map.delete(id);
-    if ((kind === "wall" || kind === "zone") && prev?.sceneId) this.touchGeometry(prev.sceneId);
+    if ((kind === "wall" || kind === "zone" || (kind === "effect" && isWallEffect(prev))) && prev?.sceneId)
+      this.touchGeometry(prev.sceneId);
     if (prev?.sceneId && (SCENE_SCOPED as readonly string[]).includes(kind)) {
       this.sceneIndex[kind as SceneScoped].get(prev.sceneId)?.delete(id);
     }
@@ -133,7 +138,7 @@ export class CampaignModel {
     this.geometry.set(sceneId, (this.geometry.get(sceneId) ?? 0) + 1);
   }
 
-  /** Changes whenever the scene's walls, zones or bounds change. */
+  /** Changes whenever the scene's walls, zones, wall-shaped effects or bounds change. */
   geometryVersion(sceneId: string): number {
     return this.geometry.get(sceneId) ?? 0;
   }
@@ -157,4 +162,9 @@ export class CampaignModel {
   get activeScene(): EntityMap["scene"] | undefined {
     return this.campaign.activeSceneId ? this.maps.scene.get(this.campaign.activeSceneId) : undefined;
   }
+}
+
+/** A wall-shaped effect (Wall of Force, Wall of Stone…): part of a scene's geometry. */
+function isWallEffect(e: unknown): boolean {
+  return (e as { shape?: { kind?: string } } | undefined)?.shape?.kind === "wall";
 }

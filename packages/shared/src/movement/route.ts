@@ -32,7 +32,8 @@ export interface RouteResult {
 
 /**
  * Cost of a straight segment (§16.4): its length split at every region boundary, each piece × its multiplier —
- * 1, +1 inside difficult terrain (never cumulative), +1 when crawling.
+ * 1, +1 inside difficult terrain (never cumulative), +1 in water without a swimming speed (stacking with difficult
+ * terrain), +1 when crawling.
  */
 export function segmentCost(world: MoveWorld, a: P, b: P, opts: Partial<MoveOptions>): SegmentCost {
   const len = dist(a, b);
@@ -47,11 +48,25 @@ export function segmentCost(world: MoveWorld, a: P, b: P, opts: Partial<MoveOpti
     const t1 = ts[i] as number;
     if (t1 - t0 < 1e-12) continue;
     const piece = len * (t1 - t0);
-    const inside = world.inRegion(lerp(a, b, (t0 + t1) / 2));
-    if (inside) difficultFt += piece;
-    cost += piece * (1 + (inside ? 1 : 0) + extra);
+    const at = world.regionsAt(lerp(a, b, (t0 + t1) / 2));
+    if (at.difficult) difficultFt += piece;
+    cost += piece * (1 + (at.difficult ? 1 : 0) + (at.swim ? 1 : 0) + extra);
   }
   return { from: a, to: b, cost, difficultFt };
+}
+
+/**
+ * A flight's cost (§16.4: "flying movement uses 3D segment length"): each segment's length with its climb or dive —
+ * the ground's difficult terrain and water don't slow a creature above them.
+ */
+export function flightCost(points: P[], elevations: readonly number[]): number {
+  let cost = 0;
+  for (let i = 1; i < points.length; i++)
+    cost += Math.hypot(
+      dist(points[i - 1] as P, points[i] as P),
+      (elevations[i] ?? 0) - (elevations[i - 1] ?? 0),
+    );
+  return cost;
 }
 
 /** Cost of a polyline. */

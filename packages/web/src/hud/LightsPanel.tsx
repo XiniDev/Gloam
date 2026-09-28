@@ -194,12 +194,6 @@ function LightEditor() {
       ) : null}
       <Toggle label="Magical" checked={light.magical} onChange={(magical) => update({ magical })} />
       <Toggle
-        label="Pierces magical darkness"
-        description="Daylight over a lower-level Darkness"
-        checked={light.pierceDarkness}
-        onChange={(pierceDarkness) => update({ pierceDarkness })}
-      />
-      <Toggle
         label="Only for me"
         description="A DM aid: players don't see it or its light"
         checked={light.dmOnly}

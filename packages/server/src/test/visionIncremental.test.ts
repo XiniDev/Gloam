@@ -153,7 +153,7 @@ describe("P4 — the vision service's incremental recompute (AC-VIS-12)", () => 
       // …and explored memory as every view so far marked in full, with the light as it was then.
       const fx = sceneEffects(model, SCENE_ID);
       const world = new VisionWorld(
-        new VisionGeometry(sceneWalls(model, SCENE_ID), fx.opaque),
+        new VisionGeometry(sceneWalls(model, SCENE_ID), fx.opaque, fx.solid),
         [...sceneLights(model, SCENE_ID), ...fx.lights],
         scn.ambient.level,
         scn.bounds,

@@ -23,6 +23,10 @@ export interface Viewer {
   seeInvisible?: boolean;
   blinded?: boolean;
   unconscious?: boolean;
+  /** Flying or hovering: not touching the ground, so tremorsense has nothing to feel through. */
+  flying?: boolean;
+  /** Its space (ft): inside fog or darkness it still perceives its own base (§15.3). */
+  sizeFt?: number;
 }
 
 /** A viewer with its line-of-sight polygons (compute once per viewer position). */
@@ -39,9 +43,11 @@ export function prepareViewer(world: VisionWorld, v: Viewer): ViewerSight {
   return {
     v,
     sight: canSee ? world.geo.losSight(v.x, v.y, world.sightRadius) : null,
+    // Out to the blindsight range on the table (a point within range in 3D is within it across the table too; the
+    // range itself is checked in 3D per point).
     blind:
       !v.unconscious && v.senses.blindsight > 0
-        ? world.geo.losBlind(v.x, v.y, v.senses.blindsight + v.elevation + 1)
+        ? world.geo.losBlind(v.x, v.y, v.senses.blindsight + 1)
         : null,
   };
 }
@@ -66,9 +72,11 @@ export function perceivePoint(
   if (!visContains(vs.sight, x, y)) return NONE;
   const truesight = v.senses.truesight >= d;
   if (world.obscurers.length) {
+    // Inside heavy obscurement a viewer still perceives its own space (AC-VIS-07); magical darkness hides even that.
+    const ownSpace = v.sizeFt !== undefined && Math.hypot(x - v.x, y - v.y) <= v.sizeFt / 2;
     for (const o of world.obscurersOn({ x: v.x, y: v.y, z: v.elevation }, { x, y, z })) {
       if (o.kind === "magicalDarkness" && !truesight) return NONE;
-      if (o.kind === "heavy") return NONE;
+      if (o.kind === "heavy" && !ownSpace) return NONE;
     }
   }
   const L = Math.max(world.lightLevelCached(x, y, z), minLight);
@@ -126,12 +134,13 @@ export function perceiveCreature(
       if (v.senses.truesight >= d || v.seeInvisible) return "seen";
     }
   }
-  if (c.elevation === 0 && !c.flying)
+  // Tremorsense (SRD 5.2.1 p. 190): the creature and the one sensing it both touch the same surface — neither
+  // flying, both standing at the same level.
+  if (!c.flying)
     for (const vs of viewers) {
       const v = vs.v;
-      if (v.unconscious || v.senses.tremorsense <= 0) continue;
-      if (v.senses.tremorsense >= Math.hypot(c.x - v.x, c.y - v.y, c.elevation - v.elevation))
-        return "sensed";
+      if (v.unconscious || v.flying || v.senses.tremorsense <= 0 || v.elevation !== c.elevation) continue;
+      if (v.senses.tremorsense >= Math.hypot(c.x - v.x, c.y - v.y)) return "sensed";
     }
   return "none";
 }

@@ -1,5 +1,12 @@
 import { dist, type P, pathLength } from "@gloam/shared/geometry";
-import { clearanceRadius, hazardPrompts, pathCost, validateMove } from "@gloam/shared/movement";
+import {
+  clearanceRadius,
+  flightCost,
+  hazardPrompts,
+  maxMoveLength,
+  pathCost,
+  validateMove,
+} from "@gloam/shared/movement";
 import { GloamError, MoveCommit } from "@gloam/shared/protocol";
 import { controlsToken, effectiveTokenState, isDm } from "@gloam/shared/rules";
 import type { TokenEntity } from "@gloam/shared/schemas";
@@ -58,6 +65,8 @@ export const moveCommit: CommandDef<z.infer<typeof MoveCommit>, MoveResult> = {
         throw new GloamError("INVALID", "The path leaves the scene.");
     if (p.elevations && p.elevations.length !== p.points.length)
       throw new GloamError("INVALID", "One elevation per path point.");
+    if (pathLength(p.points) > maxMoveLength(b))
+      throw new GloamError("INVALID", "That route is too long for one move — go in stages.");
     // The path begins exactly at the token (a sub-half-foot difference is the client's rounding).
     const points: P[] = [{ ...t.pos }, ...p.points.slice(1).map((q) => ({ x: q.x, y: q.y }))];
     const actor = t.actorId ? ctx.model.get("actor", t.actorId) : undefined;
@@ -79,6 +88,9 @@ export const moveCommit: CommandDef<z.infer<typeof MoveCommit>, MoveResult> = {
       cost = v.cost;
       if (v.hitWall !== null) unseen = hiddenFromPlayers(ctx.model, world.walls[v.hitWall]?.id);
     }
+    // Flying: the 3D length, climbs and dives included (§16.4); from the token's own height.
+    if (p.mode === "fly" && p.elevations && !bumped)
+      cost = flightCost(path, [t.elevation, ...p.elevations.slice(1)]);
     const end = path[path.length - 1] as P;
     const elevation =
       p.elevations && !bumped ? (p.elevations[p.elevations.length - 1] as number) : t.elevation;

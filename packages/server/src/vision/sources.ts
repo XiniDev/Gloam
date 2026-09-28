@@ -29,6 +29,8 @@ export function sceneLights(model: CampaignModel, sceneId: string): VisionLight[
       id: l.id,
       x: pos.x,
       y: pos.y,
+      // A carried light shines from its carrier (on the ground, 20 ft of torchlight is 20 ft across the floor).
+      z: carrier ? carrier.elevation : l.elevation,
       bright: l.shuttered ? 0 : l.bright,
       dim: l.shuttered ? 5 : l.dim,
       coneDeg: l.coneDeg,
@@ -36,41 +38,70 @@ export function sceneLights(model: CampaignModel, sceneId: string): VisionLight[
       magical: l.magical,
       pierceDarkness: l.pierceDarkness,
       enabled: l.enabled,
-      dmOnly: l.dmOnly,
+      // A DM-hidden creature's light is hidden with it: it lights nothing a player perceives (AC-TOK-08).
+      dmOnly: l.dmOnly || carrier?.hidden === true,
     });
+  }
+  return out;
+}
+
+/**
+ * A scene's wall-shaped effects as segments: those that block sight (opaque), or movement and blindsight (solid:
+ * Wall of Force, Wall of Stone, Wall of Ice; SPEC §17.1 "solid walls add movement-blocking segments").
+ */
+export function effectWalls(
+  model: CampaignModel,
+  sceneId: string,
+  what: "sight" | "move",
+): (Seg & { id: string })[] {
+  const out: (Seg & { id: string })[] = [];
+  for (const e of model.inScene("effect", sceneId)) {
+    const sh = e.shape;
+    if (sh.kind !== "wall") continue;
+    const blocks = what === "sight" ? sh.opaque || e.props.opaque === true : sh.blocksMove;
+    if (!blocks) continue;
+    for (let i = 0; i + 1 < sh.points.length + (sh.closed ? 1 : 0); i++)
+      out.push({ a: sh.points[i] as P, b: sh.points[(i + 1) % sh.points.length] as P, id: e.id });
   }
   return out;
 }
 
 export interface EffectInputs {
   opaque: Seg[];
+  /** Solid walls: they block movement and blindsight. */
+  solid: Seg[];
   obscurers: Obscurer[];
   lights: VisionLight[];
 }
 
 /** Effects (F13) as vision inputs: opaque wall shapes, obscuring volumes, and lights. */
 export function sceneEffects(model: CampaignModel, sceneId: string): EffectInputs {
-  const out: EffectInputs = { opaque: [], obscurers: [], lights: [] };
+  const out: EffectInputs = {
+    opaque: effectWalls(model, sceneId, "sight"),
+    solid: effectWalls(model, sceneId, "move"),
+    obscurers: [],
+    lights: [],
+  };
   for (const e of model.inScene("effect", sceneId)) {
     const sh = e.shape;
-    if (sh.kind === "wall") {
-      if (sh.opaque || e.props.opaque)
-        for (let i = 0; i + 1 < sh.points.length + (sh.closed ? 1 : 0); i++)
-          out.opaque.push({ a: sh.points[i] as P, b: sh.points[(i + 1) % sh.points.length] as P });
-      continue;
-    }
+    if (sh.kind === "wall") continue;
     const fp = footprint(e, model);
     if (!fp) continue;
     if (e.props.magicalDarkness) out.obscurers.push({ kind: "magicalDarkness", ...fp });
     else if (e.props.obscurement) out.obscurers.push({ kind: e.props.obscurement, ...fp });
     if (e.props.light) {
       const c = centre(fp.poly);
+      // An emanation reaches from the edge of its source's space (SRD 5.2.1 p. 181): its light does too, measured
+      // here from the centre.
+      const src = sh.kind === "emanation" ? model.get("token", sh.sourceTokenId) : undefined;
+      const base = src ? src.sizeFt / 2 : 0;
       out.lights.push({
         id: `fx:${e.id}`,
         x: c.x,
         y: c.y,
-        bright: e.props.light.bright,
-        dim: e.props.light.dim,
+        z: src ? src.elevation : "origin" in sh ? sh.origin.z : 0,
+        bright: e.props.light.bright > 0 ? e.props.light.bright + base : 0,
+        dim: e.props.light.bright > 0 ? e.props.light.dim : e.props.light.dim + base,
         coneDeg: null,
         directionDeg: 0,
         magical: e.props.light.magical,
@@ -178,6 +209,8 @@ export function tokenViewer(model: CampaignModel, t: TokenEntity): Viewer {
     seeInvisible: status.seeInvisible,
     blinded: conditions.includes("blinded"),
     unconscious: conditions.includes("unconscious"),
+    flying: t.moveMode === "fly" || t.elevation > 0,
+    sizeFt: t.sizeFt,
   };
 }
 
