@@ -265,6 +265,32 @@ export const actors = sqliteTable(
   (t) => [index("actors_campaign_idx").on(t.campaignId)],
 );
 
+/** A player's proposed change to a locked sheet (SPEC §8.10 Ownership and locks): the DM approves or denies it. */
+export const sheetProposals = sqliteTable(
+  "sheet_proposals",
+  {
+    id: text("id").primaryKey(),
+    campaignId: text("campaign_id")
+      .notNull()
+      .references(() => campaigns.id, { onDelete: "cascade" }),
+    actorId: text("actor_id")
+      .notNull()
+      .references(() => actors.id, { onDelete: "cascade" }),
+    userId: text("user_id").notNull(),
+    /** The changes (path, before, after) as proposed. */
+    changesJson: json("changes_json").notNull(),
+    note: text("note").notNull().default(""),
+    status: text("status", { enum: ["pending", "approved", "denied", "withdrawn"] })
+      .notNull()
+      .default("pending"),
+    decidedBy: text("decided_by"),
+    decisionNote: text("decision_note"),
+    createdAt: integer("created_at").notNull(),
+    decidedAt: integer("decided_at"),
+  },
+  (t) => [index("sheet_proposals_campaign_idx").on(t.campaignId, t.status)],
+);
+
 export const sheetTemplates = sqliteTable("sheet_templates", {
   id: text("id").primaryKey(),
   campaignId: text("campaign_id")

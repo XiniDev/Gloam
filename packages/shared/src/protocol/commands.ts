@@ -447,3 +447,57 @@ export type TokenCreate = z.infer<typeof TokenCreate>;
 export type MoveCommit = z.infer<typeof MoveCommit>;
 export type MovePreview = z.infer<typeof MovePreview>;
 export type TokenUpdate = z.infer<typeof TokenUpdate>;
+
+// ── Character sheets (SPEC §8.10) ──────────────────────────────────────────────────────────────────────────
+
+/** One change to a sheet: where (object keys and list indices) and the new value there (absent: remove it). */
+export const SheetChangeIn = z.strictObject({
+  path: z.array(z.union([z.string().min(1).max(60), z.number().int().min(0).max(999)])).max(8),
+  after: z.unknown(),
+});
+const SheetChanges = z.array(SheetChangeIn).min(1).max(200);
+
+export const ActorCreate = z.strictObject({
+  kind: z.enum(["character", "npc"]).default("character"),
+  /** A player's own character (players may only create their own). */
+  ownerUserId: Id.nullable().optional(),
+  /** A whole sheet document (an import); validated against the sheet schema. */
+  sheet: z.unknown().optional(),
+  /** Start from a template's custom blocks. */
+  templateId: Id.optional(),
+});
+/** Quick create (AC-SHEET-01): a playable character in one dialog. */
+export const ActorQuickCreate = z.strictObject({
+  name: Name,
+  /** "Fighter 3", "Rogue 2 / Wizard 3". */
+  classLevel: z.string().trim().max(80).default(""),
+  hpMax: z.number().int().min(1).max(9999),
+  ac: z.number().int().min(0).max(99),
+  speed: Ft.max(1000).default(30),
+  darkvision: Ft.max(1000).default(0),
+  portraitAssetId: Id.optional(),
+  tokenAssetId: Id.optional(),
+  ownerUserId: Id.nullable().optional(),
+  templateId: Id.optional(),
+});
+/** Edits applied onto the sheet as it is now (concurrent edits to other fields aren't lost). */
+export const ActorChange = z.strictObject({ actorId: Id, changes: SheetChanges });
+/** Replace the whole sheet (an import over an existing character, after its preview). */
+export const ActorReplace = z.strictObject({ actorId: Id, sheet: z.unknown() });
+/** A player's change to locked fields, for the DM to approve. */
+export const ActorPropose = z.strictObject({
+  actorId: Id,
+  changes: SheetChanges,
+  note: z.string().max(500).default(""),
+});
+export const ProposalDecide = z.strictObject({
+  proposalId: Id,
+  approve: z.boolean(),
+  note: z.string().max(500).default(""),
+});
+export const ActorSetLock = z.strictObject({ actorId: Id, level: z.enum(["unlocked", "core", "full"]) });
+export const ActorSetOwner = z.strictObject({ actorId: Id, ownerUserId: Id.nullable() });
+export const ActorDelete = z.strictObject({ actorId: Id });
+/** Save a sheet's custom-block layout as a template (AC-SHEET-04). */
+export const TemplateSave = z.strictObject({ name: Name, fromActorId: Id });
+export const TemplateDelete = z.strictObject({ templateId: Id });

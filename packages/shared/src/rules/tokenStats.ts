@@ -10,6 +10,9 @@ import {
   type TokenStatusT,
   ZERO_SENSES,
 } from "../schemas/entities.ts";
+import { Sheet } from "../schemas/sheet.ts";
+import { abilityMod } from "./abilities.ts";
+import { deriveSheet } from "./sheet.ts";
 
 /** The parts of an actor a token reads (the full sheet document is Appendix F.3). */
 export interface ActorLike {
@@ -26,18 +29,55 @@ const obj = (v: unknown): Record<string, unknown> =>
 const strs = <T extends string>(v: unknown): T[] =>
   Array.isArray(v) ? (v.filter((x) => typeof x === "string") as T[]) : [];
 
-export const abilityMod = (score: number): number => Math.floor((score - 10) / 2);
-
 /** Proficiency bonus from total character level (SRD 5.2.1: +2 at 1–4, +3 at 5–8, … +6 at 17–20). */
 export function proficiencyBonus(level: number): number {
   return 2 + Math.floor((Math.max(1, Math.min(20, level)) - 1) / 4);
 }
 
+const fromSheets = new WeakMap<object, TokenStats>();
+
 /**
  * The token-facing numbers of a sheet (`core`, Appendix F.3): HP, AC, speeds, senses, saves, defences, size.
- * Linked tokens show these on every scene (SPEC §8.5 Linked and unlinked tokens).
+ * Linked tokens show these on every scene (SPEC §8.5 Linked and unlinked tokens). A valid sheet's saves, Dexterity
+ * modifier and initiative are its derived values — overrides included (§8.10); a sheet that doesn't parse (an old or
+ * partial document) is read field by field. Cached per sheet document: documents are never edited in place (the
+ * model and the clients' mirrors replace a sheet on every change), and the result is shared — read it, don't change it.
  */
 export function statsFromSheet(sheet: Record<string, unknown>): TokenStats {
+  const hit = fromSheets.get(sheet);
+  if (hit) return hit;
+  const parsed = Sheet.safeParse(sheet);
+  const stats = parsed.success ? statsFromParsed(parsed.data) : statsFromLoose(sheet);
+  fromSheets.set(sheet, stats);
+  return stats;
+}
+
+function statsFromParsed(sheet: Sheet): TokenStats {
+  const c = sheet.core;
+  const d = deriveSheet(c).values;
+  const saves: Partial<Record<Ability, number>> = {};
+  for (const a of ["str", "dex", "con", "int", "wis", "cha"] as const) saves[a] = d[`save.${a}`];
+  return {
+    hp: c.hp.current,
+    hpMax: Math.max(1, c.hp.max),
+    hpTemp: c.hp.temp,
+    ac: c.ac.value,
+    speeds: { ...c.speeds },
+    senses: { ...c.senses },
+    saves,
+    dexMod: d["mod.dex"],
+    initBonus: d.initiative,
+    resist: [...c.resistances],
+    immune: [...c.immunities],
+    vuln: [...c.vulnerabilities],
+    conditionImmune: [...c.conditionImmunities],
+    reachFt: 5,
+    size: c.size,
+    isPC: true,
+  };
+}
+
+function statsFromLoose(sheet: Record<string, unknown>): TokenStats {
   const core = obj(sheet.core);
   const hp = obj(core.hp);
   const abilities = obj(core.abilities);

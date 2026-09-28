@@ -20,6 +20,8 @@ export type IdPrefix =
   | "hnd"
   | "log"
   | "tpl"
+  | "blk"
+  | "prp"
   | "api"
   | "ast"
   | "dev"

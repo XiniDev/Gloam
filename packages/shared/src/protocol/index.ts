@@ -136,6 +136,10 @@ export const MESSAGE_RATES = {
   "dice.feed": rate(1, 3),
   "profile.diceSkin": rate(2, 6),
   "vision.viewAs": rate(3, 6),
+  // Sheets (§8.10): proposing a change to locked fields, the DM's answer, the lists.
+  "actor.propose": rate(1, 5),
+  "proposal.decide": rate(5, 10),
+  "proposal.list": rate(1, 3),
 } as const satisfies Record<string, RateSpec>;
 
 export * from "./commands.ts";

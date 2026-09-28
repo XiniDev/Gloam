@@ -2,6 +2,7 @@ import { type AuthContext, type Client, Room, ServerError } from "@colyseus/core
 import { StateView } from "@colyseus/schema";
 import type { P } from "@gloam/shared/geometry";
 import {
+  ActorPropose,
   AdminBan,
   AdminUnban,
   CameraSpotlight,
@@ -16,19 +17,24 @@ import {
   MovePreview,
   PingSend,
   ProfileDiceSkin,
+  ProposalDecide,
   SceneRef,
   TableKick,
 } from "@gloam/shared/protocol";
-import { controlsToken } from "@gloam/shared/rules";
+import { applyChanges, applyPatch, controlsToken, diffSheet, type SheetChange } from "@gloam/shared/rules";
 import type { TokenEntity } from "@gloam/shared/schemas";
 import { type PrepSnapshot, Presence, Sensed, Table, type TableState, V2 } from "@gloam/shared/state";
 import { z } from "zod";
 import { renderDto } from "../assets/service.ts";
 import { LibraryQuery } from "../assets/types.ts";
 import { DEFAULT_SKIN, DiceService, type DiceSkin, type RollRecord, viewOfRoll } from "../dice/service.ts";
+import type { ActorEntity } from "../engine/codecs.ts";
 import { type CommandActor, CommandBus, type CommitInfo, type RoomEvent } from "../engine/commandBus.ts";
+import { checkSheet, readSheet } from "../engine/commands/actor.ts";
+import { SYSTEM_ACTOR } from "../engine/commands/party.ts";
 import { CampaignModel } from "../engine/model.ts";
 import { ALL_COMMANDS, COMMAND_RATES, registerCommands } from "../engine/registry.ts";
+import { type Proposal, ProposalService, proposalView } from "../sheets/proposals.ts";
 import { type MoveSeen, VisionService } from "../vision/visionService.ts";
 import {
   buildHandlers,
@@ -48,6 +54,7 @@ import {
 } from "./projector.ts";
 import { CLOSE, type TableRoomApi } from "./registry.ts";
 import { roomCtx } from "./roomContext.ts";
+import { SheetSync } from "./sheetSync.ts";
 import { type Viewer, ViewManager } from "./views.ts";
 
 export interface TableRoomOptions {
@@ -69,6 +76,10 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
   /** Perception, fog and explored memory of the active scene (SPEC §15.5). */
   vision!: VisionService;
   dice!: DiceService;
+  /** Character sheets to whoever may read them (SPEC §8.10, §13.4). */
+  sheets!: SheetSync;
+  /** Players' proposed changes to locked sheets (SPEC §8.10). */
+  proposals!: ProposalService;
   /** DM connections viewing a non-active scene in prep (SPEC §13.7): client → scene id. */
   private readonly prepSubs = new Map<Client, string>();
   /** Test probe (AC-PER-01): runs right before Colyseus encodes and sends a state patch. */
@@ -244,6 +255,63 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
           dm: auth.role === "admin" || auth.role === "dm",
         }),
       ),
+      // A player's change to locked fields of their own sheet, for the DM to approve (SPEC §8.10, AC-SHEET-05).
+      "actor.propose": def(ActorPropose, MESSAGE_RATES["actor.propose"], ({ auth }, p) => {
+        if (auth.role !== "player") throw new GloamError("FORBIDDEN", "DMs change sheets directly.");
+        const actor = this.model.get("actor", p.actorId);
+        if (!actor || actor.deletedAt !== null)
+          throw new GloamError("NOT_FOUND", "That character no longer exists.");
+        if (actor.ownerUserId !== auth.userId) throw new GloamError("FORBIDDEN", "That isn't your sheet.");
+        const now = readSheet(actor);
+        const changes = p.changes as SheetChange[];
+        // It has to make a valid sheet, and to change something.
+        if (!diffSheet(now, checkSheet(applyChanges(now, changes))).length)
+          throw new GloamError("INVALID", "That changes nothing on the sheet.");
+        const prop = this.proposals.create({
+          campaignId: this.campaignId,
+          actorId: actor.id,
+          userId: auth.userId,
+          changes: changes.map((c) => ({ path: c.path, before: undefined, after: c.after })),
+          note: p.note,
+        });
+        const dto = this.proposalDto(prop);
+        this.toDms("proposal.new", dto);
+        this.toUser(auth.userId, "proposal.update", dto);
+        return { proposalId: prop.id };
+      }),
+      // The DM's answer: approved changes go onto the sheet as it is now (an ordinary, undoable sheet edit by the DM).
+      "proposal.decide": def(ProposalDecide, MESSAGE_RATES["proposal.decide"], ({ auth }, p) => {
+        this.requireDm(auth);
+        const prop = this.proposals.get(p.proposalId);
+        if (!prop || prop.campaignId !== this.campaignId)
+          throw new GloamError("NOT_FOUND", "That proposal no longer exists.");
+        if (prop.status !== "pending")
+          throw new GloamError("CONFLICT", "That proposal was already answered.");
+        if (p.approve)
+          this.bus.execute(
+            "actor.change",
+            { actorId: prop.actorId, changes: prop.changes.map((c) => ({ path: c.path, after: c.after })) },
+            this.actorFor(auth),
+          );
+        const decided = this.proposals.decide(
+          prop.id,
+          auth.userId,
+          p.approve ? "approved" : "denied",
+          p.note,
+        );
+        const dto = this.proposalDto(decided);
+        this.toDms("proposal.update", dto);
+        this.toUser(decided.userId, "proposal.update", dto);
+        return { status: decided.status };
+      }),
+      // DMs: the campaign's proposals; players: their own.
+      "proposal.list": def(z.strictObject({}), MESSAGE_RATES["proposal.list"], ({ auth }) => {
+        const dm = auth.role === "admin" || auth.role === "dm";
+        if (!dm && auth.role !== "player") return [];
+        return this.proposals
+          .list(this.campaignId, dm ? { limit: 100 } : { userId: auth.userId, limit: 50 })
+          .map((pr) => this.proposalDto(pr));
+      }),
       // A finished measurement, shown to everyone else for 3 s (SPEC §8.6 Measurement tools).
       "measure.share": def(MeasureShare, MESSAGE_RATES["measure.share"], ({ client, auth }, p) => {
         if (!this.projector.activeSceneId) return;
@@ -382,8 +450,11 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
       onCommitted: (info) => this.onCommitted(info),
       onEvents: (events) => this.deliver(events),
       fog: this.vision,
+      sheet: { apply: (sheet, patch) => applyPatch(sheet, patch) },
     });
     registerCommands(this.bus);
+    this.sheets = new SheetSync(model);
+    this.proposals = new ProposalService(ctx.db);
     this.syncCampaign();
     this.views?.detachAll();
     this.projector = new StateProjector(this.state, this.projectionCtx());
@@ -392,6 +463,66 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
     this.syncSensed();
     this.syncGlows();
     this.syncAllViews();
+    // A reload (a restore) starts every client's sheets afresh.
+    for (const [c, v] of this.viewerPairs()) this.sheets.join(c, v);
+  }
+
+  private *viewerPairs(): Generator<[Client, Viewer]> {
+    for (const c of this.clients) {
+      const v = this.viewerOf(c);
+      if (v) yield [c, v];
+    }
+  }
+
+  /** Players at the table now: their characters are the party. */
+  private presentPlayers(): string[] {
+    const out: string[] = [];
+    for (const [userId, set] of this.clientsByUser) {
+      const first = set.values().next().value as Client | undefined;
+      if ((first?.auth as ClientAuth | undefined)?.role === "player") out.push(userId);
+    }
+    return out;
+  }
+
+  /** Characters of these players without a token on the active scene, placed round its party spawn (AC-SCN-06). */
+  private placeParty(userIds: readonly string[]): void {
+    const sceneId = this.projector.activeSceneId;
+    if (!sceneId || !userIds.length) return;
+    const actorIds = this.model
+      .all("actor")
+      .filter(
+        (a) =>
+          a.kind === "character" &&
+          a.deletedAt === null &&
+          a.ownerUserId !== null &&
+          userIds.includes(a.ownerUserId),
+      )
+      .map((a) => a.id);
+    if (!actorIds.length) return;
+    try {
+      this.bus.execute("party.place", { sceneId, actorIds }, SYSTEM_ACTOR);
+    } catch (err) {
+      roomCtx().log.error({ err }, "placing the party failed");
+    }
+  }
+
+  private toUser(userId: string, type: string, payload: unknown): void {
+    for (const c of this.clientsByUser.get(userId) ?? []) c.send(type, payload);
+  }
+
+  /** A proposal as it's shown: what approving it would change on the sheet now. */
+  private proposalDto(p: Proposal) {
+    const actor = this.model.get("actor", p.actorId);
+    const live = actor && actor.deletedAt === null ? actor : undefined;
+    const sheet = live ? readSheet(live) : null;
+    return proposalView(
+      p,
+      {
+        actor: sheet?.core.name ?? "A removed character",
+        user: roomCtx().profiles.get(p.userId)?.displayName ?? "Someone",
+      },
+      sheet,
+    );
   }
 
   projectionCtx(): ProjectionCtx {
@@ -478,6 +609,22 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
     const assetIds = new Set<string>();
     for (const o of info.ops) if (o.k !== "fog" && o.k !== "sheet" && o.e === "asset") assetIds.add(o.id);
     if (assetIds.size) this.notifyAssets([...assetIds], info.type);
+    this.sheets.sync(info.ops, this.viewerPairs());
+    // The party follows the table (AC-SCN-06): into a scene made active, and a character made for someone at the
+    // table onto the scene now — after this command, not inside it.
+    if (info.type !== "party.place") {
+      const present = this.presentPlayers();
+      const owners = res.switched
+        ? present
+        : info.ops
+            .filter((o) => o.k === "create" && o.e === "actor")
+            .map((o) => (o as { value: ActorEntity }).value)
+            .filter(
+              (a) => a.kind === "character" && a.ownerUserId !== null && present.includes(a.ownerUserId),
+            )
+            .map((a) => a.ownerUserId as string);
+      if (owners.length) queueMicrotask(() => this.placeParty(owners));
+    }
   }
 
   /**
@@ -568,6 +715,7 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
     this.upsertPresence(auth, true);
     this.syncCampaign();
     this.views.sync(client, { userId: auth.userId, role: auth.role }, this.projector.activeSceneId);
+    this.sheets.join(client, { userId: auth.userId, role: auth.role });
     client.send("welcome", {
       userId: auth.userId,
       role: auth.role,
@@ -577,6 +725,8 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
       serverNow: Date.now(),
     });
     if (auth.role === "admin" || auth.role === "dm") client.send("knocks", ctx.people.pending());
+    // An admitted player's characters join them on the board (AC-SCN-06).
+    if (auth.role === "player") this.placeParty([auth.userId]);
     ctx.table.changed();
   }
 
@@ -633,6 +783,7 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
   override onLeave(client: Client): void {
     const auth = client.auth as ClientAuth | undefined;
     this.views.forget(client);
+    this.sheets.leave(client);
     this.prepSubs.delete(client);
     client.view?.dispose();
     if (!auth) return;

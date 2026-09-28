@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { characterJsonSchema } from "@gloam/shared/schemas";
 import express, { type Express, type NextFunction, type Request, type Response } from "express";
 import helmet from "helmet";
 import type { ViteDevServer } from "vite";
@@ -156,6 +157,15 @@ export async function buildHttpApp(
     "/api/health",
     route((_req, res) => ok(res, { ok: true, uptimeMs: Date.now() - ctx.startedAt })),
   );
+  // The character sheet's published JSON Schema (SPEC §8.10 Import / export, Appendix F.3): what imports are checked
+  // against and what the Import-with-AI prompt embeds. A public document: no session needed.
+  const characterSchema = JSON.stringify(characterJsonSchema(), null, 2);
+  app.get("/api/v1/schemas/character.json", (_req: Request, res: Response) => {
+    res
+      .type("application/schema+json")
+      .setHeader("Cache-Control", "public, max-age=3600")
+      .send(characterSchema);
+  });
   let cspReports = 0;
   app.post("/api/csp-report", (req: Request, res: Response) => {
     // Violations are logged locally (never forwarded); a flood is capped.

@@ -1,6 +1,6 @@
 import { LIMITS } from "@gloam/shared";
 import { GloamError } from "@gloam/shared/protocol";
-import { controlsToken } from "@gloam/shared/rules";
+import { applyPatch, controlsToken, lockedChanges } from "@gloam/shared/rules";
 import type { TokenEntity } from "@gloam/shared/schemas";
 import type { Raster } from "@gloam/shared/vision";
 import { and, desc, eq, gt, isNull } from "drizzle-orm";
@@ -417,7 +417,9 @@ export class CommandBus {
   /**
    * Undo and redo re-apply stored ops rather than run a command, so no command's permission check runs again: for a
    * player, every token the ops touch must still be theirs to change — theirs, and not locked by the DM since — and
-   * every light must be carried by such a token (SPEC §8.14; a DM's lock can't be undone around).
+   * every light must be carried by such a token; every character sheet must still be theirs, and a sheet change must
+   * pass the sheet's lock as it is now; every template must be theirs (SPEC §8.14, §8.10: a DM's lock can't be undone
+   * around).
    */
   private authorizeReplay(actor: CommandActor, ops: readonly Op[]): void {
     if (actor.role === "admin" || actor.role === "dm") return;
@@ -426,8 +428,44 @@ export class CommandBus {
         throw new GloamError("FORBIDDEN", "That isn't yours to change.");
       if (t.locked) throw new GloamError("FORBIDDEN", "The DM locked this token.");
     };
+    const ownActor = (a: EntityMap["actor"] | undefined): EntityMap["actor"] => {
+      if (!a || a.ownerUserId !== actor.userId || actor.role !== "player")
+        throw new GloamError("FORBIDDEN", "That isn't your sheet.");
+      return a;
+    };
     for (const op of ops) {
-      if (op.k === "fog" || op.k === "sheet") continue;
+      if (op.k === "fog") continue;
+      if (op.k === "sheet") {
+        const a = ownActor(this.model.get("actor", op.actorId));
+        if (a.lockLevel === "unlocked") continue;
+        let after: unknown;
+        try {
+          after = applyPatch(a.sheet, op.patch);
+        } catch {
+          throw new GloamError("CONFLICT", "That sheet has changed since.");
+        }
+        if (lockedChanges(a.lockLevel, a.sheet, after, false).length)
+          throw new GloamError("LOCKED_SHEET", "The DM has locked that part of the sheet since.");
+        continue;
+      }
+      if (op.e === "actor") {
+        const a = ownActor(
+          this.model.get("actor", op.id) ??
+            ((op.k === "delete" ? op.prev : undefined) as EntityMap["actor"] | undefined),
+        );
+        // Status (conditions, exhaustion, death saves, concentration) is play-state: changeable unless fully locked.
+        if (op.k === "set" && op.path[0] === "status" && a.lockLevel === "full")
+          throw new GloamError("LOCKED_SHEET", "The DM has locked that sheet since.");
+        continue;
+      }
+      if (op.e === "template") {
+        const tpl =
+          this.model.get("template", op.id) ??
+          ((op.k === "delete" ? op.prev : undefined) as EntityMap["template"] | undefined);
+        if (!tpl || tpl.createdBy !== actor.userId)
+          throw new GloamError("FORBIDDEN", "That template isn't yours.");
+        continue;
+      }
       if (op.e === "token")
         check(
           this.model.get("token", op.id) ??

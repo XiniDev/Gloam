@@ -1,9 +1,11 @@
 import type { CommandBus, CommandDef } from "./commandBus.ts";
+import { ACTOR_COMMANDS } from "./commands/actor.ts";
 import { ASSET_COMMANDS } from "./commands/asset.ts";
 import { campaignUpdate } from "./commands/campaign.ts";
 import { FOG_COMMANDS } from "./commands/fog.ts";
 import { LIGHT_COMMANDS } from "./commands/light.ts";
 import { MOVE_COMMANDS } from "./commands/move.ts";
+import { PARTY_COMMANDS } from "./commands/party.ts";
 import { SCENE_COMMANDS } from "./commands/scene.ts";
 import { TOKEN_COMMANDS } from "./commands/token.ts";
 import { WALL_COMMANDS } from "./commands/wall.ts";
@@ -20,6 +22,8 @@ export const ALL_COMMANDS: CommandDef<never, unknown>[] = [
   ...ZONE_COMMANDS,
   ...LIGHT_COMMANDS,
   ...FOG_COMMANDS,
+  ...ACTOR_COMMANDS,
+  ...PARTY_COMMANDS,
 ];
 
 /** Room message rate limits per command (SPEC §13.5); default 10/s. */
@@ -38,6 +42,9 @@ export const COMMAND_RATES: Record<string, { capacity: number; perSecond: number
   "fog.paint": { capacity: 20, perSecond: 20 },
   "fog.resetExplored": { capacity: 3, perSecond: 1 },
   "door.toggle": { capacity: 5, perSecond: 5 },
+  // Sheets (§8.10): edits come as a player types and ticks; the rest are deliberate.
+  ...Object.fromEntries(ACTOR_COMMANDS.map((d) => [d.type, { capacity: 5, perSecond: 2 }])),
+  "actor.change": { capacity: 20, perSecond: 10 },
 };
 
 export function registerCommands(bus: CommandBus): void {
