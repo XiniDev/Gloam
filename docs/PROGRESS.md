@@ -170,3 +170,10 @@ PASSING 28/224 · DISPUTED 0 · FAILING 196
 - Next: the client — fog/light render targets and composite (§15.7), war fog, explored memory, DM hatched overlay and
   View as, Fog and Light tools, the token Light slice, sensed markers, partial-move animation; then P4 journeys,
   shots and the bench (VIS-12).
+- P4 client: the fog/light composite in every board material, vision and light targets drawn from the shared
+  visibility code, the war fog, explored memory (the server's raster, held while one's own token still glides), the
+  300-ms reveal, the DM's hatch and View as, the Fog tool (brush/rect/polygon/room, reveal/hide, for all or one
+  player, fog mode and ambient, reset explored) and the Lights tool (presets, gizmos, editor), the token menu's Light
+  ring (light, douse, hood, put away), tremorsense markers, moves seen partway (ghosts that fade). Three journeys
+  (p4-vision, p4-light-fog, p4-dm-view) pass: VIS-01/02/03/04/05/09/10/11/13/14 and SCN-07, WAL-03 (vision), VIS-12's
+  client half. P3 critic round 2 fixed (12 important items) and verified in the re-rendered shots.

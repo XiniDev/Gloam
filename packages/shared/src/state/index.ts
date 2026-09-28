@@ -163,6 +163,10 @@ export const LightS = schema(
     pierceDarkness: t.boolean(),
     on: t.boolean(),
     preset: t.string(),
+    /** A DM vision aid (players never receive it; DMs leave it out of the players' fog they draw). */
+    dmOnly: t.boolean(),
+    /** A hooded lantern's hood is down (its radii already say so). */
+    shuttered: t.boolean(),
     link: t.ref(LinkS).view(TAG_LINK), // carried lights: the server moves x/y with the carrier
   },
   "Light",

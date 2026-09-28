@@ -1,6 +1,7 @@
-import { BrickWall, Hand, LandPlot, MousePointer2, Radar, Ruler } from "lucide-react";
+import { BrickWall, CloudFog, Hand, Lamp, LandPlot, MousePointer2, Radar, Ruler } from "lucide-react";
 import { type ReactElement, useEffect, useRef } from "react";
 import { boardApi } from "../board/boardApi.ts";
+import { setFogShape } from "../board/tools/fog.ts";
 import { setWallMode, useWallTool } from "../board/tools/walls.ts";
 import { request, useTable } from "../net/table.ts";
 import { type Tool, useUi } from "../state/ui.ts";
@@ -37,6 +38,8 @@ const TOOLS: { id: Tool; label: string; key?: string; icon: ReactElement; dm?: b
   { id: "ping", label: "Ping (or Alt+click)", icon: <Radar size={19} /> },
   { id: "walls", label: "Walls", key: "W", icon: <BrickWall size={19} />, dm: true },
   { id: "zones", label: "Zones", key: "Z", icon: <LandPlot size={19} />, dm: true },
+  { id: "lights", label: "Lights", key: "I", icon: <Lamp size={19} />, dm: true },
+  { id: "fog", label: "Fog", key: "B", icon: <CloudFog size={19} />, dm: true },
 ];
 
 /** The board's left toolbar (SPEC §29.3). Tools arrive with their phases; only working ones are shown. */
@@ -68,7 +71,14 @@ export function LeftToolbar() {
       else if (e.code === "KeyH") void request("hand.toggle", {}).catch(() => {});
       else if (e.code === "KeyW" && dm) drawWalls("wall");
       else if (e.code === "KeyZ" && dm) ui.set({ tool: "zones" });
-      else if (e.code === "KeyQ" && dm) openQuickUnit();
+      else if (e.code === "KeyI" && dm) ui.set({ tool: "lights" });
+      else if (e.code === "KeyB" && dm) {
+        setFogShape("brush");
+        ui.set({ tool: "fog" });
+      } else if (e.code === "KeyR" && dm) {
+        setFogShape("room");
+        ui.set({ tool: "fog" });
+      } else if (e.code === "KeyQ" && dm) openQuickUnit();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);

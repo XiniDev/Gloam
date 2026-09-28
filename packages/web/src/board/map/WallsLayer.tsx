@@ -4,8 +4,8 @@ import { Color } from "three";
 import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
 import { LineSegments2 } from "three/examples/jsm/lines/LineSegments2.js";
 import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeometry.js";
-import { useTable } from "../../net/table.ts";
 import { useBoard } from "../../state/entities.ts";
+import { useDmView } from "../../state/viewAs.ts";
 import { C, col, WALL_COLORS } from "../colors.ts";
 import { setSegments } from "../lines.ts";
 import { useWallTool } from "../tools/walls.ts";
@@ -53,7 +53,8 @@ function fatLine(name: string, params: ConstructorParameters<typeof LineMaterial
  */
 export function WallsLayer() {
   const walls = useBoard((d) => d.walls);
-  const dm = useTable((s) => s.me?.role === "dm" || s.me?.role === "admin");
+  // The DM's overlay (not while the DM views the board as a player).
+  const dm = useDmView();
   const size = useThree((s) => s.size);
   const invalidate = useThree((s) => s.invalidate);
   const [under, lines] = useMemo(() => {

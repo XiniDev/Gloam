@@ -15,3 +15,9 @@ export function canRaise(t: TokenView, viewer: ElevationViewer): boolean {
 export function showsElevation(t: TokenView): boolean {
   return (t.own?.speedFly ?? 0) > 0 || Math.abs(t.elevation) > 0.01;
 }
+
+/** A height as §8.5 writes it: "+15 ft", "−5 ft" (a true minus), "0 ft". */
+export function heightLabel(elevation: number): string {
+  const n = Math.round(elevation);
+  return `${n > 0 ? "+" : n < 0 ? "−" : ""}${Math.abs(n)} ft`;
+}

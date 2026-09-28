@@ -4,11 +4,14 @@ import { Dock } from "../hud/Dock.tsx";
 import { MapToolsPanel } from "../hud/dm/MapToolsPanel.tsx";
 import { NewSceneWizard } from "../hud/dm/NewSceneWizard.tsx";
 import { ElevationControl } from "../hud/ElevationControl.tsx";
+import { FogPanel } from "../hud/FogPanel.tsx";
 import { Intro, useIntro } from "../hud/Intro.tsx";
 import { useHudInsets } from "../hud/insets.ts";
 import { dismissKnockCard, showKnockCard } from "../hud/KnockCards.tsx";
 import { LeftToolbar } from "../hud/LeftToolbar.tsx";
+import { LightsPanel } from "../hud/LightsPanel.tsx";
 import { LoadingBar } from "../hud/LoadingBar.tsx";
+import { MeasureLabels } from "../hud/MeasureLabels.tsx";
 import { MeasurePanel } from "../hud/MeasurePanel.tsx";
 import { MoveLabel } from "../hud/MoveLabel.tsx";
 import { PrepBanner } from "../hud/PrepBanner.tsx";
@@ -17,9 +20,12 @@ import { RadialMenu } from "../hud/RadialMenu.tsx";
 import { SceneTransition } from "../hud/SceneTransition.tsx";
 import { TopBar } from "../hud/TopBar.tsx";
 import { useUndoKeys } from "../hud/useUndoKeys.ts";
+import { ViewAsBanner } from "../hud/ViewAsBanner.tsx";
+import { WallChips } from "../hud/WallChips.tsx";
 import { WallsPanel } from "../hud/WallsPanel.tsx";
 import { ZoneEditor, ZonesPanel } from "../hud/ZonesPanel.tsx";
 import { joinErrorCode } from "../net/colyseus.ts";
+import { watchFog } from "../net/fog.ts";
 import { connectTable, disconnectTable, request, tableEvents, useTable } from "../net/table.ts";
 import { useSession } from "../state/session.ts";
 import { useUi } from "../state/ui.ts";
@@ -42,6 +48,8 @@ export default function TableRoute() {
     useHudInsets.getState().set({ active: true });
     return () => useHudInsets.getState().set({ active: false });
   }, []);
+  // The fog of the active scene: a snapshot whenever the scene or its fog mode changes, then patches (SPEC §15.8).
+  useEffect(() => watchFog(), []);
   useEffect(() => {
     let cancelled = false;
     const offs: (() => void)[] = [];
@@ -122,10 +130,15 @@ export default function TableRoute() {
       <LoadingBar />
       <RadialMenu />
       <MoveLabel />
+      <WallChips />
+      <MeasureLabels />
       <ElevationControl />
       <MeasurePanel />
       <WallsPanel />
       <ZonesPanel />
+      <LightsPanel />
+      <FogPanel />
+      <ViewAsBanner />
       <ZoneEditor />
       <QuickUnitDialog />
       <SceneWizardHost />

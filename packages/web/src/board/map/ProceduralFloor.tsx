@@ -5,6 +5,7 @@ import { disposeLater } from "../dispose.ts";
 import { FLOOR_PATTERN_GLSL, PALETTE, ROUGHNESS, STYLE_INDEX } from "../floors.ts";
 import { NOISE_GLSL } from "../glsl.ts";
 import type { Bounds, FloorStyle } from "../scene.ts";
+import { withFog } from "../vision/fogMaterial.ts";
 
 export { FLOOR_STYLES } from "../floors.ts";
 
@@ -47,7 +48,7 @@ export function ProceduralFloor({ bounds, style }: { bounds: Bounds; style: Floo
           "#include <roughnessmap_fragment>\nroughnessFactor = min(roughnessFactor, floorRough + 0.05);",
         );
     };
-    return m;
+    return withFog(m, "floor");
   }, []);
 
   useEffect(() => {

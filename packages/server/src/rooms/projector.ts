@@ -196,6 +196,8 @@ export function lightView(l: LightEntity, ctx: ProjectionCtx): LightView {
     pierceDarkness: l.pierceDarkness,
     on: l.enabled,
     preset: l.preset ?? "",
+    dmOnly: l.dmOnly,
+    shuttered: l.shuttered === true,
   };
   if (l.tokenId) v.link = { tokenId: l.tokenId, casterId: "" };
   return v;

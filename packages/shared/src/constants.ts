@@ -106,7 +106,7 @@ export const BOARD_COLORS = {
   /** Standee card edge. */
   cardboard: "#B59A72",
   /** Token base top. */
-  baseInk: "#141A22",
+  baseInk: "#243041", // ink-700: a lacquered slate base (near-black read as a hole in the floor)
   selectGlow: "#E6C98B",
   hoverRing: "#EDE6D6",
   /** Procedural floors (SPEC §8.3): base, variation and joint colours per style. */

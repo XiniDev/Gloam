@@ -104,6 +104,8 @@ test("P3 key screens", async ({ admin, browser, gloam, guardLog }, info) => {
       { a: { x: 30, y: 6 }, b: { x: 30, y: 20 }, kind: "curtain" },
       { a: { x: 38, y: 20 }, b: { x: 38, y: 34 }, kind: "wall", hidden: true },
       { a: { x: 11, y: 20 }, b: { x: 21, y: 20 }, kind: "wall" },
+      // An invisible wall in the open east side (its dotted pattern is reviewed in the DM's overlay).
+      { a: { x: 44, y: 9 }, b: { x: 44, y: 16 }, kind: "invisible" },
     ],
   });
   const door = wallIds[1] as string;
@@ -126,7 +128,7 @@ test("P3 key screens", async ({ admin, browser, gloam, guardLog }, info) => {
     [
       "Dave's Owl",
       {
-        pos: { x: 20, y: 20 },
+        pos: { x: 25, y: 22 },
         size: "small",
         ownerIds: [daveId],
         disposition: "party",
@@ -341,9 +343,9 @@ test("P3 key screens", async ({ admin, browser, gloam, guardLog }, info) => {
 
   // Elevation: the owl takes off.
   const owl = ids["Dave's Owl"] as string;
-  await look([dave], 22, 21);
+  await look([dave], 25, 22);
   await step("10-elevation", dave, async () => {
-    await clickAt(dave, 20, 20);
+    await clickAt(dave, 25, 22);
     await expect(dave.getByTestId("elevation-stepper")).toBeVisible();
     for (let i = 0; i < 3; i++) await dave.getByRole("button", { name: /Raise 5 ft/ }).click();
     await expect

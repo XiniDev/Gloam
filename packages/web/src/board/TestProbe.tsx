@@ -13,15 +13,17 @@ import {
   WebGLRenderTarget,
 } from "three";
 import { boardData, useEntities } from "../state/entities.ts";
+import { useFog } from "../state/fog.ts";
 import { useSettings } from "../state/settings.ts";
 import { useUi } from "../state/ui.ts";
+import { useViewAs } from "../state/viewAs.ts";
 import { provideTestHook } from "../test/hooks.ts";
 import { boardApi } from "./boardApi.ts";
 import { cameraRig, rigDiag } from "./CameraRig.tsx";
 import { boardDiag, useLoading } from "./diag.ts";
 import { setAnimating, wake } from "./frames.ts";
 import { cutaway, doorLeafAngles, doorSwing } from "./map/Walls3D.tsx";
-import { animatingTokens } from "./move/anims.ts";
+import { animatingTokens, movedLog } from "./move/anims.ts";
 import { moveDiag, useMove } from "./move/drag.ts";
 import { remoteLog, useRemoteMoves } from "./move/remote.ts";
 import { usePings } from "./PingLayer.tsx";
@@ -34,6 +36,8 @@ import { hpBarState, overlayFade } from "./tokens/TokenObject.tsx";
 import { current as currentMeasure, measuredFt, useMeasure } from "./tools/measure.ts";
 import { useWallTool } from "./tools/walls.ts";
 import { useZoneTool } from "./tools/zones.ts";
+import { fogUniforms } from "./vision/fogMaterial.ts";
+import { visionDiag } from "./vision/VisionLayer.tsx";
 
 /**
  * Test hooks for the board (SPEC §23.7; present only in `vite build --mode test`): camera read/write, renderer and
@@ -68,6 +72,8 @@ export function TestProbe() {
           if (set.target) cameraRig.moveTargetTo(set.target[0], set.target[1], set.ms ?? 0);
           if (set.pitchDeg !== undefined) cameraRig.pitchTo(set.pitchDeg, set.ms ?? 0);
           if (set.distance !== undefined) void c.dollyTo(set.distance, false);
+          // Set outright: in place now (what's projected next goes through this view).
+          if ((set.ms ?? 0) <= 0) cameraRig.sync();
           wake();
         }
         const t = c.getTarget(new Vector3());
@@ -118,6 +124,78 @@ export function TestProbe() {
       rig: rigDiag,
     }));
     provideTestHook("groundAt", (x: number, y: number) => boardApi.groundAt(x, y));
+    // Fog this client holds (SPEC §15.8): the mode, the raster's placement, and how much is revealed/explored.
+    provideTestHook("fog", () => {
+      const f = useFog.getState();
+      const count = (a: Uint8Array | null | undefined) => (a ? a.reduce((n, v) => n + (v ? 1 : 0), 0) : 0);
+      return {
+        sceneId: f.sceneId,
+        mode: f.mode,
+        shape: f.shape,
+        explored: count(f.explored),
+        layers: Object.fromEntries([...f.layers].map(([k, v]) => [k, count(v)])),
+      };
+    });
+    // Lights this client holds (SPEC §8.8).
+    provideTestHook("lights", () => [...boardData(useEntities.getState()).lights.values()]);
+    // Tremorsense markers this client holds (SPEC §15.4): opaque ids and rounded positions only.
+    provideTestHook("sensed", () => [...useEntities.getState().live.sensed.values()]);
+    // Moves as this client received them (SPEC §15.6).
+    provideTestHook("movedLog", () => movedLog.map((m) => ({ ...m })));
+    // The board's pixels as WebGL drew them (no HUD over them): a PNG data URL.
+    provideTestHook("canvasPng", () => {
+      const el = boardApi.element;
+      const c = el instanceof HTMLCanvasElement ? el : el?.querySelector("canvas");
+      return c
+        ? { url: c.toDataURL("image/png"), width: c.width, height: c.height, cssWidth: c.clientWidth }
+        : null;
+    });
+    // The mean colour of a small square of the board around a window point (read in the page: no PNG round trip).
+    provideTestHook("canvasRegion", (x: number, y: number, half: number) => {
+      const el = boardApi.element;
+      const c = el instanceof HTMLCanvasElement ? el : el?.querySelector("canvas");
+      if (!c) return null;
+      const r = c.getBoundingClientRect();
+      const k = c.width / c.clientWidth;
+      const size = Math.max(1, Math.round(half * 2 + 1));
+      const cx = Math.round((x - r.left) * k) - Math.floor(size / 2);
+      const cy = Math.round((y - r.top) * k) - Math.floor(size / 2);
+      const off = document.createElement("canvas");
+      off.width = size;
+      off.height = size;
+      const g = off.getContext("2d", { willReadFrequently: true });
+      if (!g) return null;
+      g.drawImage(c, cx, cy, size, size, 0, 0, size, size);
+      const d = g.getImageData(0, 0, size, size).data;
+      let R = 0;
+      let G = 0;
+      let B = 0;
+      for (let i = 0; i < d.length; i += 4) {
+        R += d[i] as number;
+        G += d[i + 1] as number;
+        B += d[i + 2] as number;
+      }
+      const n = d.length / 4;
+      return { r: R / n / 255, g: G / n / 255, b: B / n / 255 };
+    });
+    // The composite's inputs (SPEC §15.7).
+    provideTestHook("vision", () => ({
+      draws: visionDiag.draws,
+      lastDrawAt: visionDiag.lastDrawAt,
+      lightDraws: visionDiag.lightDraws,
+      wallsAt: visionDiag.wallsAt,
+      wallsDrawnAt: visionDiag.wallsDrawnAt,
+      computedAt: visionDiag.computedAt,
+      flicker: { ...visionDiag.flicker },
+      reveal: { ...visionDiag.reveal, steps: [...visionDiag.reveal.steps] },
+      mode: fogUniforms.gMode.value,
+      dm: fogUniforms.gDm.value,
+      ambient: fogUniforms.gAmbient.value,
+      blend: fogUniforms.gBlend.value,
+      hasVision: fogUniforms.gVis.value !== null,
+      hasLight: fogUniforms.gLight.value !== null,
+      hasMemory: fogUniforms.gMem.value !== null,
+    }));
     provideTestHook("project", (x: number, y: number, elevation?: number) =>
       boardApi.project(x, y, elevation ?? 0),
     );
@@ -267,7 +345,12 @@ export function TestProbe() {
     });
     /** The token as this viewer holds it (its view shape, tags included), or null. */
     provideTestHook("token", (id: string) => boardData(useEntities.getState()).tokens.get(id) ?? null);
-    provideTestHook("visibleTokenIds", () => [...boardData(useEntities.getState()).tokens.keys()].sort());
+    // The tokens drawn (viewing as a player: exactly theirs).
+    provideTestHook("visibleTokenIds", () => {
+      const as = useViewAs.getState();
+      const ids = [...boardData(useEntities.getState()).tokens.keys()];
+      return (as.userId && as.data ? ids.filter((id) => as.data?.tokens.includes(id)) : ids).sort();
+    });
     provideTestHook("tokenState", (id: string) => {
       const obj = scene.getObjectByName(`token:${id}`);
       if (!obj) return null;

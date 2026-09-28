@@ -137,6 +137,8 @@ export interface LightView {
   pierceDarkness: boolean;
   on: boolean;
   preset: string;
+  dmOnly: boolean;
+  shuttered: boolean;
   link?: LinkView;
 }
 

@@ -63,6 +63,8 @@ interface Tween {
 export const cameraRig: {
   controls: CameraControlsImpl | null;
   pitchTo(pitchDeg: number, ms?: number, done?: () => void): void;
+  /** Puts the camera where its controls are now (after changes made without a transition). */
+  sync(): void;
   /** Orthographic top-down on or off (the view stays where it is). */
   setOrtho(on: boolean): void;
   moveTargetTo(x: number, z: number, ms?: number): void;
@@ -80,6 +82,7 @@ export const cameraRig: {
   panBy: () => {},
   pitchTo: () => {},
   setOrtho: () => {},
+  sync: () => {},
   moveTargetTo: () => {},
   pitchDeg: () => PRESETS.tabletop,
 };
@@ -274,6 +277,14 @@ export function CameraRig({ bounds, sceneId }: { bounds: Bounds; sceneId: string
       const to = Math.max(0.0001, (90 - pitchDeg) * DEG);
       tweens.current = tweens.current.filter((t) => t.kind !== "pitch");
       wake();
+      // No duration: at once (a zero-length tween waited for the next frame, and anything projecting through the
+      // camera in between — a click placed from a table point — used the old view).
+      if (ms <= 0) {
+        void c.rotatePolarTo(to, false);
+        applyNow(c);
+        done?.();
+        return;
+      }
       noteTween("pitch");
       tweens.current.push({
         kind: "pitch",
@@ -282,6 +293,9 @@ export function CameraRig({ bounds, sceneId }: { bounds: Bounds; sceneId: string
         apply: (k) => void c.rotatePolarTo(from + (to - from) * k, false),
         done,
       });
+    };
+    cameraRig.sync = () => {
+      if (ref.current) applyNow(ref.current);
     };
     cameraRig.setOrtho = (on) => {
       if (on === useCameraMode.getState().ortho || !ref.current) return;
@@ -329,6 +343,11 @@ export function CameraRig({ bounds, sceneId }: { bounds: Bounds; sceneId: string
       const t0 = c.getTarget(new Vector3());
       tweens.current = tweens.current.filter((t) => t.kind !== "move");
       wake();
+      if (ms <= 0) {
+        void c.moveTo(x, 0, z, false);
+        applyNow(c);
+        return;
+      }
       noteTween("move");
       tweens.current.push({
         kind: "move",

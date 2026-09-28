@@ -1,7 +1,7 @@
 import { formatDistance } from "@gloam/shared/units";
 import { Html, Line } from "@react-three/drei";
 import { useMemo } from "react";
-import { DoubleSide, Shape, ShapeGeometry } from "three";
+import { type Camera, DoubleSide, type Object3D, Shape, ShapeGeometry, Vector3 } from "three";
 import { useUi } from "../../state/ui.ts";
 import { C } from "../colors.ts";
 import { useUnits } from "../useUnits.ts";
@@ -12,7 +12,6 @@ import {
   current,
   linePolygon,
   type Measurement,
-  measuredFt,
   type P3,
   useMeasure,
 } from "./measure.ts";
@@ -34,13 +33,13 @@ export function MeasureLayer() {
     <group name="measure">
       {mine ? <MeasureShapeView m={mine} color={C.brass300} /> : null}
       {shared.map((m) => (
-        <MeasureShapeView key={`${m.by}:${m.at}`} m={m} color={m.color || C.brass300} who={m.name} />
+        <MeasureShapeView key={`${m.by}:${m.at}`} m={m} color={m.color || C.brass300} />
       ))}
     </group>
   );
 }
 
-function MeasureShapeView({ m, color, who }: { m: Measurement; color: string; who?: string }) {
+function MeasureShapeView({ m, color }: { m: Measurement; color: string }) {
   const units = useUnits();
   const a = m.points[0] as P3;
   const b = m.points[m.points.length - 1] as P3;
@@ -70,7 +69,6 @@ function MeasureShapeView({ m, color, who }: { m: Measurement; color: string; wh
   const outline: [number, number, number][] = area
     ? [...area, area[0] as { x: number; y: number }].map((p) => [p.x, lift, p.y])
     : m.points.map((p) => [p.x, p.z + lift, p.y]);
-  const total = measuredFt(m);
   return (
     <group userData={{ part: "measure", shape: m.shape }}>
       {fill ? (
@@ -84,16 +82,11 @@ function MeasureShapeView({ m, color, who }: { m: Measurement; color: string; wh
           <meshBasicMaterial color={color} transparent opacity={0.3} depthWrite={false} side={DoubleSide} />
         </mesh>
       ) : null}
-      {/* An ink edge under the line: the shape holds on pale stone and bright maps alike. */}
-      <Line
-        points={outline}
-        color={C.ink950}
-        lineWidth={5}
-        transparent
-        opacity={0.55}
-        renderOrder={9}
-        depthTest={false}
-      />
+      {/*
+        An ink edge under the line, so the shape holds on pale stone and bright maps alike. Both opaque and drawn in
+        order (an alpha underlay drew after the opaque line, burying it, and beaded at every joint).
+      */}
+      <Line points={outline} color={C.ink950} lineWidth={5} renderOrder={8} depthTest={false} />
       <Line points={outline} color={color} lineWidth={2.5} dashed={false} renderOrder={9} depthTest={false} />
       {m.shape === "ruler" ? (
         <Dots points={m.points.map((p) => ({ x: p.x, y: p.y }))} kind="dot" px={9} color={color} />
@@ -123,6 +116,7 @@ function MeasureShapeView({ m, color, who }: { m: Measurement; color: string; wh
                 position={[(p.x + q.x) / 2, lift, (p.y + q.y) / 2]}
                 center
                 zIndexRange={[20, 0]}
+                calculatePosition={onScreen}
               >
                 <span className="pointer-events-none whitespace-nowrap rounded-chip bg-ink-950 px-1.5 text-12 text-muted tabular">
                   {formatDistance(len, units)}
@@ -131,20 +125,16 @@ function MeasureShapeView({ m, color, who }: { m: Measurement; color: string; wh
             );
           })
         : null}
-      <Html
-        position={[b.x, b.z + lift, b.y]}
-        center
-        zIndexRange={[21, 0]}
-        style={{ transform: "translateY(-22px)" }}
-      >
-        <span
-          data-testid={who ? "measure-shared-label" : "measure-label"}
-          className="pointer-events-none whitespace-nowrap rounded-chip border border-line bg-ink-950 px-2 py-0.5 text-13 font-bold text-bone tabular shadow-[var(--shadow-float)]"
-        >
-          {formatDistance(total, units)}
-          {who ? <span className="ml-1.5 font-normal text-muted">{who}</span> : null}
-        </span>
-      </Html>
+      {/* The total is a HUD pill placed clear of plates and tokens (hud/MeasureLabels.tsx). */}
     </group>
   );
+}
+
+const proj = new Vector3();
+/** Where a measure label goes on screen: at its point, kept inside the board's edges (a label never runs off it). */
+function onScreen(el: Object3D, camera: Camera, size: { width: number; height: number }): number[] {
+  proj.setFromMatrixPosition(el.matrixWorld).project(camera);
+  const x = ((proj.x + 1) / 2) * size.width;
+  const y = ((1 - proj.y) / 2) * size.height;
+  return [Math.min(size.width - 64, Math.max(64, x)), Math.min(size.height - 36, Math.max(48, y))];
 }

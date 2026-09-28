@@ -10,6 +10,7 @@ import { disposeLater } from "../dispose.ts";
 import { acquireGlb, acquireTexture } from "../resources.ts";
 import { type Bounds, type Calibration, calibrationFromJson, sceneFloor } from "../scene.ts";
 import { TIERS, useTier } from "../tiers.ts";
+import { withFog } from "../vision/fogMaterial.ts";
 import { useMapAlign } from "./mapAlign.ts";
 import { ProceduralFloor } from "./ProceduralFloor.tsx";
 
@@ -74,7 +75,7 @@ function ImageMap({ assetId, calib, bounds }: { assetId: string; calib: Calibrat
       boardDiag.mapWorld = null;
     };
   }, [tex, w, h]);
-  const material = useMemo(() => new MeshBasicMaterial(), []);
+  const material = useMemo(() => withFog(new MeshBasicMaterial(), "floor"), []);
   useEffect(() => {
     material.map = tex;
     if (tex) material.color.setScalar(1);
@@ -112,6 +113,7 @@ function GlbMap({ assetId, calib }: { assetId: string; calib: Calibration }) {
           if (m.isMesh) {
             m.castShadow = true;
             m.receiveShadow = true;
+            for (const mat of Array.isArray(m.material) ? m.material : [m.material]) withFog(mat, "object");
           }
         });
         copy.name = "glb-map";

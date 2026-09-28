@@ -1,7 +1,7 @@
 import { create } from "zustand";
 
 /** Board tools (SPEC §29.3 left toolbar). DM-only tools arrive with their phases. */
-export type Tool = "select" | "pan" | "measure" | "ping" | "target" | "walls" | "zones";
+export type Tool = "select" | "pan" | "measure" | "ping" | "target" | "walls" | "zones" | "lights" | "fog";
 export type WallDrawKind = "wall" | "door" | "window" | "curtain" | "invisible" | "secret";
 export type DockTab = "party" | "sheet" | "spells" | "log" | "dm";
 export type DmSection = "scenes" | "library" | "approvals";

@@ -1,6 +1,6 @@
-import type { P } from "@gloam/shared/geometry";
+import { inPolygon, type P } from "@gloam/shared/geometry";
 import { type WorldZoneShape, zonePolygon } from "@gloam/shared/movement";
-import type { ZoneView } from "@gloam/shared/state";
+import type { TokenView, ZoneView } from "@gloam/shared/state";
 import { Text } from "@react-three/drei";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useMemo, useRef } from "react";
@@ -18,10 +18,13 @@ import {
 } from "three";
 import { useTable } from "../../net/table.ts";
 import { useBoard } from "../../state/entities.ts";
+import { knownAt } from "../../state/fog.ts";
+import { useDmView, useViewAs } from "../../state/viewAs.ts";
 import { C } from "../colors.ts";
 import { disposeLater } from "../dispose.ts";
 import { CAPS_FONT } from "../fonts.ts";
 import { useZoneTool } from "../tools/zones.ts";
+import { fogUniforms } from "../vision/fogMaterial.ts";
 import { parseZoneShape } from "./zoneShape.ts";
 
 /**
@@ -33,19 +36,24 @@ import { parseZoneShape } from "./zoneShape.ts";
  */
 export function ZonesLayer() {
   const zones = useBoard((d) => d.zones);
+  // Viewing as a player: their zones only (zones hidden from players never reach them).
+  const dmView = useDmView();
+  const as = useViewAs((s) => s.userId !== null);
   return (
     <group name="zones">
-      {[...zones.values()].map((z) => (
-        <ZoneMesh key={z.id} zone={z} />
-      ))}
+      {[...zones.values()]
+        .filter((z) => !(as && z.dmHidden))
+        .map((z) => (
+          <ZoneMesh key={z.id} zone={z} dmView={dmView} />
+        ))}
     </group>
   );
 }
 
 const PATTERN: Record<string, number> = { difficult: 1, water: 2, hazard: 3, impassable: 4, label: 0 };
 
-function ZoneMesh({ zone }: { zone: ZoneView }) {
-  const dm = useTable((s) => s.me?.role === "dm" || s.me?.role === "admin");
+function ZoneMesh({ zone, dmView }: { zone: ZoneView; dmView: boolean }) {
+  const dm = dmView;
   // Being moved or reshaped with the Zones tool: drawn where the edit puts it.
   const edited = useZoneTool((s) => (s.preview?.id === zone.id ? s.preview.shape : null));
   const stored = useMemo(() => parseZoneShape(zone.shapeJson), [zone.shapeJson]);
@@ -69,10 +77,39 @@ function ZoneMesh({ zone }: { zone: ZoneView }) {
     (mat.uniforms.uAlpha as { value: number }).value = k;
     (lineMat.uniforms.uAlpha as { value: number }).value = k;
   }, [hidden, dm, mat, lineMat]);
-  const place = useMemo(
-    () => (shape ? labelPlace(shape, zone.kind, zone.label) : null),
+  // Where the name may go; it takes the spot tokens cover least (ClampedLabel decides each frame, from the camera).
+  const tokens = useBoard((d) => d.tokens);
+  const spots = useMemo(
+    () => (shape ? labelSpots(shape, zone.kind, zone.label) : []),
     [shape, zone.kind, zone.label],
   );
+  // Walls running through a spot hide the name too (from above, a wall's top covers it): counted per wall change.
+  const walls = useBoard((d) => d.walls);
+  const wallCost = useMemo(
+    () =>
+      spots.map((sp) => {
+        const w = sp.size * Math.max(3, zone.label.length) * 0.62 + 1;
+        const h = sp.size * 1.2 + 1;
+        let n = 0;
+        for (const wl of walls.values())
+          if (
+            segHitsBox(
+              wl.ax,
+              wl.ay,
+              wl.bx,
+              wl.by,
+              sp.at.x - w / 2,
+              sp.at.y - h / 2,
+              sp.at.x + w / 2,
+              sp.at.y + h / 2,
+            )
+          )
+            n++;
+        return n * 4;
+      }),
+    [spots, walls, zone.label],
+  );
+  const place = spots[0] ?? null;
   if (!shape || !fill || !outline || !place) return null;
   return (
     <group userData={{ part: "zone", zoneId: zone.id, zoneKind: zone.kind }}>
@@ -86,7 +123,13 @@ function ZoneMesh({ zone }: { zone: ZoneView }) {
       />
       <mesh geometry={outline} material={lineMat} position-y={0.025} renderOrder={3} raycast={() => null} />
       {zone.label ? (
-        <ClampedLabel at={place.at} size={place.size} dim={hidden && dm}>
+        <ClampedLabel
+          spots={spots}
+          wallCost={wallCost}
+          tokens={tokens}
+          chars={zone.label.length}
+          dim={hidden && dm}
+        >
           {zone.label}
         </ClampedLabel>
       ) : null}
@@ -183,43 +226,132 @@ function inside(p: P, pts: P[]): boolean {
 }
 
 /**
- * Where a zone's name goes and how big it is on the floor (feet): at the most interior point, as large as fits across
- * the room there (it's clamped on screen afterwards); a named area's name sits like a plaque just inside its top edge.
+ * Where a zone's name may go and how big it is on the floor (feet), in order of preference: at the most interior point,
+ * as large as fits across the room there (it's clamped on screen afterwards), then higher and lower; a named area's
+ * name like a plaque just inside its top edge, then its bottom edge, then as a tab just outside either.
  */
-function labelPlace(shape: WorldZoneShape, kind: string, label: string): { at: P; size: number } {
+function labelSpots(shape: WorldZoneShape, kind: string, label: string): { at: P; size: number }[] {
   const chars = Math.max(3, label.length);
   const fit = (room: number) => Math.min(2.4, Math.max(0.6, room / (chars * 0.62)));
   if (shape.kind === "circle") {
     const size = fit(shape.r * 1.6);
+    const at = (dy: number) => ({ at: { x: shape.x, y: shape.y + dy }, size });
     return kind === "label"
-      ? { at: { x: shape.x, y: shape.y - shape.r + size * 1.1 }, size }
-      : { at: { x: shape.x, y: shape.y }, size };
+      ? [
+          at(-shape.r + size * 1.1),
+          at(shape.r - size * 1.1),
+          at(-shape.r - size * 0.9),
+          at(shape.r + size * 0.9),
+        ]
+      : [at(0), at(-shape.r / 2), at(shape.r / 2)];
   }
   if (shape.kind === "rect") {
     const size = fit(shape.w * 0.9);
+    const at = (y: number) => ({ at: { x: shape.x + shape.w / 2, y }, size });
     return kind === "label"
-      ? { at: { x: shape.x + shape.w / 2, y: shape.y + size * 0.95 }, size }
-      : { at: { x: shape.x + shape.w / 2, y: shape.y + shape.h / 2 }, size };
+      ? [
+          at(shape.y + size * 0.95),
+          at(shape.y + shape.h - size * 0.95),
+          at(shape.y - size * 0.9),
+          at(shape.y + shape.h + size * 0.9),
+        ]
+      : [at(shape.y + shape.h / 2), at(shape.y + shape.h / 4), at(shape.y + (shape.h * 3) / 4)];
   }
   const { p, r } = interiorPoint(shape.points);
-  return { at: p, size: fit(r * 2) };
+  const size = fit(r * 2);
+  const out = [{ at: p, size }];
+  for (const dy of [-r * 0.6, r * 0.6]) {
+    const q = { x: p.x, y: p.y + dy };
+    if (inPolygon(q, shape.points)) out.push({ at: q, size });
+  }
+  return out;
+}
+
+/**
+ * How much of a label spot (a w × h rectangle on the floor) the tokens hide from this camera: their bases, and the
+ * floor behind a standing figure — its height over the camera's slope, away from the camera.
+ */
+function coveredArea(
+  at: P,
+  w: number,
+  h: number,
+  tokens: Map<string, TokenView>,
+  away: { x: number; y: number },
+  slope: number,
+): number {
+  let cost = 0;
+  const overlap = (x0: number, y0: number, x1: number, y1: number) => {
+    const ox = Math.min(at.x + w / 2, x1) - Math.max(at.x - w / 2, x0);
+    const oy = Math.min(at.y + h / 2, y1) - Math.max(at.y - h / 2, y0);
+    return ox > 0 && oy > 0 ? ox * oy : 0;
+  };
+  for (const t of tokens.values()) {
+    const r = (t.sizeFt / 2) * 1.15;
+    cost += overlap(t.pos.x - r, t.pos.y - r, t.pos.x + r, t.pos.y + r);
+    if (t.mode === "coin" || slope <= 0) continue;
+    // A standing figure (standee or mini, about 1.3 × its space tall) hides the floor behind it.
+    const len = Math.min(40, (t.sizeFt * 1.3) / slope);
+    const ex = t.pos.x + away.x * len;
+    const ey = t.pos.y + away.y * len;
+    cost +=
+      overlap(
+        Math.min(t.pos.x, ex) - r,
+        Math.min(t.pos.y, ey) - r,
+        Math.max(t.pos.x, ex) + r,
+        Math.max(t.pos.y, ey) + r,
+      ) * 0.8;
+  }
+  return cost;
 }
 
 const LABEL_PX = { min: 12, max: 20 };
 const at3 = new Vector3();
 const side3 = new Vector3();
+const back3 = new Vector3();
 
 /**
  * A name lying on the floor, kept legible: its size on screen stays within 12–20 px however far the camera is (the
- * text is laid out once; only its scale follows the zoom).
+ * text is laid out once; only its scale follows the zoom), at the spot tokens hide least from where the camera is.
  */
-function ClampedLabel({ at, size, dim, children }: { at: P; size: number; dim: boolean; children: string }) {
+function ClampedLabel({
+  spots,
+  wallCost,
+  tokens,
+  chars,
+  dim,
+  children,
+}: {
+  spots: { at: P; size: number }[];
+  wallCost: number[];
+  tokens: Map<string, TokenView>;
+  chars: number;
+  dim: boolean;
+  children: string;
+}) {
   const group = useRef<Group>(null);
+  const chosen = useRef(0);
   const camera = useThree((s) => s.camera);
   const viewport = useThree((s) => s.size);
+  const size = spots[0]?.size ?? 1;
   useFrame(() => {
     const g = group.current;
-    if (!g) return;
+    if (!g || !spots.length) return;
+    // The spot: least hidden (a clear margin needed to leave the current one, so it doesn't flicker).
+    back3.setFromMatrixColumn(camera.matrixWorld, 2);
+    const flat = Math.hypot(back3.x, back3.z);
+    const away = flat > 1e-3 ? { x: -back3.x / flat, y: -back3.z / flat } : { x: 0, y: 0 };
+    const slope = flat > 1e-3 ? back3.y / flat : 0;
+    const w = size * Math.max(3, chars) * 0.62;
+    const costs = spots.map(
+      (sp, i) => coveredArea(sp.at, w, size * 1.2, tokens, away, slope) + (wallCost[i] ?? 0) + i * 0.01,
+    );
+    let best = chosen.current < spots.length ? chosen.current : 0;
+    for (let i = 0; i < costs.length; i++) if ((costs[i] as number) < (costs[best] as number) - 0.5) best = i;
+    chosen.current = best;
+    const at = (spots[best] as { at: P }).at;
+    if (g.position.x !== at.x || g.position.z !== at.y) g.position.set(at.x, 0.04, at.y);
+    // A player reads a zone's name only over ground they know.
+    g.visible = fogUniforms.gDm.value > 0.5 || knownAt(at.x, at.y, useTable.getState().me?.userId ?? null);
     // Pixels per foot here: a foot along the screen's horizontal, projected.
     at3.set(at.x, 0, at.y).project(camera);
     side3
@@ -233,8 +365,9 @@ function ClampedLabel({ at, size, dim, children }: { at: P; size: number; dim: b
     const k = px > 0 ? Math.min(LABEL_PX.max, Math.max(LABEL_PX.min, px)) / px : 1;
     if (Math.abs(g.scale.x - k) > 1e-3) g.scale.setScalar(k);
   });
+  const first = spots[0]?.at ?? { x: 0, y: 0 };
   return (
-    <group ref={group} position={[at.x, 0.04, at.y]}>
+    <group ref={group} position={[first.x, 0.04, first.y]}>
       <Text
         font={CAPS_FONT}
         fontSize={size}
@@ -247,6 +380,9 @@ function ClampedLabel({ at, size, dim, children }: { at: P; size: number; dim: b
         anchorX="center"
         anchorY="middle"
         rotation-x={-Math.PI / 2}
+        // After the DM's walls overlay (order 3–4, no depth test), so a wall line doesn't strike through the name;
+        // still depth-tested, so tokens standing on it stay in front.
+        renderOrder={5}
         raycast={() => null}
       >
         {children}
@@ -267,6 +403,7 @@ void main() {
 }`;
 const FRAG = /* glsl */ `
 uniform vec3 uColor; uniform float uPattern; uniform float uAlpha;
+uniform float gMode; uniform float gDm; uniform sampler2D gMem; uniform vec4 gMemRect;
 varying vec3 vWorld;
 varying float vDist;
 float lines(float v, float period, float width) {
@@ -283,7 +420,10 @@ void main() {
   else if (uPattern > 1.5) a = 0.2 + 0.1 * sin(p.x * 1.3 + sin(p.y * 0.9) * 1.6) + 0.12 * lines(p.y + 0.35 * sin(p.x * 0.8), 1.8, 0.06); // water
   else if (uPattern > 0.5) a = 0.08 + 0.34 * lines(p.x + p.y, 1.4, 0.1);                                      // difficult
   else a = 0.07;                                                                                                // label
-  gl_FragColor = vec4(uColor, a * uAlpha);
+  // A player sees a zone only where the ground is known to them (revealed or explored), never over the unknown.
+  float known = 1.0;
+  if (gMode > 0.5 && gDm < 0.5) known = texture2D(gMem, (p - gMemRect.xy) / gMemRect.zw).r;
+  gl_FragColor = vec4(uColor, a * uAlpha * known);
 }`;
 
 function zoneMaterial(color: string, pattern: number): ShaderMaterial {
@@ -297,6 +437,44 @@ function zoneMaterial(color: string, pattern: number): ShaderMaterial {
       uColor: { value: new Color(color) },
       uPattern: { value: pattern },
       uAlpha: { value: 1 },
+      gMode: fogUniforms.gMode,
+      gDm: fogUniforms.gDm,
+      gMem: fogUniforms.gMem,
+      gMemRect: fogUniforms.gMemRect,
     },
   });
+}
+
+/** Whether segment ab passes through the box (either end inside, or crossing it). */
+function segHitsBox(
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+): boolean {
+  let t0 = 0;
+  let t1 = 1;
+  const dx = bx - ax;
+  const dy = by - ay;
+  // Liang–Barsky: clip the segment to the box.
+  for (const [p, q] of [
+    [-dx, ax - x0],
+    [dx, x1 - ax],
+    [-dy, ay - y0],
+    [dy, y1 - ay],
+  ] as const) {
+    if (p === 0) {
+      if (q < 0) return false;
+      continue;
+    }
+    const r = q / p;
+    if (p < 0) t0 = Math.max(t0, r);
+    else t1 = Math.min(t1, r);
+    if (t0 > t1) return false;
+  }
+  return true;
 }

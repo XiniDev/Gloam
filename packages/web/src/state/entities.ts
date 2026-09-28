@@ -12,6 +12,13 @@ import {
 } from "@gloam/shared/state";
 import { create } from "zustand";
 
+/** A tremorsense marker (SPEC §15.4): an opaque id and a position to 1 ft — nothing else about the creature. */
+export interface SensedMark {
+  id: string;
+  x: number;
+  y: number;
+}
+
 /** One scene's worth of board data, in the shared view shapes (SPEC §13.3). */
 export interface SceneData {
   scene: SceneView | null;
@@ -20,6 +27,8 @@ export interface SceneData {
   lights: Map<string, LightView>;
   zones: Map<string, ZoneView>;
   effects: Map<string, EffectView>;
+  /** The creatures this viewer senses but doesn't see (the live scene only). */
+  sensed: Map<string, SensedMark>;
 }
 
 export type PrepMeta = PrepSnapshot["sceneMeta"];
@@ -54,6 +63,7 @@ export const emptyScene = (): SceneData => ({
   lights: new Map(),
   zones: new Map(),
   effects: new Map(),
+  sensed: new Map(),
 });
 
 export const useEntities = create<EntitiesStore>((set, get) => ({
@@ -95,6 +105,7 @@ export const useEntities = create<EntitiesStore>((set, get) => ({
       lights: new Map(snapshot.lights.map((l) => [l.id, l])),
       zones: new Map(snapshot.zones.map((z) => [z.id, z])),
       effects: new Map(snapshot.effects.map((e) => [e.id, e])),
+      sensed: new Map(),
     };
     set({ prep: data, version: get().version + 1 });
   },

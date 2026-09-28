@@ -1,16 +1,11 @@
 import type { P } from "@gloam/shared/geometry";
-import { formatDistance } from "@gloam/shared/units";
-import { Html } from "@react-three/drei";
 import { useMemo } from "react";
 import { useTable } from "../../net/table.ts";
 import { useBoard } from "../../state/entities.ts";
 import { useUi } from "../../state/ui.ts";
 import { C } from "../colors.ts";
-import { useUnits } from "../useUnits.ts";
-import { Dots, MARK_LIFT, Segments } from "./marks.tsx";
+import { Dots, Segments } from "./marks.tsx";
 import { useWallTool } from "./walls.ts";
-
-const LIFT = MARK_LIFT;
 
 const NONE: never[] = [];
 
@@ -42,7 +37,6 @@ function Marks() {
   const hover = useWallTool((s) => s.hover);
   const handle = useWallTool((s) => s.handle);
   const preview = useWallTool((s) => s.preview);
-  const units = useUnits();
   const walls = useBoard((d) => d.walls);
 
   const { glow, hovered, ends } = useMemo(() => {
@@ -73,7 +67,6 @@ function Marks() {
     () => (drawing && last && pointer ? [{ a: last, b: pointer }] : NONE),
     [drawing, last, pointer],
   );
-  const live = liveSegs[0] ?? null;
   const placed = useMemo(() => {
     const out: { a: P; b: P }[] = [];
     for (let i = 1; i < chain.length; i++) out.push({ a: chain[i - 1] as P, b: chain[i] as P });
@@ -108,37 +101,7 @@ function Marks() {
       <Dots points={drawing ? chain : NONE} kind="dot" px={8} color={C.brass300} />
       <Dots points={ring} kind="ring" px={26} color={C.brass300} />
       <Dots points={diamond} kind="diamond" px={18} color={C.brass300} />
-      {live && Math.hypot(live.b.x - live.a.x, live.b.y - live.a.y) >= 0.5 ? (
-        <Html
-          position={[(live.a.x + live.b.x) / 2, LIFT, (live.a.y + live.b.y) / 2]}
-          center
-          zIndexRange={[20, 0]}
-          style={{ transform: "translateY(-16px)" }}
-        >
-          <span
-            data-testid="wall-length"
-            className="pointer-events-none whitespace-nowrap rounded-chip border border-line bg-ink-950 px-1.5 text-12 font-bold text-bone tabular"
-          >
-            {formatDistance(Math.hypot(live.b.x - live.a.x, live.b.y - live.a.y), units)}
-          </span>
-        </Html>
-      ) : null}
-      {on && rect ? (
-        <Html
-          position={[rect.b.x, LIFT, rect.b.y]}
-          center
-          zIndexRange={[20, 0]}
-          style={{ transform: "translate(0, 18px)" }}
-        >
-          <span
-            data-testid="room-size"
-            className="pointer-events-none whitespace-nowrap rounded-chip border border-line bg-ink-950 px-1.5 text-12 font-bold text-bone tabular"
-          >
-            {formatDistance(Math.abs(rect.b.x - rect.a.x), units)} ×{" "}
-            {formatDistance(Math.abs(rect.b.y - rect.a.y), units)}
-          </span>
-        </Html>
-      ) : null}
+      {/* The length and room-size chips are HUD labels (hud/WallChips.tsx), placed clear of name plates. */}
     </group>
   );
 }

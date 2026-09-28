@@ -47,6 +47,16 @@ import { TableSurface } from "./TableSurface.tsx";
 import { TestProbe } from "./TestProbe.tsx";
 import { chooseTier, probeDevice, TIERS, TierGovernor, useTier } from "./tiers.ts";
 import { TokensLayer } from "./tokens/TokensLayer.tsx";
+import {
+  closePolygon as closeFogPolygon,
+  fogDown,
+  fogEscape,
+  fogMove,
+  fogUp,
+  useFogTool,
+} from "./tools/fog.ts";
+import { FogToolLayer, LightToolLayer } from "./tools/LightFogMarks.tsx";
+import { lightsDown, lightsKey, lightsMove, lightsUp } from "./tools/lights.ts";
 import { MeasureLayer } from "./tools/MeasureLayer.tsx";
 import {
   clearMeasure,
@@ -59,6 +69,8 @@ import { WallToolLayer } from "./tools/WallToolLayer.tsx";
 import { useWallTool, wallsDoubleClick, wallsDown, wallsKey, wallsMove, wallsUp } from "./tools/walls.ts";
 import { ZoneToolLayer } from "./tools/ZoneToolLayer.tsx";
 import { zonesDoubleClick, zonesDown, zonesKey, zonesMove, zonesUp } from "./tools/zones.ts";
+import { SensedLayer } from "./vision/SensedLayer.tsx";
+import { VisionLayer } from "./vision/VisionLayer.tsx";
 
 setupText();
 
@@ -138,6 +150,7 @@ interface Box {
  */
 export default function Board() {
   const scene = useBoard((d) => d.scene);
+  const prep = useEntities((s) => s.prep !== null);
   const tierName = useTier((s) => s.name);
   const tier = TIERS[tierName];
   const boundsJson = scene?.boundsJson;
@@ -190,6 +203,22 @@ export default function Board() {
         return;
       }
       if (ui.tool === "zones" && dm && zonesKey(e)) {
+        e.preventDefault();
+        return;
+      }
+      if (ui.tool === "lights" && dm && lightsKey(e)) {
+        e.preventDefault();
+        return;
+      }
+      // Fog: Enter closes a polygon, Esc drops what's being drawn, [ and ] size the brush.
+      if (ui.tool === "fog" && dm) {
+        if (e.key === "Enter") closeFogPolygon();
+        else if (e.key === "Escape" && !fogEscape()) ui.set({ tool: "select" });
+        else if (e.key === "[" || e.key === "]") {
+          const r = useFogTool.getState().radius;
+          useFogTool.setState({ radius: Math.max(1, Math.min(20, r + (e.key === "]" ? 1 : -1))) });
+          wake();
+        } else if (e.key !== "Escape") return;
         e.preventDefault();
         return;
       }
@@ -251,7 +280,13 @@ export default function Board() {
     const tool = useUi.getState().tool;
     const panTool = tool === "pan";
     // Tools that draw or place with a left press (a press on empty table doesn't pan there).
-    const drawing = tool === "measure" || tool === "ping" || tool === "walls" || tool === "zones";
+    const drawing =
+      tool === "measure" ||
+      tool === "ping" ||
+      tool === "walls" ||
+      tool === "zones" ||
+      tool === "fog" ||
+      tool === "lights";
     // Did a token take this press? (Its handler runs first; see boardApi.claimedPointer.)
     const claimed = boardApi.claimedPointer === e.pointerId;
     boardApi.claimedPointer = null; // valid for this press only (a mouse's pointer id never changes)
@@ -299,6 +334,13 @@ export default function Board() {
     }
     if (tool === "zones" && dm && !cameraRig.spaceHeld) {
       if (zonesDown(e.nativeEvent)) {
+        zoning.current = e.pointerId;
+        e.currentTarget.setPointerCapture(e.pointerId);
+      }
+      return;
+    }
+    if ((tool === "fog" || tool === "lights") && dm && !cameraRig.spaceHeld) {
+      if (tool === "fog" ? fogDown(e.nativeEvent) : lightsDown(e.nativeEvent)) {
         zoning.current = e.pointerId;
         e.currentTarget.setPointerCapture(e.pointerId);
       }
@@ -378,6 +420,8 @@ export default function Board() {
     if (useUi.getState().tool === "measure") measureMove(e.clientX, e.clientY);
     if (useUi.getState().tool === "walls" && dm && !drag) wallsMove(e.nativeEvent);
     if (useUi.getState().tool === "zones" && dm && !drag) zonesMove(e.nativeEvent);
+    if (useUi.getState().tool === "fog" && dm && !drag) fogMove(e.nativeEvent);
+    if (useUi.getState().tool === "lights" && dm && !drag) lightsMove(e.nativeEvent);
     // Hovering (nothing held): click-to-move previews a move for the selected token — over the table itself, not
     // over something laid on it (a label, a stepper, a pill).
     if (!p && !drag && e.buttons === 0) {
@@ -395,7 +439,10 @@ export default function Board() {
     }
     if (zoning.current === e.pointerId) {
       zoning.current = null;
-      zonesUp();
+      const t = useUi.getState().tool;
+      if (t === "fog") fogUp();
+      else if (t === "lights") lightsUp();
+      else zonesUp();
     }
     if (useUi.getState().tool === "measure") measureUp();
     const p = press.current;
@@ -437,6 +484,7 @@ export default function Board() {
         if (t === "measure") finishMeasure();
         else if (t === "walls" && dm) wallsDoubleClick(e.nativeEvent);
         else if (t === "zones" && dm) zonesDoubleClick();
+        else if (t === "fog" && dm && useFogTool.getState().shape === "polygon") closeFogPolygon();
       }}
       onContextMenu={(e) => e.preventDefault()}
       onDragOver={onDragOver}
@@ -461,9 +509,20 @@ export default function Board() {
         <color attach="background" args={[C.ink950]} />
         <TierSetup />
         <CameraRig bounds={bounds} sceneId={scene?.id ?? "none"} />
-        <Lighting bounds={bounds} ambient={scene?.ambient ?? "bright"} tier={tier} />
+        {/*
+          In dynamic fog the light levels are the fog composite's (§15.7: bright in full colour, dim at 55 %, darkness
+          by sense): the rig lights at full for form and shading, as image maps are unlit (§24.3) — scaling it by the
+          scene's darkness as well darkened torchlit ground twice. Off and painted keep the ambient's mood.
+        */}
+        <Lighting
+          bounds={bounds}
+          ambient={scene?.fogMode === "dynamic" && !prep ? "bright" : (scene?.ambient ?? "bright")}
+          tier={tier}
+        />
         <TableSurface bounds={bounds} empty={!scene} />
         <DustMotes bounds={bounds} count={tier.dust} />
+        {/* Vision and light targets for the fog composite (drawn before the board each frame). */}
+        <VisionLayer bounds={bounds} />
         {scene ? <MapLayer scene={scene} bounds={bounds} /> : null}
         <Walls3DLayer />
         <TokensLayer />
@@ -474,6 +533,9 @@ export default function Board() {
         <WallsLayer />
         <WallToolLayer />
         <ZoneToolLayer />
+        <LightToolLayer />
+        <FogToolLayer />
+        <SensedLayer />
         <DoorsLayer />
         <MapAlignGizmo />
         <ShadowSync enabled={tier.shadowMap > 0} soft={tier.softShadows} />

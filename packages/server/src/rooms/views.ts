@@ -98,6 +98,7 @@ export class ViewManager {
     const players = spectator ? this.playerIds() : [];
     const tokens = m.inScene("token", activeSceneId);
     const visibleTokens = new Set<string>();
+    const partyVision = m.campaign.settings.partyVision === true;
     for (const t of tokens) {
       if (dm) {
         out.tokens.set(t.id, ALL_TOKEN_TAGS);
@@ -114,7 +115,9 @@ export class ViewManager {
       if (controls || t.hpDisplay === "exact") tags |= TAG_HP;
       if (controls) tags |= TAG_OWNER;
       const sharedWith = t.overrides.shareVisionWith ?? [];
-      if (controls || sharedWith.includes(viewer.userId) || (spectator && t.ownerIds.length > 0))
+      // Party vision (SPEC §8.8): every player sees through every party token that has an owner.
+      const party = partyVision && t.disposition === "party" && t.ownerIds.length > 0;
+      if (controls || sharedWith.includes(viewer.userId) || (spectator && t.ownerIds.length > 0) || party)
         tags |= TAG_VISION;
       out.tokens.set(t.id, tags);
     }

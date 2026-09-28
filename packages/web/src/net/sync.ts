@@ -111,6 +111,10 @@ export function noteChanges(state: TableState, changes: DataChange[]): void {
       else if (ch.value && typeof ch.value === "object") claim(ch.value, { c: "other" });
       continue;
     }
+    if (ref === (root as { sensed?: object }).sensed) {
+      if (ch.value && typeof ch.value === "object") claim(ch.value, { c: "other" });
+      continue;
+    }
     let c: CollectionName | null = null;
     for (const name of COLLECTIONS)
       if (root[name] === ref) {
@@ -204,6 +208,21 @@ export function syncLive(state: TableState): void {
       changed = true;
     }
     if (dirty.size || sceneDirty) syncStats.partial++;
+  }
+  // Tremorsense markers: a handful at most, read whole and compared.
+  const marks: [string, number, number][] = [];
+  (
+    state as unknown as {
+      sensed?: { forEach(fn: (v: { pos: { x: number; y: number } }, k: string) => void): void };
+    }
+  ).sensed?.forEach((v, k) => {
+    marks.push([k, v.pos.x, v.pos.y]);
+  });
+  const mj = JSON.stringify(marks);
+  if (cache.get("sensed") !== mj) {
+    cache.set("sensed", mj);
+    next.sensed = new Map(marks.map(([id, x, y]) => [id, { id, x, y }]));
+    changed = true;
   }
   dirty = new Map();
   sceneDirty = false;

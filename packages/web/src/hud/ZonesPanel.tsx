@@ -218,7 +218,7 @@ export function ZoneEditor() {
       }
     >
       <header className="flex items-center justify-between gap-2">
-        <h2 className="caps text-12 text-brass">
+        <h2 className="font-display text-18 font-semibold leading-tight text-bone">
           {KINDS.find((k) => k.value === zone.kind)?.label ?? "Zone"}
         </h2>
         <IconButton label="Close" onClick={() => useZoneTool.setState({ selected: null })}>

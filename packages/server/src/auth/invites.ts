@@ -86,6 +86,8 @@ export class InviteService {
   }
 
   update(id: string, patch: { expiresAt?: number | null; maxUses?: number | null }): void {
+    // Nothing to change is not an error (an UPDATE with nothing to SET would be one: a 500 for an empty policy).
+    if (Object.keys(patch).length === 0) return;
     this.db.update(inviteCodes).set(patch).where(eq(inviteCodes.id, id)).run();
   }
 }

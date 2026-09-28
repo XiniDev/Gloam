@@ -7,6 +7,7 @@ import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js
 import { assetMeta, pickImageVariant } from "../../net/assets.ts";
 import { type AssetRender, useLibrary } from "../../state/library.ts";
 import { acquireGlb, acquireTexture } from "../resources.ts";
+import { withFog } from "../vision/fogMaterial.ts";
 import { initialsTexture } from "./glyphs.ts";
 
 /** An asset's render view, kept current when it changes (e.g. a mini's overrides, pushed to every client). */
@@ -93,6 +94,8 @@ export function useMini(meta: AssetRender | null, size: Size): MiniInstance | nu
           if (m.isMesh) {
             m.castShadow = true;
             m.receiveShadow = true;
+            // Lit and fogged like the rest of the board (a mini in dim light looks dim, §15.7 step 4).
+            for (const mat of Array.isArray(m.material) ? m.material : [m.material]) withFog(mat, "object");
           }
         });
         const b = boundsKey

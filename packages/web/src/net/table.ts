@@ -5,18 +5,20 @@ import { CampaignSettings, DEFAULT_HOUSE_RULES, HouseRules } from "@gloam/shared
 import type { PrepPatch, PrepSnapshot } from "@gloam/shared/state";
 import { Table, type TableState } from "@gloam/shared/state";
 import { create } from "zustand";
-import { startMoveAnim } from "../board/move/anims.ts";
+import { onTokenMoved, type TokenMovedMessage } from "../board/move/anims.ts";
 import { clearRemotePreview, onRemotePreview } from "../board/move/remote.ts";
 import { addPing } from "../board/PingLayer.tsx";
 import { editPerf, measureSince } from "../board/perf.ts";
 import { type MeasureShape, onSharedMeasure } from "../board/tools/measure.ts";
 import { useEntities } from "../state/entities.ts";
+import type { FogRectMsg } from "../state/fog.ts";
 import { type AssetItem, type AssetRender, type SceneListItem, useLibrary } from "../state/library.ts";
 import { useUi } from "../state/ui.ts";
 import { provideTestHook } from "../test/hooks.ts";
 import { useToasts } from "../ui/Toast.tsx";
 import { preloadAssets } from "./assets.ts";
 import { colyseus, leaveRoom, rejectionMessage } from "./colyseus.ts";
+import { loadFog, onExploredPatch, onFogPatch } from "./fog.ts";
 import { auditLive, noteChanges, resetSync, syncFull, syncLive } from "./sync.ts";
 import { type UploadPurpose, uploadAsset } from "./upload.ts";
 
@@ -342,10 +344,15 @@ async function join(campaignId: string): Promise<Room<unknown, TableState>> {
   room.onMessage("table.closing", () => tableEvents.emit("closing", {}));
   room.onMessage("toast", (t: { kind: string; message: string }) => tableEvents.emit("toast", t));
   // Movement (SPEC §8.6): committed moves glide along their path; others' drags show as ghosts.
-  room.onMessage("token.moved", (m: { id: string; path: { x: number; y: number }[]; durationMs: number }) => {
+  // A move as this viewer perceives it (SPEC §15.6): maybe only part of it, fading in and out.
+  room.onMessage("token.moved", (m: TokenMovedMessage) => {
     clearRemotePreview(m.id);
-    startMoveAnim(m.id, m.path, m.durationMs);
+    onTokenMoved(m, useEntities.getState().live.tokens.get(m.id));
   });
+  // Fog (SPEC §15.8): painted layers replace their cells; explored memory only grows (a reset reloads it whole).
+  room.onMessage("fog.patch", (m: FogRectMsg) => onFogPatch(m));
+  room.onMessage("explored.patch", (m: FogRectMsg) => onExploredPatch(m));
+  room.onMessage("fog.reload", () => void loadFog());
   room.onMessage("measure.shared", (m: SharedMeasureMessage) =>
     onSharedMeasure({
       shape: m.shape,

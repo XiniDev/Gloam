@@ -17,7 +17,7 @@ const scratch = new Vector3();
  */
 let rectCache: { el: HTMLElement; r: DOMRect } | null = null;
 let observed: { el: HTMLElement; off: () => void } | null = null;
-function elementRect(el: HTMLElement): DOMRect {
+export function elementRect(el: HTMLElement): DOMRect {
   if (rectCache?.el === el) return rectCache.r;
   const r = el.getBoundingClientRect();
   rectCache = { el, r };

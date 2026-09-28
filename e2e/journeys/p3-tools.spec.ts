@@ -273,7 +273,7 @@ test.describe("P3 — measuring, elevation and pings (MOV-11/12, TOK-07, FUN-02)
     await expect.poll(async () => Math.round((await camera(admin)).pitchDeg)).toBe(55);
     // Back in perspective the camera answers as before: a view set outright is where it lands, and stays.
     await camera(admin, { pitchDeg: 40, distance: 26, target: [32, 8], ms: 0 });
-    await admin.waitForTimeout(600);
+    // At once — no frame needed first: what's projected next goes through this view.
     const back = await camera(admin);
     expect(back.inSync).toBe(true);
     expect(Math.round(back.pitchDeg)).toBe(40);

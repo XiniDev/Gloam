@@ -263,6 +263,15 @@ export class VisionService implements Perception, FogApplier {
     const t0 = performance.now();
     // The scene entity may have been replaced by a commit; keep the live one.
     this.scene = this.model.get("scene", this.sceneId) ?? scene;
+    // Fog off: everyone sees every token that isn't DM-hidden — nothing to compute (turning fog on is a scene change,
+    // which rebuilds everything).
+    if (this.scene.fogMode === "off") {
+      this.geo = null;
+      this.world = null;
+      this.light = null;
+      this.lightKeys.clear();
+      return false;
+    }
     const fx = sceneEffects(this.model, this.sceneId);
     if (geoChanged || !this.geo)
       this.geo = new VisionGeometry(sceneWalls(this.model, this.sceneId), fx.opaque);

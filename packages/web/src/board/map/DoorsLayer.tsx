@@ -5,7 +5,9 @@ import { type Sprite, Vector3 } from "three";
 import { audio } from "../../audio/engine.ts";
 import { request, useTable } from "../../net/table.ts";
 import { boardData, useBoard, useEntities } from "../../state/entities.ts";
+import { knownAt, useFog } from "../../state/fog.ts";
 import { useUi } from "../../state/ui.ts";
+import { useDmView } from "../../state/viewAs.ts";
 import { toast } from "../../ui/Toast.tsx";
 import { boardApi } from "../boardApi.ts";
 import { again, wake } from "../frames.ts";
@@ -19,8 +21,11 @@ import { doorIconTexture } from "../tokens/glyphs.ts";
  */
 export function DoorsLayer() {
   const walls = useBoard((d) => d.walls);
-  const dm = useTable((s) => s.me?.role === "dm" || s.me?.role === "admin");
-  const doors = [...walls.values()].filter((w) => isDoor(w, dm));
+  const dm = useDmView();
+  const me = useTable((s) => s.me?.userId ?? null);
+  // A player sees a door's handle only where they know the ground on either side of it (not out of the unknown).
+  useFog((s) => s.version);
+  const doors = [...walls.values()].filter((w) => isDoor(w, dm) && (dm || doorKnown(w, me)));
   useDoorSounds();
   return (
     <group name="doors">
@@ -29,6 +34,15 @@ export function DoorsLayer() {
       ))}
     </group>
   );
+}
+
+function doorKnown(w: WallView, me: string | null): boolean {
+  const mx = (w.ax + w.bx) / 2;
+  const my = (w.ay + w.by) / 2;
+  const L = Math.hypot(w.bx - w.ax, w.by - w.ay) || 1;
+  const nx = -(w.by - w.ay) / L;
+  const ny = (w.bx - w.ax) / L;
+  return knownAt(mx + nx, my + ny, me) || knownAt(mx - nx, my - ny, me);
 }
 
 const isDoor = (w: WallView, dm: boolean) =>

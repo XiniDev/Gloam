@@ -312,8 +312,10 @@ export class TableService extends EventEmitter {
       const upd: { expiresAt?: number | null; maxUses?: number | null } = {};
       if (ttl !== undefined) upd.expiresAt = ttl === null ? null : Date.now() + ttl;
       if (p.maxUses !== undefined) upd.maxUses = p.maxUses;
-      this.ctx.invites.update(this.invite.id, upd);
-      this.invite = { ...this.invite, ...upd };
+      if (Object.keys(upd).length) {
+        this.ctx.invites.update(this.invite.id, upd);
+        this.invite = { ...this.invite, ...upd };
+      }
     }
     this.changed();
     return this.dto();

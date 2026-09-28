@@ -157,10 +157,12 @@ test.describe("P2 — tokens (TOK)", () => {
     expect(await tokenView(dave, lurker)).toBeNull();
 
     // The DM: everything this phase offers.
+    // (Light arrived with P4 — SPEC §8.8; the other phases add theirs.)
     expect(labels(await openRadial(admin, goblin))).toEqual([
       "Elevation",
       "Facing",
       "Look",
+      "Light",
       "Hide",
       "Lock",
       "Duplicate",
@@ -170,7 +172,7 @@ test.describe("P2 — tokens (TOK)", () => {
     expect(labels(await openRadial(admin, lurker))).toContain("Reveal");
     await closeRadial(admin);
     // The owner: only their own token's controls.
-    expect(labels(await openRadial(dave, hero))).toEqual(["Elevation", "Facing", "Look"]);
+    expect(labels(await openRadial(dave, hero))).toEqual(["Elevation", "Facing", "Look", "Light"]);
     // Number keys pick a slice; the Elevation ring raises the token 5 ft.
     await dave.keyboard.press("1");
     await expect(dave.getByRole("menuitem", { name: "Up 5 ft" })).toBeVisible();

@@ -17,6 +17,10 @@ export interface TierSpec {
   smaa: boolean;
   pointLights: number;
   fogPxPerFt: number;
+  /** War fog drift: frames per second spent on it (0: still). */
+  fogDriftFps: number;
+  /** Light flicker: frames per second spent on it. */
+  flickerFps: number;
   particles: number;
   /** Largest map texture this tier loads (AC-BRD-06, with the device's MAX_TEXTURE_SIZE). */
   textureCap: number;
@@ -35,6 +39,8 @@ export const TIERS: Record<TierName, TierSpec> = {
     smaa: true,
     pointLights: 8,
     fogPxPerFt: 6,
+    fogDriftFps: 24,
+    flickerFps: 30,
     particles: 1,
     textureCap: 8192,
     dust: 160,
@@ -49,6 +55,8 @@ export const TIERS: Record<TierName, TierSpec> = {
     smaa: true,
     pointLights: 4,
     fogPxPerFt: 4,
+    fogDriftFps: 16,
+    flickerFps: 24,
     particles: 0.7,
     textureCap: 8192,
     dust: 110,
@@ -63,6 +71,8 @@ export const TIERS: Record<TierName, TierSpec> = {
     smaa: false,
     pointLights: 2,
     fogPxPerFt: 3,
+    fogDriftFps: 8,
+    flickerFps: 12,
     particles: 0.4,
     textureCap: 4096,
     dust: 60,
@@ -77,6 +87,8 @@ export const TIERS: Record<TierName, TierSpec> = {
     smaa: false,
     pointLights: 0,
     fogPxPerFt: 2,
+    fogDriftFps: 0,
+    flickerFps: 4,
     particles: 0.2,
     textureCap: 2048,
     dust: 0,

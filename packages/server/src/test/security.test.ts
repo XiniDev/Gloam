@@ -58,6 +58,9 @@ describe("cross-cutting security (SEC)", () => {
     expect((await admin.post("/api/admin/table/invite/policy", { maxUses: -5 })).status).toBe(400);
     expect((await admin.post("/api/admin/table/invite/policy", { maxUses: "12" })).status).toBe(400);
     expect((await admin.post("/api/admin/table/invite/policy", { maxUses: 2.5 })).status).toBe(400);
+    // An empty policy (both fields are optional) is a no-op, open table or not — never a 500 (the fuzz below once hit it
+    // only when an earlier request had opened the table).
+    expect((await admin.post("/api/admin/table/invite/policy", {})).status).toBe(200);
     // Fuzz every JSON endpoint with junk: never a 5xx. (Own admin session: the fuzz uses more than one
     // session's REST budget of 60 requests per 10 s, which is itself the limiter working.)
     const fuzz = new Agent(t.url);

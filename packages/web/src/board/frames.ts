@@ -55,15 +55,17 @@ export function wantsNextFrame(now: number): boolean {
  * AMBIENT_FPS; those paced frames are marked so the tier governor doesn't mistake the pacing for slowness.
  */
 const AMBIENT_FPS = 30;
-const ambient = new Set<string>();
+/** Ambient motions and the frame rate each wants (the fastest active one sets the pace). */
+const ambient = new Map<string, number>();
 let ambientTimer: ReturnType<typeof setTimeout> | null = null;
 let pacedFrame = false;
 
-export function setAmbient(key: string, active: boolean): void {
-  if (active) {
-    if (!ambient.has(key)) {
-      ambient.add(key);
-      invalidate();
+export function setAmbient(key: string, active: boolean, fps = AMBIENT_FPS): void {
+  if (active && fps > 0) {
+    if (ambient.get(key) !== fps) {
+      const fresh = !ambient.has(key);
+      ambient.set(key, fps);
+      if (fresh) invalidate();
     }
   } else ambient.delete(key);
 }
@@ -71,12 +73,15 @@ export function setAmbient(key: string, active: boolean): void {
 /** After a rendered frame that wants no successor: schedule a paced one if something ambient is running. */
 export function scheduleAmbientFrame(): void {
   if (!ambient.size || ambientTimer) return;
-  ambientTimer = setTimeout(() => {
-    ambientTimer = null;
-    if (!ambient.size) return;
-    pacedFrame = true;
-    invalidate();
-  }, 1000 / AMBIENT_FPS);
+  ambientTimer = setTimeout(
+    () => {
+      ambientTimer = null;
+      if (!ambient.size) return;
+      pacedFrame = true;
+      invalidate();
+    },
+    1000 / Math.max(...ambient.values()),
+  );
 }
 
 /** True once for a frame that was paced for ambient motion (not rendered as fast as possible). */

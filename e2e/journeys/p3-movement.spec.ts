@@ -187,7 +187,7 @@ test.describe("P3 — moving tokens (MOV, WAL)", () => {
     await expect.poll(async () => (await moveState(dave)).preview?.difficultFt ?? 0).toBeGreaterThan(9.9);
     const through = (await moveState(dave)).preview as NonNullable<MoveHook["preview"]>;
     expect(through.cost).toBeCloseTo(55 - here.x + 10, 1);
-    await expect(dave.getByTestId("move-label")).toHaveText(/^\d+(\.5)? ft \(10 ft difficult\)$/);
+    await expect(dave.getByTestId("move-label")).toHaveText(/^\d+(\.5)? ft \(10 difficult\)$/);
     await dave.keyboard.press("Escape");
     await dave.mouse.up();
     await req(admin, "zone.delete", { zoneIds: [mud] });

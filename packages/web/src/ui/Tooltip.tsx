@@ -69,7 +69,7 @@ export function Tooltip({
           <div
             id={id}
             role="tooltip"
-            className="pointer-events-none fixed z-[1000] max-w-[260px] rounded-[var(--radius-chip)] border border-line bg-ink-800 px-2.5 py-1.5 text-13 text-bone shadow-[var(--shadow-float)] animate-[rise-in_var(--dur-fast)_var(--ease-out)]"
+            className="pointer-events-none fixed z-[1000] w-max max-w-[260px] rounded-[var(--radius-chip)] border border-line bg-ink-800 px-2.5 py-1.5 text-13 text-bone shadow-[var(--shadow-float)] animate-[rise-in_var(--dur-fast)_var(--ease-out)]"
             style={{
               left: Math.min(window.innerWidth - 140, Math.max(140, pos.x)),
               top: pos.y,

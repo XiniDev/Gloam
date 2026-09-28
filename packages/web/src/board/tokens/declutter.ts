@@ -88,6 +88,13 @@ export function layoutOverlays(camera: Camera, width: number, height: number): b
   return changed;
 }
 
+/** The screen rectangles (canvas pixels) of the overlays showing now — for HUD labels that must not cover them. */
+export function shownOverlayRects(): Placed[] {
+  const out: Placed[] = [];
+  for (const e of entries.values()) if (e.clear === 1 && e.rect && e.group.parent) out.push(e.rect);
+  return out;
+}
+
 /** Overlay priorities (higher wins a spot on screen). */
 export const PRIORITY = { hovered: 5, selected: 4, own: 3, party: 2, other: 1 } as const;
 

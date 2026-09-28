@@ -104,11 +104,14 @@ export async function admitPlayer(
   contextOptions: {
     reducedMotion?: "reduce" | "no-preference";
     viewport?: { width: number; height: number };
+    /** Called with the page before it knocks (e.g. to record its WebSocket frames from the start). */
+    onPage?: (page: Page) => void;
   } = {},
 ): Promise<Page> {
   const { page, context } = await newPlayerContext(browser, gloam.url, guardLog, {
     ...(contextOptions.viewport ? { viewport: contextOptions.viewport } : {}),
   });
+  contextOptions.onPage?.(page);
   if (contextOptions.reducedMotion) await page.emulateMedia({ reducedMotion: contextOptions.reducedMotion });
   void context;
   await knockAsNew(page, gloam.url, code, name);
@@ -351,4 +354,85 @@ export async function recordFrames(
       return Promise.all(raw.map((b) => brightness(b)));
     },
   };
+}
+
+/** The board as WebGL drew it (no HUD over it), decoded to RGB. */
+export interface CanvasImage {
+  width: number;
+  height: number;
+  /** Canvas pixels per CSS pixel. */
+  scale: number;
+  left: number;
+  top: number;
+  data: Buffer;
+}
+export async function canvasImage(page: Page): Promise<CanvasImage> {
+  const c = await hook<{ url: string; width: number; height: number; cssWidth: number } | null>(
+    page,
+    "canvasPng",
+  );
+  if (!c) throw new Error("no board canvas");
+  const rect = await page.evaluate(() => {
+    const el = document.querySelector("[data-testid=board] canvas")?.getBoundingClientRect();
+    return el ? { left: el.left, top: el.top } : { left: 0, top: 0 };
+  });
+  const png = Buffer.from(c.url.slice(c.url.indexOf(",") + 1), "base64");
+  const { data, info } = await sharp(png).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+  return {
+    width: info.width,
+    height: info.height,
+    scale: info.width / c.cssWidth,
+    left: rect.left,
+    top: rect.top,
+    data,
+  };
+}
+/** The mean colour around a window point (a small square), with its luminance and saturation (0–1). */
+export function rgbAt(
+  img: CanvasImage,
+  x: number,
+  y: number,
+  r = 3,
+): { r: number; g: number; b: number; lum: number; sat: number } {
+  const cx = Math.round((x - img.left) * img.scale);
+  const cy = Math.round((y - img.top) * img.scale);
+  let R = 0;
+  let G = 0;
+  let B = 0;
+  let n = 0;
+  for (let j = cy - r; j <= cy + r; j++)
+    for (let i = cx - r; i <= cx + r; i++) {
+      if (i < 0 || j < 0 || i >= img.width || j >= img.height) continue;
+      const k = (j * img.width + i) * 3;
+      R += img.data[k] as number;
+      G += img.data[k + 1] as number;
+      B += img.data[k + 2] as number;
+      n++;
+    }
+  R /= n * 255;
+  G /= n * 255;
+  B /= n * 255;
+  const max = Math.max(R, G, B);
+  const min = Math.min(R, G, B);
+  return {
+    r: R,
+    g: G,
+    b: B,
+    lum: 0.2126 * R + 0.7152 * G + 0.0722 * B,
+    sat: max > 0 ? (max - min) / max : 0,
+  };
+}
+
+/** The mean colour of the board around a window point (the canvas as WebGL drew it), with luminance and saturation. */
+export async function boardColour(
+  page: Page,
+  x: number,
+  y: number,
+  half = 4,
+): Promise<{ r: number; g: number; b: number; lum: number; sat: number }> {
+  const c = await hook<{ r: number; g: number; b: number } | null>(page, "canvasRegion", x, y, half);
+  if (!c) throw new Error("no board canvas");
+  const max = Math.max(c.r, c.g, c.b);
+  const min = Math.min(c.r, c.g, c.b);
+  return { ...c, lum: 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b, sat: max > 0 ? (max - min) / max : 0 };
 }

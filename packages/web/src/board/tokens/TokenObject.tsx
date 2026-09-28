@@ -30,12 +30,13 @@ import { boardDiag } from "../diag.ts";
 import { disposeLater } from "../dispose.ts";
 import { CAPS_FONT, NUMBER_FONT } from "../fonts.ts";
 import { again, frameDelta, setAnimating } from "../frames.ts";
-import { moveAnimAt } from "../move/anims.ts";
+import { moveAnimAt, moveAnimFade } from "../move/anims.ts";
 import { pressToken } from "../move/input.ts";
 import { TIERS, useTier } from "../tiers.ts";
+import { withFog } from "../vision/fogMaterial.ts";
 import { AUTO_COIN_PITCH, approach, crossfadeStep } from "./crossfade.ts";
 import { overlayClear, PRIORITY, registerOverlay } from "./declutter.ts";
-import { canRaise } from "./elevation.ts";
+import { canRaise, heightLabel } from "./elevation.ts";
 import { cylinder, plane, torus } from "./geometries.ts";
 import { hiddenBadgeTexture, initialsTexture } from "./glyphs.ts";
 import { type MiniInstance, useAssetMeta, useAssetTexture, useMini } from "./hooks.ts";
@@ -56,6 +57,7 @@ type TroikaText = Mesh & {
 
 const tmp = new Vector3();
 const screenUp = new Vector3();
+const screenBack = new Vector3();
 const origin = new Vector3();
 const corner = new Vector3();
 const axis = new Vector3();
@@ -134,8 +136,9 @@ function resolveMode(t: TokenView, cls: "image" | "model" | null): ResolvedMode 
 }
 
 function useTransparentMaterial(make: () => MeshStandardMaterial, deps: unknown[]) {
+  // Graded by the fog and light composite like the floor (a token in dim light looks dim, §15.7 step 4).
   // biome-ignore lint/correctness/useExhaustiveDependencies: deps are the material's inputs
-  const m = useMemo(make, deps);
+  const m = useMemo(() => withFog(make(), "object"), deps);
   useEffect(() => () => disposeLater(m), [m]);
   return m;
 }
@@ -182,7 +185,7 @@ export const TokenObject = memo(function TokenObject({
 
   // ── materials (per token, so hidden opacity never touches shared ones) ───────────────────────────────
   const baseMat = useTransparentMaterial(
-    () => new MeshStandardMaterial({ color: C.baseInk, roughness: 0.55 }),
+    () => new MeshStandardMaterial({ color: C.baseInk, roughness: 0.42, metalness: 0.15 }),
     [],
   );
   const rimMat = useTransparentMaterial(
@@ -198,10 +201,9 @@ export const TokenObject = memo(function TokenObject({
     () => new MeshStandardMaterial({ color: C.cardboard, roughness: 0.95, alphaTest: 0.5 }),
     [],
   );
-  const selMat = useTransparentMaterial(
-    () => new MeshStandardMaterial({ color: C.selectGlow, emissive: C.selectGlow, emissiveIntensity: 1.6 }),
-    [],
-  );
+  // The selection's brass ring (§8.5): unlit and outside tone mapping — a lit, emissive ring came out bone-white.
+  const selMat = useMemo(() => new MeshBasicMaterial({ color: C.brass400, toneMapped: false }), []);
+  useEffect(() => () => disposeLater(selMat), [selMat]);
   const hoverMat = useTransparentMaterial(
     () => new MeshStandardMaterial({ color: C.hoverRing, emissive: C.hoverRing, emissiveIntensity: 0.35 }),
     [],
@@ -363,19 +365,27 @@ export const TokenObject = memo(function TokenObject({
       standeeGroup.current.visible = mode !== "model" && cw < 0.999;
       // Billboard around the vertical axis only (SPEC §8.5 Standee). Lying flat, the card instead reads upright on
       // screen: its top (local −z) along the camera's screen-up, flattened onto the table.
-      const cam = state.camera.position;
-      let yaw = Math.atan2(cam.x - g.position.x, cam.z - g.position.z);
+      // Every card parallel to the screen: its face turned to the camera's backward direction, flattened onto the
+      // table (turned toward the camera's position instead, cards off the screen's centre looked skewed).
+      const back = screenBack.setFromMatrixColumn(state.camera.matrixWorld, 2);
+      let yaw =
+        Math.hypot(back.x, back.z) > 0.05
+          ? Math.atan2(back.x, back.z)
+          : Math.atan2(state.camera.position.x - g.position.x, state.camera.position.z - g.position.z);
       if (lying) {
         const up = screenUp.setFromMatrixColumn(state.camera.matrixWorld, 1);
         yaw = Math.atan2(-up.x, -up.z);
       }
       standeeGroup.current.rotation.y = yaw - (body.current?.rotation.y ?? 0);
     }
-    setOpacity(coinFaceMat, baseOpacity * cw);
-    setOpacity(standeeFront, baseOpacity * (1 - cw));
-    setOpacity(standeeBack, baseOpacity * (1 - cw));
-    setOpacity(baseMat, baseOpacity);
-    setOpacity(rimMat, baseOpacity);
+    // Seen only partway (§15.6): fading in where it came into view, out where it left it.
+    const o = baseOpacity * moveAnimFade(token.id);
+    if (root.current) root.current.visible = o > 0.001;
+    setOpacity(coinFaceMat, o * cw);
+    setOpacity(standeeFront, o * (1 - cw));
+    setOpacity(standeeBack, o * (1 - cw));
+    setOpacity(baseMat, o);
+    setOpacity(rimMat, o);
     boardDiag.tokenModes.set(token.id, {
       at: performance.now(),
       mode,
@@ -628,7 +638,7 @@ function useMiniMaterials(mini: MiniInstance | null, opacity: number, dead: bool
       if (!m.isMesh) return;
       originals.set(m, m.material);
       const copy = (Array.isArray(m.material) ? m.material : [m.material]).map((mat) => {
-        const c = mat.clone();
+        const c = withFog(mat.clone(), "object");
         c.transparent = opacity < 1;
         c.opacity = opacity;
         c.depthWrite = opacity >= 1;
@@ -710,7 +720,7 @@ function Elevation({ elevation, radius }: { elevation: number; radius: number })
             data-testid="elevation-label"
             className="whitespace-nowrap rounded-chip border border-line bg-ink-950 px-1.5 text-12 font-bold text-brass-bright tabular"
           >
-            {`${up ? "↑" : "↓"} ${Math.abs(Math.round(elevation))} ft`}
+            {heightLabel(elevation)}
           </span>
         </Html>
       </group>

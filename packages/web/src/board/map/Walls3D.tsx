@@ -19,14 +19,15 @@ import {
   Vector2,
   Vector3,
 } from "three";
-import { useTable } from "../../net/table.ts";
 import { useBoard } from "../../state/entities.ts";
+import { useDmView } from "../../state/viewAs.ts";
 import { cameraRig } from "../CameraRig.tsx";
 import { C, col } from "../colors.ts";
 import { again } from "../frames.ts";
 import { NOISE_GLSL } from "../glsl.ts";
 import { useTier } from "../tiers.ts";
 import { useWallTool } from "../tools/walls.ts";
+import { withFog } from "../vision/fogMaterial.ts";
 
 /**
  * Walls in 3D (SPEC §8.7 3D walls; AC-WAL-06): with the scene's toggle on, walls stand 8 ft tall in procedural
@@ -147,15 +148,18 @@ vec3 capstone(float u, vec2 p, float cap, vec3 local, out float mortar) {
   float q = u / 1.5;
   float f = fract(q);
   mortar = (1.0 - smoothstep(0.02, 0.045, min(f, 1.0 - f) * 1.5)) * 0.7;
-  // Darker than the floor, so a wall reads as a wall from straight above...
-  vec3 c = mix(uStoneA, uStoneB, 0.3 + 0.3 * g_hash(vec2(floor(q), 5.0)) + 0.1 * g_noise(p * 3.0)) * 0.72;
+  // Well darker than the floor, so a wall reads as a wall from straight above...
+  vec3 c = mix(uStoneA, uStoneB, 0.3 + 0.3 * g_hash(vec2(floor(q), 5.0)) + 0.1 * g_noise(p * 3.0)) * 0.5;
   // ...a door's lintel as its oak beam, a window's header with a strip of glass along it...
   if (cap > 1.5) c = mix(c, uGlass, smoothstep(0.2, 0.12, abs(local.z)) * 0.85);
   else if (cap > 0.5) { c = mix(uPlank, uPlank * 1.35, g_noise(vec2(u * 2.0, local.z * 9.0))); mortar = 0.0; }
   c = mix(c, uJoint, mortar);
-  // ...with a bright bevel along its long edges catching the light.
-  float bevel = smoothstep(0.36, 0.5, abs(local.z));
-  return mix(c, uStoneB * 1.25, bevel * 0.55);
+  // ...with a lighter bevel along its long edges catching the light, and an ink rim outside it: from above every wall
+  // has a crisp dark outline on any floor (the precise-measuring top-down view has no overlay to fall back on).
+  float e = abs(local.z);
+  float bevel = smoothstep(0.32, 0.43, e) * (1.0 - smoothstep(0.44, 0.465, e));
+  c = mix(c, uStoneB * 1.1, bevel * 0.45);
+  return mix(c, uJoint * 0.55, smoothstep(0.455, 0.49, e));
 }
 `;
 
@@ -360,21 +364,23 @@ let mats: {
 /** The walls' materials, made on first use and kept for the page (never disposed: see programs.ts). */
 function materials() {
   mats ??= {
-    iron: cutMaterial("gloam-wall-iron", { color: col(C.ink900), roughness: 0.45, metalness: 0.6 }),
-    stone: stoneMaterial(false),
-    ghost: stoneMaterial(true),
-    wood: woodMaterial(),
-    glass: glassMaterial(),
-    // Cloth isn't cut like masonry where the cutaway opens the view: it thins to a veil.
-    cloth: cutMaterial(
-      "gloam-wall-cloth",
-      {
+    iron: withFog(
+      cutMaterial("gloam-wall-iron", { color: col(C.ink900), roughness: 0.45, metalness: 0.6 }),
+      "wall",
+    ),
+    stone: withFog(stoneMaterial(false), "wall"),
+    ghost: withFog(stoneMaterial(true), "wall"),
+    wood: withFog(woodMaterial(), "wall"),
+    glass: withFog(glassMaterial(), "wall"),
+    // Cloth is cut like masonry where the cutaway opens the view (a stub with its hem, the rod with it): a faded,
+    // double-sided transparent cloth with deep folds couldn't sort against itself and read as broken.
+    cloth: withFog(
+      cutMaterial("gloam-wall-cloth", {
         color: col(C.blood500).clone().multiplyScalar(0.34),
         roughness: 0.95,
         side: DoubleSide,
-        transparent: true,
-      },
-      "fade",
+      }),
+      "wall",
     ),
     field: cutMaterial("gloam-wall-field", {
       color: col(C.arcane400),
@@ -394,7 +400,7 @@ function materials() {
 export function Walls3DLayer() {
   const on = useBoard((d) => d.scene?.walls3d === true);
   const walls = useBoard((d) => d.walls);
-  const dm = useTable((s) => s.me?.role === "dm" || s.me?.role === "admin");
+  const dm = useDmView();
   const preview = useWallTool((s) => s.preview);
   const shadows = useTier((s) => s.name !== "low");
   const pieces = useMemo(

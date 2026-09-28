@@ -1,15 +1,20 @@
+import { LIGHT_PRESETS } from "@gloam/shared";
 import {
   ArrowDown,
   ArrowUp,
   Copy,
   Eye,
   EyeOff,
+  Flame,
+  FlameKindling,
+  Lamp,
   Lock,
   Palette,
   RotateCcw,
   RotateCw,
   Trash2,
   Unlock,
+  X,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { type ReactElement, useEffect, useMemo, useRef, useState } from "react";
@@ -50,6 +55,12 @@ export function RadialMenu() {
   const [ring, setRing] = useState<Slice[] | null>(null);
   const box = useRef<HTMLDivElement>(null);
   const token = useEntities((s) => (radial ? boardData(s).tokens.get(radial.tokenId) : undefined));
+  // The light this token carries, if any (SPEC §8.8: owners light, douse and hood their own).
+  const carried = useEntities((s) => {
+    if (!radial) return undefined;
+    for (const l of boardData(s).lights.values()) if (l.link?.tokenId === radial.tokenId) return l;
+    return undefined;
+  });
 
   const slices = useMemo<Slice[]>(() => {
     if (!token || !me) return [];
@@ -116,6 +127,35 @@ export function RadialMenu() {
           run: () => send("change its look", "token.update", { tokenId: id, appearance: { mode } }),
         })),
       });
+      const lightRing: Slice[] = LIGHT_PRESETS.filter((p) => p.id !== carried?.preset).map((p) => ({
+        id: `light-${p.id}`,
+        label: p.name,
+        icon: <Flame size={18} />,
+        run: () => send("light it", "light.carry", { tokenId: id, preset: p.id }),
+      }));
+      if (carried) {
+        lightRing.unshift({
+          id: "light-toggle",
+          label: carried.on ? "Put out" : "Light it",
+          icon: carried.on ? <FlameKindling size={18} /> : <Flame size={18} />,
+          run: () => send("change the light", "light.toggle", { lightId: carried.id, enabled: !carried.on }),
+        });
+        if (carried.preset === "hooded-lantern")
+          lightRing.splice(1, 0, {
+            id: "light-hood",
+            label: carried.shuttered ? "Raise the hood" : "Lower the hood",
+            icon: <Lamp size={18} />,
+            run: () =>
+              send("change the hood", "light.toggle", { lightId: carried.id, shuttered: !carried.shuttered }),
+          });
+        lightRing.push({
+          id: "light-away",
+          label: "Put it away",
+          icon: <X size={18} />,
+          run: () => send("put it away", "light.carry", { tokenId: id, preset: null }),
+        });
+      }
+      out.push({ id: "light", label: "Light", icon: <Flame size={18} />, ring: lightRing.slice(0, 8) });
     }
     if (dm) {
       out.push(
@@ -175,7 +215,7 @@ export function RadialMenu() {
       );
     }
     return out;
-  }, [token, me, assets]);
+  }, [token, me, assets, carried]);
 
   const shown = ring ?? slices;
   const close = () => {
