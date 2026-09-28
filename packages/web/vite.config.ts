@@ -21,5 +21,13 @@ export default defineConfig(({ mode }) => ({
   define: {
     __GLOAM_TEST__: JSON.stringify(mode === "test"),
   },
-  server: { fs: { allow: ["../.."] } },
+  // The dev server serves the web app's and shared code's sources and the installed packages — nothing else of the
+  // repository (not the server, not the data directory with its secret key and database; SPEC §22).
+  server: {
+    fs: {
+      strict: true,
+      allow: [".", "../shared", "../../node_modules"],
+      deny: [".env", ".env.*", "*.{crt,pem,key}", "**/.git/**", "**/data/**", "**/*.db", "**/*.db-*"],
+    },
+  },
 }));

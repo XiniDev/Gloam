@@ -1,5 +1,5 @@
 import { resolve } from "node:path";
-import { DEFAULT_METRICS_PORT, DEFAULT_PORT } from "@gloam/shared";
+import { DEFAULT_METRICS_PORT, DEFAULT_PORT, VITE_HMR_PORT } from "@gloam/shared";
 import { z } from "zod";
 
 /** Environment configuration (SPEC §11, Appendix J), validated at startup. */
@@ -41,6 +41,8 @@ export interface Config {
   /** Serve the built SPA from here in production; dev mode uses Vite middleware instead. */
   webRoot: string;
   webDist: string;
+  /** Dev mode: the Vite HMR socket's port (tests of the dev server pick a free one). */
+  devHmrPort: number;
   /** Print to the console (disabled in tests). */
   printBanner: boolean;
   /** Log to the console as well as the daily file. */
@@ -87,6 +89,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, overrides: Part
       e.NODE_ENV === "test" && e.GLOAM_TEST_WEB_DIST
         ? resolve(e.GLOAM_TEST_WEB_DIST)
         : resolve(repoRoot, "packages", "web", "dist"),
+    devHmrPort: VITE_HMR_PORT,
     printBanner: e.NODE_ENV !== "test",
     consoleLog: e.NODE_ENV !== "test",
     tunnel: {},

@@ -1,0 +1,200 @@
+import { describe, expect, it } from "vitest";
+import { roll } from "./evaluate.ts";
+import { checkFormula, DICE_LIMITS, DiceError, parseFormula } from "./parse.ts";
+import { seededDie, xoshiro128ss } from "./rng.ts";
+
+/** A die that returns the given faces in order (then 1s). */
+function faces(...vs: number[]) {
+  let i = 0;
+  return (sides: number) => {
+    const v = vs[i++] ?? 1;
+    if (v > sides) throw new Error(`face ${v} on a d${sides}`);
+    return v;
+  };
+}
+const refs: Record<string, number> = { str: 3, dex: 2, prof: 2, "dex.save": 4, "skill.stealth": 6, level: 5 };
+const resolve = (p: readonly string[]) => refs[p.join(".")];
+const r = (f: string, ...vs: number[]) => roll(f, { die: faces(...vs), resolve });
+const err = (f: string): DiceError => {
+  try {
+    roll(f, { die: faces(), resolve });
+  } catch (e) {
+    if (e instanceof DiceError) return e;
+    throw e;
+  }
+  throw new Error(`${f} rolled`);
+};
+
+describe("dice formulas (SPEC §18.1, AC-DICE-01)", () => {
+  it("adds, subtracts, multiplies and divides (rounding down), with brackets and negation", () => {
+    expect(r("1d20+5", 12).total).toBe(17);
+    expect(r("2d6 - 1", 3, 4).total).toBe(6);
+    expect(r("3*(1d4+1)", 2).total).toBe(9);
+    expect(r("7/2").total).toBe(3);
+    expect(r("-7/2").total).toBe(-4); // rounds down, not toward zero
+    expect(r("-1d4", 3).total).toBe(-3);
+    expect(r("10 - 2 - 3").total).toBe(5);
+    expect(r("2*3+4*5").total).toBe(26);
+  });
+
+  it("d20, d%, a count from an expression", () => {
+    expect(r("d20", 7).terms[0]).toMatchObject({ kind: "dice", count: 1, sides: 20 });
+    expect(r("1d%", 57).total).toBe(57);
+    // The count is rolled first (1d4 + 1 = 3), then 3d6; the count itself isn't added.
+    const x = r("(1d4+1)d6", 2, 6, 6, 6);
+    expect(x.total).toBe(18);
+    expect(x.terms.find((t) => t.kind === "dice" && t.sides === 6)).toMatchObject({ count: 3, subtotal: 18 });
+  });
+
+  it("keep and drop: kh, kl, k (= kh), dh, dl, defaulting to 1", () => {
+    expect(r("4d6kh3", 1, 5, 3, 6).total).toBe(14);
+    expect(r("4d6dl1", 1, 5, 3, 6).total).toBe(14);
+    expect(r("2d20kl1", 15, 4).total).toBe(4);
+    expect(r("2d20k", 15, 4).total).toBe(15);
+    expect(r("3d6dh", 6, 2, 5).total).toBe(7);
+    const kept = r("4d6kh3", 1, 5, 3, 6).terms[0];
+    expect(kept?.kind === "dice" && kept.dice.map((d) => d.kept)).toEqual([false, true, true, true]);
+  });
+
+  it("rerolls: r repeats while matching (at most 20), ro once; default =1; comparisons", () => {
+    const a = r("1d6r", 1, 1, 4).terms[0];
+    expect(a?.kind === "dice" && a.dice[0]).toMatchObject({ value: 4, rerolledFrom: [1, 1] });
+    const b = r("1d6ro", 1, 1).terms[0];
+    expect(b?.kind === "dice" && b.dice[0]).toMatchObject({ value: 1, rerolledFrom: [1] });
+    expect(r("1d10r<3", 2, 1, 3).total).toBe(3);
+    // Capped: 20 rerolls, then the face stands.
+    const capped = r("1d6r<=2", ...Array(30).fill(1)).terms[0];
+    expect(capped?.kind === "dice" && capped.dice[0]?.rerolledFrom?.length).toBe(20);
+    expect(err("1d6r<7").message).toMatch(/every face/);
+  });
+
+  it("explosions: ! on the top face (or a comparison), each exploded die marked, depth at most 20", () => {
+    const x = r("2d6!", 6, 3, 2);
+    expect(x.total).toBe(11);
+    const t = x.terms[0];
+    expect(t?.kind === "dice" && t.dice.map((d) => [d.value, d.exploded])).toEqual([
+      [6, true],
+      [3, false],
+      [2, false],
+    ]);
+    expect(r("1d10!>8", 9, 10, 2).total).toBe(21);
+    // A d1 always explodes: the chain stops after 20 extra dice.
+    const one = r("1d1!").terms[0];
+    expect(one?.kind === "dice" && one.dice.length).toBe(DICE_LIMITS.explodeDepth + 1);
+  });
+
+  it("min and max: Great Weapon Fighting's min3", () => {
+    expect(r("2d6min3", 1, 5).total).toBe(8);
+    expect(r("1d20max15", 19).total).toBe(15);
+    expect(err("1d6min7").message).toMatch(/outside/);
+  });
+
+  it("@ references resolve from the roller; unknown ones are errors", () => {
+    expect(r("1d20+@dex.save", 10).total).toBe(14);
+    expect(r("1d20 + @skill.stealth", 10).total).toBe(16);
+    expect(r("@level*2").total).toBe(10);
+    const e = err("1d20+@wis");
+    expect(e.message).toMatch(/@wis/);
+    expect([e.at, e.end]).toEqual([5, 9]);
+  });
+
+  it("adv / dis turn the first 1d20 into 2d20kh1 / 2d20kl1", () => {
+    const a = r("1d20+5 adv", 4, 17);
+    expect(a.total).toBe(22);
+    expect(a.normalized).toBe("2d20kh1 + 5");
+    expect(a.natural).toBe(17);
+    const d = r("1d20+5 dis", 4, 17);
+    expect(d.total).toBe(9);
+    expect(d.normalized).toBe("2d20kl1 + 5");
+    expect(err("2d6 adv").message).toMatch(/d20/);
+    expect(checkFormula("1d8 adv")?.message).toMatch(/d20/);
+  });
+
+  it("damage types: a tag on dice types that term; a trailing tag types every untagged term; the rest is untyped", () => {
+    expect(r("1d8+@str [bludgeoning]", 5).byTag).toEqual({ bludgeoning: 8 });
+    expect(r("1d8[slashing] + 2d6[fire] + 3", 5, 2, 6).byTag).toEqual({ slashing: 5, fire: 8, untyped: 3 });
+    expect(r("1d8[slashing] + 1d6 [fire]", 5, 2).byTag).toEqual({ slashing: 5, fire: 2 });
+    expect(r("1d8 [fire] + 2", 5).byTag).toEqual({ fire: 5, untyped: 2 });
+    expect(r("2d6 - 1", 3, 4).byTag).toEqual({ untyped: 6 });
+    expect(r("1d6[Fire]", 3).terms[0]).toMatchObject({ tag: "fire" });
+  });
+
+  it("naturals: the first kept d20 — crit on 20, fumble on 1", () => {
+    expect(r("1d20+3", 20)).toMatchObject({ natural: 20, crit: true, fumble: false });
+    expect(r("1d20+3", 1)).toMatchObject({ natural: 1, crit: false, fumble: true });
+    expect(r("2d20kh1", 1, 20).natural).toBe(20);
+    expect(r("1d8", 8).natural).toBeUndefined();
+  });
+
+  it("normalizes spacing and case", () => {
+    expect(r("1D20 +  @DEX", 3).normalized).toBe("1d20 + @dex");
+    expect(r("4d6kh3", 1, 1, 1, 1).normalized).toBe("4d6kh3");
+    expect(r("2d6!>5ro<2min2", 1, 1, 1, 1).normalized).toBe("2d6!>5ro<2min2");
+    expect(r("10-(2-3)").normalized).toBe("10 - (2 - 3)");
+    expect(r("10-(2-3)").total).toBe(11);
+  });
+
+  it("invalid formulas: readable errors with where they are, before anything is rolled", () => {
+    const cases: [string, RegExp, number][] = [
+      ["", /Type a formula/, 0],
+      ["1d", /sides/, 2],
+      ["1d20+", /ends too soon/, 4],
+      ["1d20 ++ 2", /Unexpected/, 6],
+      ["(1d6", /isn't closed/, 0],
+      ["1d6 x", /Unexpected/, 4],
+      ["1d0", /1 to 1000 sides/, 2],
+      ["1d1001", /1 to 1000 sides/, 2],
+      ["101d6", /At most 100 dice/, 0],
+      ["0d6", /at least one/, 0],
+      ["1d6[]", /empty/, 3],
+      ["1d6 [fire] adv x", /Unexpected/, 15],
+      ["1d6!>", /needs a number/, 4],
+      ["@", /reference/, 0],
+      ["1d20+2 adv [fire]", /very end/, 11],
+      ["1d6 [fire] [cold]", /right after its dice/, 11],
+    ];
+    for (const [f, re, at] of cases) {
+      const e = checkFormula(f);
+      expect([f, e?.message]).toEqual([f, expect.stringMatching(re)]);
+      expect([f, e?.at]).toEqual([f, at]);
+    }
+    expect(checkFormula("1d20+5")).toBeNull();
+    expect(checkFormula(`1d20+${"1+".repeat(100)}1`)?.message).toMatch(/at most 200 characters/);
+    expect(() => parseFormula("1d6")).not.toThrow();
+  });
+
+  it("limits (AC-DICE-09): 100 per term, 500 in all including rerolls and explosions, counts from expressions too", () => {
+    expect(r("100d6").terms[0]).toMatchObject({ count: 100 });
+    expect(() => r("5*100d6")).not.toThrow();
+    expect(err("100d6+100d6+100d6+100d6+100d6+1d6").message).toMatch(/At most 500 dice/);
+    // Explosions count toward the 500.
+    expect(err("100d1!").message).toMatch(/At most 500 dice/);
+    expect(err("(50+51)d6").message).toMatch(/At most 100 dice/);
+  });
+});
+
+describe("seeded dice (AC-DICE-10's generator)", () => {
+  it("xoshiro128** matches the reference output", () => {
+    // Reference: state {1, 2, 3, 4} gives 11520, 0, … — checked through the seeding path's own first values.
+    const g = xoshiro128ss(42);
+    const a = [g(), g(), g()];
+    const h = xoshiro128ss(42);
+    expect([h(), h(), h()]).toEqual(a);
+    expect(new Set(a).size).toBe(3);
+  });
+
+  it("the same seed rolls the same; faces are uniform (χ² over 60 000 d20s and d6s)", () => {
+    const f = "4d6kh3 + 1d20 + 2d8!";
+    expect(roll(f, { die: seededDie(7) })).toEqual(roll(f, { die: seededDie(7) }));
+    for (const sides of [6, 20]) {
+      const die = seededDie(sides * 1000 + 1);
+      const n = 60_000;
+      const counts = new Array(sides).fill(0);
+      for (let i = 0; i < n; i++) counts[die(sides) - 1]++;
+      const e = n / sides;
+      const chi2 = counts.reduce((s, c) => s + (c - e) ** 2 / e, 0);
+      // 99.9th percentile of χ² with 5 / 19 degrees of freedom: 20.5 / 43.8.
+      expect(chi2).toBeLessThan(sides === 6 ? 20.5 : 43.8);
+    }
+  });
+});

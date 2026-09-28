@@ -1,12 +1,12 @@
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { VITE_HMR_PORT } from "@gloam/shared";
 import express, { type Express, type NextFunction, type Request, type Response } from "express";
 import helmet from "helmet";
 import type { ViteDevServer } from "vite";
 import { z } from "zod";
 import type { ServerContext } from "../context.ts";
+import { lanAddress } from "../services/table.ts";
 import { csrfGuard, ok, requestContext, route, sendError } from "./helpers.ts";
 import { adminRoutes } from "./routes/admin.ts";
 import { assetRoutes } from "./routes/assets.ts";
@@ -15,6 +15,30 @@ import { fontRoutes } from "./routes/fonts.ts";
 
 const NONCE_PLACEHOLDER = "__GLOAM_NONCE__";
 const VALID_HOST = /^[A-Za-z0-9.\-:[\]]+$/;
+
+/**
+ * Development only: whether a request's Host is one this machine answers to — localhost, a loopback address, its LAN
+ * address, or the doorway's public hostname — rather than a name an outsider's DNS has pointed here.
+ */
+export function devHostAllowed(
+  host: string | undefined,
+  publicUrl: string | null,
+  lan: string | null,
+): boolean {
+  const h = (host ?? "").toLowerCase();
+  const name = h.startsWith("[") ? h.slice(0, h.indexOf("]") + 1) : (h.split(":")[0] ?? "");
+  if (!name) return false;
+  if (name === "localhost" || name === "[::1]" || /^127(\.\d{1,3}){3}$/.test(name)) return true;
+  if (lan && name === lan.toLowerCase()) return true;
+  if (publicUrl) {
+    try {
+      if (new URL(publicUrl).hostname.toLowerCase() === name) return true;
+    } catch {
+      // not a URL: no doorway name to match
+    }
+  }
+  return false;
+}
 
 export interface HttpAppHandle {
   vite: ViteDevServer | null;
@@ -69,7 +93,7 @@ export async function buildHttpApp(
               const r = req as Request;
               return `${r.gloam.https ? "wss" : "ws"}://${r.headers.host ?? "localhost"}`;
             },
-            ...(dev ? [`ws://127.0.0.1:${VITE_HMR_PORT}`] : []),
+            ...(dev ? [`ws://127.0.0.1:${ctx.config.devHmrPort}`] : []),
           ],
           workerSrc: ["'self'", "blob:"],
           objectSrc: ["'none'"],
@@ -194,12 +218,22 @@ export async function buildHttpApp(
       html: { cspNonce: NONCE_PLACEHOLDER },
       server: {
         middlewareMode: true,
-        ws: { port: VITE_HMR_PORT, host: "127.0.0.1" },
+        ws: { port: ctx.config.devHmrPort, host: "127.0.0.1" },
+        // Our own gate below decides which hosts reach Vite (it knows the doorway's hostname).
         allowedHosts: true,
+        // Wherever DATA_DIR points, Vite never serves from it (the secret key, the database, uploads).
+        fs: { deny: [`${ctx.config.dataDir.replaceAll("\\", "/")}/**`] },
       },
       logLevel: "warn",
     });
-    app.use(vite.middlewares);
+    const middlewares = vite.middlewares;
+    // Dev only: the dev server answers to this machine's own names, its LAN address and the doorway's hostname —
+    // never to a name someone else's DNS points here (DNS rebinding would otherwise read what Vite serves).
+    app.use((req: Request, res: Response, next: NextFunction) => {
+      if (!devHostAllowed(req.headers.host, ctx.tunnel.state.publicUrl, lanAddress()))
+        return sendError(res, 403, "FORBIDDEN", "This development server only answers to its own names.");
+      middlewares(req, res, next);
+    });
   } else if (existsSync(ctx.config.webDist)) {
     app.use(
       "/static",

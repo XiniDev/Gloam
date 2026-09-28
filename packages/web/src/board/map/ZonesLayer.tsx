@@ -1,7 +1,6 @@
 import { inPolygon, type P } from "@gloam/shared/geometry";
 import { type WorldZoneShape, zonePolygon } from "@gloam/shared/movement";
 import type { TokenView, ZoneView } from "@gloam/shared/state";
-import { Text } from "@react-three/drei";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useMemo, useRef } from "react";
 import {
@@ -20,6 +19,7 @@ import { useTable } from "../../net/table.ts";
 import { useBoard } from "../../state/entities.ts";
 import { knownAt } from "../../state/fog.ts";
 import { useDmView, useViewAs } from "../../state/viewAs.ts";
+import { BoardText } from "../BoardText.tsx";
 import { C } from "../colors.ts";
 import { disposeLater } from "../dispose.ts";
 import { CAPS_FONT } from "../fonts.ts";
@@ -368,7 +368,7 @@ function ClampedLabel({
   const first = spots[0]?.at ?? { x: 0, y: 0 };
   return (
     <group ref={group} position={[first.x, 0.04, first.y]}>
-      <Text
+      <BoardText
         font={CAPS_FONT}
         fontSize={size}
         letterSpacing={0.08}
@@ -386,7 +386,7 @@ function ClampedLabel({
         raycast={() => null}
       >
         {children}
-      </Text>
+      </BoardText>
     </group>
   );
 }

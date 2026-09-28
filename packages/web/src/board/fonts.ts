@@ -1,6 +1,6 @@
 import cinzelWoff from "@fontsource/cinzel/files/cinzel-latin-600-normal.woff?url";
 import frauncesWoff from "@fontsource/fraunces/files/fraunces-latin-700-normal.woff?url";
-import { configureTextBuilder } from "troika-three-text";
+import { configureTextBuilder, preloadFont } from "troika-three-text";
 
 /** Name plates use the local Cinzel face (troika reads .woff, not .woff2; SPEC §24.4, R3 note G8). */
 export const CAPS_FONT = cinzelWoff;
@@ -16,4 +16,13 @@ export function setupText(): void {
   if (configured) return;
   configured = true;
   configureTextBuilder({ useWorker: false, defaultFontURL: cinzelWoff, unicodeFontsURL: "/fonts/ufr" });
+}
+
+/**
+ * Starts loading the board's label fonts as the board mounts (§24.7: nothing loads mid-game), so the first name plate
+ * or zone label doesn't wait for its font.
+ */
+export function preloadBoardFonts(): void {
+  setupText();
+  for (const font of [CAPS_FONT, NUMBER_FONT]) preloadFont({ font }, () => {});
 }

@@ -1,7 +1,7 @@
 import { SIZE_MINI_HEIGHT_FT, type Size } from "@gloam/shared";
 import { HP_BAND_HIDDEN, HP_BAND_LABELS } from "@gloam/shared/rules";
 import type { TokenView } from "@gloam/shared/state";
-import { Billboard, Html, Text } from "@react-three/drei";
+import { Billboard, Html } from "@react-three/drei";
 import { type ThreeEvent, useFrame } from "@react-three/fiber";
 import { memo, useEffect, useMemo, useRef } from "react";
 import {
@@ -23,6 +23,7 @@ import { audio } from "../../audio/engine.ts";
 import { request, useTable } from "../../net/table.ts";
 import { useSettings } from "../../state/settings.ts";
 import { useUi } from "../../state/ui.ts";
+import { BoardText } from "../BoardText.tsx";
 import { boardApi } from "../boardApi.ts";
 import { cameraRig } from "../CameraRig.tsx";
 import { C, col, ringColorOf } from "../colors.ts";
@@ -920,7 +921,7 @@ function Overlay({
             dispose={null}
             userData={{ part: "plateChip" }}
           />
-          <Text
+          <BoardText
             ref={nameText}
             font={CAPS_FONT}
             fontSize={NAME_SIZE}
@@ -933,7 +934,7 @@ function Overlay({
             raycast={() => null}
           >
             {token.name}
-          </Text>
+          </BoardText>
           {hidden ? (
             <sprite
               position={[0, BAR_H / 2 + 1.55, 0]}
@@ -957,7 +958,7 @@ function Overlay({
           ) : null}
           {showNumbers && nums ? (
             // On the bar, never beside it: the plate is never wider than its name or its bar (the bar grows to fit).
-            <Text
+            <BoardText
               ref={numText}
               font={NUMBER_FONT}
               fontSize={NUM_SIZE}
@@ -970,10 +971,10 @@ function Overlay({
               raycast={() => null}
             >
               {`${nums.hp} / ${nums.hpMax}${nums.hpTemp ? `  +${nums.hpTemp}` : ""}`}
-            </Text>
+            </BoardText>
           ) : null}
           {descriptor ? (
-            <Text
+            <BoardText
               ref={wordText}
               font={CAPS_FONT}
               fontSize={WORD_SIZE}
@@ -987,7 +988,7 @@ function Overlay({
               raycast={() => null}
             >
               {descriptor}
-            </Text>
+            </BoardText>
           ) : null}
         </group>
       </Billboard>

@@ -319,21 +319,24 @@ export function VisionLayer({ bounds }: { bounds: Bounds }) {
     [passes],
   );
 
-  // The walls this client knows, as blocking sets (a hidden sight-blocker comes as an "occluder").
-  const geo = useMemo(
-    () =>
-      new VisionGeometry(
-        [...walls.values()].map(
-          (w: WallView): VisionWall => ({
-            a: { x: w.ax, y: w.ay },
-            b: { x: w.bx, y: w.by },
-            kind: w.kind,
-            door: (w.door || null) as VisionWall["door"],
-          }),
-        ),
+  // The walls this client knows, as blocking sets (a hidden sight-blocker comes as an "occluder"). A change keeps the
+  // polygons it can't touch (a door opening recomputes only the views and lights near it).
+  const lastGeo = useRef<VisionGeometry | null>(null);
+  const geo = useMemo(() => {
+    const next = VisionGeometry.after(
+      lastGeo.current,
+      [...walls.values()].map(
+        (w: WallView): VisionWall => ({
+          a: { x: w.ax, y: w.ay },
+          b: { x: w.bx, y: w.by },
+          kind: w.kind,
+          door: (w.door || null) as VisionWall["door"],
+        }),
       ),
-    [walls],
-  );
+    );
+    lastGeo.current = next;
+    return next;
+  }, [walls]);
   // New walls (a door opened): the viewers' sight is computed at once, not at the next frame — the frame then only
   // draws polygons already in the geometry's cache (the vision this client shows is up to date as soon as the walls
   // are; under software GL the next frame can be far off).

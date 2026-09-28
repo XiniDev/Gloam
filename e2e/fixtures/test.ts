@@ -21,6 +21,21 @@ export function guard(page: Page, origin: string, g: Guard): void {
       g.errors.push(t);
   });
   page.on("pageerror", (e) => g.errors.push(`pageerror: ${e.message}`));
+  // The board hidden at the table (React's Suspense sets display: none on it when a suspension reaches the page):
+  // a blank board for the player, its frame loop stopped. Never allowed.
+  void page.addInitScript(() => {
+    const check = (el: Node) => {
+      if (!(el instanceof HTMLElement) || el.style.display !== "none" || location.pathname !== "/table")
+        return;
+      if (el.matches("[data-testid=board]") || el.querySelector("[data-testid=board]"))
+        console.error(
+          "The board was hidden (display: none): a suspension reached the page's Suspense boundary.",
+        );
+    };
+    new MutationObserver((ms) => {
+      for (const m of ms) if (m.type === "attributes") check(m.target);
+    }).observe(document, { attributes: true, attributeFilter: ["style"], subtree: true });
+  });
   page.on("request", (r) => {
     const u = r.url();
     if (u.startsWith("data:") || u.startsWith("blob:") || u.startsWith("about:")) return;

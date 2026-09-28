@@ -1,7 +1,9 @@
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import {
   type DragEvent as ReactDragEvent,
+  type ReactNode,
   type PointerEvent as ReactPointerEvent,
+  Suspense,
   useEffect,
   useMemo,
   useRef,
@@ -19,7 +21,7 @@ import { CameraRig, cameraRig } from "./CameraRig.tsx";
 import { C } from "./colors.ts";
 import { DustMotes } from "./DustMotes.tsx";
 import { boardDiag } from "./diag.ts";
-import { setupText } from "./fonts.ts";
+import { preloadBoardFonts } from "./fonts.ts";
 import {
   scheduleAmbientFrame,
   setFrameDelta,
@@ -73,7 +75,7 @@ import { fogUniforms } from "./vision/fogMaterial.ts";
 import { SensedLayer } from "./vision/SensedLayer.tsx";
 import { VisionLayer } from "./vision/VisionLayer.tsx";
 
-setupText();
+preloadBoardFonts();
 
 /** Reads the device on the first frame, then adapts the tier from frame times (SPEC §8.4). */
 function TierSetup() {
@@ -520,32 +522,70 @@ export default function Board() {
           by sense): the rig lights at full for form and shading, as image maps are unlit (§24.3) — scaling it by the
           scene's darkness as well darkened torchlit ground twice. Off and painted keep the ambient's mood.
         */}
-        <Lighting
-          bounds={bounds}
-          ambient={scene?.fogMode === "dynamic" && !prep ? "bright" : (scene?.ambient ?? "bright")}
-          tier={tier}
-        />
-        <TableSurface bounds={bounds} empty={!scene} />
-        <DustMotes bounds={bounds} count={tier.dust} />
+        <Contained>
+          <Lighting
+            bounds={bounds}
+            ambient={scene?.fogMode === "dynamic" && !prep ? "bright" : (scene?.ambient ?? "bright")}
+            tier={tier}
+          />
+        </Contained>
+        <Contained>
+          <TableSurface bounds={bounds} empty={!scene} />
+        </Contained>
+        <Contained>
+          <DustMotes bounds={bounds} count={tier.dust} />
+        </Contained>
         {/* Vision and light targets for the fog composite (drawn before the board each frame). */}
-        <VisionLayer bounds={bounds} />
-        {scene ? <MapLayer scene={scene} bounds={bounds} /> : null}
-        <Walls3DLayer />
-        <TokensLayer />
-        <ZonesLayer />
-        <MoveLayer />
-        <PingLayer />
-        <MeasureLayer />
-        <WallsLayer />
-        <WallToolLayer />
-        <ZoneToolLayer />
-        <LightToolLayer />
-        <FogToolLayer />
-        <SensedLayer />
-        <DoorsLayer />
-        <MapAlignGizmo />
+        <Contained>
+          <VisionLayer bounds={bounds} />
+        </Contained>
+        <Contained>{scene ? <MapLayer scene={scene} bounds={bounds} /> : null}</Contained>
+        <Contained>
+          <Walls3DLayer />
+        </Contained>
+        <Contained>
+          <TokensLayer />
+        </Contained>
+        <Contained>
+          <ZonesLayer />
+        </Contained>
+        <Contained>
+          <MoveLayer />
+        </Contained>
+        <Contained>
+          <PingLayer />
+        </Contained>
+        <Contained>
+          <MeasureLayer />
+        </Contained>
+        <Contained>
+          <WallsLayer />
+        </Contained>
+        <Contained>
+          <WallToolLayer />
+        </Contained>
+        <Contained>
+          <ZoneToolLayer />
+        </Contained>
+        <Contained>
+          <LightToolLayer />
+        </Contained>
+        <Contained>
+          <FogToolLayer />
+        </Contained>
+        <Contained>
+          <SensedLayer />
+        </Contained>
+        <Contained>
+          <DoorsLayer />
+        </Contained>
+        <Contained>
+          <MapAlignGizmo />
+        </Contained>
         <ShadowSync enabled={tier.shadowMap > 0} soft={tier.softShadows} />
-        <PostFX tier={tier} />
+        <Contained>
+          <PostFX tier={tier} />
+        </Contained>
         {__GLOAM_TEST__ ? <TestProbe /> : null}
       </Canvas>
       {/* The subtle vignette of the post chain, done in CSS so it costs nothing on any tier (SPEC §24.6). */}
@@ -581,6 +621,15 @@ export default function Board() {
       ) : null}
     </div>
   );
+}
+
+/**
+ * A board layer in its own Suspense boundary: whatever in it suspends (a font, a texture) waits in its place. A
+ * suspension reaching the canvas's root would be handed up to the page, hiding the whole board (display: none),
+ * stopping the frame loop and cleaning up the camera rig's layout effects (its controls then read as absent).
+ */
+function Contained({ children }: { children: ReactNode }) {
+  return <Suspense fallback={null}>{children}</Suspense>;
 }
 
 /** Keeps the renderer's shadow map in step with the tier (Low turns shadow maps off, AC-BRD-03). */
