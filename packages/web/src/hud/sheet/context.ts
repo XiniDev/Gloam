@@ -1,6 +1,6 @@
 import type { ActorView } from "@gloam/shared/protocol";
 import { type DerivedSheet, deriveSheet, editableAt } from "@gloam/shared/rules";
-import type { Sheet } from "@gloam/shared/schemas";
+import type { DerivedKey, Sheet } from "@gloam/shared/schemas";
 import { useMemo } from "react";
 import type { SheetChangeIn, SheetPath } from "../../net/sheets.ts";
 import { useTable } from "../../net/table.ts";
@@ -18,6 +18,11 @@ export interface SheetCtx {
   free(path: SheetPath): boolean;
   edit(changes: SheetChangeIn[]): Promise<boolean>;
   set(path: SheetPath, after: unknown): Promise<boolean>;
+}
+
+/** Sets a derived value by hand, or (undefined) back to the worked-out one (§8.10 overrides, AC-SHEET-02). */
+export function overrideDerived(ctx: SheetCtx, key: DerivedKey, value: number | undefined): void {
+  void ctx.set(["core", "overrides", key], value);
 }
 
 export function useSheetCtx(actor: ActorView): SheetCtx {

@@ -4,7 +4,14 @@
  * Ctrl/Cmd = disadvantage; on touch a long press offers Normal / Advantage / Disadvantage / Physical).
  */
 import type { ActorView } from "@gloam/shared/protocol";
-import { applyChanges, lockedChanges, pathLabel, type SheetChange } from "@gloam/shared/rules";
+import {
+  ABILITY_NAMES,
+  applyChanges,
+  fieldLabel,
+  lockedChanges,
+  type SheetChange,
+  skillName,
+} from "@gloam/shared/rules";
 import { Sheet } from "@gloam/shared/schemas";
 import { create } from "zustand";
 import { rollDice } from "../../net/dice.ts";
@@ -12,8 +19,7 @@ import { changeSheet, proposeChange, type SheetChangeIn } from "../../net/sheets
 import { useTable } from "../../net/table.ts";
 import { useUi } from "../../state/ui.ts";
 import { toast } from "../../ui/Toast.tsx";
-
-export type RollMode = "normal" | "adv" | "dis";
+import { type RollMode, withMode } from "./rollMode.ts";
 
 /** A proposal waiting for the player's note (the sheet's Propose dialog). */
 interface ProposeState {
@@ -45,7 +51,10 @@ export async function editSheet(actor: ActorView, changes: SheetChangeIn[]): Pro
   const after = Sheet.safeParse(applyChanges(actor.sheet, changes as SheetChange[]));
   if (!after.success) {
     const i = after.error.issues[0];
-    toast.warning("That doesn't fit the sheet", i ? `${i.path.join(".")}: ${i.message}` : undefined);
+    toast.warning(
+      "That doesn't fit the sheet",
+      i ? `${fieldLabel(i.path as (string | number)[], actor.sheet)}: ${i.message}` : undefined,
+    );
     return false;
   }
   const locked = lockedChanges(actor.lockLevel, actor.sheet, after.data, isDmRole(me.role));
@@ -54,7 +63,11 @@ export async function editSheet(actor: ActorView, changes: SheetChangeIn[]): Pro
       pending: {
         actor,
         changes,
-        fields: locked.map((c) => ({ label: pathLabel(c.path), before: c.before, after: c.after })),
+        fields: locked.map((c) => ({
+          label: fieldLabel(c.path, after.data),
+          before: c.before,
+          after: c.after,
+        })),
       },
     });
     return false;
@@ -89,19 +102,6 @@ export async function sendProposal(
   }
 }
 
-/** Advantage from Alt, disadvantage from Ctrl/Cmd (SPEC §8.9 Rolling from anywhere). */
-export function modeOf(e: { altKey: boolean; ctrlKey: boolean; metaKey: boolean }): RollMode {
-  if (e.altKey) return "adv";
-  if (e.ctrlKey || e.metaKey) return "dis";
-  return "normal";
-}
-
-/** A formula with advantage or disadvantage (for d20 rolls; others are as they are). */
-export function withMode(formula: string, mode: RollMode): string {
-  if (mode === "normal" || !/\bd20\b/i.test(formula) || /\b(adv|dis)\s*$/i.test(formula)) return formula;
-  return `${formula} ${mode}`;
-}
-
 /** Rolls from the sheet: the server resolves its `@` references from this character. */
 export async function rollFromSheet(
   actor: ActorView,
@@ -122,25 +122,8 @@ export function rollPhysically(formula: string, label: string): void {
   ui.set({ diceDraft: { ...ui.diceDraft, formula, label, manual: true }, diceTray: true });
 }
 
-const ABILITY_NAMES = {
-  str: "Strength",
-  dex: "Dexterity",
-  con: "Constitution",
-  int: "Intelligence",
-  wis: "Wisdom",
-  cha: "Charisma",
-} as const;
 export type AbilityKey = keyof typeof ABILITY_NAMES;
 export const abilityName = (a: AbilityKey) => ABILITY_NAMES[a];
-
-/** A skill's name as printed ("sleightOfHand" → "Sleight of Hand"). */
-export function skillName(id: string): string {
-  const words = id.replace(/([A-Z])/g, " $1").split(" ");
-  return words
-    .map((w, i) =>
-      i && ["Of", "And"].includes(w) ? w.toLowerCase() : w.charAt(0).toUpperCase() + w.slice(1),
-    )
-    .join(" ");
-}
+export { skillName };
 
 export const signed = (n: number) => (n >= 0 ? `+${n}` : `−${Math.abs(n)}`);

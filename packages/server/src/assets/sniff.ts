@@ -5,11 +5,23 @@
  */
 
 /**
- * Active-content signatures rejected anywhere in an uploaded image or GLB JSON. Seven-plus specific bytes, so a
- * random match inside compressed data is astronomically unlikely (≈ 2⁻⁵⁶ per position).
+ * Active-content signatures rejected anywhere in an uploaded image or GLB JSON: markup that would run — a script
+ * element, a frame, an embedded object, a script URL, an event handler, an SVG or HTML document carrying one of
+ * those. Each is seven or more specific bytes (an SVG or HTML opening tag only counts with active content after it),
+ * so a match by chance inside compressed image data is astronomically unlikely. A bare "<svg" (4 bytes) matched ~7 %
+ * of 16-MB images and ~1.4 % of ordinary photos: legitimate uploads refused at random.
  */
-const ACTIVE =
-  /<script|<html|<svg|<\?php|<iframe|<object|<embed|javascript:|vbscript:|onload\s*=|onerror\s*=/i;
+const ACTIVE = new RegExp(
+  [
+    /<(?:script|iframe|object|embed)[\s>/]/.source,
+    /javascript:|vbscript:/.source,
+    /\bon(?:load|error|click|mouseover|focus|begin)\s*=/.source,
+    /<svg[\s>/][\s\S]{0,4096}?(?:<script|\bon[a-z]{3,20}\s*=|javascript:|<foreignobject)/.source,
+    /<html[\s>][\s\S]{0,4096}?<(?:head|body|script|meta|iframe)[\s>/]/.source,
+    /<!doctype\s+html/.source,
+  ].join("|"),
+  "i",
+);
 
 /** Formats that must not ride along after an image's end marker (checked only there: short signatures such as
  * ZIP's 4 bytes would match by chance anywhere in a large compressed file). */

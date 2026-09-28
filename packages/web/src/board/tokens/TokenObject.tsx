@@ -42,7 +42,7 @@ import { pressToken } from "../move/input.ts";
 import { TIERS, useTier } from "../tiers.ts";
 import { withFog } from "../vision/fogMaterial.ts";
 import { AUTO_COIN_PITCH, approach, crossfadeStep } from "./crossfade.ts";
-import { overlayClear, overlayOffset, PRIORITY, registerOverlay } from "./declutter.ts";
+import { overlayClear, overlayOffset, PRIORITY, registerOverlay, setOverlayBody } from "./declutter.ts";
 import { canRaise, heightLabel } from "./elevation.ts";
 import { cylinder, plane, torus } from "./geometries.ts";
 import { hiddenBadgeTexture, initialsTexture } from "./glyphs.ts";
@@ -118,6 +118,7 @@ const PLATE_GAP = 0.2;
 /** A token's silhouette on screen (normalised device coordinates). */
 interface Silhouette {
   top: number;
+  bottom: number;
   left: number;
   right: number;
 }
@@ -339,11 +340,13 @@ export const TokenObject = memo(function TokenObject({
     if (!rt) return false;
     origin.setFromMatrixPosition(rt.matrixWorld);
     out.top = Number.NEGATIVE_INFINITY;
+    out.bottom = Number.POSITIVE_INFINITY;
     out.left = Number.POSITIVE_INFINITY;
     out.right = Number.NEGATIVE_INFINITY;
     const take = (v: Vector3) => {
       v.project(cam);
       if (v.y > out.top) out.top = v.y;
+      if (v.y < out.bottom) out.bottom = v.y;
       if (v.x < out.left) out.left = v.x;
       if (v.x > out.right) out.right = v.x;
     };
@@ -375,6 +378,10 @@ export const TokenObject = memo(function TokenObject({
   /** The top's height now: in auto mode, the coin's or the standee's, whichever is showing. */
   const topNow = () =>
     mode === "auto" ? (coinW.current > 0.5 ? COIN_H : standeeH + BASE_H) : Math.max(topY, 0.3);
+
+  // Where it first stands (the frames glide it from there): set at mount, so nothing that looks before its first frame
+  // (a click's raycast, a probe) finds it at the board's origin.
+  const [spawnAt] = useState<[number, number, number]>(() => [token.pos.x, token.elevation, token.pos.y]);
 
   // ── per frame: glide to position, facing, auto crossfade, billboarding, pulse ─────────────────────────
   useFrame((state) => {
@@ -534,7 +541,7 @@ export const TokenObject = memo(function TokenObject({
   };
 
   return (
-    <group ref={root} name={`token:${token.id}`} userData={{ tokenId: token.id }}>
+    <group ref={root} name={`token:${token.id}`} userData={{ tokenId: token.id }} position={spawnAt}>
       <group
         ref={body}
         position-y={lift}
@@ -900,7 +907,7 @@ function Overlay({
   useEffect(() => () => disposeLater(chip), [chip]);
   const chipMesh = useRef<Mesh>(null);
   const barMesh = useRef<Mesh>(null);
-  const shape = useRef<Silhouette>({ top: 0, left: 0, right: 0 });
+  const shape = useRef<Silhouette>({ top: 0, bottom: 0, left: 0, right: 0 });
   /** The plate's lowest edge below its origin (plate units), from the last layout. */
   const lowest = useRef(-BAR_H / 2 - CHIP_PAD_Y);
 
@@ -954,7 +961,20 @@ function Overlay({
     // perspective: find the spot in screen space, then put the anchor there at the depth of the token's top.
     // Moved aside by the declutter layout when its own spot is taken (a leader line then points back to the token).
     const off = overlayOffset(token.id);
-    if (a0 && rt && screenTop(cam, shape.current)) {
+    const seen = a0 && rt && screenTop(cam, shape.current);
+    // Its body on screen: other plates moved aside keep off it (declutter.ts).
+    if (seen) {
+      const s = shape.current;
+      const W = state.size.width;
+      const H = state.size.height;
+      setOverlayBody(token.id, {
+        x0: ((s.left + 1) / 2) * W,
+        x1: ((s.right + 1) / 2) * W,
+        y0: ((1 - s.top) / 2) * H,
+        y1: ((1 - s.bottom) / 2) * H,
+      });
+    } else setOverlayBody(token.id, null);
+    if (a0 && rt && seen) {
       const liftPx = (PLATE_GAP - lowest.current) * pxPerPlate;
       at.x = (shape.current.left + shape.current.right) / 2 + (off.dx * 2) / state.size.width;
       at.y = shape.current.top + (liftPx * 2) / state.size.height - (off.dy * 2) / state.size.height;
@@ -1043,13 +1063,8 @@ function Overlay({
     const wordB = wordText.current?.textRenderInfo?.blockBounds;
     const nameW = nameB ? nameB[2] - nameB[0] : 0;
     const nameTop = BAR_H / 2 + NAME_GAP + (nameB ? nameB[3] - nameB[1] : NAME_SIZE * 1.2);
-    const barW = showBar ? Math.max(BAR_W, numB ? numB[2] - numB[0] + 0.7 : 0) : 0;
-    barWidth.current = barW;
-    const wordW = wordB ? wordB[2] - wordB[0] : 0;
-    const bm = barMesh.current;
-    if (bm) bm.scale.set(barW, BAR_H, 1);
-    let bottom = showBar || descriptor ? -BAR_H / 2 : BAR_H / 2 + NAME_GAP;
-    // Pinned counters stack under the bar: label left, numbers right, the gauge as wide as the bar (or its text).
+    // Pinned counters stack under the bar: label left, numbers right, over a gauge. The HP bar and the gauges share
+    // one width — the widest of the bar's numbers and the counters' text.
     let pinW = 0;
     for (let i = 0; i < pins.length; i++) {
       const r = pinRows.current[i];
@@ -1057,6 +1072,12 @@ function Overlay({
       const vb = r?.value?.textRenderInfo?.blockBounds;
       pinW = Math.max(pinW, (lb ? lb[2] - lb[0] : 0) + (vb ? vb[2] - vb[0] : 0) + 0.6);
     }
+    const barW = showBar ? Math.max(BAR_W, numB ? numB[2] - numB[0] + 0.7 : 0, pinW) : 0;
+    barWidth.current = barW;
+    const wordW = wordB ? wordB[2] - wordB[0] : 0;
+    const bm = barMesh.current;
+    if (bm) bm.scale.set(barW, BAR_H, 1);
+    let bottom = showBar || descriptor ? -BAR_H / 2 : BAR_H / 2 + NAME_GAP;
     const gaugeW = pins.length ? Math.max(barW || BAR_W, pinW) : 0;
     for (let i = 0; i < pins.length; i++) {
       const r = pinRows.current[i];

@@ -1,7 +1,7 @@
 import { ImagePlus, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { request } from "../../net/table.ts";
-import type { AssetItem } from "../../state/library.ts";
+import { type AssetItem, useLibrary } from "../../state/library.ts";
 import { toast } from "../../ui/Toast.tsx";
 import { UploadZone } from "../dm/UploadZone.tsx";
 import { useAssetImage } from "../useAssetImage.ts";
@@ -25,6 +25,8 @@ export function AssetPicker({
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<AssetItem[] | null>(null);
   const current = useAssetImage(value, 96);
+  // An upload's approval (or rejection) arrives while the picker is open: the library store has the news.
+  const live = useLibrary((s) => s.assets);
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
@@ -70,17 +72,20 @@ export function AssetPicker({
           {items === null ? <p className="text-13 text-muted">Loading…</p> : null}
           {items?.length === 0 ? <p className="text-13 text-muted">No images yet — upload one.</p> : null}
           <div className="grid grid-cols-4 gap-1.5">
-            {items?.map((a) => (
-              <PickerItem
-                key={a.id}
-                item={a}
-                chosen={a.id === value}
-                onPick={() => {
-                  onChange(a.id);
-                  setOpen(false);
-                }}
-              />
-            ))}
+            {items
+              ?.map((a) => live.get(a.id) ?? a)
+              .filter((a) => !a.deleted && a.status !== "rejected")
+              .map((a) => (
+                <PickerItem
+                  key={a.id}
+                  item={a}
+                  chosen={a.id === value}
+                  onPick={() => {
+                    onChange(a.id);
+                    setOpen(false);
+                  }}
+                />
+              ))}
           </div>
           <UploadZone
             purpose={purpose}

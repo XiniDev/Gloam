@@ -1,10 +1,11 @@
+import { useRef } from "react";
 import { useNavigate } from "react-router";
 import { type PresenceView, useTable } from "../net/table.ts";
 import { Sparkle } from "../ui/ornaments.tsx";
 import { Portrait } from "../ui/Portrait.tsx";
 import { SoundChip } from "../ui/SoundChip.tsx";
 import { hudOrder } from "./Intro.tsx";
-import { useIsPhone } from "./insets.ts";
+import { useCover, useIsPhone } from "./insets.ts";
 import { SettingsPopover } from "./SettingsPopover.tsx";
 
 function Initials({ p }: { p: PresenceView }) {
@@ -51,12 +52,19 @@ export function TopBar() {
   const me = useTable((s) => s.me);
   // A phone's top bar keeps its room for the title: the Admin console moves into Settings there.
   const phone = useIsPhone();
+  const title = useRef<HTMLDivElement>(null);
+  const people = useRef<HTMLDivElement>(null);
+  useCover("title", title);
+  useCover("people", people);
   return (
     <header
       {...hudOrder(0)}
       className="pointer-events-none absolute inset-x-0 top-0 z-40 flex h-14 items-center gap-3 px-3 sm:px-4"
     >
-      <div className="pointer-events-auto flex min-w-0 items-center gap-2 rounded-[var(--radius-control)] bg-[var(--scrim-soft)] px-3 py-1.5 backdrop-blur-[3px]">
+      <div
+        ref={title}
+        className="pointer-events-auto flex min-w-0 items-center gap-2 rounded-[var(--radius-control)] bg-[var(--scrim-soft)] px-3 py-1.5 backdrop-blur-[3px]"
+      >
         <Sparkle size={16} />
         <h1
           className={phone ? "line-clamp-2 text-14 leading-tight text-bone" : "truncate text-18 text-bone"}
@@ -69,7 +77,10 @@ export function TopBar() {
         ) : null}
       </div>
       {/* Backed like the title: the grey sound and settings icons stay readable over pale stone. */}
-      <div className="pointer-events-auto ml-auto flex items-center gap-1.5 rounded-[var(--radius-control)] bg-[var(--scrim-soft)] py-1 pl-2 pr-1 backdrop-blur-[3px] sm:gap-3">
+      <div
+        ref={people}
+        className="pointer-events-auto ml-auto flex items-center gap-1.5 rounded-[var(--radius-control)] bg-[var(--scrim-soft)] py-1 pl-2 pr-1 backdrop-blur-[3px] sm:gap-3"
+      >
         {/* 16-px gaps: a portrait's seal or raised hand never touches its neighbour's ring. */}
         <ul className="flex items-center gap-4" aria-label="At the table">
           {presence

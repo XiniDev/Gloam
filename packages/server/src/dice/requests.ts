@@ -7,6 +7,7 @@
  */
 import type { Ability, SkillId } from "@gloam/shared";
 import { GloamError, type RequestCard } from "@gloam/shared/protocol";
+import { ABILITY_NAMES, skillName } from "@gloam/shared/rules";
 import { desc, eq } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import { rollRequests } from "../db/schema.ts";
@@ -55,21 +56,6 @@ export interface RollRequest {
   closedAt: number | null;
 }
 
-const ABILITY_NAME: Record<Ability, string> = {
-  str: "Strength",
-  dex: "Dexterity",
-  con: "Constitution",
-  int: "Intelligence",
-  wis: "Wisdom",
-  cha: "Charisma",
-};
-
-const SKILL_NAME = (s: SkillId) =>
-  s
-    .replace(/([A-Z])/g, " $1")
-    .replace(/^./, (c) => c.toUpperCase())
-    .trim();
-
 /** The formula a request asks of everyone, with its `@` references (resolved per target). */
 export function requestFormula(p: {
   type: RequestType;
@@ -98,9 +84,9 @@ export function requestLabel(p: {
   label?: string | undefined;
 }): string {
   if (p.label) return p.label;
-  if (p.type === "save" && p.ability) return `${ABILITY_NAME[p.ability]} save`;
-  if (p.type === "check" && p.skill) return `${SKILL_NAME(p.skill)} check`;
-  if (p.type === "check" && p.ability) return `${ABILITY_NAME[p.ability]} check`;
+  if (p.type === "save" && p.ability) return `${ABILITY_NAMES[p.ability]} save`;
+  if (p.type === "check" && p.skill) return `${skillName(p.skill)} check`;
+  if (p.type === "check" && p.ability) return `${ABILITY_NAMES[p.ability]} check`;
   return p.type === "attack" ? "Attack" : "Roll";
 }
 

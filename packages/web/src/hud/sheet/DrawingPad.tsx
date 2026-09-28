@@ -25,7 +25,8 @@ export function DrawingPad({
 }: {
   open: boolean;
   onClose: () => void;
-  onUse: (assetId: string, as: DrawingUse) => void;
+  /** The drawing, saved: usable now, or (a player's) once the DM approves it. */
+  onUse: (assetId: string, as: DrawingUse, approved: boolean) => void;
 }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const base = useRef<HTMLCanvasElement | null>(null);
@@ -62,14 +63,16 @@ export function DrawingPad({
       if (g) drawStroke(g, s);
     });
     redraw();
+    // The pad's own undo and redo, ahead of everything (the table's undo never sees these keys while it's open).
     const onKey = (e: KeyboardEvent) => {
-      if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== "z") return;
+      if (!(e.ctrlKey || e.metaKey) || e.code !== "KeyZ") return;
       e.preventDefault();
+      e.stopImmediatePropagation();
       if (e.shiftKey) history.current?.redo();
       else history.current?.undo();
       redraw();
     };
-    window.addEventListener("keydown", onKey);
+    window.addEventListener("keydown", onKey, true);
     // Test builds: a journey draws strokes with given pressures, and reads the picture back.
     provideTestHook("drawStroke", (s: Stroke) => {
       history.current?.push(s);
@@ -79,7 +82,7 @@ export function DrawingPad({
       const g = canvas.current?.getContext("2d");
       return g ? Array.from(g.getImageData(0, 0, PAD_SIZE, PAD_SIZE).data) : null;
     });
-    return () => window.removeEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey, true);
   }, [open, redraw]);
 
   const point = (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -119,11 +122,14 @@ export function DrawingPad({
         },
       );
       if (asset.status === "approved") {
-        onUse(asset.id, as);
+        onUse(asset.id, as, true);
         toast.success(
           as === "portrait" ? "Your new portrait" : as === "standee" ? "Your new standee" : "Your new coin",
         );
-      } else toast.info("Sent to the DM", "It becomes yours to use once they approve it.");
+      } else {
+        onUse(asset.id, as, false);
+        toast.info("Sent to the DM", "It goes on your character as soon as they approve it.");
+      }
       onClose();
     } catch (e) {
       toast.danger("Couldn't save the drawing", (e as Error).message);
@@ -218,6 +224,7 @@ export function DrawingPad({
         <div className="grid grid-cols-[1fr_auto] items-center gap-3">
           <Slider
             label="Size"
+            labelled
             value={size}
             min={1}
             max={48}
@@ -242,10 +249,13 @@ export function DrawingPad({
           </label>
         </div>
         <div
-          className="relative mx-auto aspect-square w-full max-w-[560px] overflow-hidden rounded-[var(--radius-control)] border border-line"
+          // Square, and all of it on screen with the tools above and the buttons below (never scrolled to draw).
+          className="relative mx-auto aspect-square w-[min(100%,560px,calc(100dvh-360px))] shrink-0 overflow-hidden rounded-[var(--radius-control)] border border-line"
+          // A light checkerboard (transparency, as image editors show it): ink reads on it as on paper.
           style={{
+            backgroundColor: "var(--parchment-100)",
             backgroundImage:
-              "linear-gradient(45deg, var(--ink-800) 25%, transparent 25%), linear-gradient(-45deg, var(--ink-800) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, var(--ink-800) 75%), linear-gradient(-45deg, transparent 75%, var(--ink-800) 75%)",
+              "linear-gradient(45deg, var(--parchment-200) 25%, transparent 25%), linear-gradient(-45deg, var(--parchment-200) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, var(--parchment-200) 75%), linear-gradient(-45deg, transparent 75%, var(--parchment-200) 75%)",
             backgroundSize: "20px 20px",
             backgroundPosition: "0 0, 0 10px, 10px -10px, -10px 0",
           }}

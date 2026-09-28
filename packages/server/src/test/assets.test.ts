@@ -249,7 +249,8 @@ describe("P2 — assets and uploads (AST)", () => {
     const lobby = await joinAsNew(t, code, "Lobbyist");
     const art = await noisePng(2300, 2300); // ≈ 15.9 MB of incompressible pixels
     const first = await upload(lobby.agent, "art", "me.png", art);
-    expect(first.status).toBe(200);
+    // (Its message says why, should it ever be refused — seen once under a full parallel run.)
+    expect(first.status, first.error?.message).toBe(200);
     expect(first.asset?.status).toBe("pending");
     const second = await upload(lobby.agent, "art", "me-again.png", await noisePng(2310, 2300));
     expect(second.status).toBe(413);

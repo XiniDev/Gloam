@@ -1,6 +1,6 @@
 import { ABILITIES, SKILL_IDS, SKILLS } from "@gloam/shared";
 import type { DerivedKey } from "@gloam/shared/schemas";
-import type { SheetCtx } from "../context.ts";
+import { overrideDerived, type SheetCtx } from "../context.ts";
 import { DerivedValue, NumberField, Rollable, SectionTitle } from "../primitives.tsx";
 import { type AbilityKey, abilityName, signed, skillName } from "../sheetActions.ts";
 
@@ -20,12 +20,7 @@ export function AbilitiesTab({ ctx }: { ctx: SheetCtx }) {
   const c = ctx.sheet.core;
   const d = ctx.derived;
   const ro = !ctx.canEdit;
-  const override = (key: DerivedKey, v: number | undefined) => {
-    const next = { ...c.overrides };
-    if (v === undefined) delete next[key];
-    else next[key] = v;
-    void ctx.set(["core", "overrides"], next);
-  };
+  const override = (key: DerivedKey, v: number | undefined) => overrideDerived(ctx, key, v);
   const derived = (key: DerivedKey, label: string, formula: string, rollLabel: string) => (
     <DerivedValue
       value={d.values[key]}

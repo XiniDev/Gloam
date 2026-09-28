@@ -2,7 +2,7 @@ import { ABILITIES } from "@gloam/shared";
 import type { DerivedKey } from "@gloam/shared/schemas";
 import { useState } from "react";
 import { toast } from "../../../ui/Toast.tsx";
-import type { SheetCtx } from "../context.ts";
+import { overrideDerived, type SheetCtx } from "../context.ts";
 import { DerivedValue, NumberField, Pips, RollButton, SectionTitle } from "../primitives.tsx";
 import { type AbilityKey, abilityName, signed } from "../sheetActions.ts";
 import { AddButton, RemoveButton } from "./OverviewTab.tsx";
@@ -46,12 +46,7 @@ export function SpellsTab({ ctx }: { ctx: SheetCtx }) {
       </div>
     );
   const d = ctx.derived;
-  const override = (key: DerivedKey, v: number | undefined) => {
-    const next = { ...ctx.sheet.core.overrides };
-    if (v === undefined) delete next[key];
-    else next[key] = v;
-    void ctx.set(["core", "overrides"], next);
-  };
+  const override = (key: DerivedKey, v: number | undefined) => overrideDerived(ctx, key, v);
   const cast = (level: number, name: string) => {
     if (level === 0) return;
     const i = sc.slots.findIndex((s) => s.level === level && s.used < s.max);

@@ -1,5 +1,5 @@
 import type { ActorView } from "@gloam/shared/protocol";
-import { diffSheet, pathLabel } from "@gloam/shared/rules";
+import { diffSheet, fieldLabel, pathLabel } from "@gloam/shared/rules";
 import {
   CHARACTER_AI_PROMPT,
   CHARACTER_SCHEMA_MARKER,
@@ -17,7 +17,8 @@ import { Dialog } from "../../ui/Dialog.tsx";
 import { toast } from "../../ui/Toast.tsx";
 import { mayEdit } from "./sheetActions.ts";
 
-type Checked = { ok: true; sheet: Sheet } | { ok: false; issues: { path: string; message: string }[] } | null;
+type Issue = { path: (string | number)[]; message: string };
+type Checked = { ok: true; sheet: Sheet } | { ok: false; issues: Issue[] } | null;
 
 const short = (v: unknown) => {
   const s = v === undefined ? "—" : typeof v === "object" ? JSON.stringify(v) : String(v);
@@ -58,7 +59,7 @@ export function ImportDialog({
     } catch {
       return setChecked({
         ok: false,
-        issues: [{ path: "(the text)", message: "That isn't JSON — paste the whole object." }],
+        issues: [{ path: [], message: "That isn't JSON — paste the whole object." }],
       });
     }
     const r = Sheet.safeParse(doc);
@@ -68,7 +69,7 @@ export function ImportDialog({
         ok: false,
         issues: r.error.issues
           .slice(0, 20)
-          .map((i) => ({ path: i.path.join(".") || "(the sheet)", message: i.message })),
+          .map((i) => ({ path: i.path as (string | number)[], message: i.message })),
       });
   };
   const copyPrompt = async () => {
@@ -193,8 +194,16 @@ export function ImportDialog({
             <p className="text-13 font-bold text-danger-text">That isn't a sheet Gloam can read:</p>
             <ul className="mt-1 flex flex-col gap-0.5 text-13 text-muted">
               {checked.issues.map((i) => (
-                <li key={`${i.path}:${i.message}`}>
-                  <span className="mono text-bone">{i.path}</span> — {i.message}
+                <li key={`${i.path.join(".")}:${i.message}`}>
+                  {i.path.length ? (
+                    <>
+                      <span className="text-bone">{fieldLabel(i.path)}</span>{" "}
+                      <span className="mono text-12 text-fog">({pathLabel(i.path)})</span>
+                    </>
+                  ) : (
+                    <span className="text-bone">The text</span>
+                  )}{" "}
+                  — {i.message}
                 </li>
               ))}
             </ul>
@@ -232,8 +241,8 @@ export function ImportDialog({
                 </p>
                 <ul className="mt-1 flex max-h-48 flex-col gap-0.5 overflow-y-auto text-13">
                   {diff.slice(0, 80).map((c) => (
-                    <li key={pathLabel(c.path)} className="flex flex-wrap gap-1.5">
-                      <span className="mono text-paper-muted">{pathLabel(c.path)}</span>
+                    <li key={pathLabel(c.path)} className="flex flex-wrap gap-1.5" title={pathLabel(c.path)}>
+                      <span className="text-paper-muted">{fieldLabel(c.path, checked.sheet)}</span>
                       <span className="line-through opacity-70">{short(c.before)}</span>
                       <span aria-hidden>→</span>
                       <span className="font-bold">{short(c.after)}</span>

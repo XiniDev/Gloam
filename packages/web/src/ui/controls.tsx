@@ -72,6 +72,7 @@ export function Segmented<T extends string>({
   size = "M",
   phoneColumns,
   fill = false,
+  tone = "ink",
 }: {
   value: T;
   onChange: (v: T) => void;
@@ -82,7 +83,10 @@ export function Segmented<T extends string>({
   phoneColumns?: 2 | 3 | 4;
   /** The full width of its row, every segment the same width (a panel's own row, not a toolbar's). */
   fill?: boolean;
+  /** On a parchment surface (a sheet): ink on paper, the chosen segment sealed in wax. */
+  tone?: "ink" | "paper";
 }) {
+  const paper = tone === "paper";
   const layout = fill
     ? "grid w-full grid-flow-col auto-cols-fr"
     : phoneColumns === 2
@@ -96,7 +100,9 @@ export function Segmented<T extends string>({
     <div
       role="radiogroup"
       aria-label={label}
-      className={`${layout} gap-1 rounded-[var(--radius-control)] border border-line bg-ink-900 p-1`}
+      className={`${layout} gap-1 rounded-[var(--radius-control)] border p-1 ${
+        paper ? "border-parchment-edge bg-parchment-deep/60" : "border-line bg-ink-900"
+      }`}
     >
       {options.map((o) => {
         const active = o.value === value;
@@ -111,7 +117,15 @@ export function Segmented<T extends string>({
             onClick={() => onChange(o.value)}
             className={`relative inline-flex min-h-[var(--touch-min)] min-w-[var(--touch-min)] items-center justify-center whitespace-nowrap rounded-chip px-3 font-bold transition-[background-color,color,box-shadow] duration-[var(--dur-fast)] ease-[var(--ease-out)] disabled:opacity-40 ${
               size === "S" ? "h-8 text-13" : "h-9 text-14"
-            } ${active ? "bg-raised text-brass-bright shadow-[inset_0_-2px_0_var(--brass-400)]" : "text-muted shadow-[inset_0_-2px_0_transparent] hover:text-bone"}`}
+            } ${
+              paper
+                ? active
+                  ? "bg-parchment text-paper-ink shadow-[inset_0_-2px_0_var(--wax-500)]"
+                  : "text-paper-muted shadow-[inset_0_-2px_0_transparent] hover:text-paper-ink"
+                : active
+                  ? "bg-raised text-brass-bright shadow-[inset_0_-2px_0_var(--brass-400)]"
+                  : "text-muted shadow-[inset_0_-2px_0_transparent] hover:text-bone"
+            }`}
           >
             {o.label}
           </button>
@@ -178,6 +192,7 @@ export function Slider({
   format = (v) => `${Math.round(v * 100)}%`,
   disabled = false,
   className = "",
+  labelled = false,
 }: {
   value: number;
   onChange: (v: number) => void;
@@ -188,11 +203,13 @@ export function Slider({
   format?: (v: number) => string;
   disabled?: boolean;
   className?: string;
+  /** Its label and value shown above the track (where no row label names it). */
+  labelled?: boolean;
 }) {
   const [active, setActive] = useState(false);
   const f = max > min ? (Math.min(max, Math.max(min, value)) - min) / (max - min) : 0;
-  return (
-    <div className={`relative flex items-center ${className}`}>
+  const track = (
+    <div className={`relative flex items-center ${labelled ? "" : className}`}>
       <input
         type="range"
         aria-label={label}
@@ -219,6 +236,16 @@ export function Slider({
           {format(value)}
         </span>
       ) : null}
+    </div>
+  );
+  if (!labelled) return track;
+  return (
+    <div className={`flex flex-col gap-1 ${className}`}>
+      <div className="flex items-baseline justify-between gap-2" aria-hidden>
+        <span className="caps text-12 text-fog">{label}</span>
+        <span className="tabular text-12 text-muted">{format(value)}</span>
+      </div>
+      {track}
     </div>
   );
 }

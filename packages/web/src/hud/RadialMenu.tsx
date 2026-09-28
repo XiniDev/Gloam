@@ -82,21 +82,6 @@ export function RadialMenu() {
         icon: <ScrollText size={18} />,
         run: () => void openSheetFor(id),
       });
-    // A DM asks for a roll: the selection (this token among it) goes to DM panel → Requests (§8.9 Roll requests).
-    if (dm)
-      out.push({
-        id: "request",
-        label: "Request a roll",
-        icon: <Dices size={18} />,
-        run: () => {
-          const sel = useUi.getState().selection;
-          useUi.getState().set({
-            dock: "dm",
-            dmSection: "requests",
-            requestTargets: sel.includes(id) ? sel : [id],
-          });
-        },
-      });
     if (controls && (dm || !token.locked)) {
       out.push({
         id: "elevation",
@@ -189,6 +174,20 @@ export function RadialMenu() {
         out.push({ id: "light", label: "Light", icon: <Flame size={18} />, ring: lightRing.slice(0, 8) });
     }
     if (dm) {
+      // A DM asks for a roll: the selection (this token among it) goes to DM panel → Requests (§8.9 Roll requests).
+      out.push({
+        id: "request",
+        label: "Request a roll",
+        icon: <Dices size={18} />,
+        run: () => {
+          const sel = useUi.getState().selection;
+          useUi.getState().set({
+            dock: "dm",
+            dmSection: "requests",
+            requestTargets: sel.includes(id) ? sel : [id],
+          });
+        },
+      });
       out.push(
         token.dm?.dmHidden
           ? {

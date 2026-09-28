@@ -10,6 +10,7 @@ import { applyPatch, type JsonPatchOp } from "@gloam/shared/rules";
 import type { Sheet } from "@gloam/shared/schemas";
 import { create } from "zustand";
 import { provideTestHook } from "../test/hooks.ts";
+import { toast } from "../ui/Toast.tsx";
 import { request, tableEvents, useTable } from "./table.ts";
 
 interface SheetsStore {
@@ -80,6 +81,19 @@ function onMessage(type: string, payload: unknown): void {
     case "proposal.new":
     case "proposal.update": {
       const v = payload as ProposalView;
+      // The player hears the DM's answer to their own proposal, wherever they are.
+      const was = s.proposals.get(v.id);
+      if (
+        was?.status === "pending" &&
+        v.status !== "pending" &&
+        v.userId === useTable.getState().me?.userId
+      ) {
+        const what = v.changes.map((c) => c.label).join(", ");
+        if (v.status === "approved")
+          toast.success(`The DM approved your change to ${v.actorName}`, v.decisionNote || what);
+        else if (v.status === "denied")
+          toast.warning(`The DM declined your change to ${v.actorName}`, v.decisionNote || what);
+      }
       const proposals = new Map(s.proposals);
       proposals.set(v.id, v);
       s.set({ proposals });

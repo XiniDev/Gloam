@@ -30,7 +30,7 @@ import { usePings } from "./PingLayer.tsx";
 import { editPerf } from "./perf.ts";
 import { resourceStats } from "./resources.ts";
 import { TIERS, TierGovernor, useTier } from "./tiers.ts";
-import { overlayDiagnostics } from "./tokens/declutter.ts";
+import { overlayDiagnostics, plateCovers } from "./tokens/declutter.ts";
 import { createHpBarMaterial, setHpBar } from "./tokens/hpBar.ts";
 import { hpBarState, overlayFade } from "./tokens/TokenObject.tsx";
 import { current as currentMeasure, measuredFt, useMeasure } from "./tools/measure.ts";
@@ -265,6 +265,7 @@ export function TestProbe() {
         leader: leader(o.id),
       }));
     });
+    provideTestHook("plateCovers", () => plateCovers());
     provideTestHook("ui", () => {
       const u = useUi.getState();
       return { selection: u.selection, hover: u.hover, tool: u.tool, radial: u.radial };
@@ -370,6 +371,7 @@ export function TestProbe() {
     });
     /** The token as this viewer holds it (its view shape, tags included), or null. */
     provideTestHook("token", (id: string) => boardData(useEntities.getState()).tokens.get(id) ?? null);
+    provideTestHook("tokens", () => [...boardData(useEntities.getState()).tokens.values()]);
     // The tokens drawn (viewing as a player: exactly theirs).
     provideTestHook("visibleTokenIds", () => {
       const as = useViewAs.getState();

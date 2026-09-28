@@ -21,6 +21,7 @@ import { RadialMenu } from "../hud/RadialMenu.tsx";
 import { RequestCards } from "../hud/RequestCards.tsx";
 import { RollFeed } from "../hud/RollFeed.tsx";
 import { SceneTransition } from "../hud/SceneTransition.tsx";
+import { watchPendingArt } from "../hud/sheet/art.ts";
 import { TopBar } from "../hud/TopBar.tsx";
 import { useUndoKeys } from "../hud/useUndoKeys.ts";
 import { ViewAsBanner } from "../hud/ViewAsBanner.tsx";
@@ -57,6 +58,7 @@ export default function TableRoute() {
   useEffect(() => watchFog(), []);
   useEffect(() => watchDice(), []);
   useEffect(() => watchSheets(), []);
+  useEffect(() => watchPendingArt(), []);
   useEffect(() => {
     let cancelled = false;
     const offs: (() => void)[] = [];

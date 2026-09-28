@@ -159,6 +159,8 @@ function BlockBody({ block: b, index: i, ctx }: { block: CustomBlock; index: num
     case "number":
       return (
         <input
+          // A change from elsewhere (the DM, another tab) shows at once: a new value is a fresh field.
+          key={String(b.value)}
           aria-label={`${b.title} value`}
           inputMode="decimal"
           disabled={ro}

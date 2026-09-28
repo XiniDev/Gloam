@@ -5,7 +5,7 @@ import { useTable } from "../net/table.ts";
 import { useUi } from "../state/ui.ts";
 import { Tooltip } from "../ui/Tooltip.tsx";
 import { ElevationControl } from "./ElevationControl.tsx";
-import { insetMeasures, useMeasuredInset } from "./insets.ts";
+import { insetMeasures, useCover, useMeasuredInset } from "./insets.ts";
 
 const typing = (t: EventTarget | null) => {
   const el = t as HTMLElement | null;
@@ -43,6 +43,7 @@ function Bar({ tray }: { tray: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
   // Its band along the bottom is the HUD's: the camera frames above it.
   useMeasuredInset("bottom", ref, insetMeasures.bottom);
+  useCover("actions", ref);
   return (
     <div className="pointer-events-none absolute bottom-4 left-1/2 z-30 flex -translate-x-1/2 items-end gap-2">
       {/* The creature's controls in their own panel; the dice button stands on its own, round (no tile round it). */}

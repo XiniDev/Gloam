@@ -503,10 +503,10 @@
       "code": "TOK",
       "phase": "P6",
       "text": "Linked and unlinked tokens behave as specified: goblins spawned from one Bestiary entry keep separate HP and conditions; a player character shows the same HP and conditions on every scene; unlinking a token copies the current values; relinking asks before overwriting.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p6-sheets.spec.ts › AC-TOK-13 part: Mira's linked token shows the sheet's HP and Prone on the Crypt and, placed on the Great hall, the same; three unlinked goblins from one creature keep their own HP (2/7, 7/7, 7/7) and none takes the creature's condition; unlinking in the sheet's Token tab copies 16 HP and a later heal doesn't reach it; relinking asks (Keep its own / Replace with the sheet's) and replacing shows 17; server: sheets.test.ts › AC-TOK-13 (server); artifacts/screens/p6/goblins-own-hp.png, relink-ask.png",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-28T15:49:05.229Z"
     },
     {
       "id": "AC-MOV-01",
@@ -1009,10 +1009,10 @@
       "code": "DICE",
       "phase": "P6",
       "text": "Roll requests deliver a card with Roll / Enter / Skip to each target, show the DM live status and success/failure against a hidden DC, and allow the DM to roll for a player.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p6-requests.spec.ts › AC-DICE-06: the DM asks the party (All party) for a Dexterity save with a hidden DC 14 from DM panel › Requests; each player gets a card for their own character with the formula from their sheet (1d20 + 2 / 1d20 + 1), Roll / Enter physical roll / Skip, no DC; one rolls on the server, one enters 11; the DM's live board shows each state and total, pass/fail in the success/danger colours, Set result makes a ruling, Close clears every card; from the radial menu a blind Perception check: the goblins rolled with one click, Roll for them uses Thorin's modifiers, his card shows it was rolled but never the number; server: packages/server/src/test/requests.test.ts; artifacts/screens/p6/request-card.png, request-board.png, request-board-blind.png",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-28T16:34:35.381Z"
     },
     {
       "id": "AC-DICE-07",
@@ -1075,10 +1075,10 @@
       "code": "SHEET",
       "phase": "P6",
       "text": "Quick create makes a playable character (name, class/level, HP, AC, speed, darkvision, art) in one dialog.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p6-sheets.spec.ts › AC-SHEET-01…: a player's Quick create (name, Fighter 3, HP, AC, speed, darkvision, portrait uploaded → approved by the DM in Approvals → picked) makes a placed, playable character; server: packages/server/src/test/sheets.test.ts › AC-SHEET-01; artifacts/screens/p6/sheet-overview.png",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-28T15:49:04.817Z"
     },
     {
       "id": "AC-SHEET-02",
@@ -1086,10 +1086,10 @@
       "code": "SHEET",
       "phase": "P6",
       "text": "Derived values compute correctly (unit tests against worked examples) and every derived field can be overridden and reverted.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/shared/src/rules/sheet.test.ts › derived sheet values (worked Thorin example, half/expertise, casters, multiclass, every override and revert); e2e/journeys/p6-sheets.spec.ts › AC-SHEET-02 part: Perception follows WIS and proficiency, is set by hand (passive follows) and reverted, a level override moves proficiency, every derived field offers Set by hand; artifacts/screens/p6/sheet-override.png",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-28T15:49:04.887Z"
     },
     {
       "id": "AC-SHEET-03",
@@ -1097,10 +1097,10 @@
       "code": "SHEET",
       "phase": "P6",
       "text": "Custom blocks of all seven types can be added, renamed, reordered and deleted; counters can be pinned to the token as an extra bar.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p6-sheets.spec.ts › AC-SHEET-03…: all seven block kinds added through the UI, renamed, filled, Sanity moved to the top, the image block removed; the pinned counter draws as a labelled gauge under the HP bar for DM and player (probe parts pinned:0) and follows its value; artifacts/screens/p6/sheet-custom.png, token-pinned-bar.png",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-28T15:49:04.956Z"
     },
     {
       "id": "AC-SHEET-04",
@@ -1108,10 +1108,10 @@
       "code": "SHEET",
       "phase": "P6",
       "text": "Sheet templates can be saved and used to create new characters.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p6-sheets.spec.ts › AC-SHEET-04 part: Save custom blocks as a template… then Quick create from it gives the same kinds and titles in order with values cleared (counter full, ticks off, pair values empty, new ids); server: sheets.test.ts › AC-SHEET-04",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-28T15:49:05.023Z"
     },
     {
       "id": "AC-SHEET-05",
@@ -1119,10 +1119,10 @@
       "code": "SHEET",
       "phase": "P6",
       "text": "The three lock levels restrict exactly the specified fields; proposals on locked fields reach the DM with a diff and apply only on approval.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p6-sheets.spec.ts › AC-SHEET-05 part: Core locked lets HP through and turns AC into a proposal (dialog shows AC 12→15, note), the DM sees it in Approvals with the diff and note, approving applies it and tells the player, declining with a note changes nothing and tells the player why; Fully locked turns even HP into a proposal; server: sheets.test.ts › AC-SHEET-05 (both); artifacts/screens/p6/propose-dialog.png, approvals-proposal.png",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-28T15:49:05.090Z"
     },
     {
       "id": "AC-SHEET-06",
@@ -1130,10 +1130,10 @@
       "code": "SHEET",
       "phase": "P6",
       "text": "JSON import validates against the published schema, shows a preview/diff, and rejects invalid input with readable errors; export → import round-trips losslessly.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p6-sheets.spec.ts › AC-SHEET-06 / AC-SHEET-07: Export JSON downloads exactly the stored sheet; Import JSON refuses non-JSON and schema breaches with readable names and paths (Strength score (core.abilities.str) — Too big…), creates/replaces nothing; a good file shows a preview and a 2-change diff (Max HP, Background) before Replace; export → import as a new character gives an identical sheet; server: sheets.test.ts › AC-SHEET-06; shared: rules/sheet.test.ts › the sheet document; artifacts/screens/p6/import-errors.png, import-preview.png",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-28T15:52:55.671Z"
     },
     {
       "id": "AC-SHEET-07",
@@ -1141,10 +1141,10 @@
       "code": "SHEET",
       "phase": "P6",
       "text": "The Import-with-AI dialog copies a prompt that contains the current JSON Schema and the conversion rules from Appendix F.3.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p6-sheets.spec.ts › AC-SHEET-06 / AC-SHEET-07: Import with AI › Copy AI prompt puts F.3's prompt on the clipboard (lastCopied hook) with this table's /api/v1/schemas/character.json in place of its marker and F.3's rules word for word; a fenced assistant reply previews as a sheet; shared: rules/sheet.test.ts › the Import-with-AI prompt; artifacts/screens/p6/import-ai.png",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-28T15:52:55.737Z"
     },
     {
       "id": "AC-SHEET-08",
@@ -1152,10 +1152,10 @@
       "code": "SHEET",
       "phase": "P6",
       "text": "Every roll-able element rolls the right formula; Alt/Ctrl modifiers and the touch long-press menu set advantage/disadvantage.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p6-sheets.spec.ts › AC-SHEET-08 part: all 31 rollables of Abilities carry the formula their label names; rolled, the server resolves @skill.perception = 4 from the sheet; Alt → '… adv' (higher of 2d20 kept), Ctrl → '… dis' (lower kept); a touch long press opens Normal/Advantage/Disadvantage/Physical and rolls nothing itself; the tray rolls with the selected token's references; packages/web/src/hud/sheet/rollMode.test.ts; artifacts/screens/p6/sheet-longpress.png",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-28T15:49:05.156Z"
     },
     {
       "id": "AC-SHEET-09",
@@ -1174,10 +1174,10 @@
       "code": "SHEET",
       "phase": "P6",
       "text": "The drawing pad produces a transparent PNG with pressure-sensitive strokes and undo/redo, usable as portrait and token art.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p6-art.spec.ts › AC-SHEET-10 / AC-SHEET-11: real pen input (Chromium pointerType pen, pressure 0.15 vs 0.95) draws strokes more than twice as wide under pressure on a transparent 1024² canvas; Ctrl+Z / Ctrl+Shift+Z and the Undo/Redo buttons take the stroke away and back (the table's undo never sees the keys); Use as portrait → the DM approves → it goes on the character by itself, stored 1024×1024 with alpha; Use as standee → token art and standee mode on its token; packages/web/src/hud/sheet/drawing.test.ts; artifacts/screens/p6/drawing-pad.png",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-28T16:11:01.545Z"
     },
     {
       "id": "AC-SHEET-11",
@@ -1185,10 +1185,10 @@
       "code": "SHEET",
       "phase": "P6",
       "text": "Paper cutout turns a photo of a drawing on white paper into a clean transparent sticker, with adjustable tolerance and outline.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p6-art.spec.ts › AC-SHEET-10 / AC-SHEET-11: a photo of a stick figure on shaded paper with specks and a pencil smudge becomes a sticker trimmed to the figure (paper, specks and smudge gone), clear corners, a white outline round the ink; Outline 0 removes the outline, max widens it; Paper tolerance at its tightest keeps the smudge, back at 18 drops it; Use as portrait → approved → applied, stored with alpha; packages/web/src/hud/sheet/cutout.test.ts; artifacts/screens/p6/paper-cutout.png",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-28T16:11:01.653Z"
     },
     {
       "id": "AC-HP-01",

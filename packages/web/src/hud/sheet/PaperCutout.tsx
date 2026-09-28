@@ -49,7 +49,8 @@ export function PaperCutout({
 }: {
   open: boolean;
   onClose: () => void;
-  onUse: (assetId: string, as: "portrait" | "token") => void;
+  /** The sticker, saved: usable now, or (a player's) once the DM approves it. */
+  onUse: (assetId: string, as: "portrait" | "token", approved: boolean) => void;
 }) {
   const [bitmap, setBitmap] = useState<ImageBitmap | null>(null);
   const [opts, setOpts] = useState<CutoutOptions>(CUTOUT_DEFAULTS);
@@ -103,9 +104,12 @@ export function PaperCutout({
         name: "Sticker",
       });
       if (asset.status === "approved") {
-        onUse(asset.id, as);
+        onUse(asset.id, as, true);
         toast.success(as === "portrait" ? "Your new portrait" : "Your new token");
-      } else toast.info("Sent to the DM", "It becomes yours to use once they approve it.");
+      } else {
+        onUse(asset.id, as, false);
+        toast.info("Sent to the DM", "It goes on your character as soon as they approve it.");
+      }
       setBitmap(null);
       onClose();
     } catch (e) {
@@ -180,6 +184,7 @@ export function PaperCutout({
         <div className="grid grid-cols-2 gap-4">
           <Slider
             label="Paper tolerance"
+            labelled
             value={opts.tolerance}
             min={4}
             max={40}
@@ -189,6 +194,7 @@ export function PaperCutout({
           />
           <Slider
             label="Outline"
+            labelled
             value={opts.outline}
             min={0}
             max={24}

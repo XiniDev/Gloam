@@ -9,7 +9,7 @@ import { ErrorBoundary } from "../ui/ErrorBoundary.tsx";
 import { lazyPage } from "../ui/lazyPage.ts";
 import { Sparkle } from "../ui/ornaments.tsx";
 import { hudOrder } from "./Intro.tsx";
-import { insetMeasures, useHudInsets, useIsPhone, useMeasuredInset } from "./insets.ts";
+import { insetMeasures, useCover, useHudInsets, useIsPhone, useMeasuredInset } from "./insets.ts";
 import { PartyPanel } from "./PartyPanel.tsx";
 import { SheetPanel } from "./sheet/SheetPanel.tsx";
 
@@ -46,6 +46,7 @@ export function Dock() {
   const phone = useIsPhone();
   const banner = useHudInsets((s) => s.banner);
   useMeasuredInset("right", asideRef, insetMeasures.right);
+  useCover("dock", asideRef);
   // On a phone the rail takes the top-right corner, not a column down the side.
   const railRef = useRef<HTMLElement>(null);
   useMeasuredInset("cornerRight", railRef, insetMeasures.corner, phone);

@@ -157,12 +157,13 @@ test.describe("P2 — tokens (TOK)", () => {
     expect(await tokenView(dave, lurker)).toBeNull();
 
     // The DM: everything this phase offers.
-    // (Light arrived with P4 — SPEC §8.8; the other phases add theirs.)
+    // (Light arrived with P4 — SPEC §8.8; Request a roll with P6 — §8.9; the other phases add theirs.)
     expect(labels(await openRadial(admin, goblin))).toEqual([
       "Elevation",
       "Facing",
       "Look",
       "Light",
+      "Request a roll",
       "Hide",
       "Lock",
       "Duplicate",
@@ -656,6 +657,7 @@ test.describe("P2 — tokens (TOK)", () => {
       await camera(admin, { ...view, target: [40, 25], ms: 0 });
       await expect.poll(settled, { timeout: 20_000, intervals: [400] }).toBe(true);
       const all = await overlays();
+      const covers = await hook<R[]>(admin, "plateCovers");
       const shown = all.filter((o) => o.clear === 1);
       expect(shown.length, JSON.stringify(view)).toBeGreaterThan(0);
       const vw = (admin.viewportSize() as { width: number }).width;
@@ -680,9 +682,10 @@ test.describe("P2 — tokens (TOK)", () => {
           expect(o.leader, `${label}: no leader in its own spot`).toBe(false);
           continue;
         }
-        // Moved only when its own spot is taken — by another shown plate (within the layout's 3-px pad) or the
-        // screen's edge — and then no further than the layout's spots (up to its width aside, two rows up; never
-        // down onto its token), with a leader line back to its token.
+        // Moved only when its own spot is taken — by another shown plate (within the layout's 3-px pad), the
+        // screen's edge, the HUD over the board, or another token it would bury (cover more than half of; P6
+        // refinement, DECISIONS) — and then no further than the layout's spots (up to its width aside, two rows up;
+        // never down onto its token), with a leader line back to its token.
         const pad = 3;
         const takenBy = shown.some(
           (b) =>
@@ -693,7 +696,16 @@ test.describe("P2 — tokens (TOK)", () => {
             own.y1 > (b.rect as R).y0 - pad,
         );
         const offScreen = own.x0 < 0 || own.x1 > vw || own.y0 < 0;
-        expect(takenBy || offScreen, `${label}: moved though its own spot was free`).toBe(true);
+        const underHud = covers.some((c) => overlap(own, c));
+        const share = (a: R, b: R) =>
+          (Math.max(0, Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0)) *
+            Math.max(0, Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0))) /
+          Math.max(1, (b.x1 - b.x0) * (b.y1 - b.y0));
+        const buries = all.some((b) => b.id !== o.id && b.token && share(own, b.token) > 0.5);
+        expect(
+          takenBy || offScreen || underHud || buries,
+          `${label}: moved though its own spot was free`,
+        ).toBe(true);
         const pw = own.x1 - own.x0;
         const ph = own.y1 - own.y0 + pad;
         expect(Math.abs(dx), label).toBeLessThanOrEqual(pw + 0.5);

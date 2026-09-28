@@ -7,7 +7,7 @@ import { request, useTable } from "../net/table.ts";
 import { type Tool, useUi } from "../state/ui.ts";
 import { IconButton } from "../ui/Button.tsx";
 import { hudOrder } from "./Intro.tsx";
-import { insetMeasures, useHudInsets, useIsPhone, useMeasuredInset } from "./insets.ts";
+import { insetMeasures, useCover, useHudInsets, useIsPhone, useMeasuredInset } from "./insets.ts";
 
 /** Quick Unit glyph: a coin with a plus (custom, since creatures are a game concept; SPEC §27.6). */
 function QuickUnitGlyph() {
@@ -107,6 +107,7 @@ export function LeftToolbar() {
 function Rail({ tool, dm }: { tool: Tool; dm: boolean }) {
   const navRef = useRef<HTMLElement>(null);
   useMeasuredInset("left", navRef, insetMeasures.left);
+  useCover("toolbar", navRef);
   return (
     <nav
       ref={navRef}
@@ -138,6 +139,7 @@ function PhoneTools({ tool, dm }: { tool: Tool; dm: boolean }) {
     useHudInsets.getState().set({ left: 0 });
   }, []);
   useMeasuredInset("cornerLeft", buttonRef, insetMeasures.corner, shown);
+  useCover("toolbar", navRef, shown);
   useEffect(() => {
     if (!open) return;
     const away = (e: PointerEvent) => {

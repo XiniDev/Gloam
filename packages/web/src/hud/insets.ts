@@ -154,14 +154,14 @@ export const useHudObstacles = create<{
 const OBSTACLE_GAP = 16;
 
 /** An element's box with a gap round it, or null while it isn't laid out. */
-function obstacleBox(el: HTMLElement): ScreenArea | null {
+function boxOf(el: HTMLElement, gap: number): ScreenArea | null {
   const r = el.getBoundingClientRect();
   if (r.width <= 0 || r.height <= 0) return null;
   return {
-    left: Math.round(r.left - OBSTACLE_GAP),
-    top: Math.round(r.top - OBSTACLE_GAP),
-    right: Math.round(r.right + OBSTACLE_GAP),
-    bottom: Math.round(r.bottom + OBSTACLE_GAP),
+    left: Math.round(r.left - gap),
+    top: Math.round(r.top - gap),
+    right: Math.round(r.right + gap),
+    bottom: Math.round(r.bottom + gap),
   };
 }
 
@@ -170,23 +170,65 @@ function obstacleBox(el: HTMLElement): ScreenArea | null {
  * moved without resizing — the feed follows the toolbar's edge) and on every resize.
  */
 export function useObstacle(name: string, ref: RefObject<HTMLElement | null>, enabled = true): void {
+  useBox(useHudObstacles, name, ref, enabled, OBSTACLE_GAP);
+}
+
+/**
+ * Everything of the HUD drawn over the board — the dock, the toolbar, the top bar's pills, and the obstacles above —
+ * in screen pixels: the tokens' name plates keep out from under it (declutter.ts). Separate from the obstacles, whose
+ * job is framing the dice inside the clear area.
+ */
+export const useBoardCovers = create<{
+  rects: Record<string, ScreenArea>;
+  put(name: string, r: ScreenArea | null): void;
+}>((set, get) => ({
+  rects: {},
+  put(name, r) {
+    const cur = get().rects[name];
+    if (!r) {
+      if (!cur) return;
+      const { [name]: _, ...rest } = get().rects;
+      set({ rects: rest });
+      return;
+    }
+    if (cur && cur.left === r.left && cur.top === r.top && cur.right === r.right && cur.bottom === r.bottom)
+      return;
+    set({ rects: { ...get().rects, [name]: r } });
+  },
+}));
+
+/** Keeps an element's box registered as covering the board while it's on screen. */
+export function useCover(name: string, ref: RefObject<HTMLElement | null>, enabled = true): void {
+  useBox(useBoardCovers, name, ref, enabled, COVER_GAP);
+}
+
+/** Room kept between a name plate and the HUD (px). */
+const COVER_GAP = 4;
+
+function useBox(
+  store: { getState(): { put(name: string, r: ScreenArea | null): void } },
+  name: string,
+  ref: RefObject<HTMLElement | null>,
+  enabled: boolean,
+  gap: number,
+): void {
   useLayoutEffect(() => {
     const el = ref.current;
-    if (el && enabled) useHudObstacles.getState().put(name, obstacleBox(el));
+    if (el && enabled) store.getState().put(name, boxOf(el, gap));
   });
   useEffect(() => {
     const el = ref.current;
     if (!el || !enabled) return;
-    const update = () => useHudObstacles.getState().put(name, obstacleBox(el));
+    const update = () => store.getState().put(name, boxOf(el, gap));
     const ro = new ResizeObserver(update);
     ro.observe(el);
     window.addEventListener("resize", update);
     return () => {
       ro.disconnect();
       window.removeEventListener("resize", update);
-      useHudObstacles.getState().put(name, null);
+      store.getState().put(name, null);
     };
-  }, [name, ref, enabled]);
+  }, [store, name, ref, enabled, gap]);
 }
 
 /**

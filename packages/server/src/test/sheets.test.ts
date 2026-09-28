@@ -245,7 +245,7 @@ describe("P6 — character sheets on the server (SHEET, SCN-06)", () => {
     expect(card.id).toBe(proposalId);
     expect(card.note).toBe("ASI at level 4");
     expect(card.changes).toEqual([
-      { path: ["core", "abilities", "str"], label: "core.abilities.str", before: 16, after: 18 },
+      { path: ["core", "abilities", "str"], label: "Strength score", before: 16, after: 18 },
     ]);
     // Not applied yet.
     expect(sheetOf(thorin).core.abilities.str).toBe(16);

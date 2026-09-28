@@ -7,6 +7,7 @@ import { Button } from "../../../ui/Button.tsx";
 import { Dialog } from "../../../ui/Dialog.tsx";
 import { toast } from "../../../ui/Toast.tsx";
 import { AssetPicker } from "../AssetPicker.tsx";
+import { applyArt, awaitApproval } from "../art.ts";
 import type { SheetCtx } from "../context.ts";
 import { DrawingPad } from "../DrawingPad.tsx";
 import { PaperCutout } from "../PaperCutout.tsx";
@@ -21,11 +22,6 @@ export function TokenTab({ ctx }: { ctx: SheetCtx }) {
   const c = ctx.sheet.core;
   const ro = !ctx.canEdit;
   const [maker, setMaker] = useState<"draw" | "cutout" | null>(null);
-  const allTokens = useBoard((d) => d.tokens);
-  const tokensHere = useMemo(
-    () => [...allTokens.values()].filter((t) => t.actorId === ctx.actor.id),
-    [allTokens, ctx.actor.id],
-  );
   return (
     <div className="flex flex-col gap-1 text-14 text-paper-ink">
       <SectionTitle>Art</SectionTitle>
@@ -82,19 +78,15 @@ export function TokenTab({ ctx }: { ctx: SheetCtx }) {
       <DrawingPad
         open={maker === "draw"}
         onClose={() => setMaker(null)}
-        onUse={(assetId, as) => {
-          if (as === "portrait") return void ctx.set(["core", "portraitAssetId"], assetId);
-          void ctx.set(["core", "tokenAssetId"], assetId);
-          // A standee or a coin: the character's tokens here take that look.
-          for (const t of tokensHere)
-            void request("token.update", { tokenId: t.id, appearance: { mode: as } }).catch(() => {});
-        }}
+        onUse={(assetId, as, approved) =>
+          approved ? void applyArt(ctx.actor, assetId, as) : awaitApproval(ctx.actor.id, assetId, as)
+        }
       />
       <PaperCutout
         open={maker === "cutout"}
         onClose={() => setMaker(null)}
-        onUse={(assetId, as) =>
-          void ctx.set(["core", as === "portrait" ? "portraitAssetId" : "tokenAssetId"], assetId)
+        onUse={(assetId, as, approved) =>
+          approved ? void applyArt(ctx.actor, assetId, as) : awaitApproval(ctx.actor.id, assetId, as)
         }
       />
     </div>

@@ -1,7 +1,7 @@
 import { LIGHT_PRESETS } from "@gloam/shared";
 import { useState } from "react";
-import type { SheetCtx } from "../context.ts";
-import { NumberField, SectionTitle, Stepper, TextField } from "../primitives.tsx";
+import { overrideDerived, type SheetCtx } from "../context.ts";
+import { DerivedValue, NumberField, SectionTitle, Stepper, TextField } from "../primitives.tsx";
 import { RemoveButton } from "./OverviewTab.tsx";
 
 /**
@@ -22,7 +22,19 @@ export function InventoryTab({ ctx }: { ctx: SheetCtx }) {
   return (
     <div className="flex flex-col text-14 text-paper-ink">
       <SectionTitle>
-        Carrying {load} of {cap} lb
+        <span className="group/row inline-flex items-center gap-1">
+          Carrying {load} of
+          <DerivedValue
+            value={cap}
+            auto={ctx.derived.auto["carry.capacity"]}
+            overridden={ctx.derived.overridden.has("carry.capacity")}
+            onOverride={(v) => overrideDerived(ctx, "carry.capacity", v)}
+            onRevert={() => overrideDerived(ctx, "carry.capacity", undefined)}
+            label="Carrying capacity"
+            disabled={ro}
+          />
+          lb
+        </span>
       </SectionTitle>
       <div className="mb-1 h-1.5 overflow-hidden rounded-full bg-parchment-edge/40" aria-hidden>
         <div

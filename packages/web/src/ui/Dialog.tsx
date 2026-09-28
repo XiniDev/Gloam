@@ -98,6 +98,9 @@ export function Dialog({
             aria-modal="true"
             aria-labelledby={titleId}
             aria-describedby={description ? descId : undefined}
+            // Keys pressed in a modal stay in it: the table's shortcuts (undo, tools, the camera, Delete) never act
+            // behind it. (A dialog that wants a key of its own listens in the capture phase.)
+            onKeyDown={(e) => e.stopPropagation()}
             // Never taller than the screen: the title and the buttons stay put and the body scrolls (short
             // laptop screens, phones in landscape).
             className={`relative flex max-h-[calc(100dvh-32px)] w-full max-w-[calc(100vw-32px)] flex-col overflow-hidden ${parchment ? "parchment" : "panel"}`}

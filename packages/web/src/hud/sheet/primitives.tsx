@@ -2,7 +2,8 @@ import type { ActorView } from "@gloam/shared/protocol";
 import { Lock, Minus, Plus, RotateCcw } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { D20Icon } from "../../icons/dice.tsx";
-import { modeOf, type RollMode, rollFromSheet, rollPhysically } from "./sheetActions.ts";
+import { modeOf, type RollMode } from "./rollMode.ts";
+import { rollFromSheet, rollPhysically } from "./sheetActions.ts";
 
 /**
  * The sheet's parts on parchment (SPEC §8.10, §27.2 document surface): ink on paper, the wax red for what's active,
@@ -33,6 +34,7 @@ export function Rollable({
   const [menu, setMenu] = useState(false);
   const timer = useRef<number | null>(null);
   const pressed = useRef(false);
+  const touch = useRef(false);
   const ref = useRef<HTMLSpanElement>(null);
   const roll = (mode: RollMode) => void rollFromSheet(actor, formula, label, mode);
   useEffect(() => {
@@ -60,7 +62,10 @@ export function Rollable({
           roll(modeOf(e));
         }}
         onPointerDown={(e) => {
-          if (e.pointerType !== "touch") return;
+          // A new press: a long press before it may have ended without a click (Android sends none).
+          pressed.current = false;
+          touch.current = e.pointerType === "touch";
+          if (!touch.current) return;
           timer.current = window.setTimeout(() => {
             pressed.current = true;
             setMenu(true);
@@ -73,7 +78,12 @@ export function Rollable({
           if (timer.current) window.clearTimeout(timer.current);
         }}
         onContextMenu={(e) => {
-          if (menu) e.preventDefault();
+          // Android reads a long press as a context menu: this one, not the browser's.
+          if (!touch.current && !menu) return;
+          e.preventDefault();
+          if (timer.current) window.clearTimeout(timer.current);
+          pressed.current = true;
+          setMenu(true);
         }}
       >
         {children}
@@ -268,9 +278,25 @@ export function Stepper({
   disabled?: boolean;
 }) {
   const repeat = useRef<number | null>(null);
+  // Held down, the steps run ahead of the server's echo: count from the last step sent, and take the value from the
+  // sheet again only when the sheet's value itself changes.
   const cur = useRef(value);
-  cur.current = value;
+  const seen = useRef(value);
+  if (value !== seen.current) {
+    seen.current = value;
+    cur.current = value;
+  }
   const clamp = (v: number) => Math.min(max, Math.max(min, v));
+  const lastStep = useRef(0);
+  const step = (by: number) => {
+    // Steps that never came back (refused, or turned into a proposal) don't count for long.
+    if (performance.now() - lastStep.current > 1500) cur.current = seen.current;
+    lastStep.current = performance.now();
+    const next = clamp(cur.current + by);
+    if (next === cur.current) return;
+    cur.current = next;
+    onChange(next);
+  };
   const stop = () => {
     if (repeat.current) window.clearInterval(repeat.current);
     repeat.current = null;
@@ -288,13 +314,13 @@ export function Stepper({
       disabled={disabled}
       className="grid h-8 min-h-[var(--touch-min)] w-8 min-w-[var(--touch-min)] place-items-center rounded-[var(--radius-control)] text-paper-muted hover:bg-parchment-deep hover:text-paper-ink disabled:opacity-40"
       onPointerDown={(e) => {
-        const step = e.shiftKey ? 5 : 1;
-        onChange(clamp(cur.current + dir * step));
+        const by = dir * (e.shiftKey ? 5 : 1);
+        step(by);
         stop();
         const start = Date.now();
         repeat.current = window.setInterval(() => {
           if (Date.now() - start < 400) return;
-          onChange(clamp(cur.current + dir * step));
+          step(by);
         }, 90);
       }}
       onPointerUp={stop}
@@ -302,7 +328,7 @@ export function Stepper({
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
-          onChange(clamp(cur.current + dir * (e.shiftKey ? 5 : 1)));
+          step(dir * (e.shiftKey ? 5 : 1));
         }
       }}
     >
@@ -433,7 +459,7 @@ export function DerivedValue({
           aria-label={`Set ${label} by hand`}
           title="Set by hand"
           onClick={() => setEditing(true)}
-          className="h-5 rounded-chip px-1 text-12 text-paper-muted opacity-0 hover:text-paper-ink focus:opacity-100 group-hover/row:opacity-100"
+          className="h-5 rounded-chip px-1 text-12 text-paper-muted opacity-0 hover:text-paper-ink focus:opacity-100 group-hover/row:opacity-100 pointer-coarse:opacity-100"
         >
           ✎
         </button>

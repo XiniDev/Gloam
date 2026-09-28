@@ -4,7 +4,7 @@
  * Stored in SQLite so an unanswered proposal survives the table closing.
  */
 import { GloamError, type ProposalView } from "@gloam/shared/protocol";
-import { applyChanges, diffSheet, pathLabel, type SheetChange } from "@gloam/shared/rules";
+import { applyChanges, diffSheet, fieldLabel, type SheetChange } from "@gloam/shared/rules";
 import { Sheet } from "@gloam/shared/schemas";
 import { and, desc, eq } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
@@ -137,7 +137,7 @@ export class ProposalService {
 
 /**
  * What a client is shown of a proposal: what approving it would change on the sheet as it is now — each change by
- * its readable path, the value now and the one proposed — or, when it no longer fits the sheet (someone changed it
+ * its name on the sheet ("AC", "Sanity value"), the value now and the one proposed — or, when it no longer fits the sheet (someone changed it
  * since), that it doesn't.
  */
 export function proposalView(
@@ -152,7 +152,7 @@ export function proposalView(
     if (would.success)
       changes = diffSheet(now, would.data).map((c) => ({
         path: c.path,
-        label: pathLabel(c.path),
+        label: fieldLabel(c.path, would.data),
         before: c.before,
         after: c.after,
       }));

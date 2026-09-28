@@ -1,7 +1,7 @@
 import { CONDITION_IDS } from "@gloam/shared";
 import type { ActorView } from "@gloam/shared/protocol";
 import { FileDown, FileUp, Lock, Plus, Sparkles, Trash2, Unlock, UserPlus, X } from "lucide-react";
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { useSheets } from "../../net/sheets.ts";
 import { request, useTable } from "../../net/table.ts";
 import { useBoard } from "../../state/entities.ts";
@@ -115,6 +115,105 @@ export function SheetPanel() {
   );
 }
 
+const TAB_CLASS =
+  "caps h-9 min-h-[var(--touch-min)] shrink-0 whitespace-nowrap px-2.5 text-12 transition-[color,box-shadow] duration-[var(--dur-fast)]";
+/** The More button's room in the row (its 36-px button and a gap). */
+const MORE_W = 40;
+
+/**
+ * The sheet's sections (§29.7): one row of tabs — as many as the panel's width holds, the rest under "…" (the
+ * section being read always stays in the row). Widths come from an invisible copy of every tab, measured again as
+ * the panel is resized.
+ */
+function SheetTabs({ tab }: { tab: SheetTab }) {
+  const row = useRef<HTMLDivElement>(null);
+  const ruler = useRef<HTMLDivElement>(null);
+  const [room, setRoom] = useState<{ avail: number; widths: number[] } | null>(null);
+  useLayoutEffect(() => {
+    const el = row.current;
+    const m = ruler.current;
+    if (!el || !m) return;
+    const update = () => {
+      const cs = getComputedStyle(el);
+      const avail = el.clientWidth - Number.parseFloat(cs.paddingLeft) - Number.parseFloat(cs.paddingRight);
+      const widths = [...m.children].map((c) => (c as HTMLElement).getBoundingClientRect().width);
+      setRoom((r) =>
+        r && r.avail === avail && r.widths.every((w, k) => w === widths[k]) ? r : { avail, widths },
+      );
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    void document.fonts?.ready.then(update);
+    return () => ro.disconnect();
+  }, []);
+  const active = Math.max(
+    0,
+    TABS.findIndex((t) => t.id === tab),
+  );
+  let shown = TABS.map((_, k) => k);
+  if (room) {
+    const gap = 2;
+    const total = room.widths.reduce((a, w) => a + w + gap, 0);
+    if (total > room.avail) {
+      // The section being read first, then the others in order while they fit beside the More button.
+      let used = MORE_W + (room.widths[active] ?? 0) + gap;
+      const keep = new Set([active]);
+      for (const [k, w] of room.widths.entries()) {
+        if (k === active) continue;
+        if (used + w + gap > room.avail) break;
+        used += w + gap;
+        keep.add(k);
+      }
+      shown = [...keep].sort((a, b) => a - b);
+    }
+  }
+  const rest = TABS.filter((_, k) => !shown.includes(k));
+  const pick = (id: SheetTab) => useUi.getState().set({ sheetTab: id });
+  return (
+    <div className="relative flex shrink-0 items-center border-b border-parchment-edge px-2">
+      <div
+        ref={ruler}
+        aria-hidden
+        className="pointer-events-none invisible absolute left-0 top-0 flex whitespace-nowrap"
+      >
+        {TABS.map((t) => (
+          <span key={t.id} className={`${TAB_CLASS} inline-flex items-center`}>
+            {t.label}
+          </span>
+        ))}
+      </div>
+      <div ref={row} aria-label="Sheet sections" role="tablist" className="flex min-w-0 flex-1 gap-0.5">
+        {shown.map((k) => {
+          const t = TABS[k] as (typeof TABS)[number];
+          return (
+            <button
+              key={t.id}
+              type="button"
+              role="tab"
+              aria-selected={tab === t.id}
+              onClick={() => pick(t.id)}
+              className={`${TAB_CLASS} ${
+                tab === t.id
+                  ? "text-paper-ink shadow-[inset_0_-2px_0_var(--wax-500)]"
+                  : "text-paper-muted shadow-[inset_0_-2px_0_transparent] hover:text-paper-ink"
+              }`}
+            >
+              {t.label}
+            </button>
+          );
+        })}
+      </div>
+      {rest.length ? (
+        <Menu
+          label="More sections"
+          items={rest.map((t) => ({ label: t.label, onSelect: () => pick(t.id) }))}
+        />
+      ) : null}
+    </div>
+  );
+}
+
 function SheetPage({ actor, onImport }: { actor: ActorView; onImport: (m: "json" | "ai") => void }) {
   const ctx = useSheetCtx(actor);
   const tab = useUi((s) => s.sheetTab);
@@ -126,28 +225,7 @@ function SheetPage({ actor, onImport }: { actor: ActorView; onImport: (m: "json"
       aria-label={`${actor.sheet.core.name}'s sheet`}
     >
       <SheetHeader ctx={ctx} onImport={onImport} />
-      <div
-        aria-label="Sheet sections"
-        role="tablist"
-        className="flex shrink-0 gap-0.5 overflow-x-auto border-b border-parchment-edge px-2"
-      >
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            role="tab"
-            aria-selected={tab === t.id}
-            onClick={() => useUi.getState().set({ sheetTab: t.id })}
-            className={`caps h-9 min-h-[var(--touch-min)] shrink-0 px-2.5 text-12 transition-[color,box-shadow] duration-[var(--dur-fast)] ${
-              tab === t.id
-                ? "text-paper-ink shadow-[inset_0_-2px_0_var(--wax-500)]"
-                : "text-paper-muted shadow-[inset_0_-2px_0_transparent] hover:text-paper-ink"
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <SheetTabs tab={tab} />
       <div
         className="min-h-0 flex-1 overflow-y-auto px-3 pt-2 pb-4"
         role="tabpanel"
@@ -274,6 +352,7 @@ function SheetHeader({ ctx, onImport }: { ctx: SheetCtx; onImport: (m: "json" | 
           <Segmented
             label="Sheet lock"
             size="S"
+            tone="paper"
             value={ctx.actor.lockLevel}
             onChange={(level) => void request("actor.setLock", { actorId: ctx.actor.id, level })}
             options={[

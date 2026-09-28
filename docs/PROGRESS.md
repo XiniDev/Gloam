@@ -268,3 +268,34 @@ PASSING 28/224 · DISPUTED 0 · FAILING 196
   filter had captured them); new players on an unused colour; contact shadows with a core, cast from the key light.
 - Tests: the HUD-clear journey now checks 2, 3 and 7 dice ≥ 48 px on a phone; tumbling captures hold the throw
   mid-air (`diceFreeze`); key screen 09 shows every chip treatment and the breakdown. p5-dice (3), p4-phone pass.
+
+## 2026-09-28 — P6 character sheets: every AC proven (14/14)
+
+- Web sheet (committed 80b0514): the dock's parchment sheet with nine sections, locks with propose-on-edit, quick
+  create, JSON/AI import with preview and diff, templates, drawing pad, paper cutout; the DM's Requests (form and
+  live board) and players' request cards; sheet proposals in Approvals; pinned counters on tokens.
+- Journeys, each proving its ACs in the browser: `p6-sheets.spec.ts` (SHEET-01/02/08 — quick create with an
+  approved portrait, overrides, rollables with Alt/Ctrl and a touch long press, the tray rolling for a token;
+  SHEET-06/07 — export, import errors/preview/diff, round trip, the AI prompt; SHEET-03/04/05, TOK-13 — seven block
+  kinds and a pinned bar, templates, Core/Full locks with proposals approved and declined, linked tokens across
+  scenes, unlinked goblins, relink asking), `p6-art.spec.ts` (SHEET-10/11 with a real pressure pen and a synthetic
+  paper photo, approvals applied automatically), `p6-requests.spec.ts` (DICE-06: hidden DC, roll/enter/set/close,
+  a blind check from the radial menu, NPCs in one click).
+- Found and fixed on the way (DECISIONS): sheet rolls never got advantage (`\bd20\b` vs "1d20"); Ctrl+Z in the
+  drawing pad undid the table's last action (making the character) — modal dialogs now keep their keys; a player's
+  pending art never reached the character; plates pushed aside onto other tokens, plates buried neighbours, plates
+  under the HUD; the sheet's tabs cut through; the drawing canvas off screen and dark ink on a dark board; slider
+  labels missing; raw JSON paths in diffs; tokens at the origin before their first frame (a flaky P2 journey).
+- Unit tests added: `rollMode.test.ts`, `names.test.ts`, declutter (bodies, burying, fallback, HUD covers).
+- Next: full `pnpm check` and commit; P6 key-screen shots and the visual critic (≤ 2 rounds); then P7.
+
+```
+Phase  Pass  Disp  Fail  Total
+P1       28     0     0     28
+P2       32     0     0     32
+P3       16     0     1     17   (AC-WAL-05 waits for P8's fog persistence)
+P4       12     0     0     12
+P5        9     0     0      9
+P6       14     0     0     14
+PASSING 112/224
+```

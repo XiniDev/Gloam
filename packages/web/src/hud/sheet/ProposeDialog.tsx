@@ -49,7 +49,7 @@ export function ProposeDialog() {
         <ul className="mb-3 flex flex-col gap-1 text-14" data-testid="propose-fields">
           {pending.fields.map((f) => (
             <li key={f.label} className="flex flex-wrap items-baseline gap-2">
-              <span className="mono text-13 text-paper-muted">{f.label}</span>
+              <span className="text-14 text-paper-muted">{f.label}</span>
               <span className="tabular line-through opacity-70">{show(f.before)}</span>
               <span aria-hidden>→</span>
               <span className="tabular font-bold">{show(f.after)}</span>

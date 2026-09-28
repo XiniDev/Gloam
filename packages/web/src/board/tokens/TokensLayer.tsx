@@ -1,5 +1,6 @@
 import { useFrame } from "@react-three/fiber";
 import { useEffect, useMemo, useReducer } from "react";
+import { useBoardCovers, useHudObstacles } from "../../hud/insets.ts";
 import { useTable } from "../../net/table.ts";
 import { boardData, useBoard, useEntities } from "../../state/entities.ts";
 import { useViewAs } from "../../state/viewAs.ts";
@@ -41,9 +42,23 @@ export function TokensLayer() {
     setTokenPositionLookup((id) => boardData(useEntities.getState()).tokens.get(id)?.pos ?? null);
   }, []);
 
+  // The HUD moving over the board (the dock opening, a card arriving) makes plates move: a frame to lay them out.
+  useEffect(() => {
+    const offA = useHudObstacles.subscribe(() => again());
+    const offB = useBoardCovers.subscribe(() => again());
+    return () => {
+      offA();
+      offB();
+    };
+  }, []);
+
   // After every overlay has placed itself this frame: decide which ones have room on screen (declutter.ts).
   useFrame((state) => {
-    if (layoutOverlays(state.camera, state.size.width, state.size.height)) again();
+    const covered = [
+      ...Object.values(useHudObstacles.getState().rects),
+      ...Object.values(useBoardCovers.getState().rects),
+    ].map((r) => ({ x0: r.left, y0: r.top, x1: r.right, y1: r.bottom }));
+    if (layoutOverlays(state.camera, state.size.width, state.size.height, covered)) again();
   });
 
   return (

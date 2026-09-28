@@ -56,6 +56,60 @@ describe("asset sniffing (SPEC §21.2, AC-AST-01/07)", () => {
     expect(hasActiveContent(Buffer.from("xx javascript:alert(1)"))).toBe(true);
   });
 
+  it("finds active markup inside a file, and nothing in the fragments compressed data makes by chance", () => {
+    const active = [
+      "<script>alert(1)</script>",
+      "<SCRIPT src=//x>",
+      '<iframe src="x">',
+      "<object data=x>",
+      "<embed src=x>",
+      "href=javascript:alert(1)",
+      "vbscript:msgbox",
+      '<img src=x onerror="a()">',
+      "<svg/onload=alert(1)>",
+      '<svg xmlns="http://www.w3.org/2000/svg"><script>a()</script></svg>',
+      "<svg><foreignObject><p>x</p></foreignObject></svg>",
+      "<html><body>hi</body></html>",
+      "<!DOCTYPE html><title>x</title>",
+    ];
+    for (const a of active)
+      expect(
+        hasActiveContent(Buffer.concat([Buffer.from([0, 1, 2]), Buffer.from(a), Buffer.from([3])])),
+        a,
+      ).toBe(true);
+    // Short look-alikes turn up by chance in any large compressed image: "<svg" alone (4 bytes) was ~7 % of 16-MB
+    // files. None of these is active on its own.
+    const chance = [
+      "\x89<svg\x07\x13\xfe",
+      "\x00<SvG \x9a\x10\x02",
+      "<html\x01\x8f",
+      "<html>\xee\x02\x7f and no document after it",
+      "<embed\x03",
+      "<?php\x1a",
+      "onloa=",
+      "online=",
+      "<scrip",
+    ];
+    for (const c of chance) expect(hasActiveContent(Buffer.from(c, "latin1")), JSON.stringify(c)).toBe(false);
+  });
+
+  it("scans a large incompressible image without a false alarm and in good time", () => {
+    // 24 MB of seeded pseudo-random bytes (compressed data looks like this), with the short fragments sprinkled in.
+    const buf = Buffer.alloc(24 * 1024 * 1024);
+    let x = 0x9e3779b9;
+    for (let i = 0; i < buf.length; i++) {
+      x ^= x << 13;
+      x ^= x >>> 17;
+      x ^= x << 5;
+      buf[i] = x & 0xff;
+    }
+    for (let k = 0; k < 200; k++)
+      buf.write(k % 2 ? "<svg " : "<html>", (k * 104_729) % (buf.length - 8), "latin1");
+    const t0 = performance.now();
+    expect(hasActiveContent(buf)).toBe(false);
+    expect(performance.now() - t0).toBeLessThan(3000);
+  });
+
   it("allows harmless trailing data (a phone motion photo's MP4 after the JPEG)", async () => {
     const jpeg = await img("jpeg");
     const mp4 = box("ftyp", Buffer.from("mp42\0\0\0\0isom", "latin1"));

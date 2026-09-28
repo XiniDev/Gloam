@@ -1,7 +1,15 @@
 import { CONDITION_IDS, DAMAGE_TYPES, SIZES } from "@gloam/shared";
 import { Plus, X } from "lucide-react";
-import type { SheetCtx } from "../context.ts";
-import { LockMark, NumberField, Pips, Rollable, SectionTitle, TextField } from "../primitives.tsx";
+import { overrideDerived, type SheetCtx } from "../context.ts";
+import {
+  DerivedValue,
+  LockMark,
+  NumberField,
+  Pips,
+  Rollable,
+  SectionTitle,
+  TextField,
+} from "../primitives.tsx";
 
 /** Overview (§8.10 UI): who the character is, their hit dice, death saves, movement, senses and defences. */
 export function OverviewTab({ ctx }: { ctx: SheetCtx }) {
@@ -50,7 +58,18 @@ export function OverviewTab({ ctx }: { ctx: SheetCtx }) {
           )
         }
       >
-        Classes · level {ctx.derived.values.level}
+        <span className="group/row inline-flex items-center gap-1">
+          Classes · level
+          <DerivedValue
+            value={ctx.derived.values.level}
+            auto={ctx.derived.auto.level}
+            overridden={ctx.derived.overridden.has("level")}
+            onOverride={(v) => overrideDerived(ctx, "level", v)}
+            onRevert={() => overrideDerived(ctx, "level", undefined)}
+            label="Character level"
+            disabled={ro}
+          />
+        </span>
       </SectionTitle>
       {c.classes.length === 0 ? <p className="text-13 italic text-paper-muted">No class yet.</p> : null}
       {c.classes.map((k, i) => (
