@@ -65,10 +65,20 @@ export function TestProbe() {
     if (!__GLOAM_TEST__) return;
     provideTestHook(
       "camera",
-      (set?: { pitchDeg?: number; distance?: number; target?: [number, number]; ms?: number }) => {
+      (set?: {
+        pitchDeg?: number;
+        distance?: number;
+        target?: [number, number];
+        ms?: number;
+        /** Frame this area (feet) in the HUD's clear part of the screen, at `pitchDeg`. */
+        frame?: { minX: number; minY: number; maxX: number; maxY: number };
+      }) => {
         const c = cameraRig.controls;
         if (!c) return null;
-        if (set) {
+        if (set?.frame) {
+          cameraRig.frame(set.frame, set.pitchDeg);
+          wake();
+        } else if (set) {
           if (set.target) cameraRig.moveTargetTo(set.target[0], set.target[1], set.ms ?? 0);
           if (set.pitchDeg !== undefined) cameraRig.pitchTo(set.pitchDeg, set.ms ?? 0);
           if (set.distance !== undefined) void c.dollyTo(set.distance, false);
@@ -245,7 +255,15 @@ export function TestProbe() {
         });
         return Number.isFinite(r.x0) ? r : null;
       };
-      return overlayDiagnostics().map((o) => ({ ...o, fade: overlayFade.get(o.id), token: tokenRect(o.id) }));
+      // Whether its leader line is drawn (a plate moved aside points back to its token).
+      const leader = (id: string) =>
+        scene.getObjectByName(`token:${id}`)?.getObjectByName("plateLeader")?.visible === true;
+      return overlayDiagnostics().map((o) => ({
+        ...o,
+        fade: overlayFade.get(o.id),
+        token: tokenRect(o.id),
+        leader: leader(o.id),
+      }));
     });
     provideTestHook("ui", () => {
       const u = useUi.getState();
@@ -288,8 +306,14 @@ export function TestProbe() {
     provideTestHook("walls3d", () => {
       const g = scene.getObjectByName("walls3d");
       if (!g) return null;
-      const count = (name: string) =>
-        (g.getObjectByName(name) as unknown as { count?: number } | undefined)?.count ?? 0;
+      // Instances across every mesh of that name (the stone is one instanced mesh per division count).
+      const count = (name: string) => {
+        let n = 0;
+        g.traverse((o) => {
+          if (o.name === name) n += (o as unknown as { count?: number }).count ?? 0;
+        });
+        return n;
+      };
       const names = (name: string) => {
         let n = 0;
         g.traverse((o) => {
@@ -307,6 +331,7 @@ export function TestProbe() {
         glass: names("window-glass"),
         curtains: names("curtain"),
         fields: names("force-field"),
+        pillars: names("walls3d-pillar"),
         doors: doorLeafAngles(),
         cut: cutaway.uCutOn.value === 1,
       };

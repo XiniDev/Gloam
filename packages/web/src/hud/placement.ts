@@ -12,6 +12,8 @@ export interface Rect {
 
 const GAP = 10;
 const EDGE = 8;
+/** The phone tools button's corner: its gutter, its panel and a gap (LeftToolbar). */
+const PHONE_TOOLS_W = 12 + 56 + 8;
 
 const area = (a: Rect, b: Rect) =>
   Math.max(0, Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0)) *
@@ -32,8 +34,12 @@ export function boardObstacles(): Rect[] {
     const vw = window.innerWidth;
     const vh = window.innerHeight;
     out.push({ x0: 0, y0: 0, x1: vw, y1: hud.top + hud.banner });
-    out.push({ x0: 0, y0: 0, x1: hud.left, y1: vh });
-    out.push({ x0: vw - hud.right, y0: 0, x1: vw, y1: vh });
+    if (hud.left > 0) out.push({ x0: 0, y0: 0, x1: hud.left, y1: vh });
+    // Phones: the tools button and the dock's rail hold the top corners, not columns.
+    if (hud.cornerLeft > 0) out.push({ x0: 0, y0: 0, x1: PHONE_TOOLS_W, y1: hud.cornerLeft });
+    if (hud.cornerRight > 0) out.push({ x0: vw - hud.right, y0: 0, x1: vw, y1: hud.cornerRight });
+    else out.push({ x0: vw - hud.right, y0: 0, x1: vw, y1: vh });
+    if (hud.bottom > 0) out.push({ x0: 0, y0: vh - hud.bottom, x1: vw, y1: vh });
   }
   return out;
 }

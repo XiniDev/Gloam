@@ -207,3 +207,21 @@ PASSING 28/224 · DISPUTED 0 · FAILING 196
 - P5 (dice): the formula grammar, evaluator and seeded generator (shared); dice solids with their rotation groups and
   the symmetry remap; deterministic Rapier throws (1.1–1.8 s to rest, always showing the server's number); the
   server dice service and the client worker, store and face atlas in progress.
+
+## 2026-09-28 — P4 visual review: two critic rounds, fixes in; P5 dice continuing
+
+- Critic round 1 (4/10) and round 2 (5/10) on the 30 P4 screens. Fixed: pillars as solid prisms; the cutaway lowers
+  wall geometry (closed stubs, no insides, lintels go) on a real slope, and cuts walls hiding any token in view;
+  plates move to a free spot with a brass leader instead of vanishing and slide back onto the screen at its edge;
+  wall faces graded from the room they face; phone HUD (a corner tools button, bottom sheets at 30/60/95 %, 44-px
+  controls, framing in the clear area, radial menus inside it); toolbar states per §27.4; the DM seal; HP digits ink
+  over the fill; door handles; masonry filtering; overlapping bases ordered; fog panel regrouped; light-menu icons;
+  darkvision rings. Left with reasons (DECISIONS): the first-use shader stall behind the toolbar capture (AC-PERF-05,
+  P15), plate size at phone zoom, the light edge over the floor's mottling.
+- New tests: e2e/journeys/p4-phone.spec.ts (the phone HUD: corner tools, sheets and their snaps, 44-px controls, no
+  HUD overlaps, the token menu in the clear area); pillar detection, prism geometry and declutter unit tests; the
+  walls-in-3D journey checks a pillar; the overlay-layout journey checks moved plates.
+- Bugs found through "flaky" journeys under load: a held drag's preview vanished for other viewers after 1.5 s (now a
+  500 ms heartbeat); the Spotlight toast claimed success when the server refused (now it says so).
+- P5: dice sound recipes (per-material clacks for tray and die contacts, the settle tick, natural 20 and 1) with the
+  test sound log recording each clack's gain; the 3D dice overlay is next.

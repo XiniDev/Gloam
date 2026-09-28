@@ -185,6 +185,9 @@ test("P2 key screens", async ({ admin, browser, gloam, guardLog }, info) => {
   await admin.keyboard.press("Escape");
   await closeDock(admin).catch((e) => notes.push(`closeDock: ${e}`));
   await step("17-quick-unit", admin, async () => {
+    // On a phone the tools fold into the corner button first.
+    const tools = admin.getByRole("button", { name: /^Tools: / });
+    if (await tools.isVisible()) await tools.click();
     await admin.getByRole("button", { name: "Quick unit" }).click();
     await expect(admin.getByRole("dialog", { name: "Quick unit" })).toBeVisible();
   });

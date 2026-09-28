@@ -42,7 +42,14 @@ export function LightToolLayer() {
     let sel: { at: P; bright: number; dim: number; cone: number; dir: number } | null = null;
     for (const l of lights.values()) {
       const carrier = l.link?.tokenId ? tokens.get(l.link.tokenId) : undefined;
-      const at = preview?.id === l.id ? preview.at : carrier ? carrier.pos : { x: l.x, y: l.y };
+      // A carried light's ring sits on its bearer's base, up and to the right — clear of the token's face.
+      const edge = carrier ? (carrier.sizeFt / 2) * Math.SQRT1_2 : 0;
+      const at =
+        preview?.id === l.id
+          ? preview.at
+          : carrier
+            ? { x: carrier.pos.x + edge, y: carrier.pos.y - edge }
+            : { x: l.x, y: l.y };
       const list = byColor.get(l.color) ?? [];
       list.push(at);
       byColor.set(l.color, list);

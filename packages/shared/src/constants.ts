@@ -54,6 +54,27 @@ export const PLAYER_COLORS = [
 ] as const;
 export type PlayerColorId = (typeof PLAYER_COLORS)[number]["id"];
 
+/** Dice skin colours (SPEC §8.9 Dice skins): bodies, and the numbers on them. Named, never colour-only. */
+export const DICE_BODY_COLORS = [
+  { name: "Midnight", hex: "#2B3A55" },
+  { name: "Oxblood", hex: "#6E1E24" },
+  { name: "Verdigris", hex: "#2F6B5E" },
+  { name: "Brass", hex: "#A7802F" },
+  { name: "Ivory", hex: "#E8DCC2" },
+  { name: "Obsidian", hex: "#16181D" },
+  { name: "Amethyst", hex: "#5B3F7A" },
+  { name: "Jade", hex: "#3E7D4F" },
+  { name: "Sapphire", hex: "#274F8C" },
+  { name: "Ember", hex: "#B4502A" },
+] as const;
+export const DICE_NUMBER_COLORS = [
+  { name: "Bone", hex: "#F2E6C9" },
+  { name: "Gold", hex: "#E6C98B" },
+  { name: "Ink", hex: "#0B0D10" },
+  { name: "Crimson", hex: "#C0392B" },
+  { name: "Frost", hex: "#BFE3F2" },
+] as const;
+
 /** NPC disposition ring colours (SPEC §27.2). Party tokens use the owner's player colour. */
 export const DISPOSITION_COLORS = {
   friendly: "#5FBF9A",

@@ -255,9 +255,15 @@ test.describe("P2 — the camera and the DM Spotlight (BRD-02, BRD-04)", () => {
       [b.x + b.width * 0.7, b.y + b.height * 0.4],
     ] as const;
     const all: number[] = [];
+    // Spotlights go at most one a second (MESSAGE_RATES): the DM's clicks are spaced to match — a refused one warns the
+    // DM instead of moving anyone.
+    let lastClick = 0;
     for (let i = 0; i < 8 && all.length < 3; i++) {
       const [sx, sy] = spots[i % 2] as readonly [number, number];
       const spot = (await ground(admin, sx, sy)) as { x: number; y: number };
+      const wait = lastClick + 1100 - Date.now();
+      if (wait > 0) await admin.waitForTimeout(wait);
+      lastClick = Date.now();
       const after = await dave.evaluate(() => performance.now());
       await admin.keyboard.down("Alt");
       await admin.keyboard.down("Shift");

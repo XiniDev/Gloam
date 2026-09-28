@@ -30,6 +30,8 @@ export interface PresenceView {
   online: boolean;
   handRaised: boolean;
   spectator: boolean;
+  /** Their dice skin (JSON DiceSkin; everyone sees a player's dice in it, AC-DICE-07). */
+  diceSkin: string;
 }
 
 export type Connection = "connecting" | "open" | "dropped" | "closed";
@@ -295,6 +297,7 @@ async function join(campaignId: string): Promise<Room<unknown, TableState>> {
         online: p.online,
         handRaised: p.handRaised,
         spectator: p.spectator,
+        diceSkin: p.diceSkin,
       });
       push();
     };

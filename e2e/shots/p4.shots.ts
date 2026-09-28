@@ -37,9 +37,20 @@ test("P4 key screens", async ({ admin, browser, gloam, guardLog }, info) => {
       await page.screenshot({ path: join(dir, `_failed-${name}.png`) }).catch(() => {});
     }
   };
-  const view = async (pages: Page[], x: number, y: number, far: number, near: number, pitch = 58) => {
+  /**
+   * The view for a step: on wide screens looking at (x, y) from `far`; on a phone the step's subject (an area of the
+   * table) framed by the board itself into the part of the screen its HUD leaves clear — a fixed distance on a portrait
+   * phone shows a sliver 13 ft wide.
+   */
+  type Area = { minX: number; minY: number; maxX: number; maxY: number };
+  const view = async (pages: Page[], x: number, y: number, far: number, subject: Area, pitch = 58) => {
     for (const p of pages)
-      await camera(p, { pitchDeg: pitch, distance: phone ? near : far, target: [x, y], ms: 0 });
+      await camera(
+        p,
+        phone
+          ? { pitchDeg: pitch, frame: subject }
+          : { pitchDeg: pitch, distance: far, target: [x, y], ms: 0 },
+      );
     await pages[0]?.waitForTimeout(300);
   };
 
@@ -98,7 +109,7 @@ test("P4 key screens", async ({ admin, browser, gloam, guardLog }, info) => {
   await expect.poll(() => hook(dave, "token", elf)).not.toBeNull();
 
   // Darkvision in the dark: grey within 60 ft, war fog beyond the walls.
-  await view([dave], 22, 20, 60, 40);
+  await view([dave], 22, 20, 60, { minX: 9, minY: 9, maxX: 27, maxY: 23 });
   await step("01-darkvision-in-the-dark", dave, async () => {
     await expect.poll(async () => (await hook<{ mode: string }>(dave, "fog"))?.mode).toBe("dynamic");
     await dave.waitForTimeout(800);
@@ -122,11 +133,12 @@ test("P4 key screens", async ({ admin, browser, gloam, guardLog }, info) => {
       ],
     });
     await dave.waitForTimeout(2600);
-    await view([dave], 32, 20, 60, 40);
+    await view([dave], 32, 20, 60, { minX: 24, minY: 14, maxX: 42, maxY: 26 });
   });
 
   // The DM: everything, with the players' fog hatched.
-  await view([admin], 30, 20, 64, 44);
+  // (A portrait phone frames the hall and the door: the whole landscape crypt would be a strip across it.)
+  await view([admin], 30, 20, 64, { minX: 8, minY: 8, maxX: 34, maxY: 32 });
   await step("04-dm-hatched-fog", admin, async () => {
     await admin.waitForTimeout(600);
   });
@@ -144,6 +156,7 @@ test("P4 key screens", async ({ admin, browser, gloam, guardLog }, info) => {
 
   // The Lights tool: the panel with its presets, gizmos on the lights.
   await step("06-lights-tool", admin, async () => {
+    await view([admin], 30, 20, 64, { minX: 28, minY: 12, maxX: 46, maxY: 28 });
     await admin.keyboard.press("i");
     await expect(admin.getByTestId("lights-panel")).toBeVisible();
   });
@@ -169,7 +182,7 @@ test("P4 key screens", async ({ admin, browser, gloam, guardLog }, info) => {
       stats: { senses: { darkvision: 60, tremorsense: 30 } },
     });
     await expect.poll(async () => ((await hook<unknown[]>(dave, "sensed")) ?? []).length).toBeGreaterThan(0);
-    await view([dave], 38, 24, 50, 34);
+    await view([dave], 38, 24, 50, { minX: 32, minY: 16, maxX: 44, maxY: 33 });
   });
 
   // The token menu's Light ring (Dave, on his own token).
@@ -203,7 +216,7 @@ test("P4 key screens", async ({ admin, browser, gloam, guardLog }, info) => {
       shape: { kind: "rect", x: 30, y: 17, w: 14, h: 9 },
     });
     await expect.poll(async () => (await hook<{ mode: string }>(dave, "fog"))?.mode).toBe("painted");
-    await view([dave], 30, 20, 64, 44);
+    await view([dave], 30, 20, 64, { minX: 20, minY: 10, maxX: 44, maxY: 30 });
   });
 
   writeFileSync(join(dir, "_notes.txt"), notes.length ? notes.join("\n") : "all steps ran\n");

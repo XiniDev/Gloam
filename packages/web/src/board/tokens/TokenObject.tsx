@@ -3,20 +3,26 @@ import { HP_BAND_HIDDEN, HP_BAND_LABELS } from "@gloam/shared/rules";
 import type { TokenView } from "@gloam/shared/state";
 import { Billboard, Html } from "@react-three/drei";
 import { type ThreeEvent, useFrame } from "@react-three/fiber";
-import { memo, useEffect, useMemo, useRef } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import {
   AnimationMixer,
+  BufferGeometry,
   type Camera,
   CanvasTexture,
-  type Group,
+  CircleGeometry,
+  Float32BufferAttribute,
+  Group,
+  Line,
+  LineBasicMaterial,
   type Material,
-  type Mesh,
+  Mesh,
   MeshBasicMaterial,
   MeshStandardMaterial,
   type ShaderMaterial,
   type SpriteMaterial,
   SRGBColorSpace,
   type Texture,
+  Vector2,
   Vector3,
 } from "three";
 import { audio } from "../../audio/engine.ts";
@@ -36,7 +42,7 @@ import { pressToken } from "../move/input.ts";
 import { TIERS, useTier } from "../tiers.ts";
 import { withFog } from "../vision/fogMaterial.ts";
 import { AUTO_COIN_PITCH, approach, crossfadeStep } from "./crossfade.ts";
-import { overlayClear, PRIORITY, registerOverlay } from "./declutter.ts";
+import { overlayClear, overlayOffset, PRIORITY, registerOverlay } from "./declutter.ts";
 import { canRaise, heightLabel } from "./elevation.ts";
 import { cylinder, plane, torus } from "./geometries.ts";
 import { hiddenBadgeTexture, initialsTexture } from "./glyphs.ts";
@@ -48,12 +54,21 @@ import { CHIP_GEOMETRY, createChipMaterial, setChip } from "./plateChip.ts";
 
 const BASE_H = 0.14;
 const COIN_H = 0.2;
+/** A plate leader's pieces, shared by every token: a unit segment along x, and the dot at its token end. */
+const LEADER_LINE = new BufferGeometry().setAttribute(
+  "position",
+  new Float32BufferAttribute([0, 0, 0, 1, 0, 0], 3),
+);
+const LEADER_DOT = new CircleGeometry(1, 12);
 /** A troika text mesh (drei's <Text>): its opacities apply at render, no re-layout. */
 type TroikaText = Mesh & {
   fillOpacity: number;
   outlineOpacity: number;
   /** troika's layout, once synced: the text block's [minX, minY, maxX, maxY] in its own units. */
   textRenderInfo?: { blockBounds: [number, number, number, number] } | null;
+  /** Pixels outside [minX, minY, maxX, maxY] (its own units) are discarded. */
+  clipRect: number[] | null;
+  sync(): void;
 };
 
 const tmp = new Vector3();
@@ -136,10 +151,14 @@ function resolveMode(t: TokenView, cls: "image" | "model" | null): ResolvedMode 
   return "coin";
 }
 
-function useTransparentMaterial(make: () => MeshStandardMaterial, deps: unknown[]) {
-  // Graded by the fog and light composite like the floor (a token in dim light looks dim, §15.7 step 4).
+/**
+ * A token's own material. Graded by the fog and light composite like the floor (a token in dim light looks dim, §15.7
+ * step 4) — from one point, its centre (`at`), so a grade boundary never splits a coin; or not at all (`at` null) for
+ * the owner/disposition ring, which must read at any light like the plate (AC-TOK-02).
+ */
+function useTransparentMaterial(make: () => MeshStandardMaterial, deps: unknown[], at: Vector2 | null) {
   // biome-ignore lint/correctness/useExhaustiveDependencies: deps are the material's inputs
-  const m = useMemo(() => withFog(make(), "object"), deps);
+  const m = useMemo(() => (at ? withFog(make(), "object", { at }) : make()), deps);
   useEffect(() => () => disposeLater(m), [m]);
   return m;
 }
@@ -148,9 +167,12 @@ function useTransparentMaterial(make: () => MeshStandardMaterial, deps: unknown[
 export const TokenObject = memo(function TokenObject({
   token,
   viewer,
+  lift = 0,
 }: {
   token: TokenView;
   viewer: Viewer;
+  /** A hair's lift that orders overlapping bases (TokensLayer). */
+  lift?: number;
 }) {
   const colorBlind = useSettings((s) => s.colorBlind);
   const selected = useUi((s) => s.selection.includes(token.id));
@@ -158,6 +180,8 @@ export const TokenObject = memo(function TokenObject({
   const tier = useTier((s) => s.name);
   const ring = ringColorOf(token, colorBlind);
   const R = Math.max(0.6, token.sizeFt / 2);
+  /** Where the token is graded (its centre on the table): one vector for its life, kept up to date as it glides. */
+  const [gradeAt] = useState(() => new Vector2(token.pos.x, token.pos.y));
   const hidden = token.dm?.dmHidden === true; // only DMs ever receive hidden tokens (AC-TOK-08)
   const baseOpacity = hidden ? 0.4 : 1;
 
@@ -188,19 +212,27 @@ export const TokenObject = memo(function TokenObject({
   const baseMat = useTransparentMaterial(
     () => new MeshStandardMaterial({ color: C.baseInk, roughness: 0.42, metalness: 0.15 }),
     [],
+    gradeAt,
   );
   const rimMat = useTransparentMaterial(
     () => new MeshStandardMaterial({ roughness: 0.4, metalness: 0.2 }),
     [],
+    null,
   );
-  const coinFaceMat = useTransparentMaterial(() => new MeshStandardMaterial({ roughness: 0.75 }), []);
+  const coinFaceMat = useTransparentMaterial(
+    () => new MeshStandardMaterial({ roughness: 0.75 }),
+    [],
+    gradeAt,
+  );
   const standeeFront = useTransparentMaterial(
     () => new MeshStandardMaterial({ roughness: 0.85, alphaTest: 0.5 }),
     [],
+    gradeAt,
   );
   const standeeBack = useTransparentMaterial(
     () => new MeshStandardMaterial({ color: C.cardboard, roughness: 0.95, alphaTest: 0.5 }),
     [],
+    gradeAt,
   );
   // The selection's brass ring (§8.5): unlit and outside tone mapping — a lit, emissive ring came out bone-white.
   const selMat = useMemo(() => new MeshBasicMaterial({ color: C.brass400, toneMapped: false }), []);
@@ -208,6 +240,7 @@ export const TokenObject = memo(function TokenObject({
   const hoverMat = useTransparentMaterial(
     () => new MeshStandardMaterial({ color: C.hoverRing, emissive: C.hoverRing, emissiveIntensity: 0.35 }),
     [],
+    null,
   );
 
   useEffect(() => {
@@ -343,6 +376,7 @@ export const TokenObject = memo(function TokenObject({
     } else if (first.current) {
       g.position.copy(target);
     } else g.position.lerp(target, 1 - Math.exp(-dt * 12));
+    gradeAt.set(g.position.x, g.position.z);
     if (body.current) {
       // Facing turns smoothly (150 ms); while a mini walks it faces where it's going (setting Auto-facing, §16.7).
       const walking =
@@ -485,6 +519,7 @@ export const TokenObject = memo(function TokenObject({
     <group ref={root} name={`token:${token.id}`} userData={{ tokenId: token.id }}>
       <group
         ref={body}
+        position-y={lift}
         onPointerDown={onDown}
         onPointerMove={onMove}
         onPointerUp={onUp}
@@ -756,11 +791,41 @@ function Overlay({
   const anchor = useRef<Group>(null);
   const nameText = useRef<TroikaText>(null);
   const numText = useRef<TroikaText>(null);
+  /** The numbers again in ink, shown only over the bar's fill (the bone ones only over its empty track). */
+  const numInk = useRef<TroikaText>(null);
+  const barWidth = useRef(BAR_W);
   const wordText = useRef<TroikaText>(null);
   const badge = useRef<SpriteMaterial>(null);
   const bar = useMemo(() => createHpBarMaterial(), []);
   useEffect(() => () => disposeLater(bar), [bar]);
   const ghost = useRef(new HpGhost());
+  // The leader: a brass hairline (a bone one read as a scratch on the map) ending in a small dot on the token — one
+  // shared unit segment and one shared disc, placed per token (no geometry per token to upload).
+  const leader = useMemo(() => {
+    const group = new Group();
+    group.name = "plateLeader";
+    group.visible = false;
+    // Not part of the plate's extent (declutter.ts).
+    group.userData.overlayDecor = true;
+    const line = new Line(
+      LEADER_LINE,
+      new LineBasicMaterial({ color: C.brass600, transparent: true, opacity: 0.85, depthTest: false }),
+    );
+    const dot = new Mesh(
+      LEADER_DOT,
+      new MeshBasicMaterial({ color: C.brass600, transparent: true, depthTest: false }),
+    );
+    for (const o of [line, dot]) {
+      o.renderOrder = 18;
+      o.raycast = () => {};
+      group.add(o);
+    }
+    return { group, line, dot };
+  }, []);
+  useEffect(
+    () => () => disposeLater(leader.line.material as Material, leader.dot.material as Material),
+    [leader],
+  );
   const controls = token.ownerIds.includes(viewer.userId) || viewer.dm;
   const nums = token.hp;
   const frac = nums ? nums.hp / Math.max(1, nums.hpMax) : token.hpFrac;
@@ -828,16 +893,48 @@ function Overlay({
     const plate = pxPerPlate / pxPerWorld;
     g.scale.setScalar(plate);
     layoutPlate();
+    // The numbers read on either part of the bar: ink over the fill (verdigris, brass, ember or temp cyan — bone
+    // there was ~1.7:1), bone over the dark track; the split follows the fill's edge.
+    if (numText.current || numInk.current) {
+      const w = barWidth.current;
+      const edge = -w / 2 + w * Math.min(1, Math.max(0, frac) + Math.max(0, temp));
+      const setClip = (t: TroikaText | null, r: [number, number, number, number]) => {
+        if (!t) return;
+        const c = t.clipRect as number[] | null;
+        if (!c || Math.abs((c[0] as number) - r[0]) > 1e-4 || Math.abs((c[2] as number) - r[2]) > 1e-4) {
+          t.clipRect = r;
+          t.sync();
+        }
+      };
+      setClip(numText.current, [edge, -10, 10, 10]);
+      setClip(numInk.current, [-10, -10, edge, 10]);
+    }
     // Sit a fixed gap above the token's highest point on screen, centred over its silhouette, at any pitch, pose or
     // perspective: find the spot in screen space, then put the anchor there at the depth of the token's top.
+    // Moved aside by the declutter layout when its own spot is taken (a leader line then points back to the token).
+    const off = overlayOffset(token.id);
     if (a0 && rt && screenTop(cam, shape.current)) {
       const liftPx = (PLATE_GAP - lowest.current) * pxPerPlate;
-      at.x = (shape.current.left + shape.current.right) / 2;
-      at.y = shape.current.top + (liftPx * 2) / state.size.height;
+      at.x = (shape.current.left + shape.current.right) / 2 + (off.dx * 2) / state.size.width;
+      at.y = shape.current.top + (liftPx * 2) / state.size.height - (off.dy * 2) / state.size.height;
       at.unproject(cam).sub(probe.setFromMatrixPosition(rt.matrixWorld));
       // Still settling (a pose or view change reaches the plate a frame later): draw once more.
       if (at.distanceToSquared(a0.position) > 1e-6) again();
       a0.position.copy(at);
+    }
+    // The leader: from the plate's bottom to the top of its token, when the plate sits aside.
+    const moved = Math.abs(off.dx) > 0.5 || Math.abs(off.dy) > 0.5;
+    leader.group.visible = moved;
+    if (moved) {
+      const sy = lowest.current;
+      const ex = -off.dx / pxPerPlate;
+      const ey = off.dy / pxPerPlate + lowest.current - PLATE_GAP;
+      leader.line.position.set(0, sy, 0);
+      leader.line.rotation.z = Math.atan2(ey - sy, ex);
+      leader.line.scale.x = Math.hypot(ex, ey - sy);
+      leader.dot.position.set(ex, ey, 0);
+      // 1.5 px across on screen, whatever the zoom.
+      leader.dot.scale.setScalar(1.5 / pxPerPlate);
     }
     // Overlays always read on top of other tokens and the map (troika re-derives its materials — an array of
     // outline + fill when outlined — so reapply every frame; the chip and bar keep their own lower orders).
@@ -848,21 +945,23 @@ function Overlay({
       o.renderOrder = 30;
     });
     const far = 1 - Math.min(1, Math.max(0, (d - 260) / 80));
-    // Clutter fade (150 ms) toward the layout's verdict; while a radial menu is open, only its token's plate shows
-    // (others would peek through the gaps between its slices).
+    // Clutter fade (150 ms) toward the layout's verdict; while a radial menu is open no plate shows — they'd peek
+    // through the gaps between its slices, its own token's behind them (the menu names the token).
     const radial = useUi.getState().radial;
-    const target = radial && radial.tokenId !== token.id ? 0 : overlayClear(token.id);
+    const target = radial ? 0 : overlayClear(token.id);
     clear.current = approach(clear.current, target, frameDelta() / 0.15);
     if (clear.current !== target) again();
     const fade = far * clear.current;
     g.visible = fade > 0.02;
     const a = fade * opacity;
-    for (const t of [nameText.current, numText.current, wordText.current])
+    for (const t of [nameText.current, numText.current, numInk.current, wordText.current])
       if (t && (t.fillOpacity !== a || t.outlineOpacity !== a)) {
         t.fillOpacity = a;
         t.outlineOpacity = a;
       }
     if (badge.current) badge.current.opacity = fade;
+    (leader.line.material as LineBasicMaterial).opacity = 0.85 * a;
+    (leader.dot.material as MeshBasicMaterial).opacity = 0.85 * a;
     overlayFade.set(token.id, { far, clear: clear.current, target, a });
     const now = performance.now();
     const gv = showBar ? ghost.current.update(Math.max(0, frac), now) : 0;
@@ -894,6 +993,7 @@ function Overlay({
     const nameW = nameB ? nameB[2] - nameB[0] : 0;
     const nameTop = BAR_H / 2 + NAME_GAP + (nameB ? nameB[3] - nameB[1] : NAME_SIZE * 1.2);
     const barW = showBar ? Math.max(BAR_W, numB ? numB[2] - numB[0] + 0.7 : 0) : 0;
+    barWidth.current = barW;
     const wordW = wordB ? wordB[2] - wordB[0] : 0;
     const bm = barMesh.current;
     if (bm) bm.scale.set(barW, BAR_H, 1);
@@ -912,6 +1012,7 @@ function Overlay({
     <group ref={anchor}>
       <Billboard>
         <group ref={group} userData={{ part: "overlay" }}>
+          <primitive object={leader.group} />
           <mesh
             ref={chipMesh}
             material={chip}
@@ -957,17 +1058,34 @@ function Overlay({
             />
           ) : null}
           {showNumbers && nums ? (
-            // On the bar, never beside it: the plate is never wider than its name or its bar (the bar grows to fit).
+            // On the bar, never beside it: the plate is never wider than its name or its bar (the bar grows to fit;
+            // DECISIONS). Set off by a thin, soft shadow — a heavy outline swelled the figures into blobs.
             <BoardText
               ref={numText}
               font={NUMBER_FONT}
               fontSize={NUM_SIZE}
               color={C.bone100}
-              outlineWidth={0.075}
+              outlineWidth={0.022}
+              outlineBlur={0.12}
+              outlineOpacity={0.9}
               outlineColor={C.ink950}
               anchorX="center"
               anchorY="middle"
               position={[0, -0.02, 0.01]}
+              raycast={() => null}
+            >
+              {`${nums.hp} / ${nums.hpMax}${nums.hpTemp ? `  +${nums.hpTemp}` : ""}`}
+            </BoardText>
+          ) : null}
+          {showNumbers && nums ? (
+            <BoardText
+              ref={numInk}
+              font={NUMBER_FONT}
+              fontSize={NUM_SIZE}
+              color={C.ink950}
+              anchorX="center"
+              anchorY="middle"
+              position={[0, -0.02, 0.011]}
               raycast={() => null}
             >
               {`${nums.hp} / ${nums.hpMax}${nums.hpTemp ? `  +${nums.hpTemp}` : ""}`}

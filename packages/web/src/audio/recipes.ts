@@ -253,6 +253,68 @@ function outGain(ctx: BaseAudioContext, dest: AudioNode, k: number): GainNode {
   return g;
 }
 
+/**
+ * Dice skins' contact sounds (docs/research/sound.md §2.1): a band-passed noise click whose centre is randomised per
+ * contact (no machine-gun), the tray's wooden knock under it, and the skin's ring (gem, metal, obsidian). The caller
+ * brightens harder hits through `rate` (0.85 + 0.3·v) and scales the loudness by v^1.5 through the gain.
+ */
+type DiceMaterial = "resin" | "gemstone" | "metal" | "bone" | "obsidian";
+const DICE_MATERIALS: Record<
+  DiceMaterial,
+  { fMul: number; q: number; tau: number; body: number; k: number; ring: [number, number, number][] }
+> = {
+  resin: { fMul: 1, q: 3.5, tau: 0.0035, body: 0.5, k: 1.3, ring: [] },
+  gemstone: { fMul: 1.3, q: 5, tau: 0.0035, body: 0.5, k: 0.89, ring: [[3800, 0.2, 0.008]] },
+  metal: {
+    fMul: 1,
+    q: 3.5,
+    tau: 0.0035,
+    body: 0.5,
+    k: 0.57,
+    // 2.756 × the fundamental: the second free–free bar mode, so it reads as metal, not a beep.
+    ring: [
+      [2500, 0.35, 0.015],
+      [6890, 0.12, 0.006],
+    ],
+  },
+  bone: { fMul: 0.7, q: 2.5, tau: 0.005, body: 0.6, k: 1.48, ring: [] },
+  obsidian: { fMul: 1.15, q: 4.5, tau: 0.0035, body: 0.5, k: 1.07, ring: [[4200, 0.15, 0.007]] },
+};
+
+/** A die striking the tray (`die` false: with the tray's wooden knock) or another die (brighter, shorter, no knock). */
+function dieHit(material: DiceMaterial, die: boolean): Recipe {
+  const m = DICE_MATERIALS[material];
+  return {
+    channel: "dice",
+    variation: 0,
+    play(ctx, dest, t, rate, engine) {
+      // Die on die sits ~2 dB under die on tray (peak 0.25 against 0.32).
+      const out = outGain(ctx, dest, die ? m.k * 0.815 : m.k);
+      const tau = die ? 0.0025 : m.tau;
+      const f = (1800 + Math.random() * 1400) * rate * m.fMul * (die ? 1.25 : 1);
+      const src = noiseSrc(ctx, engine, "white", t, 0.08);
+      src
+        .connect(bpf(ctx, f, m.q))
+        .connect(env(ctx, t, 0.0005, 1, tau))
+        .connect(out);
+      if (!die)
+        src
+          .connect(bpf(ctx, 620, 2.5))
+          .connect(env(ctx, t, 0.0005, m.body, 1.4 * tau))
+          .connect(out);
+      for (const [hz, p, rt] of m.ring) {
+        const o = ctx.createOscillator();
+        o.type = "sine";
+        o.frequency.value = hz * (0.98 + Math.random() * 0.04);
+        o.connect(env(ctx, t, 0.001, p, rt)).connect(out);
+        o.start(t);
+        o.stop(t + 0.08);
+        o.onended = () => o.disconnect();
+      }
+    },
+  };
+}
+
 export const RECIPES = {
   /** Two knocks on wood (UI). The loudest UI sound: the DM must notice a knock. */
   knock: {
@@ -366,6 +428,45 @@ export const RECIPES = {
       }
     },
   },
+  /** Dice (§31, research §2.1): a die striking the tray, per skin material… */
+  diceTrayResin: dieHit("resin", false),
+  diceTrayGemstone: dieHit("gemstone", false),
+  diceTrayMetal: dieHit("metal", false),
+  diceTrayBone: dieHit("bone", false),
+  diceTrayObsidian: dieHit("obsidian", false),
+  /** …and striking another die. */
+  diceDieResin: dieHit("resin", true),
+  diceDieGemstone: dieHit("gemstone", true),
+  diceDieMetal: dieHit("metal", true),
+  diceDieBone: dieHit("bone", true),
+  diceDieObsidian: dieHit("obsidian", true),
+  /** A small wooden tick as a die comes to rest: the "done" beat before the number lands. */
+  diceSettle: zzfx("diceSettle", "dice", [
+    { at: 0, p: [0.107, 0, 1400, 0, 0, 0.026, 1, 1, -4, 0, 0, 0, 0, 0.15, 0, 0, 0, 0.3, 0.004, 0, 0] },
+  ]),
+  /** Natural 20: C–E–G–C struck brass (each note with its 2.756× partial) and a sparkle tail. */
+  nat20: zzfx("nat20", "dice", [
+    { at: 0, p: [0.41, 0, 1046.5, 0.002, 0.03, 0.45, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0.07, 0.5, 0.03, 0, 0] },
+    { at: 0, p: [0.09, 0, 2884.154, 0.001, 0, 0.12, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.4, 0.02, 0, 0] },
+    {
+      at: 65,
+      p: [0.328, 0, 1318.51, 0.002, 0.03, 0.45, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0.07, 0.5, 0.03, 0, 0],
+    },
+    { at: 65, p: [0.074, 0, 3633.8136, 0.001, 0, 0.12, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.4, 0.02, 0, 0] },
+    {
+      at: 130,
+      p: [0.349, 0, 1567.98, 0.002, 0.03, 0.45, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0.07, 0.5, 0.03, 0, 0],
+    },
+    { at: 130, p: [0.074, 0, 4321.3529, 0.001, 0, 0.12, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.4, 0.02, 0, 0] },
+    { at: 195, p: [0.41, 0, 2093, 0.002, 0.03, 0.9, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0.07, 0.5, 0.03, 0, 0] },
+    { at: 195, p: [0.09, 0, 5768.308, 0.001, 0, 0.2, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.4, 0.02, 0, 0] },
+    { at: 180, p: [0.074, 0, 2000, 0.04, 0.15, 0.55, 4, 1, 0, 0, 0, 0, 0.035, 0, 0, 0, 0, 1, 0, 0.8, 3500] },
+  ]),
+  /** Natural 1: a soft, brassy deflating "womp" — quieter and shorter than the natural 20. */
+  nat1: zzfx("nat1", "dice", [
+    { at: 0, p: [0.113, 0, 196, 0.02, 0.18, 0.4, 2, 1, -0.2, -0.5, 0, 0, 0, 0.1, 0, 0, 0, 1, 0, 0, -450] },
+    { at: 0, p: [0.079, 0, 198, 0.02, 0.18, 0.4, 2, 1, -0.2, -0.5, 0, 0, 0, 0.1, 0, 0, 0, 1, 0, 0, -450] },
+  ]),
 } satisfies Record<string, Recipe>;
 
 export type SfxName = keyof typeof RECIPES;

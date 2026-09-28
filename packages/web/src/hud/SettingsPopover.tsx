@@ -1,11 +1,14 @@
 import { Settings, Volume2, VolumeX } from "lucide-react";
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
+import { useNavigate } from "react-router";
 import type { Channel } from "../audio/engine.ts";
 import { TIERS, type TierName, useTier } from "../board/tiers.ts";
 import { useTable } from "../net/table.ts";
 import { type DeviceSettings, useSettings } from "../state/settings.ts";
-import { IconButton } from "../ui/Button.tsx";
+import { Button, IconButton } from "../ui/Button.tsx";
 import { Segmented, Slider, Toggle } from "../ui/controls.tsx";
+import { DiceSkinPicker } from "./DiceSkinPicker.tsx";
+import { useIsPhone } from "./insets.ts";
 
 const CHANNEL_LABEL: Record<Channel, string> = {
   master: "Master",
@@ -67,6 +70,8 @@ export function SettingsPopover() {
   const tier = useTier((t) => t.name);
   const role = useTable((t) => t.me?.role);
   const dm = role === "dm" || role === "admin";
+  const phone = useIsPhone();
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (!open) return;
@@ -113,6 +118,19 @@ export function SettingsPopover() {
           // Aligned with the screen's edge like the dock beneath it, so it covers the dock cleanly.
           className="panel fixed right-3 top-[64px] z-50 flex max-h-[calc(100dvh-80px)] w-[min(340px,calc(100vw-24px))] flex-col overflow-y-auto outline-none"
         >
+          {phone && role === "admin" ? (
+            // On a phone the top bar has no room for it (TopBar).
+            <Section title="Host">
+              <Button variant="secondary" onClick={() => navigate("/admin")}>
+                Admin console
+              </Button>
+            </Section>
+          ) : null}
+          {role !== "spectator" ? (
+            <Section title="Your dice">
+              <DiceSkinPicker />
+            </Section>
+          ) : null}
           <Section title="Sound">
             {(["master", "dice", "effects", "ui", "music", "ambience"] as const).map((c) => (
               <Volume key={c} c={c} />

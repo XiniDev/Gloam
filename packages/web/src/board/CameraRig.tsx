@@ -4,7 +4,7 @@ import CameraControlsImpl from "camera-controls";
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { Box3, MathUtils, type OrthographicCamera as OrthoCam, Vector3 } from "three";
 import { create } from "zustand";
-import { useHudInsets } from "../hud/insets.ts";
+import { clearArea, isPhoneNow, useHudInsets } from "../hud/insets.ts";
 import { tableEvents } from "../net/table.ts";
 import { useSettings } from "../state/settings.ts";
 import { useUi } from "../state/ui.ts";
@@ -77,6 +77,8 @@ export const cameraRig: {
   /** Orthographic top-down on or off (the view stays where it is). */
   setOrtho(on: boolean): void;
   moveTargetTo(x: number, z: number, ms?: number): void;
+  /** Frames an area of the table (feet) inside the part of the screen the HUD leaves clear, at a pitch (default: now). */
+  frame(area: Bounds, pitchDeg?: number): void;
   pitchDeg(): number;
   /** Moves the view so the table slides by (dx, dz) feet (the grab-the-table pan). */
   panBy(dx: number, dz: number): void;
@@ -93,6 +95,7 @@ export const cameraRig: {
   setOrtho: () => {},
   sync: () => {},
   moveTargetTo: () => {},
+  frame: () => {},
   pitchDeg: () => PRESETS.tabletop,
 };
 
@@ -236,14 +239,13 @@ export function CameraRig({ bounds, sceneId }: { bounds: Bounds; sceneId: string
     const el = gl.domElement;
     const W = el.clientWidth || window.innerWidth;
     const H = el.clientHeight || window.innerHeight;
-    const hud = useHudInsets.getState();
     const f = frameBounds({
       bounds,
       width: W,
       height: H,
       fovDeg: (camera as { fov?: number }).fov ?? 40,
       pitchDeg: PRESETS.tabletop,
-      visible: { left: hud.left, top: hud.top + hud.banner, right: W - hud.right, bottom: H - 12 },
+      visible: clearArea(useHudInsets.getState(), W, H, isPhoneNow()),
     });
     void c.setLookAt(...f.position, ...f.target, false);
     applyNow(c);
@@ -359,6 +361,28 @@ export function CameraRig({ bounds, sceneId }: { bounds: Bounds; sceneId: string
       const t = c.getTarget(new Vector3());
       follow.current = null;
       void c.moveTo(t.x + dx, t.y, t.z + dz, false);
+      wake();
+    };
+    cameraRig.frame = (area, pitchDeg) => {
+      const c = ref.current;
+      if (!c) return;
+      const el = boardApi.element;
+      const W = el?.clientWidth || window.innerWidth;
+      const H = el?.clientHeight || window.innerHeight;
+      tweens.current = [];
+      follow.current = null;
+      const f = frameBounds({
+        bounds: area,
+        width: W,
+        height: H,
+        fovDeg: FOV_DEG,
+        pitchDeg: pitchDeg ?? cameraRig.pitchDeg(),
+        visible: clearArea(useHudInsets.getState(), W, H, isPhoneNow()),
+        minDistance: DISTANCE.min,
+        maxDistance: DISTANCE.max,
+      });
+      void c.setLookAt(...f.position, ...f.target, false);
+      applyNow(c);
       wake();
     };
     cameraRig.moveTargetTo = (x, z, ms = PRESET_MS) => {

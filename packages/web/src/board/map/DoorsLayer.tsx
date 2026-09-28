@@ -49,8 +49,11 @@ const isDoor = (w: WallView, dm: boolean) =>
   (dm ? (w.dmKind ?? w.kind) : w.kind) === "door" || (dm && w.dmKind === "secret");
 
 const HANDLE_FT = 1.1;
-const minHandlePx = () =>
+/** The press area never smaller on screen than a button (28 px; 44 px for touch)... */
+const minHitPx = () =>
   typeof matchMedia !== "undefined" && matchMedia("(pointer: coarse)").matches ? 44 : 28;
+/** ...while the handle drawn in it can be smaller when zoomed out, so it never outgrows the tokens round it. */
+const MIN_GLYPH_PX = 20;
 const here = new Vector3();
 const right = new Vector3();
 const beside = new Vector3();
@@ -58,6 +61,7 @@ const beside = new Vector3();
 function DoorHandle({ wall, dm }: { wall: WallView; dm: boolean }) {
   const state = ((dm ? wall.dmDoor || wall.door : wall.door) || "closed") as "closed" | "open" | "locked";
   const sprite = useRef<Sprite>(null);
+  const hit = useRef<Sprite>(null);
   const shake = useRef(0);
   const x = (wall.ax + wall.bx) / 2;
   const y = (wall.ay + wall.by) / 2;
@@ -97,15 +101,17 @@ function DoorHandle({ wall, dm }: { wall: WallView; dm: boolean }) {
       .add(beside.set(x, 0.9, y))
       .project(camera);
     const ppf = (Math.hypot(right.x - here.x, right.y - here.y) * size.width) / 2;
-    const k = ppf > 0 ? Math.max(HANDLE_FT, minHandlePx() / ppf) : HANDLE_FT;
+    const k = ppf > 0 ? Math.max(HANDLE_FT, MIN_GLYPH_PX / ppf) : HANDLE_FT;
     if (Math.abs(s.scale.x - k) > 1e-3) s.scale.setScalar(k);
+    const h = hit.current;
+    const kh = ppf > 0 ? Math.max(HANDLE_FT, minHitPx() / ppf) : HANDLE_FT;
+    if (h && Math.abs(h.scale.x - kh) > 1e-3) h.scale.setScalar(kh);
   });
   return (
     <group position={[x, 0.9, y]} userData={{ part: "doorHandle", wallId: wall.id, doorState: state }}>
       <sprite
-        ref={sprite}
+        ref={hit}
         scale={[HANDLE_FT, HANDLE_FT, HANDLE_FT]}
-        renderOrder={25}
         onPointerDown={onDown}
         onPointerOver={() => {
           document.body.style.cursor = "pointer";
@@ -114,6 +120,10 @@ function DoorHandle({ wall, dm }: { wall: WallView; dm: boolean }) {
           document.body.style.cursor = "";
         }}
       >
+        {/* The press area: drawn nowhere (not even into depth), picked by the pointer. */}
+        <spriteMaterial transparent opacity={0} depthTest={false} depthWrite={false} colorWrite={false} />
+      </sprite>
+      <sprite ref={sprite} scale={[HANDLE_FT, HANDLE_FT, HANDLE_FT]} renderOrder={25} raycast={() => null}>
         <spriteMaterial map={doorIconTexture(state)} depthTest={false} transparent />
       </sprite>
     </group>

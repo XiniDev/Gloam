@@ -36,6 +36,8 @@ interface UiStore {
   /** Measure tool shape (SPEC §8.6 Measurement tools) and the line tool's width in feet. */
   measureShape: "ruler" | "radius" | "cone" | "line" | "cube";
   lineWidthFt: number;
+  /** The dice tray is open (SPEC §8.9, hotkey D). */
+  diceTray: boolean;
   set(p: Partial<UiStore>): void;
   select(ids: string[], mode?: "replace" | "toggle"): void;
   rememberCamera(sceneId: string, cam: CameraMemory): void;
@@ -88,6 +90,7 @@ export const useUi = create<UiStore>((set, get) => ({
   zoneKind: "difficult",
   measureShape: "ruler",
   lineWidthFt: 5,
+  diceTray: false,
   set(p) {
     set(p);
     persist();

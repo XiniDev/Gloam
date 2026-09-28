@@ -131,6 +131,10 @@ export const MESSAGE_RATES = {
   "ping.send": rate(3, 3),
   "measure.share": rate(5, 5),
   "fog.snapshot": rate(1, 3),
+  "dice.roll": rate(5, 8),
+  "dice.manual": rate(5, 8),
+  "dice.feed": rate(1, 3),
+  "profile.diceSkin": rate(2, 6),
   "vision.viewAs": rate(3, 6),
 } as const satisfies Record<string, RateSpec>;
 

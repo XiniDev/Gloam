@@ -58,8 +58,14 @@ describe("dice throws (SPEC §18.4, AC-DICE-03)", () => {
           expect(s.labels[shown]).toBe(s.kind === "d10" ? want % 10 : want);
         }
       }
-      // Contacts to clack with.
+      // Contacts to clack with (each against the tray or another die), masses to scale them by, and when each die
+      // comes to rest (its settle tick).
       expect(res.contacts.length).toBeGreaterThan(0);
+      expect(res.contacts.every((c) => c.other === "tray" || c.other === "die")).toBe(true);
+      expect(res.contacts.some((c) => c.other === "tray")).toBe(true);
+      expect(res.masses.length).toBe(n);
+      expect(res.masses.every((m) => m > 0)).toBe(true);
+      expect(res.restStep.every((k) => k > 0 && k <= res.steps)).toBe(true);
     }
     expect(throws).toBe(60);
     // Every throw rests within the cap; a lively tumble, from about a second to at most 2.5 s (§8.9).

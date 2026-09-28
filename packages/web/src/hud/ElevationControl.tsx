@@ -8,9 +8,9 @@ import { toast } from "../ui/Toast.tsx";
 
 /**
  * The elevation stepper (SPEC §8.5 flying; AC-TOK-07): the selected flyer's height with −/+ in 5-ft steps, a pill at
- * the bottom centre of the board — where the action bar (§29.3) lives — rather than beside the token or on the right
- * edge, where it covered name plates and the token's own height label. Alt+wheel over the token does the same.
- * Shown with the Select tool (the other tools have their own bottom panels).
+ * the action bar at the bottom centre (§29.3) rather than beside the token or on the right edge, where it covered name
+ * plates and the token's own height label. Alt+wheel over the token does the same. Shown with the Select tool (the
+ * other tools have their own bottom panels).
  */
 export function ElevationControl() {
   const selected = useUi((s) => (s.selection.length === 1 ? s.selection[0] : undefined));
@@ -28,7 +28,7 @@ export function ElevationControl() {
     <section
       aria-label={`Elevation of ${token.name}`}
       data-testid="elevation-stepper"
-      className="panel pointer-events-auto absolute bottom-4 left-1/2 z-30 flex -translate-x-1/2 items-center gap-1 py-1 pr-1 pl-3"
+      className="flex items-center gap-1 py-1 pr-1 pl-3"
     >
       <span className="caps pr-1 text-12 text-fog" aria-hidden>
         Height

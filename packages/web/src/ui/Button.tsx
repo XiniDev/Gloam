@@ -76,9 +76,11 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(functio
       ? "text-[var(--blood-500)] hover:bg-[var(--danger-soft)]"
       : tone === "accent"
         ? "text-accent hover:bg-[var(--glow-brass-soft)]"
-        : active
-          ? "bg-[var(--glow-brass-soft)] text-brass-bright shadow-[inset_0_0_0_1px_var(--brass-600)]"
-          : "text-muted hover:bg-raised hover:text-text";
+        : // Selected (§27.4): a brass icon inside a 1-px brass hairline with a 2-px outer glow — louder than a hover,
+          // which only raises the tile and lights the icon bone.
+          active
+          ? "bg-[var(--glow-brass-soft)] text-brass shadow-[inset_0_0_0_1px_var(--brass-400),0_0_0_2px_var(--glow-brass)]"
+          : "text-muted hover:bg-raised hover:text-bone";
   return (
     <Tooltip label={label} shortcut={shortcut}>
       <button

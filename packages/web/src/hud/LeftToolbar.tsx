@@ -1,5 +1,5 @@
-import { BrickWall, CloudFog, Hand, Lamp, LandPlot, MousePointer2, Radar, Ruler } from "lucide-react";
-import { type ReactElement, useEffect, useRef } from "react";
+import { BrickWall, CloudFog, Hand, Lamp, LandPlot, MousePointer2, Radar, Ruler, X } from "lucide-react";
+import { type ReactElement, useEffect, useRef, useState } from "react";
 import { boardApi } from "../board/boardApi.ts";
 import { setFogShape } from "../board/tools/fog.ts";
 import { setWallMode, useWallTool } from "../board/tools/walls.ts";
@@ -7,7 +7,7 @@ import { request, useTable } from "../net/table.ts";
 import { type Tool, useUi } from "../state/ui.ts";
 import { IconButton } from "../ui/Button.tsx";
 import { hudOrder } from "./Intro.tsx";
-import { insetMeasures, useIsPhone, useMeasuredInset } from "./insets.ts";
+import { insetMeasures, useHudInsets, useIsPhone, useMeasuredInset } from "./insets.ts";
 
 /** Quick Unit glyph: a coin with a plus (custom, since creatures are a game concept; SPEC §27.6). */
 function QuickUnitGlyph() {
@@ -42,17 +42,151 @@ const TOOLS: { id: Tool; label: string; key?: string; icon: ReactElement; dm?: b
   { id: "fog", label: "Fog", key: "B", icon: <CloudFog size={19} />, dm: true },
 ];
 
-/** The board's left toolbar (SPEC §29.3). Tools arrive with their phases; only working ones are shown. */
+/** Tools whose options open as a bar along the bottom (a sheet on phones). */
+const SHEET_TOOLS: readonly Tool[] = ["measure", "walls", "zones", "lights", "fog"];
+
+/** Picks a tool from the toolbar: a second press on the tool in hand puts it down (back to Select). */
+function pick(t: Tool): void {
+  const now = useUi.getState().tool;
+  useUi.getState().set({ tool: now === t && t !== "select" ? "select" : t });
+}
+
+/** The toolbar's buttons: everyone's tools, then the DM's, then Quick unit. */
+function ToolButtons({ tool, dm, after }: { tool: Tool; dm: boolean; after?: () => void }) {
+  const button = (t: (typeof TOOLS)[number]) => (
+    <IconButton
+      key={t.id}
+      label={t.label}
+      shortcut={t.key}
+      active={tool === t.id}
+      onClick={() => {
+        pick(t.id);
+        after?.();
+      }}
+    >
+      {t.icon}
+    </IconButton>
+  );
+  return (
+    <>
+      {TOOLS.filter((t) => !t.dm).map(button)}
+      {dm ? (
+        <>
+          <span className="my-1 h-px w-7 bg-[var(--line-soft)]" aria-hidden />
+          {TOOLS.filter((t) => t.dm).map(button)}
+          <IconButton
+            label="Quick unit"
+            shortcut="Q"
+            onClick={() => {
+              openQuickUnit();
+              after?.();
+            }}
+          >
+            <QuickUnitGlyph />
+          </IconButton>
+        </>
+      ) : null}
+    </>
+  );
+}
+
+/**
+ * The board's left toolbar (SPEC §29.3). Tools arrive with their phases; only working ones are shown. On a phone
+ * (§29.4 has no side rail) it folds into one button in the top-left corner showing the tool in hand, which drops the
+ * list open.
+ */
 export function LeftToolbar() {
   const tool = useUi((s) => s.tool);
   const role = useTable((s) => s.me?.role);
   const dm = role === "dm" || role === "admin";
-  const navRef = useRef<HTMLElement>(null);
   const phone = useIsPhone();
-  // On a phone the map tools take the toolbar's place while they're open.
-  const aligning = useUi((s) => s.mapTool !== null);
-  useMeasuredInset("left", navRef, insetMeasures.left, !(phone && aligning));
+  useToolKeys(dm);
+  return phone ? <PhoneTools tool={tool} dm={dm} /> : <Rail tool={tool} dm={dm} />;
+}
 
+function Rail({ tool, dm }: { tool: Tool; dm: boolean }) {
+  const navRef = useRef<HTMLElement>(null);
+  useMeasuredInset("left", navRef, insetMeasures.left);
+  return (
+    <nav
+      ref={navRef}
+      {...hudOrder(1)}
+      aria-label="Board tools"
+      data-hud="toolbar"
+      className="panel pointer-events-auto absolute left-3 top-1/2 z-30 flex min-w-[52px] -translate-y-1/2 flex-col items-center gap-1 p-1.5"
+    >
+      <ToolButtons tool={tool} dm={dm} />
+    </nav>
+  );
+}
+
+/**
+ * Phones: the toolbar as one button in the top-left corner (mirroring the dock's rail in the top-right) with the tool
+ * in hand on it; pressing it drops the tools open below, and picking one (or pressing anywhere else) folds them away.
+ * While a tool's sheet is open along the bottom — or the map tools are — the corner is left clear: the sheet's Close
+ * puts the tool down.
+ */
+function PhoneTools({ tool, dm }: { tool: Tool; dm: boolean }) {
+  const [open, setOpen] = useState(false);
+  const banner = useHudInsets((s) => s.banner);
+  const aligning = useUi((s) => s.mapTool !== null);
+  const navRef = useRef<HTMLElement>(null);
+  const buttonRef = useRef<HTMLDivElement>(null);
+  const shown = !aligning && !SHEET_TOOLS.includes(tool);
+  // No side column on a phone: the corner is the HUD's instead.
+  useEffect(() => {
+    useHudInsets.getState().set({ left: 0 });
+  }, []);
+  useMeasuredInset("cornerLeft", buttonRef, insetMeasures.corner, shown);
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: PointerEvent) => {
+      if (!navRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const esc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("pointerdown", away, true);
+    window.addEventListener("keydown", esc);
+    return () => {
+      document.removeEventListener("pointerdown", away, true);
+      window.removeEventListener("keydown", esc);
+    };
+  }, [open]);
+  if (!shown) return null;
+  const current = TOOLS.find((t) => t.id === tool) ?? (TOOLS[0] as (typeof TOOLS)[number]);
+  const order = hudOrder(1);
+  return (
+    <nav
+      ref={navRef}
+      {...order}
+      aria-label="Board tools"
+      data-hud="toolbar"
+      className="panel pointer-events-auto absolute left-3 z-30 flex flex-col items-center gap-1 p-1.5"
+      style={{ ...order.style, top: 68 + banner }}
+    >
+      <div ref={buttonRef}>
+        <IconButton
+          label={open ? "Close tools" : `Tools: ${current.label}`}
+          aria-expanded={open}
+          active={open}
+          onClick={() => setOpen((o) => !o)}
+        >
+          {open ? <X size={19} /> : current.icon}
+        </IconButton>
+      </div>
+      {open ? (
+        <>
+          <span className="my-1 h-px w-7 bg-[var(--line-soft)]" aria-hidden />
+          <ToolButtons tool={tool} dm={dm} after={() => setOpen(false)} />
+        </>
+      ) : null}
+    </nav>
+  );
+}
+
+/** The toolbar's keys (Appendix H): V, M, H, W / Shift+W, Z, I, B, R, Q. */
+function useToolKeys(dm: boolean): void {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement | null;
@@ -83,49 +217,6 @@ export function LeftToolbar() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [dm]);
-
-  if (phone && aligning) return null;
-
-  return (
-    <nav
-      ref={navRef}
-      {...hudOrder(1)}
-      aria-label="Board tools"
-      data-hud="toolbar"
-      className="panel pointer-events-auto absolute left-3 top-1/2 z-30 flex min-w-[52px] -translate-y-1/2 flex-col items-center gap-1 p-1.5"
-    >
-      {TOOLS.filter((t) => !t.dm).map((t) => (
-        <IconButton
-          key={t.id}
-          label={t.label}
-          shortcut={t.key}
-          active={tool === t.id}
-          onClick={() => useUi.getState().set({ tool: tool === t.id && t.id !== "select" ? "select" : t.id })}
-        >
-          {t.icon}
-        </IconButton>
-      ))}
-      {dm ? (
-        <>
-          <span className="my-1 h-px w-7 bg-[var(--line-soft)]" aria-hidden />
-          {TOOLS.filter((t) => t.dm).map((t) => (
-            <IconButton
-              key={t.id}
-              label={t.label}
-              shortcut={t.key}
-              active={tool === t.id}
-              onClick={() => useUi.getState().set({ tool: tool === t.id ? "select" : t.id })}
-            >
-              {t.icon}
-            </IconButton>
-          ))}
-          <IconButton label="Quick unit" shortcut="Q" tone="accent" onClick={openQuickUnit}>
-            <QuickUnitGlyph />
-          </IconButton>
-        </>
-      ) : null}
-    </nav>
-  );
 }
 
 /** W / Shift+W: the Walls tool, drawing walls or doors. */

@@ -72,14 +72,16 @@ export function Segmented<T extends string>({
   label: string;
   size?: "S" | "M";
   /** On phones, lay the segments out in this many even columns instead of letting the row wrap unevenly. */
-  phoneColumns?: 2 | 3;
+  phoneColumns?: 2 | 3 | 4;
 }) {
   const layout =
     phoneColumns === 2
       ? "grid grid-cols-2 sm:inline-flex sm:flex-wrap"
       : phoneColumns === 3
         ? "grid grid-cols-3 sm:inline-flex sm:flex-wrap"
-        : "inline-flex flex-wrap";
+        : phoneColumns === 4
+          ? "grid grid-cols-4 sm:inline-flex sm:flex-wrap"
+          : "inline-flex flex-wrap";
   return (
     <div
       role="radiogroup"
@@ -97,7 +99,7 @@ export function Segmented<T extends string>({
             disabled={o.disabled}
             title={o.hint}
             onClick={() => onChange(o.value)}
-            className={`relative whitespace-nowrap rounded-chip px-3 font-bold transition-colors duration-[var(--dur-fast)] disabled:opacity-40 ${
+            className={`relative inline-flex min-h-[var(--touch-min)] min-w-[var(--touch-min)] items-center justify-center whitespace-nowrap rounded-chip px-3 font-bold transition-colors duration-[var(--dur-fast)] disabled:opacity-40 ${
               size === "S" ? "h-8 text-13" : "h-9 text-14"
             } ${active ? "bg-raised text-brass-bright shadow-[inset_0_-2px_0_var(--brass-400)]" : "text-muted hover:text-bone"}`}
           >

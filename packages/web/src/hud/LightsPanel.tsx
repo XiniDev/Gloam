@@ -165,9 +165,15 @@ function LightEditor() {
                 aria-label={c.name}
                 title={c.name}
                 onClick={() => update({ color: c.hex })}
-                className={`grid h-7 w-7 place-items-center rounded-full border-2 ${active ? "border-bone" : "border-transparent hover:border-line-strong"}`}
+                // The 28-px ring drawn inside a touch-sized hit area.
+                className="group grid min-h-[var(--touch-min)] min-w-[var(--touch-min)] place-items-center"
               >
-                <span className="h-5 w-5 rounded-full" style={{ background: c.hex }} />
+                <span
+                  className={`grid h-7 w-7 place-items-center rounded-full border-2 ${active ? "border-bone" : "border-transparent group-hover:border-line-strong"}`}
+                  aria-hidden
+                >
+                  <span className="block h-5 w-5 rounded-full" style={{ background: c.hex }} />
+                </span>
               </button>
             );
           })}

@@ -35,8 +35,12 @@ export function Filigree({ tone = "brass" }: { tone?: "brass" | "ink" }) {
   );
 }
 
-/** The "DM" wax seal (SPEC §27.4). */
+/**
+ * The "DM" wax seal (SPEC §27.4). Its letters only where they're legible (≥ 22 px, 12-px caps or near it); smaller, an
+ * embossed star in the wax — the role is its accessible name either way.
+ */
 export function WaxSeal({ label = "DM", size = 26 }: { label?: string; size?: number }) {
+  const lettered = size >= 22;
   return (
     <span
       className="relative inline-grid place-items-center"
@@ -49,19 +53,35 @@ export function WaxSeal({ label = "DM", size = 26 }: { label?: string; size?: nu
           d="M13 1.5c1.6 0 2.2 1.4 3.6 1.9 1.5.5 3-.3 4 .8 1 1.1.4 2.6 1 4 .6 1.3 2 1.9 2 3.4 0 1.6-1.4 2.2-1.9 3.6-.5 1.5.3 3-.8 4-1.1 1-2.6.4-4 1-1.3.6-1.9 2-3.4 2s-2.2-1.4-3.6-1.9c-1.5-.5-3 .3-4-.8-1-1.1-.4-2.6-1-4-.6-1.3-2-1.9-2-3.4 0-1.6 1.4-2.2 1.9-3.6.5-1.5-.3-3 .8-4 1.1-1 2.6-.4 4-1C10.8 2.9 11.4 1.5 13 1.5z"
           fill="var(--wax-500)"
         />
-        <circle cx="13" cy="13" r="7.2" fill="none" stroke="var(--glow-ember)" strokeWidth="1" />
-        <text
-          x="13"
-          y="15.6"
-          textAnchor="middle"
-          fontFamily="var(--font-caps)"
-          fontWeight="700"
-          fontSize={label.length > 2 ? 5.4 : 7.5}
-          letterSpacing=".4"
-          fill="var(--parchment-100)"
-        >
-          {label.toUpperCase()}
-        </text>
+        <circle
+          cx="13"
+          cy="13"
+          r="7.2"
+          fill="none"
+          stroke="var(--glow-ember)"
+          strokeWidth={lettered ? 1 : 1.4}
+        />
+        {lettered ? null : (
+          <path
+            d="M13 8.4c.35 2.6 1.1 3.9 4.6 4.6-3.5.7-4.25 2-4.6 4.6-.35-2.6-1.1-3.9-4.6-4.6 3.5-.7 4.25-2 4.6-4.6z"
+            fill="var(--parchment-100)"
+            opacity=".9"
+          />
+        )}
+        {lettered ? (
+          <text
+            x="13"
+            y="15.6"
+            textAnchor="middle"
+            fontFamily="var(--font-caps)"
+            fontWeight="700"
+            fontSize={label.length > 2 ? 5.4 : 7.5}
+            letterSpacing=".4"
+            fill="var(--parchment-100)"
+          >
+            {label.toUpperCase()}
+          </text>
+        ) : null}
       </svg>
     </span>
   );

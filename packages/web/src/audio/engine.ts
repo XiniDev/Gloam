@@ -156,7 +156,7 @@ class AudioEngine {
    */
   play(name: SfxName, opts: PlayOptions = {}): boolean {
     const played = this.render(name, opts);
-    logSound(name, played);
+    logSound(name, played, opts.gain);
     return played;
   }
 

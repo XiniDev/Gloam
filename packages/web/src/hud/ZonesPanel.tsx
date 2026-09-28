@@ -242,7 +242,7 @@ export function ZoneEditor() {
             if (e.key === "Enter") (e.target as HTMLInputElement).blur();
             if (e.key === "Escape") setLabel(zone.label);
           }}
-          className="h-10 w-full rounded-[var(--radius-control)] border border-line bg-ink-900 px-3 text-14 text-bone hover:border-line-strong focus:border-brass"
+          className="h-10 min-h-[var(--touch-min)] w-full rounded-[var(--radius-control)] border border-line bg-ink-900 px-3 text-14 text-bone hover:border-line-strong focus:border-brass"
         />
       </div>
       <div role="radiogroup" aria-label="Zone colour" className="flex gap-1">
@@ -257,9 +257,15 @@ export function ZoneEditor() {
               aria-label={c.name}
               title={c.name}
               onClick={() => void update(zone.id, { color: c.hex })}
-              className={`grid h-7 w-7 place-items-center rounded-full border-2 ${active ? "border-bone" : "border-transparent hover:border-line-strong"}`}
+              // The 28-px ring drawn inside a touch-sized hit area.
+              className="group grid min-h-[var(--touch-min)] min-w-[var(--touch-min)] place-items-center"
             >
-              <span className="block h-5 w-5 rounded-full" style={{ background: c.hex }} aria-hidden />
+              <span
+                className={`grid h-7 w-7 place-items-center rounded-full border-2 ${active ? "border-bone" : "border-transparent group-hover:border-line-strong"}`}
+                aria-hidden
+              >
+                <span className="block h-5 w-5 rounded-full" style={{ background: c.hex }} />
+              </span>
             </button>
           );
         })}
@@ -350,7 +356,7 @@ function TriggerCard({
   useEffect(() => setFormula(trigger.damage?.formula ?? "1d6"), [trigger.damage?.formula]);
   useEffect(() => setDc(String(trigger.save?.dc ?? 12)), [trigger.save?.dc]);
   const input =
-    "h-9 w-full rounded-[var(--radius-control)] border border-line bg-ink-900 px-2 text-14 text-bone hover:border-line-strong focus:border-brass";
+    "h-9 min-h-[var(--touch-min)] w-full rounded-[var(--radius-control)] border border-line bg-ink-900 px-2 text-14 text-bone hover:border-line-strong focus:border-brass";
   return (
     <div
       className="flex flex-col gap-2 rounded-[var(--radius-control)] border border-line p-2"

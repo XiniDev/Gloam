@@ -44,6 +44,9 @@ export function Dock() {
   const phone = useIsPhone();
   const banner = useHudInsets((s) => s.banner);
   useMeasuredInset("right", asideRef, insetMeasures.right);
+  // On a phone the rail takes the top-right corner, not a column down the side.
+  const railRef = useRef<HTMLElement>(null);
+  useMeasuredInset("cornerRight", railRef, insetMeasures.corner, phone);
 
   useEffect(() => {
     if (tab === "dm" && !dm) useUi.getState().set({ dock: null });
@@ -117,6 +120,7 @@ export function Dock() {
         </section>
       ) : null}
       <nav
+        ref={railRef}
         aria-label="Panels"
         className="panel pointer-events-auto flex flex-col items-center gap-1 self-start p-1.5"
       >

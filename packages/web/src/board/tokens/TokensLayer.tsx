@@ -10,6 +10,13 @@ import { ghostTokens, onGhosts } from "../move/anims.ts";
 import { layoutOverlays } from "./declutter.ts";
 import { TokenObject } from "./TokenObject.tsx";
 
+/**
+ * Base heights apart (ft): above the depth buffer's resolution out to ~280 ft (near plane 0.5 ft, 24 bits: z² / (0.5 ·
+ * 2²⁴)), beyond which a token is a few pixels; eight levels stay under a tenth of a foot, too little to see.
+ */
+const STACK_FT = 0.01;
+const STACK_LEVELS = 8;
+
 /** Every token the viewer may see (SPEC §24.1 TokensLayer). */
 export function TokensLayer() {
   const tokens = useBoard((d) => d.tokens);
@@ -22,6 +29,13 @@ export function TokensLayer() {
   const as = useMemo(() => (asData ? new Set(asData.tokens) : null), [asData]);
   const me = useTable((s) => s.me);
   const viewer = { userId: me?.userId ?? "", dm: me?.role === "dm" || me?.role === "admin" };
+
+  // Where bases overlap, a fixed order on top: each token lifted a hair by its rank — larger creatures lower, so one
+  // sharing a big creature's space sits on it — instead of coplanar faces fighting as the camera moves.
+  const stack = useMemo(() => {
+    const ids = [...tokens.values()].sort((a, b) => b.sizeFt - a.sizeFt || (a.id < b.id ? -1 : 1));
+    return new Map(ids.map((t, i) => [t.id, (i % STACK_LEVELS) * STACK_FT]));
+  }, [tokens]);
 
   useEffect(() => {
     setTokenPositionLookup((id) => boardData(useEntities.getState()).tokens.get(id)?.pos ?? null);
@@ -42,7 +56,7 @@ export function TokensLayer() {
       {[...tokens.values()]
         .filter((t) => !as || as.has(t.id))
         .map((t) => (
-          <TokenObject key={t.id} token={t} viewer={viewer} />
+          <TokenObject key={t.id} token={t} viewer={viewer} lift={stack.get(t.id) ?? 0} />
         ))}
       {[...ghosts.values()]
         .filter((g) => !tokens.has(g.id))

@@ -6,6 +6,8 @@ export interface SoundLogEntry {
   name: string;
   played: boolean;
   at: number;
+  /** The extra gain it played at (dice: v^1.5 from the contact's impulse). */
+  gain?: number;
 }
 
 interface GloamTestApi {
@@ -41,7 +43,7 @@ export function provideTestHook<A extends unknown[]>(name: string, fn: (...args:
   window.__gloam[name] = fn;
 }
 
-export function logSound(name: string, played: boolean): void {
+export function logSound(name: string, played: boolean, gain?: number): void {
   if (!__GLOAM_TEST__) return;
-  window.__gloam?.sounds.push({ name, played, at: Date.now() });
+  window.__gloam?.sounds.push({ name, played, at: Date.now(), ...(gain !== undefined ? { gain } : {}) });
 }

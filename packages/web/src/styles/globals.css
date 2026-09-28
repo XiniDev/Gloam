@@ -238,10 +238,17 @@
 
 /* Slider (SPEC §28): brass thumb on an ink track; the filled part is brass. `--fill` is set inline (0–100%). */
 .gloam-range {
+  --thumb: 16px;
   appearance: none;
-  height: 20px;
+  /* The track is 4 px; the input around it is the touch target (44 px on touch, AC-RSP-03). */
+  height: max(20px, var(--touch-min));
   background: transparent;
   cursor: pointer;
+}
+@media (pointer: coarse), (max-width: 639px) {
+  .gloam-range {
+    --thumb: 24px;
+  }
 }
 .gloam-range::-webkit-slider-runnable-track {
   height: 4px;
@@ -260,9 +267,9 @@
 }
 .gloam-range::-webkit-slider-thumb {
   appearance: none;
-  width: 16px;
-  height: 16px;
-  margin-top: -6px;
+  width: var(--thumb);
+  height: var(--thumb);
+  margin-top: calc((4px - var(--thumb)) / 2);
   border-radius: 50%;
   border: 1px solid var(--brass-800);
   background: var(--brass-300);
@@ -270,8 +277,8 @@
   transition: transform var(--dur-fast) var(--ease-out);
 }
 .gloam-range::-moz-range-thumb {
-  width: 16px;
-  height: 16px;
+  width: var(--thumb);
+  height: var(--thumb);
   border-radius: 50%;
   border: 1px solid var(--brass-800);
   background: var(--brass-300);

@@ -317,10 +317,18 @@ export default function Board() {
     }
     if (dm && e.altKey && e.shiftKey) {
       const p = boardApi.groundAt(e.clientX, e.clientY);
-      if (p) {
-        void request("camera.spotlight", { x: p.x, y: p.y }).catch(() => {});
-        toast.info("Spotlight", "Players who allow it are looking here.");
-      }
+      // Said only once the server has sent it: a refused one (at most one a second) says so instead.
+      if (p)
+        void request("camera.spotlight", { x: p.x, y: p.y })
+          .then(() => toast.info("Spotlight", "Players who allow it are looking here."))
+          .catch((err) =>
+            toast.warning(
+              "Spotlight",
+              (err as { code?: string }).code === "RATE_LIMITED"
+                ? "One spotlight a second — try again in a moment."
+                : (err as Error).message,
+            ),
+          );
       return;
     }
     if (tool === "measure" && !cameraRig.spaceHeld) {

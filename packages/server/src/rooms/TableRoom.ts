@@ -6,6 +6,8 @@ import {
   AdminUnban,
   CameraSpotlight,
   ClockSync,
+  DiceManual,
+  DiceRoll,
   GloamError,
   HandToggle,
   LobbyDecide,
@@ -13,14 +15,17 @@ import {
   MeasureShare,
   MovePreview,
   PingSend,
+  ProfileDiceSkin,
   SceneRef,
   TableKick,
 } from "@gloam/shared/protocol";
 import { controlsToken } from "@gloam/shared/rules";
+import type { TokenEntity } from "@gloam/shared/schemas";
 import { type PrepSnapshot, Presence, Sensed, Table, type TableState, V2 } from "@gloam/shared/state";
 import { z } from "zod";
 import { renderDto } from "../assets/service.ts";
 import { LibraryQuery } from "../assets/types.ts";
+import { DEFAULT_SKIN, DiceService, type DiceSkin, type RollRecord, viewOfRoll } from "../dice/service.ts";
 import { type CommandActor, CommandBus, type CommitInfo, type RoomEvent } from "../engine/commandBus.ts";
 import { CampaignModel } from "../engine/model.ts";
 import { ALL_COMMANDS, COMMAND_RATES, registerCommands } from "../engine/registry.ts";
@@ -63,6 +68,7 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
   views!: ViewManager;
   /** Perception, fog and explored memory of the active scene (SPEC §15.5). */
   vision!: VisionService;
+  dice!: DiceService;
   /** DM connections viewing a non-active scene in prep (SPEC §13.7): client → scene id. */
   private readonly prepSubs = new Map<Client, string>();
   /** Test probe (AC-PER-01): runs right before Colyseus encodes and sends a state patch. */
@@ -188,6 +194,56 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
           c.send("move.preview", clip.full ? msg : { ...msg, points: clip.points, cost: 0 });
         }
       }),
+      // Dice (SPEC §8.9, §18): the server rolls; each client gets what its visibility row allows (§18.3).
+      "dice.roll": def(DiceRoll, MESSAGE_RATES["dice.roll"], ({ auth }, p) => {
+        const dm = auth.role === "admin" || auth.role === "dm";
+        this.checkRollVisibility(dm, p.visibility);
+        let token: TokenEntity | undefined;
+        if (p.context?.tokenId) {
+          token = this.model.get("token", p.context.tokenId);
+          if (!token || !controlsToken(auth.role, auth.userId, token)) throw new GloamError("FORBIDDEN");
+        }
+        const r = this.dice.roll(this.campaignId, this.projector.activeSceneId || null, this.rollerOf(auth), {
+          formula: p.formula,
+          visibility: p.visibility,
+          ...(p.label ? { label: p.label } : {}),
+          ...(p.purpose ? { purpose: p.purpose } : {}),
+          ...(token ? { token } : {}),
+        });
+        this.deliverRoll(r, dm);
+        return { id: r.id };
+      }),
+      "dice.manual": def(DiceManual, MESSAGE_RATES["dice.manual"], ({ auth }, p) => {
+        const dm = auth.role === "admin" || auth.role === "dm";
+        this.checkRollVisibility(dm, p.visibility);
+        const r = this.dice.manual(
+          this.campaignId,
+          this.projector.activeSceneId || null,
+          this.rollerOf(auth),
+          {
+            formula: p.formula,
+            visibility: p.visibility,
+            ...(p.values ? { values: p.values } : {}),
+            ...(p.total !== undefined ? { total: p.total } : {}),
+            ...(p.label ? { label: p.label } : {}),
+          },
+        );
+        this.deliverRoll(r, dm);
+        return { id: r.id };
+      }),
+      // Your dice skin (§8.9): saved to your profile, and in the room's presence so everyone's dice show it at once.
+      "profile.diceSkin": def(ProfileDiceSkin, MESSAGE_RATES["profile.diceSkin"], ({ auth }, p) => {
+        const json = JSON.stringify({ body: p.body, number: p.number, material: p.material });
+        roomCtx().profiles.update(auth.userId, { diceSkinJson: json });
+        const pr = this.state.presence.get(auth.userId);
+        if (pr) pr.diceSkin = json;
+      }),
+      "dice.feed": def(z.strictObject({}), MESSAGE_RATES["dice.feed"], ({ auth }) =>
+        this.dice.feed(this.campaignId, {
+          userId: auth.userId,
+          dm: auth.role === "admin" || auth.role === "dm",
+        }),
+      ),
       // A finished measurement, shown to everyone else for 3 s (SPEC §8.6 Measurement tools).
       "measure.share": def(MeasureShare, MESSAGE_RATES["measure.share"], ({ client, auth }, p) => {
         if (!this.projector.activeSceneId) return;
@@ -303,6 +359,7 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
     this.model = model;
     // A reload replaces the database under it (a restore): the old service's memory is not written back.
     this.vision?.dispose();
+    this.dice = new DiceService(ctx.db, ctx.config.testSeed);
     this.vision = new VisionService(model, ctx.db, {
       players: () => {
         const out: string[] = [];
@@ -604,6 +661,54 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
   }
 
   // ── TableRoomApi ──────────────────────────────────────────────────────────────────────────────────────
+
+  /** Who may roll how (§8.9): players Public, Private to DM or Self; DMs Public or Private. Blind comes from DM roll
+   * requests (P6), never from the tray. */
+  private checkRollVisibility(dm: boolean, v: string): void {
+    const ok = dm ? v === "public" || v === "dm" : v === "public" || v === "dm" || v === "self";
+    if (!ok) throw new GloamError("INVALID", "That visibility isn't one you can roll with.");
+  }
+
+  /** The roller as their dice show: name, colour and skin (SPEC §8.9 Dice skins). */
+  private rollerOf(auth: ClientAuth) {
+    const user = roomCtx().profiles.get(auth.userId);
+    let skin: DiceSkin = DEFAULT_SKIN;
+    try {
+      const s = JSON.parse(user?.diceSkinJson ?? "{}") as Partial<DiceSkin>;
+      skin = {
+        body: typeof s.body === "string" && /^#[0-9A-Fa-f]{6}$/.test(s.body) ? s.body : DEFAULT_SKIN.body,
+        number:
+          typeof s.number === "string" && /^#[0-9A-Fa-f]{6}$/.test(s.number) ? s.number : DEFAULT_SKIN.number,
+        material: ["resin", "gemstone", "metal", "bone", "obsidian"].includes(s.material as string)
+          ? (s.material as DiceSkin["material"])
+          : DEFAULT_SKIN.material,
+      };
+    } catch {
+      // a skin that doesn't parse: the default dice
+    }
+    return {
+      userId: auth.userId,
+      name: user?.displayName ?? auth.name,
+      color: user?.color ?? auth.color,
+      skin,
+      dm: auth.role === "admin" || auth.role === "dm",
+    };
+  }
+
+  /** Sends a roll to every client as its row of §18.3 allows: the roll, a masked card, or nothing. */
+  private deliverRoll(r: RollRecord, rollerIsDm: boolean): void {
+    for (const c of this.clients) {
+      const auth = c.auth as ClientAuth | undefined;
+      if (!auth) continue;
+      const v = viewOfRoll(
+        r,
+        { userId: auth.userId, dm: auth.role === "admin" || auth.role === "dm" },
+        rollerIsDm,
+      );
+      if (!v) continue;
+      c.send("masked" in v ? "roll.masked" : "roll.result", v);
+    }
+  }
 
   /** Glow stand-ins in the state: exactly the ones someone holds, each drawn from its light as it is now. */
   private readonly glowIds = new Set<string>();

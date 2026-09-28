@@ -4,7 +4,8 @@ import { useFrame } from "@react-three/fiber";
 import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import {
   BoxGeometry,
-  type BufferGeometry,
+  BufferAttribute,
+  BufferGeometry,
   CylinderGeometry,
   DoubleSide,
   type Float32BufferAttribute,
@@ -12,15 +13,21 @@ import {
   type Group,
   InstancedBufferAttribute,
   InstancedMesh,
+  MathUtils,
   Matrix4,
   MeshStandardMaterial,
   PlaneGeometry,
   Quaternion,
+  ShapeUtils,
   Vector2,
   Vector3,
+  Vector4,
 } from "three";
-import { useBoard } from "../../state/entities.ts";
+import { useTable } from "../../net/table.ts";
+import { boardData, useBoard, useEntities } from "../../state/entities.ts";
+import { useUi } from "../../state/ui.ts";
 import { useDmView } from "../../state/viewAs.ts";
+import { boardApi } from "../boardApi.ts";
 import { cameraRig } from "../CameraRig.tsx";
 import { C, col } from "../colors.ts";
 import { again } from "../frames.ts";
@@ -28,6 +35,7 @@ import { NOISE_GLSL } from "../glsl.ts";
 import { useTier } from "../tiers.ts";
 import { useWallTool } from "../tools/walls.ts";
 import { withFog } from "../vision/fogMaterial.ts";
+import { findPillars, pillarPrism } from "./pillars.ts";
 
 /**
  * Walls in 3D (SPEC §8.7 3D walls; AC-WAL-06): with the scene's toggle on, walls stand 8 ft tall in procedural
@@ -35,7 +43,7 @@ import { withFog } from "../vision/fogMaterial.ts";
  * thin glass with a faint fresnel sheen between a sill and a header, curtains hang in folds. For DMs a secret door is a
  * stone leaf, hidden walls are translucent ghosts and invisible walls a faint field; players get no geometry for
  * what they aren't meant to see — an occluder (a hidden wall that blocks sight) is never extruded, or it would
- * reveal itself.
+ * reveal itself. A small closed loop of walls is a pillar: one solid prism, not four walls round a hollow.
  *
  * All the stone is one instanced mesh (one draw call however many walls); its masonry is a function of the world
  * position, so walls meeting at a joint continue the same courses. The materials are made once for the page, so
@@ -62,6 +70,23 @@ interface Box {
   /** What its top shows from above: plain stone, a door's lintel (wood), a window's header (glass). */
   cap?: 0 | 1 | 2;
 }
+
+type Around = readonly [number, number, number, number];
+
+/** How a pillar's top is graded: from the best-seen of four points just outside it, beyond its walls. */
+function aroundOf(poly: readonly P[]): Around {
+  let x0 = Number.POSITIVE_INFINITY;
+  let y0 = Number.POSITIVE_INFINITY;
+  let x1 = Number.NEGATIVE_INFINITY;
+  let y1 = Number.NEGATIVE_INFINITY;
+  for (const p of poly) {
+    x0 = Math.min(x0, p.x);
+    y0 = Math.min(y0, p.y);
+    x1 = Math.max(x1, p.x);
+    y1 = Math.max(y1, p.y);
+  }
+  return [(x0 + x1) / 2, (y0 + y1) / 2, (x1 - x0) / 2 + THICK + 0.6, (y1 - y0) / 2 + THICK + 0.6];
+}
 interface Door {
   id: string;
   a: P;
@@ -77,6 +102,8 @@ interface Pieces {
   curtains: { id: string; a: P; b: P }[];
   fields: { id: string; a: P; b: P }[];
   doors: Door[];
+  /** Pillars (small closed loops of solid wall): each one solid prism instead of its walls. */
+  pillars: P[][];
 }
 
 /** What each wall becomes in 3D, for this viewer. */
@@ -85,7 +112,8 @@ export function wallPieces(
   dm: boolean,
   moved?: ReadonlyMap<string, { a: P; b: P }> | null,
 ): Pieces {
-  const out: Pieces = { stone: [], ghost: [], glass: [], curtains: [], fields: [], doors: [] };
+  const out: Pieces = { stone: [], ghost: [], glass: [], curtains: [], fields: [], doors: [], pillars: [] };
+  const solid: { a: P; b: P; box: Box }[] = [];
   for (const w of walls) {
     const m = moved?.get(w.id);
     const a = m ? m.a : { x: w.ax, y: w.ay };
@@ -100,8 +128,11 @@ export function wallPieces(
       continue;
     }
     if (kind === "occluder") continue;
-    if (kind === "wall") out.stone.push({ a, b, y0: 0, y1: WALL_HEIGHT_FT, thick: THICK, extend: THICK / 2 });
-    else if (kind === "door" || kind === "secret") {
+    if (kind === "wall") {
+      const box: Box = { a, b, y0: 0, y1: WALL_HEIGHT_FT, thick: THICK, extend: THICK / 2 };
+      out.stone.push(box);
+      solid.push({ a, b, box });
+    } else if (kind === "door" || kind === "secret") {
       out.stone.push({ a, b, y0: LINTEL, y1: WALL_HEIGHT_FT, thick: THICK, extend: 0, cap: 1 });
       out.doors.push({
         id: w.id,
@@ -118,6 +149,14 @@ export function wallPieces(
     } else if (kind === "curtain") out.curtains.push({ id: w.id, a, b });
     else if (kind === "invisible" && dm) out.fields.push({ id: w.id, a, b });
   }
+  // A pillar's walls give way to its prism: walls overlapping at its corners put an end face in the plane of the next
+  // wall's side (they fought) and left a hollow to fill.
+  const pillars = findPillars(solid);
+  if (pillars.length) {
+    const gone = new Set(pillars.flatMap((p) => p.members.map((i) => (solid[i] as { box: Box }).box)));
+    out.stone = out.stone.filter((b) => !gone.has(b));
+    out.pillars = pillars.map((p) => p.loop);
+  }
   return out;
 }
 
@@ -128,16 +167,20 @@ uniform vec3 uStoneA; uniform vec3 uStoneB; uniform vec3 uJoint; uniform vec3 uP
 varying vec3 vWall; varying float vAlong; varying float vTop; varying float vCap; varying vec3 vLocal;
 ${NOISE_GLSL}
 // Ashlar courses 1 ft high, blocks 1.8 ft long, every course offset; mortar joints; per-block tint and grime low down.
+// Filtered by the pattern's footprint on screen: joints widen and fade, fine noise fades, where a pixel covers more
+// than a joint's width (grazing faces, distance) — they shimmered into speckle otherwise.
 vec3 masonry(float u, float v, out float mortar) {
+  vec2 fw = fwidth(vec2(u, v));
+  float px = max(fw.x, fw.y);
   float row = floor(v);
   float x = u + g_hash(vec2(row, 3.1)) * 1.8;
   float cell = floor(x / 1.8);
   vec2 local = vec2(fract(x / 1.8) * 1.8, fract(v));
   float edge = min(min(local.x, 1.8 - local.x), min(local.y, 1.0 - local.y));
-  mortar = 1.0 - smoothstep(0.035, 0.075, edge);
+  mortar = (1.0 - smoothstep(0.035 - px, 0.075 + px, edge)) * (1.0 - smoothstep(0.12, 0.4, px));
   float h = g_hash(vec2(cell, row));
   vec3 c = mix(uStoneA, uStoneB, 0.25 + 0.55 * h + 0.2 * g_fbm(vec2(u, v) * 1.4));
-  c *= 0.86 + 0.22 * g_noise(vec2(u, v) * 5.0);
+  c *= 0.86 + 0.22 * mix(g_noise(vec2(u, v) * 5.0), 0.5, smoothstep(0.04, 0.16, px));
   // Contact shadow where the wall meets the floor, and grime in the lowest course.
   c *= mix(0.5, 1.0, smoothstep(0.0, 1.1, v)) * mix(0.9, 1.0, smoothstep(0.0, 2.4, v));
   return mix(c, uJoint, mortar);
@@ -145,9 +188,10 @@ vec3 masonry(float u, float v, out float mortar) {
 // The wall's top: capstones laid along the wall, 1.5 ft long, with fine joints across it (overlapping tops at a joint
 // sit at slightly different heights, so the nearer one simply covers the other).
 vec3 capstone(float u, vec2 p, float cap, vec3 local, out float mortar) {
+  float px = fwidth(u);
   float q = u / 1.5;
   float f = fract(q);
-  mortar = (1.0 - smoothstep(0.02, 0.045, min(f, 1.0 - f) * 1.5)) * 0.7;
+  mortar = (1.0 - smoothstep(0.02 - px, 0.045 + px, min(f, 1.0 - f) * 1.5)) * 0.7 * (1.0 - smoothstep(0.12, 0.4, px));
   // Well darker than the floor, so a wall reads as a wall from straight above...
   vec3 c = mix(uStoneA, uStoneB, 0.3 + 0.3 * g_hash(vec2(floor(q), 5.0)) + 0.1 * g_noise(p * 3.0)) * 0.5;
   // ...a door's lintel as its oak beam, a window's header with a strip of glass along it...
@@ -165,30 +209,118 @@ vec3 capstone(float u, vec2 p, float cap, vec3 local, out float mortar) {
 
 /**
  * The camera cutaway: at a tabletop or low angle an 8-ft wall hides the floor behind it — a token just inside a room's
- * near wall would be invisible. Walls between the camera and the point it looks at are cut down to a 1.2-ft stub
- * (with a solid cap, not a hollow box); walls level with or beyond that point stand full height, and looking straight
- * down nothing is cut. Shadows still come from the full walls (the shadow pass doesn't cut).
+ * near wall would be invisible. Walls between the camera and the point it looks at are cut down to a 1.2-ft stub,
+ * sloping over 2.5 ft from full height; and wherever a wall stands between the camera and a token in view (the
+ * viewer's own first, then the selected, then the nearest; up to KEEP_MAX), it is cut down the same way over the
+ * stretch that would hide the token's base (8 ft ÷ tan(pitch) toward the camera). Looking straight down nothing is cut.
+ *
+ * Solid pieces (the stone, a pillar, a door's leaf, glass) are cut by lowering their geometry: each stays a closed
+ * box whose top is the cut, drawn as its capstone — no inside to show, no faces inside other pieces laid bare. A piece
+ * wholly above the cut there (a lintel over a door) goes. The cut face is unlit: the shadow pass draws the walls uncut,
+ * so a lit cut face would lie in its own wall's shadow. Cloth and iron (thin) are clipped. Pillars are cut flat at the
+ * height for their centre.
  */
+const KEEP_MAX = 16;
 export const cutaway = {
   uCutOn: { value: 0 },
   uCutH: { value: 1.2 },
+  uCutFull: { value: WALL_HEIGHT_FT + 0.05 },
   uCutGap: { value: 1.5 },
   uCutTarget: { value: new Vector2() },
   uCutDir: { value: new Vector2(0, -1) },
+  uCutCam: { value: new Vector2() },
+  /** Tokens kept in view: x, z, radius, and how far toward the camera a wall would hide them (ft). */
+  uKeep: { value: Array.from({ length: KEEP_MAX }, () => new Vector4()) },
+  uKeepN: { value: 0 },
 };
 const CUT_PITCH_DEG = 75;
+/** How bright a cut face is drawn (it's unlit: a share of its stone colour). */
+const CUT_FACE_LIGHT = 1.15;
+/** Over how far (ft) the cut slopes from full height to the stub. */
+const CUT_RAMP_FT = 2.5;
 
+const CUT_GLSL = /* glsl */ `
+uniform float uCutOn; uniform float uCutH; uniform float uCutFull; uniform float uCutGap; uniform vec2 uCutTarget;
+uniform vec2 uCutDir; uniform vec2 uCutCam; uniform vec4 uKeep[${KEEP_MAX}]; uniform float uKeepN;
+#ifdef GLOAM_CUT_AT_C
+uniform vec2 uCutAtC;
+#endif
+// The height things are cut to at a table point (≥ uCutFull: not cut). Near the camera's target: full beyond the gap
+// before it, sloping over ${CUT_RAMP_FT} ft to the stub nearer the camera. Near a token in view: down to the stub over
+// the stretch between it and the camera that would hide its base, the edges eased over a foot.
+float gloamCutHeight(vec2 xz) {
+  float d = dot(xz - uCutTarget, uCutDir) + uCutGap;
+  float h = mix(uCutH, uCutFull, smoothstep(-${CUT_RAMP_FT.toFixed(1)}, 0.0, d));
+  for (int i = 0; i < ${KEEP_MAX}; i++) {
+    if (float(i) >= uKeepN) break;
+    vec4 k = uKeep[i];
+    vec2 to = uCutCam - k.xy;
+    float l = length(to);
+    if (l < 1e-3) continue;
+    vec2 dir = to / l;
+    vec2 rel = xz - k.xy;
+    float t = dot(rel, dir);
+    float s = abs(dot(rel, vec2(-dir.y, dir.x)));
+    float inside = (1.0 - smoothstep(k.z + 0.4, k.z + 1.4, s)) * (1.0 - smoothstep(k.w, k.w + 1.0, t))
+      * smoothstep(-k.z - 1.0, -k.z, t);
+    h = min(h, mix(uCutFull, uCutH, inside));
+  }
+  return h;
+}
+`;
+
+/**
+ * Adds the cutaway to a material: `unit` / `floor` lower the geometry (a unit box's bottom at −0.5, or a piece standing
+ * on the floor at its local y = 0); `cut` clips fragments; `fade` fades them (DM-only fields).
+ */
 function withCutaway(
   shader: {
     uniforms: Record<string, unknown>;
     vertexShader: string;
     fragmentShader: string;
   },
-  mode: "cut" | "fade" = "cut",
+  mode: "unit" | "floor" | "cut" | "fade",
 ) {
   Object.assign(shader.uniforms, cutaway);
+  const lower = mode === "unit" || mode === "floor";
+  const varyings = `varying vec3 vCutW; varying vec2 vCutAt;${lower ? " varying float vCutBottom; varying float vCutCap;" : ""}`;
+  const hairAttr =
+    mode === "unit"
+      ? "\n#if defined(USE_INSTANCING) && defined(GLOAM_HAIR)\nattribute float aHair;\n#endif"
+      : "";
   shader.vertexShader = shader.vertexShader
-    .replace("#include <common>", "#include <common>\nvarying vec3 vCutW;")
+    .replace("#include <common>", `#include <common>\n${varyings}${hairAttr}\n${CUT_GLSL}`)
+    .replace(
+      "#include <begin_vertex>",
+      lower
+        ? `#include <begin_vertex>
+{
+  mat4 gm = modelMatrix;
+#ifdef USE_INSTANCING
+  gm = modelMatrix * instanceMatrix;
+#endif
+  vec4 gwp = gm * vec4(transformed, 1.0);
+  vec2 gat = gwp.xz;
+#ifdef GLOAM_CUT_AT_C
+  gat = uCutAtC;
+#endif
+  // Pieces stand upright (turned only about the vertical): world y = gm[1][1] · y + gm[3][1].
+  float gbot = gm[1][1] * ${mode === "unit" ? "-0.5" : "0.0"} + gm[3][1];
+  float gtop = max(uCutOn > 0.5 ? gloamCutHeight(gat) : uCutFull, gbot);
+  vCutBottom = gbot;
+  vCutCap = 0.0;
+  if (gwp.y > gtop + 1e-4) {
+    float hair = 0.0;
+#if defined(USE_INSTANCING) && defined(GLOAM_HAIR)
+    // Tops overlapping at a joint stay a hair apart, as uncut (StoneBoxes).
+    hair = aHair;
+#endif
+    transformed.y = (gtop + hair - gm[3][1]) / gm[1][1];
+    vCutCap = 1.0;
+  }
+}`
+        : "#include <begin_vertex>",
+    )
     .replace(
       "#include <project_vertex>",
       `#include <project_vertex>
@@ -196,25 +328,37 @@ vec4 gcw = vec4(transformed, 1.0);
 #ifdef USE_INSTANCING
 gcw = instanceMatrix * gcw;
 #endif
-vCutW = (modelMatrix * gcw).xyz;`,
+vCutW = (modelMatrix * gcw).xyz;
+vCutAt = vCutW.xz;
+#ifdef GLOAM_CUT_AT_C
+vCutAt = uCutAtC;
+#endif`,
     );
   shader.fragmentShader = shader.fragmentShader
+    .replace("#include <common>", `#include <common>\n${varyings}\n${CUT_GLSL}`)
     .replace(
-      "#include <common>",
-      "#include <common>\nvarying vec3 vCutW; uniform float uCutOn; uniform float uCutH; uniform float uCutGap; uniform vec2 uCutTarget; uniform vec2 uCutDir;",
-    )
-    .replace(
-      mode === "cut" ? "#include <clipping_planes_fragment>" : "#include <color_fragment>",
-      mode === "cut"
-        ? `#include <clipping_planes_fragment>
-if (uCutOn > 0.5 && vCutW.y > uCutH && dot(vCutW.xz - uCutTarget, uCutDir) < -uCutGap) discard;`
-        : `#include <color_fragment>
-if (uCutOn > 0.5 && vCutW.y > uCutH && dot(vCutW.xz - uCutTarget, uCutDir) < -uCutGap) diffuseColor.a *= 0.2;`,
+      mode === "fade" ? "#include <color_fragment>" : "#include <clipping_planes_fragment>",
+      mode === "fade"
+        ? `#include <color_fragment>
+if (uCutOn > 0.5 && vCutW.y > gloamCutHeight(vCutAt)) diffuseColor.a *= 0.2;`
+        : lower
+          ? `#include <clipping_planes_fragment>
+// Wholly above the cut here (a lintel over a doorway cut to its stub): gone.
+if (uCutOn > 0.5 && vCutBottom > uCutH && vCutBottom > gloamCutHeight(vCutAt) + 0.005) discard;`
+          : `#include <clipping_planes_fragment>
+if (uCutOn > 0.5 && vCutW.y > gloamCutHeight(vCutAt)) discard;`,
     );
 }
 
-/** The stone: a lit standard material whose colour and roughness come from world-space masonry. */
-function stoneMaterial(ghost: boolean): MeshStandardMaterial {
+type StoneKind = "box" | "ghost" | "leaf" | "pillar";
+
+/**
+ * The stone: a lit standard material whose colour and roughness come from world-space masonry. `box`/`ghost`: the
+ * instanced wall boxes; `leaf`: a secret door's leaf; `pillar`: a pillar's prism (its courses run on round its
+ * corners, its top's rim from the prism's `aEdge`, cut flat at its centre `c`).
+ */
+function stoneMaterial(kind: StoneKind, c: Vector2 | null = null): MeshStandardMaterial {
+  const ghost = kind === "ghost";
   const m = new MeshStandardMaterial({
     roughness: 0.92,
     metalness: 0,
@@ -224,8 +368,7 @@ function stoneMaterial(ghost: boolean): MeshStandardMaterial {
     transparent: ghost,
     opacity: ghost ? 0.32 : 1,
     depthWrite: !ghost,
-    // Back faces show where the cutaway opens a wall: they're drawn as its solid cap.
-    side: ghost ? FrontSide : DoubleSide,
+    side: FrontSide,
   });
   const u = {
     uStoneA: { value: col(C.stoneA) },
@@ -233,29 +376,46 @@ function stoneMaterial(ghost: boolean): MeshStandardMaterial {
     uJoint: { value: col(C.stoneJoint) },
     uPlank: { value: col(C.plankA) },
     uGlass: { value: col(C.ice300) },
+    uCutAtC: { value: c ?? new Vector2() },
   };
-  m.customProgramCacheKey = () => "gloam-wall-stone";
+  if (kind === "pillar") m.defines = { GLOAM_PILLAR: "", GLOAM_CUT_AT_C: "" };
+  // The wall boxes carry their hair as an attribute (StoneBoxes).
+  else if (kind === "box" || kind === "ghost") m.defines = { GLOAM_HAIR: "" };
+  m.customProgramCacheKey = () =>
+    kind === "box" || kind === "ghost" ? "gloam-wall-stone" : `gloam-wall-stone:${kind}`;
   m.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, u);
     shader.vertexShader = shader.vertexShader
       .replace(
         "#include <common>",
-        "#include <common>\nvarying vec3 vWall; varying float vAlong; varying float vTop; varying float vCap; varying vec3 vLocal;\n#ifdef USE_INSTANCING\nattribute float aCap;\n#endif",
+        `#include <common>
+varying vec3 vWall; varying float vAlong; varying float vTop; varying float vCap; varying vec3 vLocal;
+#ifdef USE_INSTANCING
+attribute float aCap;
+#endif
+#ifdef GLOAM_PILLAR
+attribute float aAlong; attribute float aEdge;
+#endif`,
       )
       .replace(
         "#include <project_vertex>",
         `#include <project_vertex>
 vec4 gw = vec4(transformed, 1.0);
-vec2 gdir = vec2(1.0, 0.0);
+vec4 gx = vec4(1.0, 0.0, 0.0, 0.0);
 #ifdef USE_INSTANCING
 gw = instanceMatrix * gw;
-gdir = normalize(instanceMatrix[0].xz);
+gx = instanceMatrix * gx;
 #endif
 gw = modelMatrix * gw;
+vec2 gdir = normalize((modelMatrix * gx).xz);
 vWall = gw.xyz;
 vAlong = dot(gw.xz, gdir);
 vTop = abs(normal.y);
 vLocal = position;
+#ifdef GLOAM_PILLAR
+vAlong = vTop > 0.5 ? gw.x : aAlong;
+vLocal = vec3(0.0, 0.0, 0.5 - (1.0 - aEdge) * 0.18);
+#endif
 #ifdef USE_INSTANCING
 vCap = aCap;
 #else
@@ -269,13 +429,20 @@ vCap = 0.0;
         `#include <color_fragment>
 float gMortar;
 diffuseColor.rgb = vTop > 0.5 ? capstone(vAlong, vWall.xz, vCap, vLocal, gMortar) : masonry(vAlong, vWall.y, gMortar);
-if (!gl_FrontFacing) diffuseColor.rgb = mix(uStoneA, uJoint, 0.45);`,
+// A top the cutaway lowered is its cut face: drawn evenly lit (see withCutaway).
+float gCutFace = vTop > 0.5 ? clamp(vCutCap, 0.0, 1.0) : 0.0;`,
       )
       .replace(
         "#include <roughnessmap_fragment>",
         "#include <roughnessmap_fragment>\nroughnessFactor = mix(0.86, 0.98, gMortar);",
+      )
+      .replace(
+        "#include <emissivemap_fragment>",
+        `#include <emissivemap_fragment>
+totalEmissiveRadiance = mix(totalEmissiveRadiance, diffuseColor.rgb * ${CUT_FACE_LIGHT.toFixed(2)}, gCutFace);
+diffuseColor.rgb *= 1.0 - gCutFace;`,
       );
-    withCutaway(shader);
+    withCutaway(shader, kind === "box" || kind === "ghost" ? "unit" : "floor");
   };
   return m;
 }
@@ -310,7 +477,7 @@ wood = mix(wood, uPlankA * 0.45, seam);
 float strap = step(abs(vLeaf.y - 1.4), 0.16) + step(abs(vLeaf.y - 5.6), 0.16);
 diffuseColor.rgb = mix(wood, uIron, clamp(strap, 0.0, 1.0));`,
       );
-    withCutaway(shader);
+    withCutaway(shader, "floor");
   };
   return m;
 }
@@ -335,7 +502,7 @@ outgoingLight += vec3(0.55, 0.65, 0.75) * gFres * 0.6;
 diffuseColor.a = min(1.0, diffuseColor.a + gFres * 0.45);
 #include <opaque_fragment>`,
     );
-    withCutaway(shader);
+    withCutaway(shader, "unit");
   };
   return m;
 }
@@ -356,6 +523,7 @@ let mats: {
   iron: MeshStandardMaterial;
   stone: MeshStandardMaterial;
   ghost: MeshStandardMaterial;
+  stoneLeaf: MeshStandardMaterial;
   wood: MeshStandardMaterial;
   glass: MeshStandardMaterial;
   cloth: MeshStandardMaterial;
@@ -368,8 +536,9 @@ function materials() {
       cutMaterial("gloam-wall-iron", { color: col(C.ink900), roughness: 0.45, metalness: 0.6 }),
       "wall",
     ),
-    stone: withFog(stoneMaterial(false), "wall"),
-    ghost: withFog(stoneMaterial(true), "wall"),
+    stone: withFog(stoneMaterial("box"), "wall"),
+    ghost: withFog(stoneMaterial("ghost"), "wall"),
+    stoneLeaf: withFog(stoneMaterial("leaf"), "wall"),
     wood: withFog(woodMaterial(), "wall"),
     glass: withFog(glassMaterial(), "wall"),
     // Cloth is cut like masonry where the cutaway opens the view (a stub with its hem, the rod with it): a faded,
@@ -382,15 +551,19 @@ function materials() {
       }),
       "wall",
     ),
-    field: cutMaterial("gloam-wall-field", {
-      color: col(C.arcane400),
-      emissive: col(C.arcane400),
-      emissiveIntensity: 0.25,
-      transparent: true,
-      opacity: 0.14,
-      depthWrite: false,
-      side: DoubleSide,
-    }),
+    field: cutMaterial(
+      "gloam-wall-field",
+      {
+        color: col(C.arcane400),
+        emissive: col(C.arcane400),
+        emissiveIntensity: 0.25,
+        transparent: true,
+        opacity: 0.14,
+        depthWrite: false,
+        side: DoubleSide,
+      },
+      "fade",
+    ),
   };
   return mats;
 }
@@ -415,9 +588,13 @@ export function Walls3DLayer() {
     c.getTarget(tgt);
     c.getPosition(pos);
     cutaway.uCutTarget.value.set(tgt.x, tgt.z);
+    cutaway.uCutCam.value.set(pos.x, pos.z);
     const d = cutaway.uCutDir.value.set(tgt.x - pos.x, tgt.z - pos.z);
     if (d.lengthSq() > 1e-6) d.normalize();
-    cutaway.uCutOn.value = cameraRig.pitchDeg() < CUT_PITCH_DEG ? 1 : 0;
+    const pitch = cameraRig.pitchDeg();
+    const cut = pitch < CUT_PITCH_DEG;
+    cutaway.uCutOn.value = cut ? 1 : 0;
+    cutaway.uKeepN.value = cut ? keepInView(tgt, pitch) : 0;
   });
   if (!pieces) return null;
   const m = materials();
@@ -425,6 +602,9 @@ export function Walls3DLayer() {
     <group name="walls3d" userData={{ part: "walls3d" }}>
       <StoneBoxes boxes={pieces.stone} material={m.stone} shadows={shadows} name="walls3d-stone" />
       <StoneBoxes boxes={pieces.ghost} material={m.ghost} shadows={false} name="walls3d-ghost" />
+      {pieces.pillars.map((loop) => (
+        <PillarBody key={loop.map((p) => `${p.x},${p.y}`).join("|")} loop={loop} shadows={shadows} />
+      ))}
       {pieces.glass.map((g) => (
         <Slab key={`${g.a.x},${g.a.y},${g.b.x},${g.b.y}`} box={g} material={m.glass} name="window-glass" />
       ))}
@@ -446,6 +626,47 @@ export function Walls3DLayer() {
   );
 }
 
+const keepRank: { x: number; z: number; r: number; e: number; rank: number }[] = [];
+/**
+ * The tokens the cutaway keeps in view (`cutaway.uKeep`): the viewer's own first, then the selected, then the rest
+ * nearest the camera's target — where they're drawn now (mid-glide included), each with how far toward the camera
+ * a full-height wall would hide its base at this pitch. Returns how many.
+ */
+function keepInView(target: Vector3, pitchDeg: number): number {
+  const group = boardApi.tokens;
+  if (!group) return 0;
+  const tokens = boardData(useEntities.getState()).tokens;
+  const me = useTable.getState().me?.userId ?? "";
+  const selected = useUi.getState().selection;
+  const tan = Math.tan(MathUtils.degToRad(Math.max(10, pitchDeg)));
+  keepRank.length = 0;
+  for (const root of group.children) {
+    const id = root.userData.tokenId as string | undefined;
+    const t = id ? tokens.get(id) : undefined;
+    if (!t || !root.visible) continue;
+    const p = root.position;
+    const near = (p.x - target.x) ** 2 + (p.z - target.z) ** 2;
+    if (near > 120 * 120) continue;
+    const tier = t.ownerIds.includes(me) ? 0 : selected.includes(t.id) ? 1 : 2;
+    keepRank.push({
+      x: p.x,
+      z: p.z,
+      r: Math.max(0.6, t.sizeFt / 2),
+      e: Math.max(0, p.y),
+      rank: tier * 1e9 + near,
+    });
+  }
+  keepRank.sort((a, b) => a.rank - b.rank);
+  let n = 0;
+  for (const k of keepRank) {
+    if (n >= KEEP_MAX) break;
+    if (k.e >= WALL_HEIGHT_FT) continue;
+    const reach = (WALL_HEIGHT_FT - k.e) / tan + k.r;
+    (cutaway.uKeep.value[n++] as Vector4).set(k.x, k.z, k.r, reach);
+  }
+  return n;
+}
+
 const tmpM = new Matrix4();
 const tmpQ = new Quaternion();
 const tmpP = new Vector3();
@@ -464,9 +685,25 @@ function boxMatrix(b: Box, out: Matrix4, lift = 0): Matrix4 {
   return out.compose(tmpP, tmpQ, tmpS);
 }
 
-const unitBox = new BoxGeometry(1, 1, 1);
+/**
+ * Unit boxes divided along their length, so the cutaway can lower a top vertex by vertex, following its slope: about
+ * every 0.6 ft of wall (rounded up to a power of two, at most 128) — a short wall isn't paying for a long one's
+ * divisions, so the vertices drawn follow the length of wall on the board, not the number of walls.
+ */
+const DIV_FT = 0.6;
+const unitBoxes = new Map<number, BoxGeometry>();
+function unitBox(segments: number): BoxGeometry {
+  let g = unitBoxes.get(segments);
+  if (!g) {
+    g = new BoxGeometry(1, 1, 1, segments, 1, 1);
+    unitBoxes.set(segments, g);
+  }
+  return g;
+}
+const segmentsFor = (lengthFt: number) =>
+  Math.min(128, 2 ** Math.max(0, Math.ceil(Math.log2(Math.max(1, Math.ceil(lengthFt / DIV_FT))))));
 
-/** Every stone box in one instanced mesh; its capacity doubles as the walls grow. */
+/** Every stone box, drawn as a few instanced meshes (one per division count). */
 function StoneBoxes({
   boxes,
   material,
@@ -478,17 +715,52 @@ function StoneBoxes({
   shadows: boolean;
   name: string;
 }) {
-  const capacity = Math.max(16, 2 ** Math.ceil(Math.log2(Math.max(1, boxes.length))));
+  const buckets = useMemo(() => {
+    const by = new Map<number, { box: Box; hair: number }[]>();
+    boxes.forEach((b, i) => {
+      const n = segmentsFor(Math.hypot(b.b.x - b.a.x, b.b.y - b.a.y) + 2 * b.extend);
+      const list = by.get(n) ?? [];
+      // Each box a hair taller than the last few (0–12 thousandths of a foot), counted along all the boxes: where
+      // tops overlap at a joint, one covers the other instead of the two flickering (the cutaway keeps the hair).
+      list.push({ box: b, hair: (i % 5) * 0.003 });
+      by.set(n, list);
+    });
+    return [...by.entries()].sort((a, b) => a[0] - b[0]);
+  }, [boxes]);
+  return (
+    <>
+      {buckets.map(([n, items]) => (
+        <BoxBucket key={n} segments={n} items={items} material={material} shadows={shadows} name={name} />
+      ))}
+    </>
+  );
+}
+
+function BoxBucket({
+  segments,
+  items,
+  material,
+  shadows,
+  name,
+}: {
+  segments: number;
+  items: { box: Box; hair: number }[];
+  material: MeshStandardMaterial;
+  shadows: boolean;
+  name: string;
+}) {
+  const capacity = Math.max(16, 2 ** Math.ceil(Math.log2(Math.max(1, items.length))));
   const mesh = useMemo(() => {
-    // Its own copy of the box, carrying the per-instance cap kind.
-    const g = unitBox.clone();
+    // Its own copy of the box, carrying the per-instance cap kind and hair.
+    const g = unitBox(segments).clone();
     g.setAttribute("aCap", new InstancedBufferAttribute(new Float32Array(capacity), 1));
+    g.setAttribute("aHair", new InstancedBufferAttribute(new Float32Array(capacity), 1));
     const im = new InstancedMesh(g, material, capacity);
     im.frustumCulled = false;
     im.raycast = () => {};
     im.name = name;
     return im;
-  }, [capacity, material, name]);
+  }, [capacity, material, name, segments]);
   useEffect(
     () => () => {
       mesh.geometry.dispose();
@@ -497,21 +769,67 @@ function StoneBoxes({
     [mesh],
   );
   useLayoutEffect(() => {
-    // Each box a hair taller than the last few (0–12 thousandths of a foot): where tops overlap at a joint, one
-    // covers the other instead of the two flickering.
     const caps = mesh.geometry.getAttribute("aCap") as InstancedBufferAttribute;
-    for (let i = 0; i < boxes.length; i++) {
-      const b = boxes[i] as Box;
-      mesh.setMatrixAt(i, boxMatrix(b, tmpM, (i % 5) * 0.003));
-      caps.setX(i, b.cap ?? 0);
+    const hairs = mesh.geometry.getAttribute("aHair") as InstancedBufferAttribute;
+    for (let i = 0; i < items.length; i++) {
+      const { box, hair } = items[i] as { box: Box; hair: number };
+      mesh.setMatrixAt(i, boxMatrix(box, tmpM, hair));
+      caps.setX(i, box.cap ?? 0);
+      hairs.setX(i, hair);
     }
     caps.needsUpdate = true;
-    mesh.count = boxes.length;
+    hairs.needsUpdate = true;
+    mesh.count = items.length;
     mesh.instanceMatrix.needsUpdate = true;
     mesh.castShadow = shadows;
     mesh.receiveShadow = shadows;
-  }, [mesh, boxes, shadows]);
+  }, [mesh, items, shadows]);
   return <primitive object={mesh} />;
+}
+
+/**
+ * A pillar: one closed prism of stone (pillars.ts) — its loop grown by half the walls' thickness, as tall as the walls,
+ * its courses running on round its corners, its top rimmed like a wall's. Its top is graded from just outside it (its
+ * footprint is never seen from anywhere); its sides by the room each faces.
+ */
+function PillarBody({ loop, shadows }: { loop: P[]; shadows: boolean }) {
+  const geo = useMemo(() => {
+    const d = pillarPrism(loop, THICK, WALL_HEIGHT_FT - 0.002, (c) =>
+      ShapeUtils.triangulateShape(
+        c.map((p) => new Vector2(p.x, p.y)),
+        [],
+      ),
+    );
+    const g = new BufferGeometry();
+    g.setAttribute("position", new BufferAttribute(d.position, 3));
+    g.setAttribute("normal", new BufferAttribute(d.normal, 3));
+    g.setAttribute("aAlong", new BufferAttribute(d.along, 1));
+    g.setAttribute("aEdge", new BufferAttribute(d.edge, 1));
+    g.computeBoundingSphere();
+    return g;
+  }, [loop]);
+  const material = useMemo(() => {
+    const [cx, cy, rx, ry] = aroundOf(loop);
+    const c = new Vector2(cx, cy);
+    return withFog(stoneMaterial("pillar", c), "wall", { around: { c, r: new Vector2(rx, ry) } });
+  }, [loop]);
+  useEffect(
+    () => () => {
+      geo.dispose();
+      material.dispose();
+    },
+    [geo, material],
+  );
+  return (
+    <mesh
+      geometry={geo}
+      material={material}
+      castShadow={shadows}
+      receiveShadow={shadows}
+      raycast={() => null}
+      name="walls3d-pillar"
+    />
+  );
 }
 
 /** One thin box (a window's glass, an invisible wall's field). */
@@ -520,7 +838,7 @@ function Slab({ box, material, name }: { box: Box; material: MeshStandardMateria
   return (
     <mesh
       name={name}
-      geometry={unitBox}
+      geometry={unitBox(segmentsFor(Math.hypot(box.b.x - box.a.x, box.b.y - box.a.y)))}
       material={material}
       matrixAutoUpdate={false}
       matrix={matrix}
@@ -599,7 +917,8 @@ function DoorLeaf({ door, shadows }: { door: Door; shadows: boolean }) {
   // A door seen for the first time is drawn as it is; after that it swings.
   const anim = useRef<{ from: number; to: number; t0: number }>({ from: target, to: target, t0: 0 });
   const geometry = useMemo(() => {
-    const g = new BoxGeometry(Math.max(0.1, len - 0.1), DOOR_TOP, LEAF);
+    // Divided across its width, so the cutaway can lower it following the slope.
+    const g = new BoxGeometry(Math.max(0.1, len - 0.1), DOOR_TOP, LEAF, 12, 1, 1);
     g.translate(len / 2, DOOR_TOP / 2, 0);
     return g;
   }, [len]);
@@ -637,7 +956,7 @@ function DoorLeaf({ door, shadows }: { door: Door; shadows: boolean }) {
       <group ref={hinge} name={`door-leaf:${door.id}`} userData={{ part: "doorLeaf", wallId: door.id }}>
         <mesh
           geometry={geometry}
-          material={door.stone ? m.stone : m.wood}
+          material={door.stone ? m.stoneLeaf : m.wood}
           raycast={() => null}
           castShadow={shadows}
           receiveShadow={shadows}

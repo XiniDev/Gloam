@@ -20,6 +20,7 @@ interface Walls3D {
   glass: number;
   curtains: number;
   fields: number;
+  pillars: number;
   doors: Record<string, number>;
   cut: boolean;
 }
@@ -131,5 +132,20 @@ test.describe("P3 — walls in 3D (WAL-06)", () => {
     await expect.poll(() => w3d(admin)).toBeNull();
     await admin.getByRole("button", { name: "Walls in 3D: off" }).click();
     await expect.poll(async () => (await w3d(dave))?.stone).toBe(7);
+
+    // A pillar — a small closed loop of walls — is solid stone to its top, not a hollow shaft; a room isn't filled.
+    await expect.poll(async () => (await w3d(dave))?.pillars).toBe(0);
+    await req(admin, "wall.create", {
+      sceneId,
+      walls: [
+        { a: { x: 52, y: 18 }, b: { x: 55, y: 18 }, kind: "wall" },
+        { a: { x: 55, y: 18 }, b: { x: 55, y: 21 }, kind: "wall" },
+        { a: { x: 55, y: 21 }, b: { x: 52, y: 21 }, kind: "wall" },
+        { a: { x: 52, y: 21 }, b: { x: 52, y: 18 }, kind: "wall" },
+      ],
+    });
+    for (const p of [admin, dave]) await expect.poll(async () => (await w3d(p))?.pillars).toBe(1);
+    await camera(dave, { pitchDeg: 50, distance: 30, target: [53.5, 19.5], ms: 0 });
+    await dave.screenshot({ path: "artifacts/screens/p3/walls3d-pillar.png" });
   });
 });

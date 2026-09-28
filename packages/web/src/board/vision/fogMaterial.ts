@@ -112,7 +112,7 @@ uniform float gMode; uniform float gDm; uniform float gAmbient; uniform vec4 gRe
 uniform vec2 gMemTexel; uniform vec4 gMemRect; uniform sampler2D gVis; uniform sampler2D gVisPrev; uniform float gBlend;
 uniform sampler2D gLight; uniform sampler2D gLightCol; uniform sampler2D gMem; uniform float gTime;
 uniform sampler2D gNoise;
-varying vec3 vFogW; varying vec2 vFogAcross;
+varying vec3 vFogW; varying vec2 vFogAcross; varying vec2 vFogFacing;
 `;
 
 const GLSL = /* glsl */ `
@@ -145,9 +145,16 @@ vec3 gWarFog(vec2 xz) {
   float m = texture2D(gNoise, xz * 0.087 - vec2(gTime * 0.007, gTime * 0.0035)).r;
   return G_FOG * (0.45 + 0.95 * n * n + 0.35 * m);
 }
-// The DM's view of the players' fog: a translucent hatch, the map still readable under it.
+// The war fog where it meets what's seen or remembered: still there (no drifting blotches at the edge of torchlight,
+// §15.7: the soft edge is a plain falloff; the fbm is the unknown's own).
+vec3 gCalmFog(vec2 xz, float near) {
+  return mix(gWarFog(xz), G_FOG * 0.9, clamp(near * 3.0, 0.0, 1.0));
+}
+// The DM's view of the players' fog: a translucent hatch, the map still readable under it. Drawn on the screen at a
+// fixed angle and spacing (not on the table), so it reads the same on floors, walls and tokens — on a wall's face a
+// table-space hatch smeared into streaks.
 vec3 gHatch(vec3 col, vec2 xz, float fog) {
-  float h = abs(fract((xz.x + xz.y) * 0.5) - 0.5);
+  float h = abs(fract((gl_FragCoord.x + gl_FragCoord.y) / 14.0) - 0.5);
   float line = 1.0 - smoothstep(0.06, 0.12, h);
   return mix(col, mix(col * 0.72, G_HATCH, line * 0.55), fog * 0.85);
 }
@@ -162,18 +169,27 @@ vec4 gVisFeathered(vec2 uv) {
   float f = clamp(2.0 * (s / 5.0) - 1.0, 0.0, 1.0);
   return vec4(f, c.g * f / c.r, c.b, c.a * f / c.r);
 }
-vec3 gloamFog(vec3 col, vec2 xz, float feather, vec2 across) {
+// facing: a wall's upright face, the way it faces (else zero) — the face is graded from just in front of it, in the
+// room it faces: sampled on the wall's line, where the vision polygon's edge runs, it picked up the target's texel
+// steps as blocks along the face.
+vec3 gloamFog(vec3 col, vec2 xz, float feather, vec2 across, vec2 facing) {
   if (gMode < 0.5) return col;
   vec2 uv = (xz - gRect.xy) / gRect.zw;
   if (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) return col;
+  bool face = dot(facing, facing) > 0.0;
+  if (face) {
+    xz += facing * 0.35;
+    uv = (xz - gRect.xy) / gRect.zw;
+  }
   float mem = gMemAt(xz);
   if (gMode < 1.5) {
     // Painted: what's revealed is plain; the rest is fog.
     if (gDm > 0.5) return gHatch(col, xz, 1.0 - mem);
-    return mix(gWarFog(xz), col, mem);
+    return mix(gCalmFog(xz, mem), col, mem);
   }
   vec4 v;
-  if (dot(across, across) > 0.0) {
+  if (face) v = gVisFeathered(uv);
+  else if (dot(across, across) > 0.0) {
     // A wall: seen when either side of it is (its faces lie on the visible region's edge).
     vec2 d = across * 0.6 / gRect.zw;
     v = max(gVisAt(uv + d), gVisAt(uv - d));
@@ -201,53 +217,113 @@ vec3 gloamFog(vec3 col, vec2 xz, float feather, vec2 across) {
   if (lk > 0.001) lit *= mix(vec3(1.0), lc / lk, 0.28 * clamp(L.g * 1.5, 0.0, 1.0));
   lit *= flick;
   vec3 cDim = col * 0.55 * vec3(0.93, 0.97, 1.07) * flick;
-  float grain = (gf_hash(floor(xz * 6.0) + floor(gTime * 12.0)) - 0.5) * 0.05;
+  float grain = (gf_hash(floor(gl_FragCoord.xy / 1.5) + floor(gTime * 12.0) * 17.0) - 0.5) * 0.035;
   vec3 cDark = vec3(lum * 0.85 + grain);
   float ripple = 0.08 * sin(length(xz) * 2.2 - gTime * 1.6);
   vec3 cBlind = vec3(lum * (0.7 + ripple));
   vec3 visible = (lit * wBright + cDim * wDim + cDark * wDark + cBlind * wBlind) / max(seen, 0.001);
   vec3 remembered = mix(vec3(lum), col, 0.3) * 0.35 + G_TINT * 0.05;
-  vec3 unseen = mix(gWarFog(xz), remembered, mem);
+  vec3 unseen = mix(gCalmFog(xz, max(mem, seen)), remembered, mem);
   return mix(unseen, visible, seen);
+}
+`;
+
+// A pillar's top: its footprint is never seen from anywhere (graded where it stands it was always fog), so it takes the
+// best-seen of four points just outside the pillar: centre c, reach r (ft).
+const AROUND_IMPL = /* glsl */ `
+float gLum(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
+vec3 gloamFogAround(vec3 col, vec2 c, vec2 r) {
+  vec3 best = gloamFog(col, c + vec2(r.x, 0.0), 0.0, vec2(0.0), vec2(0.0));
+  vec3 s = gloamFog(col, c - vec2(r.x, 0.0), 0.0, vec2(0.0), vec2(0.0));
+  if (gLum(s) > gLum(best)) best = s;
+  s = gloamFog(col, c + vec2(0.0, r.y), 0.0, vec2(0.0), vec2(0.0));
+  if (gLum(s) > gLum(best)) best = s;
+  s = gloamFog(col, c - vec2(0.0, r.y), 0.0, vec2(0.0), vec2(0.0));
+  if (gLum(s) > gLum(best)) best = s;
+  return best;
 }
 `;
 
 /**
  * Adds the composite to a material (keeping its own shader changes): its fragments are graded at their table position —
- * a floor with the soft inner edge, a wall by whichever side of it is seen, anything else (tokens, minis) as it
- * stands.
+ * a floor with the soft inner edge, a wall's upright faces from the room they face and its top by whichever side of
+ * it is seen, anything else (tokens, minis) as it stands.
+ *
+ * `at`: one table point grades the whole object (a token): a grade boundary never splits a coin in two.
+ * `around` (walls): a pillar — its top graded from just outside it (AROUND_IMPL), its sides as any wall's.
  */
-export function withFog<M extends Material>(m: M, kind: FogKind): M {
+export function withFog<M extends Material>(
+  m: M,
+  kind: FogKind,
+  opts: { at?: Vector2; around?: { c: Vector2; r: Vector2 } } = {},
+): M {
   // (A set, not a userData flag: a material's clone copies userData but not its shader hook.)
   if (patched.has(m)) return m;
   patched.add(m);
   const prev = m.onBeforeCompile.bind(m);
   const prevKey = m.customProgramCacheKey.bind(m);
-  m.customProgramCacheKey = () => `${prevKey()}|fog:${kind}`;
+  const at = opts.at;
+  const wall = kind === "wall";
+  const around = wall ? opts.around : undefined;
+  m.customProgramCacheKey = () => `${prevKey()}|fog:${kind}${at ? ":at" : around ? ":around" : ""}`;
   m.onBeforeCompile = (shader, renderer) => {
     prev(shader, renderer);
     Object.assign(shader.uniforms, fogUniforms);
+    if (at) shader.uniforms.gAt = { value: at };
+    if (around) {
+      shader.uniforms.gAroundC = { value: around.c };
+      shader.uniforms.gAroundR = { value: around.r };
+    }
+    const wallVaryings = wall ? "varying float vFogTop;" : "";
     shader.vertexShader = shader.vertexShader
-      .replace("#include <common>", `#include <common>\nvarying vec3 vFogW; varying vec2 vFogAcross;`)
+      .replace(
+        "#include <common>",
+        `#include <common>
+varying vec3 vFogW; varying vec2 vFogAcross; varying vec2 vFogFacing; ${wallVaryings}`,
+      )
       .replace(
         "#include <project_vertex>",
         `#include <project_vertex>
 vec4 fogP = vec4(transformed, 1.0);
-vec4 fogA = vec4(0.0, 0.0, ${kind === "wall" ? "1.0" : "0.0"}, 0.0);
+vec4 fogA = vec4(0.0, 0.0, ${wall ? "1.0" : "0.0"}, 0.0);
 #ifdef USE_INSTANCING
 fogP = instanceMatrix * fogP;
 fogA = instanceMatrix * fogA;
 #endif
 vFogW = (modelMatrix * fogP).xyz;
 vec3 fogAW = (modelMatrix * fogA).xyz;
-vFogAcross = dot(fogAW.xz, fogAW.xz) > 1e-6 ? normalize(fogAW.xz) : vec2(0.0);`,
+vFogAcross = dot(fogAW.xz, fogAW.xz) > 1e-6 ? normalize(fogAW.xz) : vec2(0.0);
+vFogFacing = vec2(0.0);
+${
+  wall
+    ? `vec4 fogN = vec4(normal, 0.0);
+#ifdef USE_INSTANCING
+fogN = instanceMatrix * fogN;
+#endif
+vec3 fogNW = normalize((modelMatrix * fogN).xyz);
+if (abs(fogNW.y) < 0.5) vFogFacing = normalize(fogNW.xz);
+vFogTop = fogNW.y > 0.5 ? 1.0 : 0.0;`
+    : ""
+}`,
       );
+    const graded = `gloamFog(gl_FragColor.rgb, ${at ? "gAt" : "vFogW.xz"}, ${kind === "floor" ? "1.0" : "0.0"}, vFogAcross, gl_FrontFacing ? vFogFacing : vec2(0.0))`;
     shader.fragmentShader = shader.fragmentShader
-      .replace("#include <common>", `#include <common>\n${COMMON}\n${GLSL}`)
+      .replace(
+        "#include <common>",
+        `#include <common>
+${COMMON}
+${wallVaryings}
+${at ? "uniform vec2 gAt;" : ""}${around ? "uniform vec2 gAroundC; uniform vec2 gAroundR;" : ""}
+${GLSL}${around ? AROUND_IMPL : ""}`,
+      )
       .replace(
         "#include <opaque_fragment>",
         `#include <opaque_fragment>
-gl_FragColor.rgb = gloamFog(gl_FragColor.rgb, vFogW.xz, ${kind === "floor" ? "1.0" : "0.0"}, vFogAcross);`,
+${
+  around
+    ? `gl_FragColor.rgb = vFogTop > 0.5 ? gloamFogAround(gl_FragColor.rgb, gAroundC, gAroundR) : ${graded};`
+    : `gl_FragColor.rgb = ${graded};`
+}`,
       );
   };
   m.needsUpdate = true;

@@ -48,7 +48,7 @@ export function MeasurePanel() {
               const v = Number(e.target.value);
               if (Number.isFinite(v) && v >= 1 && v <= 60) useUi.getState().set({ lineWidthFt: v });
             }}
-            className="tabular h-9 w-14 rounded-[var(--radius-control)] border border-line bg-ink-900 px-2 text-14 text-bone"
+            className="tabular h-9 min-h-[var(--touch-min)] w-14 rounded-[var(--radius-control)] border border-line bg-ink-900 px-2 text-14 text-bone"
           />
           <span className="text-12 text-faint">ft wide</span>
         </label>

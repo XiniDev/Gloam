@@ -388,6 +388,38 @@ export const MovePreview = z.strictObject({
   cost: z.number().finite().min(0).max(100_000),
 });
 
+// ── Dice (SPEC §8.9, §18) ──
+export const ROLL_VISIBILITIES = ["public", "dm", "blind", "self"] as const;
+const RollLabel = z.string().trim().max(60);
+/** `dice.roll` (req, ≤ 5/s): the server rolls a formula (§18.1) — players Public / Private to DM / Self, DMs Public
+ * or Private; `context.tokenId` resolves `@` references from that token. */
+export const DiceRoll = z.strictObject({
+  formula: z.string().min(1).max(200),
+  label: RollLabel.optional(),
+  visibility: z.enum(ROLL_VISIBILITIES).default("public"),
+  purpose: z.string().max(40).optional(),
+  context: z.strictObject({ tokenId: Id.optional() }).optional(),
+});
+/** `dice.manual` (req, ≤ 5/s): a physical roll — one value per die of the formula, in order, or just its total. */
+export const DiceManual = z.strictObject({
+  formula: z.string().min(1).max(200),
+  values: z.array(z.number().int().min(1).max(1000)).min(1).max(500).optional(),
+  total: z.number().int().min(-100_000).max(100_000).optional(),
+  label: RollLabel.optional(),
+  visibility: z.enum(ROLL_VISIBILITIES).default("public"),
+});
+export type DiceRoll = z.infer<typeof DiceRoll>;
+export type DiceManual = z.infer<typeof DiceManual>;
+
+const Hex6 = z.string().regex(/^#[0-9A-Fa-f]{6}$/, "a colour like #2B3A55");
+/** Your dice skin (SPEC §8.9 Dice skins): everyone sees your rolls in it (AC-DICE-07). */
+export const ProfileDiceSkin = z.strictObject({
+  body: Hex6,
+  number: Hex6,
+  material: z.enum(["resin", "gemstone", "metal", "bone", "obsidian"]),
+});
+export type ProfileDiceSkin = z.infer<typeof ProfileDiceSkin>;
+
 export const MEASURE_SHAPES = ["ruler", "radius", "cone", "line", "cube"] as const;
 const Elev = z.number().finite().min(-1000).max(10_000);
 /**

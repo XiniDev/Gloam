@@ -211,22 +211,40 @@ function compute(): void {
   moveDiag.resultOk = preview.ok;
 }
 
-/** `move.preview` to the other viewers, at most 15 times a second (an empty path clears it). */
+/**
+ * `move.preview` to the other viewers, at most 15 times a second (an empty path clears it) — and, while a drag is held
+ * still, the same path again every HEARTBEAT_MS: viewers drop a preview that goes quiet for 1.5 s (a connection lost
+ * mid-drag, remote.ts), and a player pausing to think hasn't lost theirs.
+ */
 let lastSent = 0;
 let pending: ReturnType<typeof setTimeout> | null = null;
+let heartbeat: ReturnType<typeof setInterval> | null = null;
+const HEARTBEAT_MS = 500;
 function broadcast(clear: boolean): void {
   const s = useMove.getState();
   const id = s.tokenId ?? lastToken;
   if (!id) return;
-  const payload = () => {
-    const p = useMove.getState().preview;
-    const pts = clear || !p?.ok ? [] : decimate(p.points, PREVIEW_MAX_POINTS);
-    return { tokenId: id, points: pts, cost: clear || !p ? 0 : Math.min(100_000, p.cost) };
-  };
+  const payload = () => previewPayload(id, clear);
   if (s.tokenId) lastToken = s.tokenId;
   const now = performance.now();
   const gap = 1000 / PREVIEW_HZ;
   if (pending) clearTimeout(pending);
+  if (clear && heartbeat) {
+    clearInterval(heartbeat);
+    heartbeat = null;
+  } else if (!clear && !heartbeat)
+    heartbeat = setInterval(() => {
+      const cur = useMove.getState().tokenId;
+      // The plan went without a clear (the token vanished, the page reset): nothing more to keep alive.
+      if (!cur) {
+        if (heartbeat) clearInterval(heartbeat);
+        heartbeat = null;
+        return;
+      }
+      if (performance.now() - lastSent < HEARTBEAT_MS) return;
+      lastSent = performance.now();
+      send("move.preview", previewPayload(cur, false));
+    }, HEARTBEAT_MS / 2);
   if (clear || now - lastSent >= gap) {
     lastSent = now;
     send("move.preview", payload());
@@ -242,6 +260,12 @@ function broadcast(clear: boolean): void {
     );
 }
 let lastToken: string | null = null;
+
+function previewPayload(tokenId: string, clear: boolean) {
+  const p = useMove.getState().preview;
+  const pts = clear || !p?.ok ? [] : decimate(p.points, PREVIEW_MAX_POINTS);
+  return { tokenId, points: pts, cost: clear || !p ? 0 : Math.min(100_000, p.cost) };
+}
 
 /** At most n points, keeping the ends (previews are for show; the commit sends the full path). */
 function decimate(points: P[], n: number): P[] {

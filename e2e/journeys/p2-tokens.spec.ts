@@ -622,6 +622,8 @@ test.describe("P2 — tokens (TOK)", () => {
       rect?: R;
       flips: number;
       token: R | null;
+      offset: { dx: number; dy: number };
+      leader: boolean;
       fade?: { clear: number; target: number; a: number };
     };
     const overlays = () => hook<O[]>(admin, "overlays");
@@ -656,20 +658,48 @@ test.describe("P2 — tokens (TOK)", () => {
       const all = await overlays();
       const shown = all.filter((o) => o.clear === 1);
       expect(shown.length, JSON.stringify(view)).toBeGreaterThan(0);
+      const vw = (admin.viewportSize() as { width: number }).width;
       for (const o of shown) {
         const plate = o.rect as R;
         const tok = o.token as R;
         const label = `${JSON.stringify(view)} ${((await tokenView(admin, o.id)) as { name: string }).name}`;
+        const { dx, dy } = o.offset;
+        // Its own spot: where it sits unless the declutter moved it (DECISIONS 2026-09-28).
+        const own = { x0: plate.x0 - dx, y0: plate.y0 - dy, x1: plate.x1 - dx, y1: plate.y1 - dy };
         // Just above the token's highest point: a small gap, not floating (or sinking into it).
-        const gap = tok.y0 - plate.y1;
+        const gap = tok.y0 - own.y1;
         expect(gap, label).toBeGreaterThanOrEqual(-1);
         expect(gap, label).toBeLessThanOrEqual(14);
         // And over it, not beside it: its centre within the middle 60 % of the token's width on screen (perspective
         // shifts a tall token's top away from the view's centre, and the plate follows the top).
-        const cx = (plate.x0 + plate.x1) / 2;
+        const cx = (own.x0 + own.x1) / 2;
         const w = tok.x1 - tok.x0;
         expect(cx, label).toBeGreaterThanOrEqual(tok.x0 + 0.2 * w);
         expect(cx, label).toBeLessThanOrEqual(tok.x1 - 0.2 * w);
+        if (Math.abs(dx) <= 0.5 && Math.abs(dy) <= 0.5) {
+          expect(o.leader, `${label}: no leader in its own spot`).toBe(false);
+          continue;
+        }
+        // Moved only when its own spot is taken — by another shown plate (within the layout's 3-px pad) or the
+        // screen's edge — and then no further than the layout's spots (up to its width aside, two rows up; never
+        // down onto its token), with a leader line back to its token.
+        const pad = 3;
+        const takenBy = shown.some(
+          (b) =>
+            b.id !== o.id &&
+            own.x0 < (b.rect as R).x1 + pad &&
+            own.x1 > (b.rect as R).x0 - pad &&
+            own.y0 < (b.rect as R).y1 + pad &&
+            own.y1 > (b.rect as R).y0 - pad,
+        );
+        const offScreen = own.x0 < 0 || own.x1 > vw || own.y0 < 0;
+        expect(takenBy || offScreen, `${label}: moved though its own spot was free`).toBe(true);
+        const pw = own.x1 - own.x0;
+        const ph = own.y1 - own.y0 + pad;
+        expect(Math.abs(dx), label).toBeLessThanOrEqual(pw + 0.5);
+        expect(dy, label).toBeLessThanOrEqual(0.5);
+        expect(dy, label).toBeGreaterThanOrEqual(-2 * ph - 0.5);
+        expect(o.leader, `${label}: a moved plate points back to its token`).toBe(true);
       }
       for (const [i, a] of shown.entries())
         for (const b of shown.slice(i + 1))

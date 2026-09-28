@@ -2,6 +2,7 @@ import { LIGHT_PRESETS } from "@gloam/shared";
 import {
   ArrowDown,
   ArrowUp,
+  Backpack,
   Copy,
   Eye,
   EyeOff,
@@ -14,16 +15,18 @@ import {
   RotateCw,
   Trash2,
   Unlock,
-  X,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { type ReactElement, useEffect, useMemo, useRef, useState } from "react";
+import { LightPresetIcon } from "../icons/lights.tsx";
 import { request, useTable } from "../net/table.ts";
 import { boardData, useEntities } from "../state/entities.ts";
 import { useLibrary } from "../state/library.ts";
 import { useUi } from "../state/ui.ts";
+import { KeyHint } from "../ui/KeyHint.tsx";
 import { toast } from "../ui/Toast.tsx";
 import { toastUndo } from "./dm/ScenesPanel.tsx";
+import { clearArea, isPhoneNow, useHudInsets } from "./insets.ts";
 
 interface Slice {
   id: string;
@@ -130,7 +133,7 @@ export function RadialMenu() {
       const lightRing: Slice[] = LIGHT_PRESETS.filter((p) => p.id !== carried?.preset).map((p) => ({
         id: `light-${p.id}`,
         label: p.name,
-        icon: <Flame size={18} />,
+        icon: <LightPresetIcon preset={p.id} />,
         run: () => send("light it", "light.carry", { tokenId: id, preset: p.id }),
       }));
       if (carried) {
@@ -151,7 +154,7 @@ export function RadialMenu() {
         lightRing.push({
           id: "light-away",
           label: "Put it away",
-          icon: <X size={18} />,
+          icon: <Backpack size={18} />,
           run: () => send("put it away", "light.carry", { tokenId: id, preset: null }),
         });
       }
@@ -266,17 +269,19 @@ export function RadialMenu() {
     close();
   }
 
-  // Slices are 74 × 62 px: the ring grows with their number so neighbours never touch (chord 2R·sin(π/n) ≥ 84 px).
-  const R = Math.max(86, 42 / Math.sin(Math.PI / Math.max(3, shown.length)));
-  // The whole ring stays on screen and below the top bar: near an edge it shifts inward (its centre dot still marks
-  // the pressed point).
-  const reach = R + 37 + 8;
+  // Slices are 74 × 62 px: the ring grows with their number so neighbours never touch, corner to corner, at any angle
+  // (chord 2R·sin(π/n) ≥ their 97-px diagonal, plus a gap).
+  const R = Math.max(96, 52 / Math.sin(Math.PI / Math.max(3, shown.length)));
+  // The whole ring stays inside the part of the screen the HUD leaves clear (never over the toolbar, the dock, the top
+  // or bottom bars): near an edge it shifts inward, its centre dot still marking the pressed point. Where the clear
+  // part is too small for it, it centres there.
   const vw = typeof window === "undefined" ? 0 : window.innerWidth;
   const vh = typeof window === "undefined" ? 0 : window.innerHeight;
-  const cx = radial ? Math.min(Math.max(radial.x, reach), Math.max(reach, vw - reach)) : 0;
-  const cy = radial
-    ? Math.min(Math.max(radial.y, 56 + reach - 6), Math.max(56 + reach - 6, vh - reach + 6))
-    : 0;
+  const area = clearArea(useHudInsets.getState(), vw, vh, isPhoneNow());
+  const fit = (v: number, lo: number, hi: number) =>
+    lo <= hi ? Math.min(Math.max(v, lo), hi) : (lo + hi) / 2;
+  const cx = radial ? fit(radial.x, area.left + R + 37, area.right - R - 37) : 0;
+  const cy = radial ? fit(radial.y, area.top + R + 31, area.bottom - R - 31) : 0;
   return (
     <AnimatePresence>
       {radial && token && shown.length ? (
@@ -315,8 +320,8 @@ export function RadialMenu() {
               >
                 {s.icon}
                 <span className="text-12 leading-none">{s.label}</span>
-                <span className="absolute right-1 top-0.5 text-12 text-faint" aria-hidden>
-                  {i + 1}
+                <span className="absolute -right-1.5 -top-1.5" aria-hidden>
+                  <KeyHint keys={String(i + 1)} />
                 </span>
               </button>
             );

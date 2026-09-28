@@ -35,8 +35,12 @@ export interface ThrowResult {
   frames: Float32Array;
   /** The marker each die came to rest with up (see solids.ts). */
   landed: number[];
-  /** Contacts worth a sound: step, die, force magnitude. */
-  contacts: { step: number; die: number; force: number }[];
+  /** Contacts worth a sound: step, die, force magnitude, and what it struck (the tray, or another die). */
+  contacts: { step: number; die: number; force: number; other: "tray" | "die" }[];
+  /** Each die's mass (the impulse scale for its sounds). */
+  masses: number[];
+  /** The step from which each die no longer moves (its settle tick). */
+  restStep: number[];
   /** Every die fell asleep within MAX_STEPS. */
   settled: boolean;
 }
@@ -137,19 +141,40 @@ export async function simulate(input: ThrowInput): Promise<ThrowResult> {
     steps++;
     record();
     queue.drainContactForceEvents((e) => {
-      const die = handleToDie.get(e.collider1()) ?? handleToDie.get(e.collider2());
-      if (die !== undefined) contacts.push({ step: steps, die, force: e.totalForceMagnitude() });
+      const a = handleToDie.get(e.collider1());
+      const b = handleToDie.get(e.collider2());
+      const die = a ?? b;
+      if (die !== undefined)
+        contacts.push({
+          step: steps,
+          die,
+          force: e.totalForceMagnitude(),
+          other: a !== undefined && b !== undefined ? "die" : "tray",
+        });
     });
     if (bodies.every((b) => b.isSleeping())) {
       settled = true;
       break;
     }
   }
+  // Where each die stops moving: the last step its pose still changed by more than a hair.
+  const restStep = bodies.map((_, i) => {
+    for (let k = steps; k > 0; k--) {
+      const o = (k * n + i) * POSE;
+      const p = ((k - 1) * n + i) * POSE;
+      let d = 0;
+      for (let c = 0; c < POSE; c++)
+        d = Math.max(d, Math.abs((frames[o + c] as number) - (frames[p + c] as number)));
+      if (d > 1e-3) return k;
+    }
+    return 0;
+  });
+  const masses = bodies.map((b) => b.mass());
   const landed = bodies.map((b, i) => {
     const q = b.rotation();
     return landedMarker(solid(input.dice[i] as DieKind), new Quaternion(q.x, q.y, q.z, q.w));
   });
   queue.free();
   world.free();
-  return { steps, frames: Float32Array.from(frames), landed, contacts, settled };
+  return { steps, frames: Float32Array.from(frames), landed, contacts, settled, masses, restStep };
 }

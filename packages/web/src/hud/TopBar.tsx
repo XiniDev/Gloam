@@ -3,6 +3,7 @@ import { type PresenceView, useTable } from "../net/table.ts";
 import { Sparkle, WaxSeal } from "../ui/ornaments.tsx";
 import { SoundChip } from "../ui/SoundChip.tsx";
 import { hudOrder } from "./Intro.tsx";
+import { useIsPhone } from "./insets.ts";
 import { SettingsPopover } from "./SettingsPopover.tsx";
 
 function Initials({ p }: { p: PresenceView }) {
@@ -45,8 +46,9 @@ function Initials({ p }: { p: PresenceView }) {
         </span>
       ) : null}
       {p.role === "dm" || p.role === "admin" ? (
-        <span className="absolute -bottom-1 -right-1">
-          <WaxSeal size={16} label={p.role === "admin" ? "Host" : "DM"} />
+        // On the ring's lower-right edge, clear of the initial.
+        <span className="absolute -bottom-1.5 -right-2.5">
+          <WaxSeal size={18} label={p.role === "admin" ? "Host" : "DM"} />
         </span>
       ) : null}
     </div>
@@ -60,6 +62,8 @@ export function TopBar() {
   const sessionNo = useTable((s) => s.sessionNo);
   const presence = useTable((s) => s.presence);
   const me = useTable((s) => s.me);
+  // A phone's top bar keeps its room for the title: the Admin console moves into Settings there.
+  const phone = useIsPhone();
   return (
     <header
       {...hudOrder(0)}
@@ -67,14 +71,20 @@ export function TopBar() {
     >
       <div className="pointer-events-auto flex min-w-0 items-center gap-2 rounded-[var(--radius-control)] bg-[var(--scrim-soft)] px-3 py-1.5 backdrop-blur-[3px]">
         <Sparkle size={16} />
-        <h1 className="truncate text-18 text-bone">{name || "The table"}</h1>
+        <h1
+          className={phone ? "line-clamp-2 text-14 leading-tight text-bone" : "truncate text-18 text-bone"}
+          title={name || undefined}
+        >
+          {name || "The table"}
+        </h1>
         {sessionNo ? (
           <span className="caps hidden text-12 text-fog sm:inline">Session {sessionNo}</span>
         ) : null}
       </div>
-      <div className="pointer-events-auto ml-auto flex items-center gap-1.5 sm:gap-3">
-        {/* 12-px gaps: a portrait's seal or raised hand never touches its neighbour's ring. */}
-        <ul className="flex items-center gap-3" aria-label="At the table">
+      {/* Backed like the title: the grey sound and settings icons stay readable over pale stone. */}
+      <div className="pointer-events-auto ml-auto flex items-center gap-1.5 rounded-[var(--radius-control)] bg-[var(--scrim-soft)] py-1 pl-2 pr-1 backdrop-blur-[3px] sm:gap-3">
+        {/* 16-px gaps: a portrait's seal or raised hand never touches its neighbour's ring. */}
+        <ul className="flex items-center gap-4" aria-label="At the table">
           {presence
             .filter((p) => p.online || p.role !== "admin")
             .map((p) => (
@@ -85,7 +95,7 @@ export function TopBar() {
         </ul>
         <SoundChip />
         <SettingsPopover />
-        {me?.role === "admin" ? (
+        {me?.role === "admin" && !phone ? (
           <button
             type="button"
             aria-label="Admin console"

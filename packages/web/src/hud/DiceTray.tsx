@@ -1,0 +1,535 @@
+import type { RollVisibility } from "@gloam/shared/dice";
+import { checkFormula, parseFormula } from "@gloam/shared/dice";
+import { Dices, Hand, Minus, Pin, PinOff, Plus, X } from "lucide-react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import {
+  addDie,
+  advOf,
+  modifierOf,
+  REFS,
+  refAt,
+  removeDie,
+  setAdv,
+  stepCount,
+  stepModifier,
+  tokenize,
+} from "../dice/formulaEdit.ts";
+import { enterManual, rollDice } from "../net/dice.ts";
+import { useTable } from "../net/table.ts";
+import { useBoard } from "../state/entities.ts";
+import { useUi } from "../state/ui.ts";
+import { Button, IconButton } from "../ui/Button.tsx";
+import { Segmented } from "../ui/controls.tsx";
+import { toast } from "../ui/Toast.tsx";
+import { useIsPhone } from "./insets.ts";
+
+const QUICK = [4, 6, 8, 10, 12, 20, "%"] as const;
+
+/** A player's last formulas and pinned macros, per user on this device (SPEC §8.9 chips). */
+interface Saved {
+  recent: { formula: string; label?: string }[];
+  pinned: { formula: string; label?: string }[];
+}
+const keyOf = (userId: string) => `gloam.dice.${userId}`;
+function loadSaved(userId: string): Saved {
+  try {
+    const raw = globalThis.localStorage?.getItem(keyOf(userId));
+    const s = raw ? (JSON.parse(raw) as Partial<Saved>) : {};
+    return { recent: (s.recent ?? []).slice(0, 10), pinned: (s.pinned ?? []).slice(0, 12) };
+  } catch {
+    return { recent: [], pinned: [] };
+  }
+}
+function storeSaved(userId: string, s: Saved): void {
+  try {
+    globalThis.localStorage?.setItem(keyOf(userId), JSON.stringify(s));
+  } catch {
+    // blocked storage: chips last for this page
+  }
+}
+
+/**
+ * The dice tray (SPEC §8.9; hotkey D): quick dice (click adds, right-click removes), count and modifier steppers,
+ * advantage/disadvantage, the formula with highlighting, `@` completion and inline errors, a label, who sees it,
+ * Roll, and "I rolled physically…" for a real die. The server rolls; the dice tumble on everyone's screen.
+ */
+export function DiceTray() {
+  const open = useUi((s) => s.diceTray);
+  const me = useTable((s) => s.me);
+  const phone = useIsPhone();
+  if (!open || !me) return null;
+  return (
+    <div
+      className={`pointer-events-none absolute z-40 flex justify-center px-3 ${phone ? "inset-x-0 bottom-0" : "bottom-[76px] left-0 right-0"}`}
+    >
+      <TrayPanel userId={me.userId} dm={me.role === "dm" || me.role === "admin"} phone={phone} />
+    </div>
+  );
+}
+
+function TrayPanel({ userId, dm, phone }: { userId: string; dm: boolean; phone: boolean }) {
+  const [formula, setFormula] = useState("1d20");
+  const [label, setLabel] = useState("");
+  const [visibility, setVisibility] = useState<RollVisibility>("public");
+  const [manual, setManual] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState<Saved>(() => loadSaved(userId));
+  const input = useRef<HTMLInputElement>(null);
+  const [caret, setCaret] = useState(0);
+  const error = formula.trim() ? checkFormula(formula) : null;
+  const adv = advOf(formula);
+  const close = () => useUi.getState().set({ diceTray: false });
+  // The selected token the roller controls: its numbers answer `@` references.
+  const selected = useUi((s) => (s.selection.length === 1 ? s.selection[0] : undefined));
+  const token = useBoard((d) => (selected ? d.tokens.get(selected) : undefined));
+  const tokenId = token && (dm || token.ownerIds.includes(userId)) ? token.id : undefined;
+
+  useEffect(() => {
+    input.current?.focus();
+  }, []);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") useUi.getState().set({ diceTray: false });
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  const remember = (f: string, l: string) => {
+    const entry = l ? { formula: f, label: l } : { formula: f };
+    const next = {
+      ...saved,
+      recent: [entry, ...saved.recent.filter((r) => r.formula !== f || r.label !== entry.label)].slice(0, 10),
+    };
+    setSaved(next);
+    storeSaved(userId, next);
+  };
+
+  const roll = async () => {
+    if (!formula.trim() || error || busy) return;
+    setBusy(true);
+    try {
+      await rollDice({
+        formula: formula.trim(),
+        visibility,
+        ...(label.trim() ? { label: label.trim() } : {}),
+        ...(tokenId ? { tokenId } : {}),
+      });
+      remember(formula.trim(), label.trim());
+    } catch (e) {
+      toast.danger("Couldn't roll", (e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const pinned = saved.pinned.some((p) => p.formula === formula.trim() && (p.label ?? "") === label.trim());
+  const togglePin = () => {
+    const f = formula.trim();
+    if (!f || error) return;
+    const l = label.trim();
+    const next = {
+      ...saved,
+      pinned: pinned
+        ? saved.pinned.filter((p) => !(p.formula === f && (p.label ?? "") === l))
+        : [...saved.pinned, l ? { formula: f, label: l } : { formula: f }].slice(-12),
+    };
+    setSaved(next);
+    storeSaved(userId, next);
+  };
+
+  const ref = refAt(formula, caret);
+  const suggestions = ref
+    ? REFS.filter((r) => r.ref.startsWith(ref.text.toLowerCase()) && r.ref !== ref.text)
+    : [];
+
+  return (
+    <section
+      aria-label="Dice tray"
+      data-testid="dice-tray"
+      className={`panel pointer-events-auto flex w-full max-w-[520px] flex-col gap-3 p-3 ${phone ? "rounded-b-none pb-6" : ""}`}
+    >
+      <header className="flex items-center gap-2">
+        <Dices size={18} className="text-brass" aria-hidden />
+        <h2 className="caps text-13 text-bone">Dice</h2>
+        <span className="ml-auto" />
+        <IconButton label="Close the tray" shortcut="Esc" onClick={close}>
+          <X size={16} />
+        </IconButton>
+      </header>
+
+      <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Quick dice">
+        {QUICK.map((s) => (
+          <button
+            key={s}
+            type="button"
+            className="tabular h-9 min-h-[var(--touch-min)] min-w-11 rounded-[var(--radius-control)] border border-line bg-ink-900 px-2 text-13 font-bold text-bone hover:border-brass hover:text-brass-bright"
+            aria-label={`Add a d${s === "%" ? "100" : s} (right-click removes one)`}
+            onClick={() => setFormula((f) => addDie(f, s))}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              setFormula((f) => removeDie(f, s));
+            }}
+          >
+            d{s === "%" ? "100" : s}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3">
+        <Stepper
+          label="Dice"
+          onMinus={() => setFormula((f) => stepCount(f, -1))}
+          onPlus={() => setFormula((f) => stepCount(f, 1))}
+        >
+          #
+        </Stepper>
+        <Stepper
+          label="Modifier"
+          onMinus={() => setFormula((f) => stepModifier(f, -1))}
+          onPlus={() => setFormula((f) => stepModifier(f, 1))}
+        >
+          {modifierOf(formula) >= 0 ? `+${modifierOf(formula)}` : modifierOf(formula)}
+        </Stepper>
+        <Segmented
+          label="Advantage"
+          size="S"
+          value={adv ?? "none"}
+          onChange={(v) => setFormula((f) => setAdv(f, v === "none" ? null : v))}
+          options={[
+            { value: "none", label: "Normal" },
+            { value: "adv", label: "Advantage" },
+            { value: "dis", label: "Disadvantage" },
+          ]}
+        />
+      </div>
+
+      <div className="relative flex flex-col gap-1">
+        <label className="sr-only" htmlFor="dice-formula">
+          Formula
+        </label>
+        <div className="relative">
+          <Highlight formula={formula} error={error ? { at: error.at, end: error.end } : null} />
+          <input
+            id="dice-formula"
+            ref={input}
+            data-testid="dice-formula"
+            value={formula}
+            spellCheck={false}
+            autoComplete="off"
+            onChange={(e) => {
+              setFormula(e.target.value);
+              setCaret(e.target.selectionStart ?? e.target.value.length);
+            }}
+            onSelect={(e) => setCaret((e.target as HTMLInputElement).selectionStart ?? 0)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                if (suggestions[0] && ref) {
+                  const f = `${formula.slice(0, ref.start)}${suggestions[0].ref}${formula.slice(caret)}`;
+                  setFormula(f);
+                  setCaret(ref.start + (suggestions[0].ref.length as number));
+                } else void roll();
+              }
+            }}
+            aria-invalid={error ? true : undefined}
+            aria-describedby={error ? "dice-formula-error" : undefined}
+            className="mono relative h-10 w-full rounded-[var(--radius-control)] border border-line bg-transparent px-3 text-16 text-transparent caret-[var(--bone-100)] focus:border-brass focus:outline-none"
+          />
+        </div>
+        {suggestions.length > 0 ? (
+          <ul className="panel absolute top-11 left-2 z-10 flex flex-col py-1" aria-label="References">
+            {suggestions.slice(0, 6).map((s) => (
+              <li key={s.ref}>
+                <button
+                  type="button"
+                  className="flex w-full items-baseline gap-2 px-3 py-1 text-left hover:bg-ink-800"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    if (!ref) return;
+                    setFormula(`${formula.slice(0, ref.start)}${s.ref}${formula.slice(caret)}`);
+                    input.current?.focus();
+                  }}
+                >
+                  <span className="mono text-13 text-arcane">{s.ref}</span>
+                  <span className="text-12 text-muted">{s.hint}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        {error ? (
+          <p
+            id="dice-formula-error"
+            data-testid="dice-formula-error"
+            className="text-12 text-danger"
+            role="alert"
+          >
+            {error.message}
+          </p>
+        ) : null}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          aria-label="Label"
+          placeholder="Label — Perception, Longsword…"
+          value={label}
+          maxLength={60}
+          onChange={(e) => setLabel(e.target.value)}
+          className="h-9 min-h-[var(--touch-min)] min-w-0 flex-1 rounded-[var(--radius-control)] border border-line bg-ink-900 px-3 text-14 text-bone placeholder:text-faint focus:border-brass focus:outline-none"
+        />
+        <IconButton label={pinned ? "Unpin this roll" : "Pin this roll"} active={pinned} onClick={togglePin}>
+          {pinned ? <PinOff size={16} /> : <Pin size={16} />}
+        </IconButton>
+      </div>
+
+      <Segmented
+        label="Who sees it"
+        size="S"
+        value={visibility}
+        onChange={setVisibility}
+        options={
+          dm
+            ? [
+                { value: "public", label: "Public" },
+                { value: "dm", label: "Private", hint: "Only DMs see it; players see “The DM rolls…”" },
+              ]
+            : [
+                { value: "public", label: "Public" },
+                { value: "dm", label: "Private to DM" },
+                { value: "self", label: "Self" },
+              ]
+        }
+      />
+
+      {saved.pinned.length || saved.recent.length ? (
+        <div className="flex flex-wrap gap-1.5" role="group" aria-label="Your rolls">
+          {[
+            ...saved.pinned.map((p) => ({ ...p, pin: true })),
+            ...saved.recent.map((p) => ({ ...p, pin: false })),
+          ]
+            .filter((c, i, all) => all.findIndex((o) => o.formula === c.formula && o.label === c.label) === i)
+            .slice(0, 14)
+            .map((c) => (
+              <button
+                key={`${c.pin ? "p" : "r"}:${c.formula}:${c.label ?? ""}`}
+                type="button"
+                data-testid="dice-chip"
+                onClick={() => {
+                  setFormula(c.formula);
+                  setLabel(c.label ?? "");
+                }}
+                className={`flex h-7 min-h-[var(--touch-min)] items-center gap-1 rounded-chip border px-2.5 text-12 ${c.pin ? "border-brass-deep text-brass-bright" : "border-line text-muted"} hover:text-bone`}
+              >
+                {c.pin ? <Pin size={11} aria-hidden /> : null}
+                <span className="mono">{c.label ? `${c.label} · ${c.formula}` : c.formula}</span>
+              </button>
+            ))}
+        </div>
+      ) : null}
+
+      {manual ? (
+        <ManualEntry
+          formula={formula}
+          label={label}
+          visibility={visibility}
+          onDone={() => {
+            remember(formula.trim(), label.trim());
+            setManual(false);
+          }}
+          onCancel={() => setManual(false)}
+        />
+      ) : (
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="S"
+            icon={<Hand size={15} />}
+            disabled={!formula.trim() || error !== null}
+            onClick={() => setManual(true)}
+          >
+            I rolled physically…
+          </Button>
+          <span className="ml-auto" />
+          <Button
+            variant="primary"
+            loading={busy}
+            disabled={!formula.trim() || error !== null}
+            onClick={() => void roll()}
+          >
+            Roll
+          </Button>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function Stepper({
+  label,
+  children,
+  onMinus,
+  onPlus,
+}: {
+  label: string;
+  children: ReactNode;
+  onMinus: () => void;
+  onPlus: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-1" role="group" aria-label={label}>
+      <span className="caps pr-1 text-12 text-fog">{label}</span>
+      <IconButton label={`${label} down`} onClick={onMinus}>
+        <Minus size={14} />
+      </IconButton>
+      <span className="tabular min-w-[3ch] text-center text-13 font-bold text-bone">{children}</span>
+      <IconButton label={`${label} up`} onClick={onPlus}>
+        <Plus size={14} />
+      </IconButton>
+    </div>
+  );
+}
+
+const KIND_CLASS: Record<string, string> = {
+  dice: "text-brass-bright",
+  number: "text-bone",
+  op: "text-muted",
+  ref: "text-arcane",
+  tag: "text-ember",
+  keyword: "text-verdigris",
+  space: "",
+  other: "text-danger",
+};
+
+/** The formula's colours, under a transparent input (the input keeps the caret, selection and typing). */
+function Highlight({ formula, error }: { formula: string; error: { at: number; end: number } | null }) {
+  const pieces = useMemo(() => tokenize(formula), [formula]);
+  return (
+    <div
+      aria-hidden
+      className="mono pointer-events-none absolute inset-0 flex items-center overflow-hidden whitespace-pre rounded-[var(--radius-control)] bg-ink-900 px-3 text-16"
+    >
+      {pieces.map((p) => {
+        const bad = error && p.at < error.end && p.at + p.text.length > error.at;
+        return (
+          <span
+            key={`${p.at}`}
+            className={`${KIND_CLASS[p.kind]} ${bad ? "underline decoration-[var(--danger)] decoration-wavy" : ""}`}
+          >
+            {p.text}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+/** "I rolled physically…" (AC-DICE-05): one field per die of the formula, in order — or just the total. */
+function ManualEntry({
+  formula,
+  label,
+  visibility,
+  onDone,
+  onCancel,
+}: {
+  formula: string;
+  label: string;
+  visibility: RollVisibility;
+  onDone: () => void;
+  onCancel: () => void;
+}) {
+  // The dice a formula rolls, in order (the counts a hand-rolled formula has as literals).
+  const dice = useMemo(() => {
+    try {
+      const out: number[] = [];
+      const walk = (n: ReturnType<typeof parseFormula>["expr"]): void => {
+        if (n.k === "dice") {
+          const count = n.count.k === "num" ? n.count.v : 0;
+          for (let i = 0; i < count; i++) out.push(n.sides);
+        } else if (n.k === "bin") {
+          walk(n.a);
+          walk(n.b);
+        } else if (n.k === "neg" || n.k === "group") walk(n.x);
+      };
+      const p = parseFormula(formula);
+      walk(p.expr);
+      if (p.adv) out.push(20);
+      return out.length <= 20 ? out : null;
+    } catch {
+      return null;
+    }
+  }, [formula]);
+  const [values, setValues] = useState<string[]>(() => (dice ?? []).map(() => ""));
+  const [total, setTotal] = useState("");
+  const [busy, setBusy] = useState(false);
+  const byDie =
+    dice !== null &&
+    values.every((v, i) => /^\d+$/.test(v) && Number(v) >= 1 && Number(v) <= (dice[i] as number));
+  const byTotal = /^-?\d+$/.test(total.trim());
+  const submit = async () => {
+    if (busy || (!byDie && !byTotal)) return;
+    setBusy(true);
+    try {
+      await enterManual({
+        formula: formula.trim(),
+        visibility,
+        ...(label.trim() ? { label: label.trim() } : {}),
+        ...(byTotal && total.trim() ? { total: Number(total) } : { values: values.map(Number) }),
+      });
+      onDone();
+    } catch (e) {
+      toast.danger("Couldn't record that", (e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div
+      data-testid="manual-entry"
+      className="flex flex-col gap-2 rounded-[var(--radius-control)] border border-line p-2"
+    >
+      <p className="text-12 text-muted">Enter each die as it landed — or just the total.</p>
+      {dice?.length ? (
+        <div className="flex flex-wrap gap-1.5">
+          {dice.map((sides, i) => (
+            <input
+              key={i}
+              aria-label={`Die ${i + 1} (d${sides})`}
+              inputMode="numeric"
+              value={values[i] ?? ""}
+              onChange={(e) =>
+                setValues((v) => v.map((x, k) => (k === i ? e.target.value.replace(/\D/g, "") : x)))
+              }
+              placeholder={`d${sides}`}
+              className="tabular h-9 w-14 rounded-[var(--radius-control)] border border-line bg-ink-900 px-2 text-center text-14 text-bone placeholder:text-faint"
+            />
+          ))}
+        </div>
+      ) : null}
+      <div className="flex items-center gap-2">
+        <input
+          aria-label="Total"
+          inputMode="numeric"
+          value={total}
+          onChange={(e) => setTotal(e.target.value.replace(/[^\d-]/g, ""))}
+          placeholder="Total"
+          className="tabular h-9 w-24 rounded-[var(--radius-control)] border border-line bg-ink-900 px-2 text-14 text-bone placeholder:text-faint"
+        />
+        <span className="ml-auto" />
+        <Button variant="ghost" size="S" onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button
+          variant="primary"
+          size="S"
+          loading={busy}
+          disabled={!byDie && !byTotal}
+          onClick={() => void submit()}
+        >
+          Record roll
+        </Button>
+      </div>
+    </div>
+  );
+}
