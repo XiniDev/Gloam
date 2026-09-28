@@ -437,6 +437,24 @@ export const rollRequests = sqliteTable(
   (t) => [index("roll_requests_campaign_idx").on(t.campaignId)],
 );
 
+/** Decisions put to the DM (SPEC §8.11, §19.1): what follows from damage or a condition, a player's damage to check. */
+export const dmPrompts = sqliteTable(
+  "dm_prompts",
+  {
+    id: text("id").primaryKey(),
+    campaignId: text("campaign_id")
+      .notNull()
+      .references(() => campaigns.id, { onDelete: "cascade" }),
+    dataJson: json("data_json").notNull(),
+    status: text("status", { enum: ["open", "applied", "skipped"] })
+      .notNull()
+      .default("open"),
+    createdAt: integer("created_at").notNull(),
+    resolvedAt: integer("resolved_at"),
+  },
+  (t) => [index("dm_prompts_campaign_idx").on(t.campaignId, t.status)],
+);
+
 export const content = sqliteTable(
   "content",
   {

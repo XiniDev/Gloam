@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ABILITIES, CONDITION_IDS, DAMAGE_TYPES, SIZES, SKILL_IDS } from "../constants.ts";
+import { ABILITIES, CONDITION_IDS, DAMAGE_TYPES, MARKER_IDS, SIZES, SKILL_IDS } from "../constants.ts";
 
 /** Command payload schemas (SPEC §13.5). All strict: unknown keys are rejected (AC-SEC-01). */
 
@@ -442,6 +442,77 @@ export const RequestAnswer = z.strictObject({
   total: z.number().int().min(-1000).max(1000).optional(),
 });
 export const RequestClose = z.strictObject({ requestId: Id });
+
+// ── HP, conditions and death (SPEC §8.11) ───────────────────────────────────────────────────────────────────
+
+/** One damage instance: an amount and its type (untyped when none). */
+export const DamagePartIn = z.strictObject({
+  amount: z.number().int().min(-9999).max(99_999),
+  type: z.enum([...DAMAGE_TYPES, "untyped"]),
+});
+/**
+ * Damage, healing or temporary HP for one or more creatures (tokens): the server works out each one's result with
+ * the §19.2 pipeline — or takes the DM's edited total for a target — and what follows from it (§19.1: at once under
+ * Auto, as prompts under Assist).
+ */
+export const HpApply = z.strictObject({
+  targets: z.array(Id).min(1).max(40),
+  kind: z.enum(["damage", "heal", "temp"]),
+  parts: z.array(DamagePartIn).min(1).max(12).optional(),
+  amount: z.number().int().min(0).max(99_999).optional(),
+  halved: z.boolean().default(false),
+  crit: z.boolean().default(false),
+  /** The DM's edit of what a target takes (the preview changed before applying). */
+  totals: z.record(Id, z.number().int().min(0).max(99_999)).optional(),
+  /** Temporary HP when some are there already (they don't stack): keep, replace, or the higher. */
+  tempChoice: z.enum(["keep", "replace", "best"]).default("best"),
+  label: z.string().trim().max(80).optional(),
+});
+/** A status id: a condition, a marker, or a DM's custom marker. */
+const StatusId = z.union([
+  z.enum(CONDITION_IDS),
+  z.enum(MARKER_IDS),
+  z.string().regex(/^custom:[a-z0-9-]{1,32}$/, "a custom marker id like custom:blessing-of-kord"),
+]);
+/** Conditions and markers on a creature (a token: its character's for a linked one), exhaustion, concentration. */
+export const StatusChange = z
+  .strictObject({
+    tokenId: Id.optional(),
+    actorId: Id.optional(),
+    add: z
+      .array(
+        z.strictObject({
+          id: StatusId,
+          source: z.string().trim().max(80).optional(),
+          untilRound: z.number().int().min(1).max(100_000).optional(),
+          /** Custom markers: what they're called, their colour and glyph. */
+          label: z.string().trim().max(40).optional(),
+          color: z
+            .string()
+            .regex(/^#[0-9A-Fa-f]{6}$/)
+            .optional(),
+          glyph: z.string().max(40).optional(),
+        }),
+      )
+      .max(20)
+      .optional(),
+    remove: z.array(z.string().max(80)).max(40).optional(),
+    exhaustion: z.number().int().min(0).max(6).optional(),
+    /** What it's concentrating on (null: no longer). */
+    concentration: z.string().trim().min(1).max(80).nullable().optional(),
+  })
+  .refine((v) => Boolean(v.tokenId) !== Boolean(v.actorId), "A token or a character, one of them.");
+/** The DM's answer to a prompt: apply it (only the items kept; a choice where it offers one) or skip it. */
+export const PromptResolve = z.strictObject({
+  promptId: Id,
+  apply: z.boolean(),
+  keep: z.array(z.string().max(40)).max(20).optional(),
+  choice: z.string().max(20).optional(),
+  /** For a player's damage put to the DM: the total as the DM edits it. */
+  total: z.number().int().min(0).max(99_999).optional(),
+});
+/** Outside combat: the DM asks the dying for a death saving throw (§8.11). */
+export const DeathSaveRequest = z.strictObject({ targets: z.array(Id).min(1).max(20) });
 export type DiceRoll = z.infer<typeof DiceRoll>;
 export type DiceManual = z.infer<typeof DiceManual>;
 

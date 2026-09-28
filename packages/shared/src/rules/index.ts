@@ -1,5 +1,6 @@
 export * from "./abilities.ts";
 export * from "./conditions.ts";
+export * from "./consequences.ts";
 export * from "./damage.ts";
 export * from "./names.ts";
 export * from "./permissions.ts";

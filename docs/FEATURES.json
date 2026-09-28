@@ -1196,10 +1196,10 @@
       "code": "HP",
       "phase": "P7",
       "text": "The damage pipeline implements the SRD 5.2.1 order exactly (modifiers and save halving → resistance → vulnerability; immunity zero), then temp HP absorbs first; at least 30 table-driven unit tests pass.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/shared/src/rules/damage.test.ts › the damage pipeline (SPEC §19.2, SRD 5.2.1; AC-HP-01): 30 table cases (save halving → resistance → vulnerability, immunity zero, petrified resistance, temp HP absorbing first) + per-instance preview, overflow, massive damage, concentration DC",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-28T18:50:27.328Z"
     },
     {
       "id": "AC-HP-02",

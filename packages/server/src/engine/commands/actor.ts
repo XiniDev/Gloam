@@ -251,7 +251,14 @@ export const actorQuickCreate: CommandDef<z.infer<typeof ActorQuickCreate>, { ac
  * The ops that make a sheet edit: the stored sheet's patch, the status the sheet's status fields now describe, and
  * the linked tokens following (name, art, size, carried light). `before`/`after` are the sheet as read.
  */
-export function sheetEditOps(ctx: CommandCtx, actor: ActorEntity, before: Sheet, after: Sheet): Op[] {
+export function sheetEditOps(
+  ctx: CommandCtx,
+  actor: ActorEntity,
+  before: Sheet,
+  after: Sheet,
+  /** The status as a whole (HP rules set markers and death saves the sheet's fields don't carry). */
+  statusNext?: TokenStatusT,
+): Op[] {
   const ops: Op[] = [];
   // Against the document as stored (not as parsed: parsing fills in defaults it may not have yet).
   const changes = diffSheet(actor.sheet, storedSheet(after));
@@ -260,7 +267,7 @@ export function sheetEditOps(ctx: CommandCtx, actor: ActorEntity, before: Sheet,
     ops.push({ k: "sheet", actorId: actor.id, patch, inverse });
   }
   const prevStatus = statusFromActor(actor.status);
-  const status = statusFromSheet(after, prevStatus);
+  const status = statusNext ?? statusFromSheet(after, prevStatus);
   const s = setPathOp("actor", actor, ["status"], status as unknown as TokenStatusT);
   if (s) ops.push(s);
   ops.push(...linkedTokenOps(ctx, actor, before, after));
