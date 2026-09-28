@@ -56,6 +56,11 @@ export class SheetSync {
     return out;
   }
 
+  /** Whether someone may read a character's sheet (and so roll from it). */
+  mayRead(v: Viewer, a: ActorEntity): boolean {
+    return this.readable(v, a, this.controllers());
+  }
+
   private readable(v: Viewer, a: ActorEntity, controllers: Map<string, Set<string>>): boolean {
     if (a.deletedAt !== null) return false;
     if (v.role === "admin" || v.role === "dm") return true;

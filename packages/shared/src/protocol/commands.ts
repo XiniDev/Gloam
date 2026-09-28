@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ABILITIES, CONDITION_IDS, DAMAGE_TYPES, SIZES } from "../constants.ts";
+import { ABILITIES, CONDITION_IDS, DAMAGE_TYPES, SIZES, SKILL_IDS } from "../constants.ts";
 
 /** Command payload schemas (SPEC §13.5). All strict: unknown keys are rejected (AC-SEC-01). */
 
@@ -398,7 +398,8 @@ export const DiceRoll = z.strictObject({
   label: RollLabel.optional(),
   visibility: z.enum(ROLL_VISIBILITIES).default("public"),
   purpose: z.string().max(40).optional(),
-  context: z.strictObject({ tokenId: Id.optional() }).optional(),
+  /** Rolled for a creature: its token, or its character sheet (a roll from the sheet) — `@` references answer from it. */
+  context: z.strictObject({ tokenId: Id.optional(), actorId: Id.optional() }).optional(),
 });
 /** `dice.manual` (req, ≤ 5/s): a physical roll — one value per die of the formula, in order, or just its total. */
 export const DiceManual = z.strictObject({
@@ -408,6 +409,39 @@ export const DiceManual = z.strictObject({
   label: RollLabel.optional(),
   visibility: z.enum(ROLL_VISIBILITIES).default("public"),
 });
+/**
+ * Roll requests (SPEC §8.9 Roll requests, §18.5; AC-DICE-06): the DM asks creatures — tokens or characters — for a
+ * check (an ability, or a skill), a save, an attack or any formula, with an optional DC (hidden unless shown),
+ * advantage, and who sees the results (Blind: only the DM sees the numbers).
+ */
+export const RequestCreate = z.strictObject({
+  targets: z.array(Id).min(1).max(30),
+  type: z.enum(["check", "save", "attack", "custom"]),
+  ability: z.enum(ABILITIES).optional(),
+  skill: z.enum(SKILL_IDS as [string, ...string[]]).optional(),
+  formula: z.string().min(1).max(200).optional(),
+  label: RollLabel.optional(),
+  dc: z.number().int().min(1).max(50).optional(),
+  showDc: z.boolean().default(false),
+  adv: z.enum(["none", "adv", "dis"]).default("none"),
+  visibility: z.enum(["public", "dm", "blind"]).default("public"),
+});
+/** A target's controller answers: the server rolls, or a physical roll is entered, or it's skipped. */
+export const RequestRespond = z.strictObject({
+  requestId: Id,
+  target: Id,
+  action: z.enum(["roll", "manual", "skip"]),
+  values: z.array(z.number().int().min(1).max(1000)).min(1).max(40).optional(),
+  total: z.number().int().min(-1000).max(1000).optional(),
+});
+/** The DM answers for a target: rolls with its modifiers, sets the result, or skips it. */
+export const RequestAnswer = z.strictObject({
+  requestId: Id,
+  target: Id,
+  action: z.enum(["roll", "set", "skip"]),
+  total: z.number().int().min(-1000).max(1000).optional(),
+});
+export const RequestClose = z.strictObject({ requestId: Id });
 export type DiceRoll = z.infer<typeof DiceRoll>;
 export type DiceManual = z.infer<typeof DiceManual>;
 

@@ -1,5 +1,6 @@
 import { type AuthContext, type Client, Room, ServerError } from "@colyseus/core";
 import { StateView } from "@colyseus/schema";
+import { DiceError, parseFormula } from "@gloam/shared/dice";
 import type { P } from "@gloam/shared/geometry";
 import {
   ActorPropose,
@@ -18,16 +19,37 @@ import {
   PingSend,
   ProfileDiceSkin,
   ProposalDecide,
+  RequestAnswer,
+  RequestClose,
+  RequestCreate,
+  RequestRespond,
   SceneRef,
   TableKick,
 } from "@gloam/shared/protocol";
 import { applyChanges, applyPatch, controlsToken, diffSheet, type SheetChange } from "@gloam/shared/rules";
-import type { TokenEntity } from "@gloam/shared/schemas";
+import type { Sheet, TokenEntity } from "@gloam/shared/schemas";
 import { type PrepSnapshot, Presence, Sensed, Table, type TableState, V2 } from "@gloam/shared/state";
 import { z } from "zod";
 import { renderDto } from "../assets/service.ts";
 import { LibraryQuery } from "../assets/types.ts";
-import { DEFAULT_SKIN, DiceService, type DiceSkin, type RollRecord, viewOfRoll } from "../dice/service.ts";
+import {
+  cardFor,
+  type RequestResponse,
+  RequestService,
+  type RequestTarget,
+  type RollRequest,
+  requestFormula,
+  requestLabel,
+  targetFormula,
+} from "../dice/requests.ts";
+import {
+  creatureRefs,
+  DEFAULT_SKIN,
+  DiceService,
+  type DiceSkin,
+  type RollRecord,
+  viewOfRoll,
+} from "../dice/service.ts";
 import type { ActorEntity } from "../engine/codecs.ts";
 import { type CommandActor, CommandBus, type CommitInfo, type RoomEvent } from "../engine/commandBus.ts";
 import { checkSheet, readSheet } from "../engine/commands/actor.ts";
@@ -80,6 +102,8 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
   sheets!: SheetSync;
   /** Players' proposed changes to locked sheets (SPEC §8.10). */
   proposals!: ProposalService;
+  /** The DM's roll requests (SPEC §8.9, §18.5). */
+  requests!: RequestService;
   /** DM connections viewing a non-active scene in prep (SPEC §13.7): client → scene id. */
   private readonly prepSubs = new Map<Client, string>();
   /** Test probe (AC-PER-01): runs right before Colyseus encodes and sends a state patch. */
@@ -214,12 +238,22 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
           token = this.model.get("token", p.context.tokenId);
           if (!token || !controlsToken(auth.role, auth.userId, token)) throw new GloamError("FORBIDDEN");
         }
+        // `@` references answer from the creature's sheet: the token's character, or the character rolled for.
+        const actorId = p.context?.actorId ?? token?.actorId ?? undefined;
+        const actor = actorId ? this.model.get("actor", actorId) : undefined;
+        if (
+          p.context?.actorId &&
+          !(actor && this.sheets.mayRead({ userId: auth.userId, role: auth.role }, actor))
+        )
+          throw new GloamError("FORBIDDEN", "That isn't your sheet.");
+        const sheet = actor && actor.deletedAt === null ? readSheet(actor) : undefined;
         const r = this.dice.roll(this.campaignId, this.projector.activeSceneId || null, this.rollerOf(auth), {
           formula: p.formula,
           visibility: p.visibility,
           ...(p.label ? { label: p.label } : {}),
           ...(p.purpose ? { purpose: p.purpose } : {}),
           ...(token ? { token } : {}),
+          ...(sheet ? { sheet } : {}),
         });
         this.deliverRoll(r, dm);
         return { id: r.id };
@@ -303,6 +337,141 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
         this.toDms("proposal.update", dto);
         this.toUser(decided.userId, "proposal.update", dto);
         return { status: decided.status };
+      }),
+      // Roll requests (SPEC §8.9, §18.5, AC-DICE-06): the DM asks; each target's controllers get a card.
+      "request.create": def(RequestCreate, MESSAGE_RATES["request.create"], ({ auth }, p) => {
+        this.requireDm(auth);
+        const base = requestFormula(p as Parameters<typeof requestFormula>[0]);
+        const targets: RequestTarget[] = [...new Set(p.targets)].map((id) => {
+          const x = this.requestTarget(id);
+          const formula = targetFormula(base, creatureRefs(x.token, x.sheet), p.adv);
+          try {
+            parseFormula(formula);
+          } catch (e) {
+            if (e instanceof DiceError) throw new GloamError("INVALID", e.message);
+            throw e;
+          }
+          return { ...x.target, formula };
+        });
+        const r = this.requests.create({
+          campaignId: this.campaignId,
+          createdBy: auth.userId,
+          type: p.type,
+          ...(p.ability ? { ability: p.ability } : {}),
+          ...(p.skill ? { skill: p.skill as RollRequest["skill"] & string } : {}),
+          label: requestLabel(p as Parameters<typeof requestLabel>[0]),
+          ...(p.dc !== undefined ? { dc: p.dc } : {}),
+          showDc: p.showDc,
+          adv: p.adv,
+          visibility: p.visibility,
+          targets,
+        });
+        this.sendRequest(r);
+        return { requestId: r.id };
+      }),
+      // A target's controller answers its card: the server rolls, a physical roll is entered, or it's skipped.
+      "request.respond": def(RequestRespond, MESSAGE_RATES["request.respond"], ({ auth }, p) => {
+        const { r, target } = this.openTarget(p.requestId, p.target);
+        if (!target.controllers.includes(auth.userId))
+          throw new GloamError("FORBIDDEN", "That card isn't yours.");
+        if (r.responses[target.id]?.state !== "pending")
+          throw new GloamError("CONFLICT", "That roll was already answered.");
+        let res: RequestResponse;
+        if (p.action === "skip") res = { state: "skipped", by: auth.userId };
+        else {
+          const x = this.requestTarget(target.id);
+          const opts = {
+            formula: target.formula,
+            visibility: r.visibility,
+            label: `${r.label} · ${target.name}`,
+          };
+          const roll =
+            p.action === "roll"
+              ? this.dice.roll(this.campaignId, this.projector.activeSceneId || null, this.rollerOf(auth), {
+                  ...opts,
+                  purpose: "request",
+                  ...(x.token ? { token: x.token } : {}),
+                })
+              : this.dice.manual(this.campaignId, this.projector.activeSceneId || null, this.rollerOf(auth), {
+                  ...opts,
+                  ...(p.values ? { values: p.values } : {}),
+                  ...(p.total !== undefined ? { total: p.total } : {}),
+                });
+          this.deliverRoll(roll, false);
+          res = {
+            state: p.action === "roll" ? "rolled" : "manual",
+            rollId: roll.id,
+            total: roll.total,
+            by: auth.userId,
+            ...(r.dc !== undefined ? { success: roll.total >= r.dc } : {}),
+          };
+        }
+        r.responses[target.id] = res;
+        this.requests.save(r);
+        this.sendRequest(r);
+        return cardFor(r, target);
+      }),
+      // The DM answers for a target: rolls with its modifiers, sets its result, or skips it.
+      "request.answer": def(RequestAnswer, MESSAGE_RATES["request.answer"], ({ auth }, p) => {
+        this.requireDm(auth);
+        const { r, target } = this.openTarget(p.requestId, p.target);
+        let res: RequestResponse;
+        if (p.action === "skip") res = { state: "skipped", by: auth.userId };
+        else if (p.action === "set") {
+          if (p.total === undefined) throw new GloamError("INVALID", "Give the result.");
+          res = {
+            state: "dm",
+            total: p.total,
+            by: auth.userId,
+            ...(r.dc !== undefined ? { success: p.total >= r.dc } : {}),
+          };
+        } else {
+          const x = this.requestTarget(target.id);
+          const roll = this.dice.roll(
+            this.campaignId,
+            this.projector.activeSceneId || null,
+            this.rollerOf(auth),
+            {
+              formula: target.formula,
+              visibility: r.visibility === "public" ? "public" : "dm",
+              label: `${r.label} · ${target.name}`,
+              purpose: "request",
+              ...(x.token ? { token: x.token } : {}),
+            },
+          );
+          this.deliverRoll(roll, true);
+          res = {
+            state: "dm",
+            rollId: roll.id,
+            total: roll.total,
+            by: auth.userId,
+            ...(r.dc !== undefined ? { success: roll.total >= r.dc } : {}),
+          };
+        }
+        r.responses[target.id] = res;
+        this.requests.save(r);
+        this.sendRequest(r);
+        return { state: res.state };
+      }),
+      "request.close": def(RequestClose, MESSAGE_RATES["request.close"], ({ auth }, p) => {
+        this.requireDm(auth);
+        const r = this.requests.get(p.requestId);
+        if (!r || r.campaignId !== this.campaignId)
+          throw new GloamError("NOT_FOUND", "That request no longer exists.");
+        if (r.status === "closed") return { status: "closed" };
+        r.status = "closed";
+        r.closedAt = Date.now();
+        this.requests.save(r);
+        this.sendRequest(r);
+        return { status: "closed" };
+      }),
+      // DMs: the open requests; players: their open cards.
+      "request.list": def(z.strictObject({}), MESSAGE_RATES["request.list"], ({ auth }) => {
+        const open = this.requests.open(this.campaignId);
+        if (auth.role === "admin" || auth.role === "dm") return open;
+        return open.flatMap((r) =>
+          r.targets.filter((t) => t.controllers.includes(auth.userId)).map((t) => cardFor(r, t)),
+        );
       }),
       // DMs: the campaign's proposals; players: their own.
       "proposal.list": def(z.strictObject({}), MESSAGE_RATES["proposal.list"], ({ auth }) => {
@@ -455,6 +624,7 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
     registerCommands(this.bus);
     this.sheets = new SheetSync(model);
     this.proposals = new ProposalService(ctx.db);
+    this.requests = new RequestService(ctx.db);
     this.syncCampaign();
     this.views?.detachAll();
     this.projector = new StateProjector(this.state, this.projectionCtx());
@@ -508,6 +678,72 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
 
   private toUser(userId: string, type: string, payload: unknown): void {
     for (const c of this.clientsByUser.get(userId) ?? []) c.send(type, payload);
+  }
+
+  /** A request's target: a token on the board or a character — its name, who answers for it, its sheet. */
+  private requestTarget(id: string): {
+    target: Omit<RequestTarget, "formula">;
+    token?: TokenEntity;
+    sheet?: Sheet;
+  } {
+    const token = this.model.get("token", id);
+    if (token) {
+      const actor = token.actorId ? this.model.get("actor", token.actorId) : undefined;
+      const sheet = actor && actor.deletedAt === null ? readSheet(actor) : undefined;
+      return {
+        target: { id, kind: "token", name: token.name, controllers: this.playersAmong(token.ownerIds) },
+        token,
+        ...(sheet ? { sheet } : {}),
+      };
+    }
+    const actor = this.model.get("actor", id);
+    if (actor && actor.deletedAt === null) {
+      const sheet = readSheet(actor);
+      return {
+        target: {
+          id,
+          kind: "actor",
+          name: sheet.core.name,
+          controllers: this.playersAmong(actor.ownerUserId ? [actor.ownerUserId] : []),
+        },
+        sheet,
+      };
+    }
+    throw new GloamError("NOT_FOUND", "That creature isn't here.");
+  }
+
+  /** Of these users, the campaign's players (DMs answer from their board, not a card). */
+  private playersAmong(userIds: readonly string[]): string[] {
+    const ctx = roomCtx();
+    return userIds.filter((u) => ctx.campaigns.membership(this.campaignId, u) === "player");
+  }
+
+  private openTarget(requestId: string, targetId: string): { r: RollRequest; target: RequestTarget } {
+    const r = this.requests.get(requestId);
+    if (!r || r.campaignId !== this.campaignId)
+      throw new GloamError("NOT_FOUND", "That request no longer exists.");
+    if (r.status !== "open") throw new GloamError("CONFLICT", "That request is closed.");
+    const target = r.targets.find((t) => t.id === targetId);
+    if (!target) throw new GloamError("NOT_FOUND", "That creature wasn't asked.");
+    return { r, target };
+  }
+
+  /** A request as it stands: each controller its targets' cards, DMs the whole board. */
+  private sendRequest(r: RollRequest): void {
+    for (const t of r.targets) for (const u of t.controllers) this.toUser(u, "request.card", cardFor(r, t));
+    this.toDms("request.status", r);
+  }
+
+  /** On joining: the open cards this person answers, or (DMs) the open requests. */
+  private sendOpenRequests(client: Client, auth: ClientAuth): void {
+    const open = this.requests.open(this.campaignId);
+    if (auth.role === "admin" || auth.role === "dm") {
+      for (const r of open) client.send("request.status", r);
+      return;
+    }
+    for (const r of open)
+      for (const t of r.targets)
+        if (t.controllers.includes(auth.userId)) client.send("request.card", cardFor(r, t));
   }
 
   /** A proposal as it's shown: what approving it would change on the sheet now. */
@@ -716,6 +952,7 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
     this.syncCampaign();
     this.views.sync(client, { userId: auth.userId, role: auth.role }, this.projector.activeSceneId);
     this.sheets.join(client, { userId: auth.userId, role: auth.role });
+    this.sendOpenRequests(client, auth);
     client.send("welcome", {
       userId: auth.userId,
       role: auth.role,

@@ -26,7 +26,8 @@ export type { DiceSkin, MaskedRoll, RollRecord, RollVisibility };
 export { DEFAULT_SKIN, viewOfRoll };
 
 import { GloamError } from "@gloam/shared/protocol";
-import type { TokenEntity } from "@gloam/shared/schemas";
+import { sheetRefs } from "@gloam/shared/rules";
+import type { Sheet, TokenEntity } from "@gloam/shared/schemas";
 import { and, desc, eq } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import { rolls } from "../db/schema.ts";
@@ -54,7 +55,21 @@ export class DiceSource {
   }
 }
 
-/** `@` references a roll may use before character sheets (P6): what a token's own stats say. */
+/**
+ * `@` references for a roll made for a creature (§18.1): its character sheet's values (`sheetRefs`: abilities,
+ * saves, skills, proficiency, level, spellcasting — derived, overrides included), with an unlinked token's own numbers
+ * (its saves, Dexterity and initiative) first where it has them — a unit without a sheet answers from those alone.
+ */
+export function creatureRefs(
+  t: TokenEntity | undefined,
+  sheet: Sheet | undefined,
+): (path: readonly string[]) => number | undefined {
+  const own = tokenRefs(t);
+  const fromSheet = sheet ? sheetRefs(sheet.core) : () => undefined;
+  return (path) => own(path) ?? fromSheet(path);
+}
+
+/** `@` references from a token's own stats (an unlinked token or a unit). */
 export function tokenRefs(t: TokenEntity | undefined): (path: readonly string[]) => number | undefined {
   return (path) => {
     if (!t) return undefined;
@@ -90,6 +105,8 @@ export class DiceService {
       visibility: RollVisibility;
       purpose?: string;
       token?: TokenEntity;
+      /** The creature's character sheet (a linked token's, or the character itself), for `@` references. */
+      sheet?: Sheet;
     },
   ): RollRecord {
     let parsed: ParsedFormula;
@@ -98,7 +115,7 @@ export class DiceService {
       parsed = parseFormula(p.formula);
       outcome = rollParsed(p.formula, parsed, {
         die: (sides) => this.source.roll(sides),
-        resolve: tokenRefs(p.token),
+        resolve: creatureRefs(p.token, p.sheet),
       });
     } catch (e) {
       if (e instanceof DiceError) throw new GloamError("INVALID", e.message, { at: e.at, end: e.end });
