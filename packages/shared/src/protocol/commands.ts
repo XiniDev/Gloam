@@ -565,6 +565,20 @@ export const HealthConsequences = z
     summary: z.string().max(200),
   })
   .refine((v) => Boolean(v.tokenId) !== Boolean(v.actorId), "A token or a character, one of them.");
+/**
+ * A short or long rest for the chosen characters (§8.11 Rests; AC-HP-13), each with the items the DM kept from its
+ * preview (rules/rests.ts): one undoable command.
+ */
+export const RestApply = z.strictObject({
+  kind: z.enum(["short", "long"]),
+  actors: z.record(Id, z.array(z.string().max(20)).max(12)),
+});
+/** `rest.hitDie` (internal): a Hit Die spent on a short rest, and the HP its roll brought. */
+export const RestHitDie = z.strictObject({
+  actorId: Id,
+  die: z.enum(["d6", "d8", "d10", "d12"]),
+  heal: z.number().int().min(1).max(999),
+});
 /** Outside combat: the DM asks the dying for a death saving throw (§8.11). */
 export const DeathSaveRequest = z.strictObject({ targets: z.array(Id).min(1).max(20) });
 export type DiceRoll = z.infer<typeof DiceRoll>;

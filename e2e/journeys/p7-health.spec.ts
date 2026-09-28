@@ -453,4 +453,97 @@ test.describe("P7 — HP, conditions and death (§8.11)", () => {
         .toEqual({ tokenId: hero, kind: "heal" });
     await expect.poll(async () => (await tokenOf(dave, hero))?.conditions).toEqual(["prone"]);
   });
+
+  test("rests: the DM previews each character's long rest and unticks a line; a short rest's Hit Dice on the player's cards, one die at a time; one undoable step (AC-HP-13)", async ({
+    admin,
+    browser,
+    gloam,
+    guardLog,
+  }) => {
+    const code = await adminAtTable(admin);
+    await introDone(admin);
+    const sceneId = await createScene(admin, {
+      name: "Camp",
+      mapKind: "procedural",
+      floorStyle: "grass",
+      widthFt: 50,
+      heightFt: 40,
+    });
+    await boardSettled(admin, sceneId);
+    const dave = await admitPlayer(admin, browser, gloam, guardLog, code, "Dave", { viewport: VIEWPORT });
+    const daveId = (await hook<{ userId: string }>(dave, "me")).userId;
+    const { actorId: thorin } = await req<{ actorId: string }>(admin, "actor.quickCreate", {
+      name: "Thorin",
+      classLevel: "Fighter 3",
+      hpMax: 30,
+      ac: 16,
+      ownerUserId: daveId,
+    });
+    await req(admin, "actor.change", {
+      actorId: thorin,
+      changes: [
+        { path: ["core", "hitDice"], after: [{ die: "d10", total: 3, used: 1 }] },
+        {
+          path: ["core", "features"],
+          after: [{ name: "Second Wind", uses: { max: 1, used: 1, recharge: "short" } }],
+        },
+      ],
+    });
+    await expect.poll(async () => (await tokens(admin)).length).toBe(1);
+    const hero = ((await tokens(admin)) as Token[])[0]?.id as string;
+    await boardSettled(dave, sceneId);
+    await req(admin, "hp.apply", { targets: [hero], kind: "damage", amount: 20 });
+    const sheetOf = async () =>
+      (await hook<{ id: string; sheet: { core: Record<string, unknown> } }[]>(admin, "sheets")).find(
+        (a) => a.id === thorin,
+      )?.sheet.core as {
+        hp: { current: number };
+        hitDice: { used: number }[];
+        features: { uses: { used: number } }[];
+      };
+
+    // ── Long rest from the Party panel: the preview per character; the DM keeps Second Wind spent. ──
+    await admin.getByRole("button", { name: "Party", exact: true }).click();
+    await admin.getByRole("button", { name: "Long rest…" }).click();
+    const rest = admin.getByTestId("rest-dialog");
+    const row = rest.locator(`[data-testid="rest-character"][data-actor="${thorin}"]`);
+    await expect(row).toContainText("HP 10 → 30");
+    await expect(row).toContainText("Hit Dice back: 1 d10");
+    await expect(row).toContainText("Uses back: Second Wind");
+    await row.getByRole("checkbox", { name: "Uses back: Second Wind" }).uncheck();
+    await settle(admin);
+    await admin.screenshot({ path: `${SHOTS}/journey-long-rest.png` });
+    await admin.getByRole("dialog").getByRole("button", { name: "Rest 1 character" }).click();
+    await expect.poll(async () => (await sheetOf()).hp.current).toBe(30);
+    expect((await sheetOf()).hitDice[0]?.used).toBe(0);
+    expect((await sheetOf()).features[0]?.uses.used).toBe(1);
+    // One undoable step.
+    await req(admin, "history.undo", {});
+    await expect.poll(async () => (await sheetOf()).hp.current).toBe(10);
+    expect((await sheetOf()).hitDice[0]?.used).toBe(1);
+
+    // ── Short rest: Second Wind back; Dave spends his Hit Dice on his cards, one at a time. ──
+    await admin.getByRole("button", { name: "Short rest…" }).click();
+    await expect(rest.locator(`[data-actor="${thorin}"]`)).toContainText("Hit Dice to spend: 2");
+    await admin.getByRole("dialog").getByRole("button", { name: "Rest 1 character" }).click();
+    await expect.poll(async () => (await sheetOf()).features[0]?.uses.used).toBe(0);
+    const card = dave.getByTestId("request-group").filter({ hasText: "Spend a Hit Die" });
+    await expect(card).toContainText("Spend a Hit Die (d10, 2 left)");
+    await settle(dave);
+    await dave.screenshot({ path: `${SHOTS}/journey-hit-die-card.png` });
+    await card.getByRole("button", { name: "Enter physical roll" }).click();
+    await card.getByLabel("Your total").fill("7");
+    await card.getByRole("button", { name: "Send" }).click();
+    await expect.poll(async () => (await sheetOf()).hp.current).toBe(17);
+    // The next die comes on its own card; Skip ends the spending.
+    await expect(dave.getByTestId("request-group").filter({ hasText: "d10, 1 left" })).toBeVisible();
+    await dave
+      .getByTestId("request-group")
+      .filter({ hasText: "d10, 1 left" })
+      .getByRole("button", { name: "Skip" })
+      .click();
+    await dave.waitForTimeout(300);
+    expect((await sheetOf()).hp.current).toBe(17);
+    expect((await sheetOf()).hitDice[0]?.used).toBe(2);
+  });
 });

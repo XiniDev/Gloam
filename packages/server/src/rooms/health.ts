@@ -12,11 +12,18 @@ import {
   type PromptResolve,
   type RequestCard,
 } from "@gloam/shared/protocol";
-import { type Consequence, deathSave, describeConsequence } from "@gloam/shared/rules";
+import {
+  type Consequence,
+  deathSave,
+  describeConsequence,
+  hitDieHealing,
+  nextHitDie,
+} from "@gloam/shared/rules";
 import type { z } from "zod";
 import type { RequestResponse, RequestService, RequestTarget, RollRequest } from "../dice/requests.ts";
 import type { RollRecord } from "../dice/service.ts";
 import type { CommandActor, CommandBus, CommandCtx } from "../engine/commandBus.ts";
+import { readSheet } from "../engine/commands/actor.ts";
 import type { ConcentrationSpec, Followups, PromptSpec } from "../engine/commands/health.ts";
 import { holderOf } from "../engine/commands/health.ts";
 import { SYSTEM_ACTOR } from "../engine/commands/party.ts";
@@ -31,7 +38,7 @@ export interface SystemRequest {
   ability?: "con";
   formula?: string;
   label: string;
-  dc: number;
+  dc?: number;
   visibility: "public" | "dm";
   createdBy: string;
   purpose: NonNullable<RollRequest["purpose"]>;
@@ -211,6 +218,32 @@ export class HealthFlow {
     return { requestId: r.id, asked: dying.length };
   }
 
+  /**
+   * A short rest's Hit Die (§8.11 Rests): its player's card — Roll / Enter / Skip — for the largest die left, while
+   * the character is hurt; each answer brings the next.
+   */
+  askHitDie(actorId: string, by: string): void {
+    const actor = this.host.model().get("actor", actorId);
+    if (!actor || actor.deletedAt !== null) return;
+    const next = nextHitDie(readSheet(actor));
+    if (!next) return;
+    // Where the character stands on the board now (its roll then shows there), else the character itself.
+    const scene = this.host.model().activeScene?.id;
+    const token = this.host
+      .model()
+      .all("token")
+      .find((t) => t.actorId === actorId && t.link === "linked" && t.sceneId === scene);
+    this.host.ask({
+      targets: [token?.id ?? actorId],
+      type: "custom",
+      formula: `1${next.die} + @con`,
+      label: `Spend a Hit Die (${next.die}, ${next.left} left)`,
+      visibility: "public",
+      createdBy: by,
+      purpose: { kind: "hitDie", die: next.die, actorId },
+    });
+  }
+
   /** What a card shows beyond the request itself (a death save's hearts and skulls so far). */
   cardExtra(r: RollRequest, t: RequestTarget): Partial<RequestCard> {
     if (r.purpose?.kind !== "deathSave") return {};
@@ -238,6 +271,13 @@ export class HealthFlow {
       return;
     }
     const by = this.host.actorOf(r.createdBy);
+    if (r.purpose.kind === "hitDie") {
+      // The roll with its Con modifier, at least 1 HP (SRD 5.2.1 p. 187); then the next die, if any is left.
+      const { actorId, die } = r.purpose;
+      this.host.bus().execute("rest.hitDie", { actorId, die, heal: hitDieHealing(res.total) }, by);
+      this.askHitDie(actorId, r.createdBy);
+      return;
+    }
     if (r.purpose.kind === "concentration") {
       if (res.success !== false || !h.status.concentration) return;
       const spell = h.status.concentration.spellName;

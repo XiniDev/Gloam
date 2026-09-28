@@ -7,6 +7,7 @@ import { HEALTH_COMMANDS } from "./commands/health.ts";
 import { LIGHT_COMMANDS } from "./commands/light.ts";
 import { MOVE_COMMANDS } from "./commands/move.ts";
 import { PARTY_COMMANDS } from "./commands/party.ts";
+import { REST_COMMANDS } from "./commands/rest.ts";
 import { SCENE_COMMANDS } from "./commands/scene.ts";
 import { TOKEN_COMMANDS } from "./commands/token.ts";
 import { WALL_COMMANDS } from "./commands/wall.ts";
@@ -26,6 +27,7 @@ export const ALL_COMMANDS: CommandDef<never, unknown>[] = [
   ...ACTOR_COMMANDS,
   ...PARTY_COMMANDS,
   ...HEALTH_COMMANDS,
+  ...REST_COMMANDS,
 ];
 
 /** Room message rate limits per command (SPEC §13.5); default 10/s. */
@@ -50,6 +52,7 @@ export const COMMAND_RATES: Record<string, { capacity: number; perSecond: number
   // Health (§8.11): a burst of damage from an area, conditions ticked on and off.
   "hp.apply": { capacity: 10, perSecond: 5 },
   "status.change": { capacity: 10, perSecond: 5 },
+  "rest.apply": { capacity: 3, perSecond: 1 },
 };
 
 export function registerCommands(bus: CommandBus): void {

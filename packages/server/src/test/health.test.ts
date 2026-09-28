@@ -591,6 +591,82 @@ describe("P7 — HP, conditions and death on the server (§8.11)", () => {
     await statusChange(dm, { tokenId: ilse, exhaustion: 0 });
   });
 
+  it("rests: a long rest as the DM kept it, one undoable step; a short rest's Hit Dice on the player's cards, one die at a time (AC-HP-13)", async () => {
+    await reset();
+    await rq(dm, "actor.change", {
+      actorId: ilseActor,
+      changes: [
+        { path: ["core", "hitDice"], after: [{ die: "d8", total: 3, used: 2 }] },
+        {
+          path: ["core", "features"],
+          after: [
+            { name: "Second Wind", uses: { max: 1, used: 1, recharge: "short" } },
+            { name: "Cunning Plan", uses: { max: 2, used: 2, recharge: "long" } },
+          ],
+        },
+      ],
+    });
+    await hpApply(dm, { targets: [ilse], kind: "damage", amount: 12 });
+    await hpApply(dm, { targets: [ilse], kind: "temp", amount: 4 });
+    await statusChange(dm, { tokenId: ilse, exhaustion: 2 });
+    const sheetOf = () => (room().model.get("actor", ilseActor) as { sheet: Record<string, unknown> }).sheet;
+    // Long: everything but the temporary HP (the DM unticked that).
+    await rq(dm, "rest.apply", {
+      kind: "long",
+      actors: { [ilseActor]: ["hp", "hitDice", "features", "exhaustion"] },
+    });
+    expect(state(ilse).stats).toMatchObject({ hp: 20, hpTemp: 4 });
+    expect(state(ilse).status.exhaustion).toBe(1);
+    const core = () =>
+      sheetOf().core as { hitDice: { used: number }[]; features: { uses: { used: number } }[] };
+    expect(core().hitDice[0]?.used).toBe(0);
+    expect(core().features.map((f) => f.uses.used)).toEqual([0, 0]);
+    // One step: the DM's Ctrl+Z takes it all back.
+    await rq(dm, "history.undo", {});
+    expect(state(ilse).stats.hp).toBe(8);
+    expect(state(ilse).status.exhaustion).toBe(2);
+    expect(core().hitDice[0]?.used).toBe(2);
+    // Short: the short-rest uses back, and Anna's card to spend her one Hit Die left.
+    const n = cardsOf("Anna").length;
+    const r = await rq<{ rested: string[]; cards: string[] }>(dm, "rest.apply", {
+      kind: "short",
+      actors: { [ilseActor]: ["hitDiceCards", "features"] },
+    });
+    expect(r).toEqual({ rested: [ilseActor], cards: [ilseActor] });
+    expect(core().features.map((f) => f.uses.used)).toEqual([0, 2]);
+    const card = (await waitFor(() =>
+      cardsOf("Anna")
+        .slice(n)
+        .find((c) => c.label.startsWith("Spend a Hit Die")),
+    )) as RequestCard;
+    expect(card).toMatchObject({ label: "Spend a Hit Die (d8, 1 left)", formula: "1d8" });
+    // She rolled a 1 (and Con +0): still 1 HP back (SRD 5.2.1 p. 187).
+    await rq(anna().room, "request.respond", {
+      requestId: card.requestId,
+      target: card.targetId,
+      action: "manual",
+      total: 0,
+    });
+    expect(state(ilse).stats.hp).toBe(9);
+    expect(core().hitDice[0]?.used).toBe(3);
+    // No dice left: no more cards (each card as Anna last heard of it).
+    await sleep(150);
+    const latest = new Map<string, RequestCard>();
+    for (const c of cardsOf("Anna")) latest.set(`${c.requestId}|${c.targetId}`, c);
+    expect(
+      [...latest.values()].filter((c) => c.label.startsWith("Spend a Hit Die") && c.state === "pending"),
+    ).toHaveLength(0);
+    // At 0 HP no one rests.
+    await hpApply(dm, { targets: [ilse], kind: "damage", amount: 30, decide: { [ilse]: { keep: [] } } });
+    await expect(rq(dm, "rest.apply", { kind: "long", actors: { [ilseActor]: ["hp"] } })).rejects.toThrow(
+      /INVALID/,
+    );
+    // Players don't rest the party.
+    await expect(
+      rq(anna().room, "rest.apply", { kind: "long", actors: { [ilseActor]: ["hp"] } }),
+    ).rejects.toThrow(/FORBIDDEN/);
+  });
+
   it("death saves outside combat: the DM asks, the owner rolls — a success, a 1 is two failures, a 20 is back on her feet (§8.11)", async () => {
     await reset();
     await hpApply(dm, {

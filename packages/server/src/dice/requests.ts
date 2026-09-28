@@ -63,7 +63,11 @@ export interface RollRequest {
    * via the DM's prompt) or a death saving throw (the tally moves; a 20 brings the creature back; three failures ask
    * the DM). Absent: an ordinary request.
    */
-  purpose?: { kind: "concentration"; spell?: string } | { kind: "deathSave" };
+  purpose?:
+    | { kind: "concentration"; spell?: string }
+    | { kind: "deathSave" }
+    /** A Hit Die to spend on a short rest (its character; one die a card). */
+    | { kind: "hitDie"; die: string; actorId: string };
 }
 
 /** The formula a request asks of everyone, with its `@` references (resolved per target). */

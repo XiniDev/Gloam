@@ -1328,10 +1328,10 @@
       "code": "HP",
       "phase": "P7",
       "text": "Short and long rests apply the rules pack's recovery (Hit Dice spending with roll/enter/skip cards; HP, Hit Dice, slots, feature uses, exhaustion and temp HP per §34.2) to the chosen characters as one undoable command with a per-character preview.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p7-health.spec.ts › 'rests…' (Long rest from the Party panel: Thorin's preview HP 10 → 30, Hit Dice back 1 d10, Uses back: Second Wind — the DM unticks the uses; applied as one step, Ctrl+Z restores it; Short rest: Second Wind back, Dave's cards 'Spend a Hit Die (d10, 2 left)' → entered 7 → +7 HP, the next die on its own card, Skip ends it); packages/server/src/test/health.test.ts › 'rests: …' (kept items, undo, a 1 still heals 1, no rest at 0 HP, DM only); packages/shared/src/rules/rests.test.ts (SRD 5.2.1 / 5.1 recovery per §34.2)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-28T23:44:29.738Z"
     },
     {
       "id": "AC-CMB-01",
@@ -2428,10 +2428,10 @@
       "code": "DS",
       "phase": "P7",
       "text": "Every custom icon in Appendix G is implemented as a React component and in the WebGL icon atlas, and renders crisply at 16, 20 and 24 px.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p7-icons.spec.ts › 'every Appendix G icon is a React component and a cell of the WebGL atlas, drawn at 16, 20 and 24 px' (the test-only /__icons page: 34 icons, each bare and badged at exactly 16 / 20 / 24 px with its SVG shapes; every atlas cell's badge filled and glyph drawn); screenshots artifacts/screens/p7/icons-1x.png and icons-2x.png; the generated source is checked against Appendix G by pnpm lint (extract-icons --check); the page is left out of production builds",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-28T23:46:25.685Z"
     },
     {
       "id": "AC-DS-04",

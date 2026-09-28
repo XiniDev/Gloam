@@ -1,13 +1,15 @@
 import { HP_BAND_HIDDEN, HP_BAND_LABELS, statusName } from "@gloam/shared/rules";
 import type { TokenView } from "@gloam/shared/state";
 import { HeartPulse } from "lucide-react";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { StatusIcon } from "../../icons/status.tsx";
 import { requestDeathSaves, useHealth } from "../../net/health.ts";
+import { useSheets } from "../../net/sheets.ts";
 import { useBoard } from "../../state/entities.ts";
 import { useUi } from "../../state/ui.ts";
 import { Button } from "../../ui/Button.tsx";
 import { toast } from "../../ui/Toast.tsx";
+import { RestDialog } from "../health/RestDialog.tsx";
 
 const dying = (t: TokenView) => t.markers.includes("deathsaves") && !t.markers.includes("stable") && !t.dead;
 
@@ -20,6 +22,9 @@ export function HealthPanel() {
   const tokens = useBoard((d) => d.tokens);
   const selection = useUi((s) => s.selection);
   const waiting = useHealth((s) => s.prompts.size);
+  const actors = useSheets((s) => s.actors);
+  const party = useMemo(() => [...actors.values()].filter((a) => a.kind === "character"), [actors]);
+  const [resting, setResting] = useState<"short" | "long" | null>(null);
   const rows = useMemo(() => {
     const sel = new Set(selection);
     return [...tokens.values()].sort(
@@ -51,6 +56,18 @@ export function HealthPanel() {
           over the board.
         </p>
       ) : null}
+      {party.length ? (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="caps text-12 text-fog">Rest</span>
+          <Button size="S" variant="ghost" onClick={() => setResting("short")}>
+            Short rest…
+          </Button>
+          <Button size="S" variant="ghost" onClick={() => setResting("long")}>
+            Long rest…
+          </Button>
+        </div>
+      ) : null}
+      <RestDialog kind={resting} characters={party} onClose={() => setResting(null)} />
       {selection.length ? (
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="caps text-12 text-fog">Selected ({selection.length})</span>

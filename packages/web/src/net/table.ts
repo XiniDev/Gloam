@@ -47,6 +47,8 @@ interface TableStore {
   houseRules: HouseRules;
   /** Campaign settings that aren't rules (auto-facing, idle animations…). */
   campaignSettings: CampaignSettings;
+  /** The campaign's rules pack (SPEC §19.6): "srd-5.2.1" or "srd-5.1". */
+  rulesPack: string;
   sessionNo: number;
   presence: PresenceView[];
   knocks: KnockCard[];
@@ -63,6 +65,7 @@ export const useTable = create<TableStore>((set) => ({
   units: "ft",
   houseRules: DEFAULT_HOUSE_RULES,
   campaignSettings: CampaignSettings.parse({}),
+  rulesPack: "srd-5.2.1",
   sessionNo: 0,
   presence: [],
   knocks: [],
@@ -315,12 +318,14 @@ async function join(campaignId: string): Promise<Room<unknown, TableState>> {
       houseRules: parseHouseRules(room.state.houseRulesJson),
       campaignSettings: parseCampaignSettings(room.state.settingsJson),
       sessionNo: room.state.sessionNo,
+      rulesPack: room.state.rulesPack || "srd-5.2.1",
     });
   cb.listen("campaignName", syncCampaign);
   cb.listen("units", syncCampaign);
   cb.listen("houseRulesJson", syncCampaign);
   cb.listen("settingsJson", syncCampaign);
   cb.listen("sessionNo", syncCampaign);
+  cb.listen("rulesPack", syncCampaign);
 
   room.onMessage(
     "welcome",

@@ -4,6 +4,7 @@ export * from "./consequences.ts";
 export * from "./damage.ts";
 export * from "./names.ts";
 export * from "./permissions.ts";
+export * from "./rests.ts";
 export * from "./sheet.ts";
 export * from "./sheetLocks.ts";
 export * from "./sheetPatch.ts";

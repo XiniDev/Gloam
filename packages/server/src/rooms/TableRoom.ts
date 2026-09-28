@@ -76,6 +76,7 @@ import {
 import { checkSheet, readSheet } from "../engine/commands/actor.ts";
 import { FOLLOWUPS, type Followups, hpApply, previewHp } from "../engine/commands/health.ts";
 import { SYSTEM_ACTOR } from "../engine/commands/party.ts";
+import { REST_FOLLOWUPS, type RestFollowups } from "../engine/commands/rest.ts";
 import { CampaignModel } from "../engine/model.ts";
 import { ALL_COMMANDS, COMMAND_RATES, registerCommands } from "../engine/registry.ts";
 import { PromptService } from "../health/prompts.ts";
@@ -826,8 +827,8 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
       ...(r.ability ? { ability: r.ability } : {}),
       ...(r.formula ? { formula: r.formula } : {}),
       label: r.label,
-      dc: r.dc,
-      showDc: true,
+      ...(r.dc !== undefined ? { dc: r.dc } : {}),
+      showDc: r.dc !== undefined,
       adv: "none",
       visibility: r.visibility,
       purpose: r.purpose,
@@ -1368,6 +1369,17 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
   /** Delivers command events (§14.1 post-commit): to a token's viewers, to users, or to the DMs. */
   private deliver(events: RoomEvent[], info?: CommitInfo): void {
     for (const e of events) {
+      // A short rest's Hit Dice: each character's first card.
+      if (e.name === REST_FOLLOWUPS) {
+        const f = e.payload as RestFollowups;
+        for (const actorId of f.actors)
+          try {
+            this.health.askHitDie(actorId, f.by);
+          } catch (err) {
+            roomCtx().log.error({ err }, "hit dice card failed");
+          }
+        continue;
+      }
       // A health command's prompts and concentration saves (created after its commit, remembering its entry).
       if (e.name === FOLLOWUPS) {
         try {

@@ -1,14 +1,16 @@
 import type { ActorView } from "@gloam/shared/protocol";
 import { deriveSheet, statusName } from "@gloam/shared/rules";
 import { Users } from "lucide-react";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { StatusIcon } from "../icons/status.tsx";
 import { useSheets } from "../net/sheets.ts";
 import { useTable } from "../net/table.ts";
 import { useUi } from "../state/ui.ts";
+import { Button } from "../ui/Button.tsx";
 import { EmptyState } from "../ui/EmptyState.tsx";
 import { WaxSeal } from "../ui/ornaments.tsx";
 import { Portrait } from "../ui/Portrait.tsx";
+import { RestDialog } from "./health/RestDialog.tsx";
 import { useAssetImage } from "./useAssetImage.ts";
 
 const ROLE_LABEL: Record<string, string> = {
@@ -89,6 +91,9 @@ export function PartyPanel() {
   const presence = useTable((s) => s.presence);
   const people = presence.filter((p) => p.role !== "admin" || p.online);
   const actors = useSheets((s) => s.actors);
+  const me = useTable((s) => s.me);
+  const dm = me?.role === "dm" || me?.role === "admin";
+  const [resting, setResting] = useState<"short" | "long" | null>(null);
   const characters = useMemo(
     () =>
       [...actors.values()]
@@ -101,8 +106,20 @@ export function PartyPanel() {
       {/* Titled like the other panels (the DM panel, the sheet); its sections labelled alike under it. */}
       <header className="flex items-center gap-2 border-b border-line px-4 py-3">
         <Users size={18} className="text-brass" aria-hidden />
-        <h2 className="text-18 text-bone">Party</h2>
+        <h2 className="flex-1 text-18 text-bone">Party</h2>
+        {/* The DM's rests (§8.11 Rests): the whole party or the characters selected, previewed before applying. */}
+        {dm && characters.length ? (
+          <span className="flex gap-1">
+            <Button size="S" variant="ghost" onClick={() => setResting("short")}>
+              Short rest…
+            </Button>
+            <Button size="S" variant="secondary" onClick={() => setResting("long")}>
+              Long rest…
+            </Button>
+          </span>
+        ) : null}
       </header>
+      <RestDialog kind={resting} characters={characters} onClose={() => setResting(null)} />
       {characters.length ? (
         <section className="border-b border-line px-2 py-2" aria-label="Characters">
           <h3 className="caps px-2 pb-1 text-12 text-fog">Characters</h3>
