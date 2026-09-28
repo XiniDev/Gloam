@@ -187,7 +187,8 @@ test.describe("P6 — character art (SHEET-10/11)", () => {
 
     // Used as the portrait: a player's drawing waits for the DM, then goes on the character by itself.
     await pad.getByRole("button", { name: "Use as portrait" }).click();
-    await expect(pad).toHaveCount(0);
+    // (The upload is processed on the server — slow when the whole suite runs at once, as for the sticker below.)
+    await expect(pad).toHaveCount(0, { timeout: 30_000 });
     await expect(dave.getByText("Sent to the DM")).toBeVisible();
     await approveUpload(admin);
     await expect

@@ -1,6 +1,6 @@
 import { ABILITIES } from "@gloam/shared";
 import type { DerivedKey } from "@gloam/shared/schemas";
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { toast } from "../../../ui/Toast.tsx";
 import { overrideDerived, type SheetCtx } from "../context.ts";
 import { DerivedValue, NumberField, Pips, RollButton, SectionTitle } from "../primitives.tsx";
@@ -112,19 +112,14 @@ export function SpellsTab({ ctx }: { ctx: SheetCtx }) {
             </DerivedValue>
           </span>
         ))}
-        <RollButton
-          actor={ctx.actor}
-          formula="1d20 + @spellmod + @prof"
-          label="Spell attack"
-          text={`Spell attack ${signed(d.values["spell.attack"])}`}
-        />
+        <RollButton actor={ctx.actor} formula="1d20 + @spellmod + @prof" label="Spell attack" text="Roll" />
       </div>
 
       {[...byLevel.keys()]
         .sort((a, b) => a - b)
         .map((level) => (
-          <div key={level}>
-            <SectionTitle>{level === 0 ? "Cantrips" : `${LEVEL[level]} level`}</SectionTitle>
+          <Fragment key={level}>
+            <SectionTitle>{level === 0 ? "Cantrips" : `Level ${level}`}</SectionTitle>
             <ul className="flex flex-col">
               {(byLevel.get(level) ?? []).map(({ spell, i }) => (
                 <li
@@ -157,7 +152,8 @@ export function SpellsTab({ ctx }: { ctx: SheetCtx }) {
                     <button
                       type="button"
                       onClick={() => cast(level, spell.name)}
-                      className="caps h-7 min-h-[var(--touch-min)] rounded-[var(--radius-control)] border border-wax/70 px-2 text-12 text-wax hover:bg-wax hover:text-parchment"
+                      // A paper-secondary button (wax stays for danger and seals).
+                      className="h-7 min-h-[var(--touch-min)] rounded-[var(--radius-control)] border border-paper-ink/35 px-2.5 text-13 font-semibold text-paper-ink hover:border-paper-ink/60 hover:bg-parchment-deep"
                     >
                       Cast
                     </button>
@@ -176,7 +172,7 @@ export function SpellsTab({ ctx }: { ctx: SheetCtx }) {
                 </li>
               ))}
             </ul>
-          </div>
+          </Fragment>
         ))}
 
       <SectionTitle>Slots</SectionTitle>
@@ -203,7 +199,9 @@ export function SpellsTab({ ctx }: { ctx: SheetCtx }) {
                 value={slot.max}
                 min={0}
                 max={9}
-                width="2.5rem"
+                width="2rem"
+                // Boxed: the one number here that's typed in ("1 of [2] left").
+                className="!border-parchment-edge/70 !bg-parchment/50"
                 onCommit={(v) => {
                   const slots = sc.slots.filter((x) => x.level !== slot.level);
                   if (v > 0) slots.push({ level: slot.level, max: v, used: Math.min(slot.used, v) });

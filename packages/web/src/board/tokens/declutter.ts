@@ -5,10 +5,12 @@ import { Box3, type Camera, type Mesh, type Object3D, Vector3 } from "three";
  * never sit on top of each other, and never simply vanish when there's room nearby. Each frame the board draws, every
  * overlay's screen rectangle (from its rendered bounds) is placed in priority order — hovered, selected, the viewer's
  * own, party, then everyone else, nearer the camera first — in its own spot above its token if that's free, else slid
- * sideways back onto the screen (a token at the edge keeps its plate readable, not cut off), else in the first free
- * one of: beside it to the right or left, stacked above, above and to a side (the token draws a hairline leader to
- * it) — kept clear of other tokens' bodies (a plate sitting on a token reads as that token's) wherever that costs no
- * plate its place. Only when every spot is taken does it fade out; zooming in (or hovering) brings it back.
+ * back onto the free board (sideways off the screen's edge; down from under the top of the screen or the HUD — a
+ * visible token keeps its plate), else nudged sideways off whatever takes its spot's side, else under its token's
+ * base (plates at the feet don't collide with the tokens standing behind), else in the first free one of: beside it to
+ * the right or left, stacked above, above and to a side (the token draws a leader to it). All of it kept clear of
+ * other tokens' bodies — a plate sitting on a token reads as that token's — wherever that costs no plate its place.
+ * Only when every spot is taken does it fade out; zooming in (or hovering) brings it back.
  */
 interface Entry {
   group: Object3D;
@@ -66,9 +68,17 @@ const SLOTS: [number, number][] = [
 ];
 /** The slot number of "its own spot, slid onto the screen" (tried right after its own spot). */
 const SLID = SLOTS.length;
+/** "Its own spot, brought down onto the free board" (the top of the screen or the HUD above took it). */
+const CLAMPED = SLOTS.length + 1;
+/** "Under its token's base". */
+const BELOW = SLOTS.length + 2;
 const TRY_ORDER = [0, SLID, ...SLOTS.keys()].filter((k, i, all) => all.indexOf(k) === i);
+/** The gap between a token's base and a plate under it (px). */
+const BELOW_GAP_PX = 6;
 /** Slot numbers from here on are nudges (a few pixels sideways off whatever takes its spot's side). */
 const NUDGE = 100;
+/** …and from here, nudges of the spot under its base. */
+const BELOW_NUDGE = 200;
 /** A plate in its own spot gives way when it would cover more than this share of another token… */
 const BURIED = 0.5;
 /** …and a spot aside is taken only when it covers no more than this share of one. */
@@ -138,13 +148,14 @@ export function layoutOverlays(
       y1 = Math.max(y1, sy);
     }
     if (behind) continue;
-    box.getCenter(corner);
     // Its own spot: where it was drawn, less the offset it was drawn with.
     const o = e.offset;
     const r = { x0: x0 - o.dx, y0: y0 - o.dy, x1: x1 - o.dx, y1: y1 - o.dy };
-    items.push({ id, e, r, p: e.priority(), d: corner.distanceToSquared(camera.position) });
+    items.push({ id, e, r, p: e.priority(), d: -r.y1 });
   }
-  items.sort((a, b) => b.p - a.p || a.d - b.d);
+  // Nearer the camera first: lower on the screen, from the own spot (never where a plate was moved to — a plate moved
+  // up or down would change its turn and the layout would never settle); the id breaks ties.
+  items.sort((a, b) => b.p - a.p || a.d - b.d || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   // Kept clear of the tokens where that costs no plate; where it would hide one, plates over tokens it is.
   let layout = place(items, bodies, covered, width, height, true);
   const hidden = (l: Layout) => l.reduce((n, x) => n + (x.slot < 0 ? 1 : 0), 0);
@@ -204,7 +215,18 @@ function place(
     if (b) {
       const cx = (b.x0 + b.x1) / 2;
       const cy = (b.y0 + b.y1) / 2;
-      if (covered.some((c) => cx > c.x0 && cx < c.x1 && cy > c.y0 && cy < c.y1)) {
+      // …nor does one none of which shows on the free board (off the screen, or all of what's on it under one piece).
+      const v = {
+        x0: Math.max(0, b.x0),
+        y0: Math.max(0, b.y0),
+        x1: Math.min(width, b.x1),
+        y1: Math.min(height, b.y1),
+      };
+      const unseen =
+        v.x0 >= v.x1 ||
+        v.y0 >= v.y1 ||
+        covered.some((c) => v.x0 >= c.x0 && v.x1 <= c.x1 && v.y0 >= c.y0 && v.y1 <= c.y1);
+      if (unseen || covered.some((c) => cx > c.x0 && cx < c.x1 && cy > c.y0 && cy < c.y1)) {
         out.push({ slot: -1, q: r, dx: 0, dy: 0 });
         continue;
       }
@@ -225,8 +247,43 @@ function place(
       for (const dx of [b.x0 - r.x1 - 0.5, b.x1 - r.x0 + 0.5]) if (Math.abs(dx) <= 0.62 * w) nudges.push(dx);
     }
     nudges.sort((a, b) => Math.abs(a) - Math.abs(b));
+    // Brought down onto the free board: past the top of the screen and any HUD piece over its column, no further
+    // than its token's body reaches (it stays on or at its token) — sideways onto the screen as well.
+    const clampDown = (): [number, number] => {
+      if (!b) return [Number.NaN, 0];
+      let y = Math.max(r.y0, EDGE_PX);
+      for (let pass = 0; pass < 6; pass++) {
+        const hit = covered.find(
+          (c) => r.x0 + slide < c.x1 && r.x1 + slide > c.x0 && y < c.y1 && y + (r.y1 - r.y0) > c.y0,
+        );
+        if (!hit) break;
+        y = hit.y1 + PAD_PX;
+      }
+      const dy = y - r.y0;
+      // Only a plate that belonged just above its token (no further off than its token is tall), onto a token at
+      // least partly on the screen (a slide no wider than itself).
+      const near = dy <= b.y1 - b.y0 + (r.y1 - r.y0) + 2 * BELOW_GAP_PX && Math.abs(slide) <= w;
+      return dy > 0.5 && y < b.y1 && near ? [slide, dy] : [Number.NaN, 0];
+    };
+    const down = clampDown();
+    // Under its base — slid onto the screen as well, for a token at its edge — and, when a HUD piece or a plate
+    // takes the side of that spot, nudged sideways off it (as its own spot is).
+    const belowDy = b && Math.abs(slide) <= w ? b.y1 + BELOW_GAP_PX - r.y0 : Number.NaN;
+    const belowNudges: number[] = [];
+    if (!Number.isNaN(belowDy)) {
+      const q = { x0: r.x0 + slide, y0: r.y0 + belowDy, x1: r.x1 + slide, y1: r.y1 + belowDy };
+      for (const o of blockers) {
+        if (!(q.x0 < o.x1 && q.x1 > o.x0 && q.y0 < o.y1 && q.y1 > o.y0)) continue;
+        for (const dx of [o.x0 - q.x1 - 0.5, o.x1 - q.x0 + 0.5])
+          if (Math.abs(dx) <= 0.62 * w) belowNudges.push(dx);
+      }
+      belowNudges.sort((x, y) => Math.abs(x) - Math.abs(y));
+    }
     const shift = (k: number): [number, number] => {
       if (k === SLID) return [Math.abs(slide) <= w ? slide : Number.NaN, 0];
+      if (k === CLAMPED) return down;
+      if (k === BELOW) return [Number.isNaN(belowDy) ? Number.NaN : slide, belowDy];
+      if (k >= BELOW_NUDGE) return [slide + (belowNudges[k - BELOW_NUDGE] ?? Number.NaN), belowDy];
       if (k >= NUDGE) return [nudges[k - NUDGE] ?? Number.NaN, 0];
       const [sx, sy] = SLOTS[k] as [number, number];
       return [sx * w, sy * h];
@@ -235,24 +292,38 @@ function place(
       const [dx, dy] = shift(k);
       return { x0: r.x0 + dx, y0: r.y0 + dy, x1: r.x1 + dx, y1: r.y1 + dy };
     };
+    // Whether a spot would sit on another token: over more than `limit` of it, or with its centre on it (a plate on a
+    // token reads as that token's, however large the token).
     const covers = (q: Placed, limit: number) =>
-      bodies.some((b) => {
-        if (b.id === it.id) return false;
-        const ix = Math.min(q.x1, b.r.x1) - Math.max(q.x0, b.r.x0);
-        const iy = Math.min(q.y1, b.r.y1) - Math.max(q.y0, b.r.y0);
+      bodies.some((o) => {
+        if (o.id === it.id) return false;
+        const ix = Math.min(q.x1, o.r.x1) - Math.max(q.x0, o.r.x0);
+        const iy = Math.min(q.y1, o.r.y1) - Math.max(q.y0, o.r.y0);
         if (ix <= 0 || iy <= 0) return false;
-        const area = Math.max(1, (b.r.x1 - b.r.x0) * (b.r.y1 - b.r.y0));
+        const cx = (q.x0 + q.x1) / 2;
+        const cy = (q.y0 + q.y1) / 2;
+        if (cx > o.r.x0 && cx < o.r.x1 && cy > o.r.y0 && cy < o.r.y1) return true;
+        const area = Math.max(1, (o.r.x1 - o.r.x0) * (o.r.y1 - o.r.y0));
         return (ix * iy) / area > limit;
       });
     const ok = (k: number) =>
       (k !== SLID || (slide !== 0 && Math.abs(slide) <= w)) &&
       !Number.isNaN(shift(k)[0]) &&
       free(at(k)) &&
-      (!clearOfTokens || !covers(at(k), k === 0 || k === SLID ? BURIED : ASIDE));
-    const order = [0, SLID, ...nudges.map((_, i) => NUDGE + i), ...TRY_ORDER.slice(2)];
+      (!clearOfTokens || !covers(at(k), k === 0 || k === SLID || k === CLAMPED ? BURIED : ASIDE));
+    const order = [
+      0,
+      SLID,
+      CLAMPED,
+      ...nudges.map((_, i) => NUDGE + i),
+      BELOW,
+      ...belowNudges.map((_, i) => BELOW_NUDGE + i),
+      ...TRY_ORDER.slice(2),
+    ];
     let slot = -1;
-    // The spot it had, if still free (no hopping) — a nudge is worked out afresh each time.
-    if (it.e.slot > 0 && it.e.slot < NUDGE && ok(it.e.slot) && !ok(0)) slot = it.e.slot;
+    // The spot it had, if still free (no hopping) — a nudge or a clamp is worked out afresh each time.
+    if (it.e.slot > 0 && it.e.slot < NUDGE && it.e.slot !== CLAMPED && ok(it.e.slot) && !ok(0))
+      slot = it.e.slot;
     else for (const k of order) if (slot < 0 && ok(k)) slot = k;
     const q = slot >= 0 ? at(slot) : r;
     if (slot >= 0) placed.push(q);
@@ -265,6 +336,9 @@ function place(
 let lastCovered: readonly Placed[] = [];
 /** The HUD over the board at the last layout (diagnostics: where plates may not go). */
 export const plateCovers = (): readonly Placed[] => lastCovered;
+/** Whether a screen point (px, y down) is under the HUD over the board (a leader ending there is hidden). */
+export const underCover = (x: number, y: number): boolean =>
+  lastCovered.some((c) => x > c.x0 && x < c.x1 && y > c.y0 && y < c.y1);
 
 /** The screen rectangles (canvas pixels) of the overlays showing now — for HUD labels that must not cover them. */
 export function shownOverlayRects(): Placed[] {

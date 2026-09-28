@@ -1,6 +1,6 @@
 import { X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { type ReactNode, useEffect, useId, useRef } from "react";
+import { type ReactNode, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { IconButton } from "./Button.tsx";
 import { Filigree } from "./ornaments.tsx";
@@ -131,9 +131,7 @@ export function Dialog({
                 </IconButton>
               ) : null}
             </div>
-            {children ? (
-              <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-2 pt-4">{children}</div>
-            ) : null}
+            {children ? <DialogBody>{children}</DialogBody> : null}
             {footer ? (
               // On a phone the actions stack full-width, the main one on top (a ragged right-aligned wrap
               // otherwise).
@@ -146,5 +144,49 @@ export function Dialog({
       ) : null}
     </AnimatePresence>,
     document.body,
+  );
+}
+
+/**
+ * A dialog's scrolling body: a soft shadow at an edge while there's more to scroll that way (a slider or field under
+ * the fold is never a secret).
+ */
+function DialogBody({ children }: { children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [more, setMore] = useState({ up: false, down: false });
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const update = () => {
+      const up = el.scrollTop > 1;
+      const down = el.scrollTop + el.clientHeight < el.scrollHeight - 1;
+      setMore((m) => (m.up === up && m.down === down ? m : { up, down }));
+    };
+    update();
+    el.addEventListener("scroll", update, { passive: true });
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    for (const c of el.children) ro.observe(c);
+    return () => {
+      el.removeEventListener("scroll", update);
+      ro.disconnect();
+    };
+  }, []);
+  return (
+    <div className="relative flex min-h-0 flex-1 flex-col">
+      <div ref={ref} className="min-h-0 flex-1 overflow-y-auto px-6 pb-2 pt-4">
+        {children}
+      </div>
+      <span
+        aria-hidden
+        className={`pointer-events-none absolute inset-x-0 top-0 h-3 bg-gradient-to-b from-[var(--edge-shade)] to-transparent transition-opacity duration-[var(--dur-fast)] ${more.up ? "opacity-100" : "opacity-0"}`}
+      />
+      <span
+        aria-hidden
+        data-testid="dialog-more-below"
+        data-more={more.down}
+        className={`pointer-events-none absolute inset-x-0 bottom-0 h-4 bg-gradient-to-t from-[var(--edge-shade)] to-transparent transition-opacity duration-[var(--dur-fast)] ${more.down ? "opacity-100" : "opacity-0"}`}
+      />
+    </div>
   );
 }

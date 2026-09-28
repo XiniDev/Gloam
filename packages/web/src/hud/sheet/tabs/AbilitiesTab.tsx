@@ -42,25 +42,31 @@ export function AbilitiesTab({ ctx }: { ctx: SheetCtx }) {
     </DerivedValue>
   );
   return (
-    <div className="flex flex-col text-14 text-paper-ink">
+    <div className="@container flex flex-col text-14 text-paper-ink">
       <SectionTitle>Abilities</SectionTitle>
       <p className="mb-1 text-13 text-paper-muted">A modifier rolls its check, a save its saving throw.</p>
+      {/* Ability | Score | Check | Save across the whole width, each heading over its numbers; a narrow page (a phone)
+          names each ability by its three letters so the numbers keep their columns. */}
       <div
-        className="grid grid-cols-[auto_auto_auto_1fr] items-center gap-x-2 gap-y-0.5"
+        className="grid grid-cols-[minmax(2.5rem,1fr)_repeat(3,auto)] items-center gap-x-2 gap-y-0.5 @min-[420px]:gap-x-4"
         data-testid="sheet-abilities"
       >
-        <span className="caps text-12 text-paper-muted">Score</span>
-        <span className="caps text-12 text-paper-muted">Check</span>
-        <span className="caps text-12 text-paper-muted">Save</span>
-        <span />
+        {/* (On a narrow page the three-letter names need no heading, and it wouldn't fit their column.) */}
+        <span className="caps text-12 text-paper-muted">
+          <span className="hidden @min-[420px]:inline">Ability</span>
+        </span>
+        <span className="caps text-center text-12 text-paper-muted">Score</span>
+        <span className="caps text-center text-12 text-paper-muted">Check</span>
+        <span className="caps text-center text-12 text-paper-muted">Save</span>
         {ABILITIES.map((a) => {
           const save = c.saves[a];
           return (
             <div key={a} className="group/row contents">
-              <span className="flex items-center gap-1">
-                <span className="caps w-8 text-12 text-paper-muted" title={abilityName(a as AbilityKey)}>
-                  {a}
-                </span>
+              <span className="min-w-0 truncate text-14 text-paper-ink" title={abilityName(a as AbilityKey)}>
+                <span className="caps text-12 @min-[420px]:hidden">{a}</span>
+                <span className="hidden @min-[420px]:inline">{abilityName(a as AbilityKey)}</span>
+              </span>
+              <span className="flex justify-center">
                 <NumberField
                   label={`${abilityName(a as AbilityKey)} score`}
                   value={c.abilities[a]}
@@ -71,13 +77,15 @@ export function AbilitiesTab({ ctx }: { ctx: SheetCtx }) {
                   onCommit={(v) => void ctx.set(["core", "abilities", a], v)}
                 />
               </span>
-              {derived(
-                `mod.${a}`,
-                `${abilityName(a as AbilityKey)} modifier`,
-                `1d20 + @${a}`,
-                `${abilityName(a as AbilityKey)} check`,
-              )}
-              <span className="flex items-center gap-1">
+              <span className="flex justify-center">
+                {derived(
+                  `mod.${a}`,
+                  `${abilityName(a as AbilityKey)} modifier`,
+                  `1d20 + @${a}`,
+                  `${abilityName(a as AbilityKey)} check`,
+                )}
+              </span>
+              <span className="flex items-center justify-center gap-0.5">
                 <button
                   type="button"
                   disabled={ro}
@@ -98,7 +106,6 @@ export function AbilitiesTab({ ctx }: { ctx: SheetCtx }) {
                   `${abilityName(a as AbilityKey)} save`,
                 )}
               </span>
-              <span />
             </div>
           );
         })}
@@ -125,9 +132,9 @@ export function AbilitiesTab({ ctx }: { ctx: SheetCtx }) {
           {derived("initiative", "Initiative", "1d20 + @init", "Initiative")}
         </span>
         <span className="inline-flex items-center gap-1">
-          <span className="text-13 text-paper-muted">Initiative bonus</span>
+          <span className="text-13 text-paper-muted">Extra initiative bonus</span>
           <NumberField
-            label="Initiative bonus"
+            label="Extra initiative bonus"
             value={c.initiativeBonus}
             min={-99}
             max={99}

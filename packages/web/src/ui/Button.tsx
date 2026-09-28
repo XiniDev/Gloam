@@ -22,6 +22,10 @@ const SIZE: Record<ButtonSize, string> = {
   L: "h-12 px-6 text-16",
 };
 
+/** A button's look for another element that acts as one (a menu's labelled button). */
+export const buttonClass = (variant: ButtonVariant, size: ButtonSize) =>
+  `${BASE} ${VARIANT[variant]} ${SIZE[size]}`;
+
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
   size?: ButtonSize;

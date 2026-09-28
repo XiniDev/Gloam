@@ -1,5 +1,5 @@
 import type { RequestCard } from "@gloam/shared/protocol";
-import { SkipForward, X } from "lucide-react";
+import { ChevronUp, SkipForward, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { create } from "zustand";
 import { audio } from "../audio/engine.ts";
@@ -13,7 +13,8 @@ import { makeRoomForDice, useCover, useHudInsets, useIsPhone, useObstacle } from
 /** An answered card stays this long to show its result, then steps aside (the request itself stays open). */
 const ANSWERED_MS = 6000;
 
-function Card({ c, onDismiss }: { c: RequestCard; onDismiss: () => void }) {
+/** One creature's line on a request card: its name and formula, then Roll / Enter physical roll / Skip, or how it went. */
+function Row({ c, onAnswered }: { c: RequestCard; onAnswered: () => void }) {
   const [manual, setManual] = useState(false);
   const [total, setTotal] = useState("");
   const [busy, setBusy] = useState<"roll" | "manual" | "skip" | null>(null);
@@ -32,42 +33,30 @@ function Card({ c, onDismiss }: { c: RequestCard; onDismiss: () => void }) {
     }
   };
   const pending = c.state === "pending";
+  // Answered: it steps aside ANSWERED_MS after the answer was first seen — counted once, not again each time the card
+  // re-renders or moves (between the board and a phone's panel).
+  const answered = useRef(onAnswered);
+  answered.current = onAnswered;
+  const key = `${c.requestId}|${c.targetId}`;
   useEffect(() => {
     if (pending) return;
-    const t = window.setTimeout(onDismiss, ANSWERED_MS);
+    const at = answeredAt(key);
+    const t = window.setTimeout(() => answered.current(), Math.max(0, at + ANSWERED_MS - Date.now()));
     return () => window.clearTimeout(t);
-  }, [pending, onDismiss]);
+  }, [pending, key]);
   const outcome = c.success === undefined ? "text-bone" : c.success ? "text-success" : "text-danger-text";
   return (
     <li
-      className="panel pointer-events-auto flex flex-col gap-2 border-brass/60 p-3 shadow-[var(--shadow-float)] motion-safe:animate-[rise-in_var(--dur-base)_var(--ease-out)_both]"
+      className="flex flex-col gap-1.5 border-line/60 pt-2 first:pt-0 [&+&]:border-t"
       data-testid="request-card"
       data-request={c.requestId}
       data-target={c.targetId}
       data-state={c.state}
       aria-label={`${c.label} for ${c.targetName}`}
     >
-      <div className="flex items-start gap-2">
-        <span className="min-w-0 flex-1">
-          <span className="caps block text-12 text-brass">The DM asks · {c.targetName}</span>
-          <span className="block truncate text-18 font-bold text-bone">{c.label}</span>
-        </span>
-        {pending ? null : (
-          <IconButton label="Dismiss" onClick={onDismiss}>
-            <X size={16} />
-          </IconButton>
-        )}
-      </div>
-      <div className="flex flex-wrap items-center gap-1.5 text-13">
-        <span className="mono rounded-chip bg-ink-950/70 px-2 py-0.5 text-bone">{c.formula}</span>
-        {c.dc !== undefined ? (
-          <span className="caps rounded-chip border border-line px-2 py-0.5 text-12 text-fog">DC {c.dc}</span>
-        ) : null}
-        {c.visibility === "blind" ? (
-          <span className="text-12 text-muted">Blind — the DM sees the number, you won't.</span>
-        ) : c.visibility === "dm" ? (
-          <span className="text-12 text-muted">Only you and the DM see it.</span>
-        ) : null}
+      <div className="flex min-w-0 items-center gap-2 text-13">
+        <span className="min-w-0 truncate text-14 font-bold text-bone">{c.targetName}</span>
+        <span className="mono shrink-0 rounded-chip bg-ink-950/70 px-2 py-0.5 text-bone">{c.formula}</span>
       </div>
       {pending ? (
         manual ? (
@@ -86,7 +75,7 @@ function Card({ c, onDismiss }: { c: RequestCard; onDismiss: () => void }) {
               placeholder="Total"
               value={total}
               onChange={(e) => setTotal(e.target.value.replace(/[^0-9-]/g, "").slice(0, 5))}
-              className="tabular h-9 min-h-[var(--touch-min)] w-24 rounded-[var(--radius-control)] border border-line bg-ink-950/60 px-2 text-16 text-bone focus:border-accent focus:outline-none"
+              className="h-9 min-h-[var(--touch-min)] w-24 rounded-[var(--radius-control)] border border-line bg-ink-950/60 px-2 text-16 text-bone focus:border-accent focus:outline-none"
             />
             <Button
               size="S"
@@ -152,27 +141,125 @@ function Card({ c, onDismiss }: { c: RequestCard; onDismiss: () => void }) {
   );
 }
 
+/**
+ * One request as a card (critic P6 r2 #17: one card per request, not per creature): what the DM asks — the label, the
+ * DC when shown, who sees it — then a line for each creature this person answers for. In a phone's panel it starts as
+ * a one-line strip that opens on a tap (the page underneath keeps its room).
+ */
+function Card({ rows, compact }: { rows: RequestCard[]; compact: boolean }) {
+  const first = rows[0] as RequestCard;
+  const [open, setOpen] = useState(!compact);
+  const waiting = rows.filter((r) => r.state === "pending").length;
+  const dismiss = (c: RequestCard) => useDismissed.getState().add(`${c.requestId}|${c.targetId}`);
+  const heading = (
+    <span className="min-w-0 flex-1">
+      <span className="caps block text-12 text-brass">
+        The DM asks{rows.length === 1 ? ` · ${first.targetName}` : ""}
+      </span>
+      <span className="block truncate text-18 font-bold text-bone">{first.label}</span>
+    </span>
+  );
+  if (!open)
+    return (
+      <li
+        className="panel pointer-events-auto flex items-center gap-2 border-brass/60 py-1 pr-1 pl-3 shadow-[var(--shadow-float)]"
+        data-testid="request-group"
+        data-request={first.requestId}
+      >
+        <D20Icon size={18} className="shrink-0 text-brass" />
+        <span className="min-w-0 flex-1 truncate text-14 font-bold text-bone">
+          {first.label}
+          <span className="font-normal text-muted">
+            {" "}
+            · {rows.length === 1 ? first.targetName : `${rows.length} creatures`}
+          </span>
+        </span>
+        <Button size="S" variant="primary" onClick={() => setOpen(true)} aria-expanded={false}>
+          {waiting ? "Answer" : "See"}
+        </Button>
+      </li>
+    );
+  return (
+    <li
+      className="panel pointer-events-auto flex flex-col gap-2 border-brass/60 p-3 shadow-[var(--shadow-float)] motion-safe:animate-[rise-in_var(--dur-base)_var(--ease-out)_both]"
+      data-testid="request-group"
+      data-request={first.requestId}
+      aria-label={`The DM asks: ${first.label}`}
+    >
+      <div className="flex items-start gap-2">
+        {heading}
+        {compact ? (
+          <IconButton label="Fold away" onClick={() => setOpen(false)} aria-expanded>
+            <ChevronUp size={16} />
+          </IconButton>
+        ) : waiting ? null : (
+          <IconButton label="Dismiss" onClick={() => rows.forEach(dismiss)}>
+            <X size={16} />
+          </IconButton>
+        )}
+      </div>
+      {first.dc !== undefined || first.visibility !== "public" ? (
+        <div className="flex flex-wrap items-center gap-1.5 text-13">
+          {first.dc !== undefined ? (
+            <span className="caps rounded-chip border border-line px-2 py-0.5 text-12 text-fog">
+              DC {first.dc}
+            </span>
+          ) : null}
+          {first.visibility === "blind" ? (
+            <span className="text-12 text-muted">Blind — the DM sees the number, you won't.</span>
+          ) : first.visibility === "dm" ? (
+            <span className="text-12 text-muted">Only you and the DM see it.</span>
+          ) : null}
+        </div>
+      ) : null}
+      <ul className="flex flex-col gap-2">
+        {rows.map((c) => (
+          <Row key={c.targetId} c={c} onAnswered={() => dismiss(c)} />
+        ))}
+      </ul>
+    </li>
+  );
+}
+
 /** Cards stepped aside (answered, or dismissed), shared by the floating stack and a phone's in-panel one. */
 const useDismissed = create<{ keys: Set<string>; add(k: string): void }>((set) => ({
   keys: new Set(),
   add: (k) => set((s) => ({ keys: new Set(s.keys).add(k) })),
 }));
 
+/** When each card was first seen answered (ms). */
+const firstAnswered = new Map<string, number>();
+function answeredAt(key: string): number {
+  let at = firstAnswered.get(key);
+  if (at === undefined) {
+    at = Date.now();
+    firstAnswered.set(key, at);
+  }
+  return at;
+}
+
 /**
- * Roll-request cards (SPEC §8.9 Roll requests, AC-DICE-06): each creature the DM asks that this person controls gets a
- * card — the label, its formula from the sheet, the DC when shown — with Roll, Enter physical roll and Skip. Centred
- * over the free board under the top bar, between the toolbar and the dock (never over a panel); on a phone with a
- * panel open, at the top of the panel itself (`inline`). One on a phone, three on a larger screen, then "Show n
- * more".
+ * Roll-request cards (SPEC §8.9 Roll requests, AC-DICE-06): each request that asks creatures this person controls gets a
+ * card — the label, the DC when shown — with a line per creature: its formula from the sheet, Roll, Enter physical
+ * roll and Skip. Centred over the free board under the top bar, between the toolbar and the dock (never over a panel);
+ * on a phone with a panel open, at the top of the panel itself as one-line strips (`inline`). One card on a phone,
+ * three on a larger screen, then "Show n more".
  */
 export function RequestCards({ inline = false }: { inline?: boolean }) {
   const cards = useSheets((s) => s.cards);
   const dismissed = useDismissed((s) => s.keys);
   const [all, setAll] = useState(false);
-  const shown = useMemo(
-    () => [...cards.values()].filter((c) => c.open && !dismissed.has(`${c.requestId}|${c.targetId}`)),
-    [cards, dismissed],
-  );
+  // Grouped by request, in the order they came.
+  const shown = useMemo(() => {
+    const groups = new Map<string, RequestCard[]>();
+    for (const c of cards.values()) {
+      if (!c.open || dismissed.has(`${c.requestId}|${c.targetId}`)) continue;
+      const g = groups.get(c.requestId);
+      if (g) g.push(c);
+      else groups.set(c.requestId, [c]);
+    }
+    return [...groups.values()];
+  }, [cards, dismissed]);
   const top = useHudInsets((s) => s.top);
   const banner = useHudInsets((s) => s.banner);
   const left = useHudInsets((s) => s.left);
@@ -195,10 +282,9 @@ export function RequestCards({ inline = false }: { inline?: boolean }) {
       aria-label="Rolls the DM asked for"
       className={`pointer-events-none flex w-full max-w-[340px] flex-col gap-2 ${inline ? "mx-auto px-2 pt-2" : ""}`}
     >
-      {shown.slice(0, max).map((c) => {
-        const key = `${c.requestId}|${c.targetId}`;
-        return <Card key={key} c={c} onDismiss={() => useDismissed.getState().add(key)} />;
-      })}
+      {shown.slice(0, max).map((rows) => (
+        <Card key={(rows[0] as RequestCard).requestId} rows={rows} compact={inline} />
+      ))}
       {shown.length > max ? (
         <li className="self-center">
           <Button size="S" variant="secondary" className="pointer-events-auto" onClick={() => setAll(true)}>

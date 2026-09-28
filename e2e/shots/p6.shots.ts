@@ -41,6 +41,19 @@ test("P6 key screens", async ({ admin, browser, gloam, guardLog }, info) => {
         new Promise((r) => setTimeout(r, 2000)),
       ]),
     );
+    // The board's plates at rest too (their fades run per frame, not as CSS animations): none caught half-faded.
+    await page
+      .waitForFunction(
+        () => {
+          const o = (
+            window as unknown as { __gloam?: { overlays?: () => { fade?: { a: number; target: number } }[] } }
+          ).__gloam?.overlays?.();
+          return !o || o.every((x) => !x.fade || Math.abs(x.fade.a - x.fade.target) < 0.01);
+        },
+        null,
+        { timeout: 3000 },
+      )
+      .catch(() => notes.push(`${name}: a plate was still fading`));
     await page.screenshot({ path: join(dir, `${name}.png`) });
   };
   const step = async (name: string, page: Page, fn: () => Promise<unknown>) => {
@@ -48,7 +61,12 @@ test("P6 key screens", async ({ admin, browser, gloam, guardLog }, info) => {
       await fn();
       await shot(page, name);
     } catch (e) {
-      notes.push(`${name}: ${(e as Error).message.split("\n")[0]}`);
+      // The first line, and what it was waiting for (which locator).
+      const lines = (e as Error).message.split("\n");
+      const what = lines
+        .filter((l) => /waiting for|Locator:|intercepts|not stable|not visible|not enabled|detached/.test(l))
+        .slice(0, 5);
+      notes.push(`${name}: ${[lines[0], ...what].join(" | ")}`);
       await page.screenshot({ path: join(dir, `_failed-${name}.png`) }).catch(() => {});
     }
   };
@@ -123,7 +141,10 @@ test("P6 key screens", async ({ admin, browser, gloam, guardLog }, info) => {
         speeds: { walk: 25 },
         senses: { darkvision: 60 },
         hp: { max: 52, current: 37, temp: 5 },
-        hitDice: [{ die: "d10", total: 5, used: 1 }],
+        hitDice: [
+          { die: "d10", total: 5, used: 1 },
+          { die: "d8", total: 1, used: 0 },
+        ],
         conditions: ["poisoned"],
         inspiration: true,
         attacks: [
@@ -362,9 +383,19 @@ test("P6 key screens", async ({ admin, browser, gloam, guardLog }, info) => {
     .click()
     .catch(() => {});
   await step("16-player-request-card", dave, async () => {
-    // A phone shows one card at a time ("1 more waiting").
-    await expect(dave.getByTestId("request-card")).toHaveCount(viewport.width < 640 ? 1 : 2);
+    // A Wisdom save for both of Dave's creatures: one card, a line for each — in a phone's open panel, a one-line
+    // strip that opens on a tap (the page keeps its room).
+    const group = dave.getByTestId("request-group");
+    await expect(group).toHaveCount(1);
+    if (viewport.width < 640) await expect(group.getByRole("button", { name: "Answer" })).toBeVisible();
+    else await expect(group.getByTestId("request-card")).toHaveCount(2);
   });
+  if (viewport.width < 640)
+    await dave
+      .getByTestId("request-group")
+      .getByRole("button", { name: "Answer" })
+      .click()
+      .catch(() => {});
   await dave
     .getByTestId("request-card")
     .first()
@@ -486,6 +517,39 @@ test("P6 key screens", async ({ admin, browser, gloam, guardLog }, info) => {
   await step("20-party-panel", admin, async () => {
     const party = await openDock(admin, "Party");
     await expect(party.getByTestId("party-character")).toHaveCount(2);
+  });
+  // A request card over the board, no panel open (on a phone: under the top bar and the rail, never over them).
+  await step("21-request-over-board", dave, async () => {
+    const panel = await openDock(admin, "DM panel");
+    await panel.getByRole("tab", { name: "Requests" }).click();
+    await panel.getByTestId("new-request").getByRole("button", { name: "All party" }).click();
+    const aside = dave.getByRole("region", { name: "Character sheet", exact: true });
+    if (await aside.isVisible()) {
+      const close = dave.getByRole("button", { name: "Close panel" });
+      if (await close.isVisible()) await close.click();
+      else await dave.getByRole("button", { name: "Sheet", exact: true }).click();
+    }
+    // The earlier request's last line answered (skipped) and its card stepped aside first.
+    // (One pending line at a time, each until its answer lands: a Skip being sent is still there, disabled.)
+    const waiting = dave.locator('[data-testid="request-card"][data-state="pending"]');
+    while (await waiting.count()) {
+      const line = waiting.first();
+      const target = await line.getAttribute("data-target");
+      await line.getByRole("button", { name: "Skip" }).click();
+      await expect(dave.locator(`[data-testid="request-card"][data-target="${target}"]`)).not.toHaveAttribute(
+        "data-state",
+        "pending",
+      );
+    }
+    await expect(dave.getByTestId("request-group")).toHaveCount(0, { timeout: 12_000 });
+    const form = admin.getByTestId("new-request");
+    await form
+      .getByRole("radiogroup", { name: "What to roll" })
+      .getByRole("radio", { name: "Check" })
+      .click();
+    await form.getByRole("button", { name: /^Ask 2 creatures/ }).click();
+    await expect(dave.getByTestId("request-group")).toBeVisible();
+    await expect(dave.getByTestId("request-group").getByTestId("request-card")).toHaveCount(2);
   });
   writeFileSync(join(dir, "_notes.txt"), notes.length ? notes.join("\n") : "all steps ran\n");
 });

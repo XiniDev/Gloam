@@ -1,6 +1,6 @@
 import { ChevronDown, MoreHorizontal } from "lucide-react";
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
-import { IconButton } from "./Button.tsx";
+import { type ButtonVariant, buttonClass, IconButton } from "./Button.tsx";
 
 export interface MenuItem {
   label: string;
@@ -21,6 +21,8 @@ export function Menu({
   align = "end",
   text,
   up = false,
+  tone,
+  wide = false,
 }: {
   label: string;
   items: MenuItem[];
@@ -29,6 +31,10 @@ export function Menu({
   up?: boolean;
   /** A short visible label for the button ("+4") instead of the "…" glyph. */
   text?: string;
+  /** The labelled button drawn as a Button of this variant (a dialog's main action), instead of a quiet text button. */
+  tone?: ButtonVariant;
+  /** As wide as its container (a phone dialog's stacked actions). */
+  wide?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const button = useRef<HTMLButtonElement>(null);
@@ -53,7 +59,7 @@ export function Menu({
   };
 
   return (
-    <div className="relative">
+    <div className={wide ? "relative w-full" : "relative"}>
       {text ? (
         <button
           ref={button}
@@ -63,7 +69,11 @@ export function Menu({
           aria-expanded={open}
           aria-controls={open ? id : undefined}
           onClick={() => setOpen((o) => !o)}
-          className="inline-flex h-9 min-h-[var(--touch-min)] items-center gap-1 rounded-[var(--radius-control)] px-2 text-13 font-bold text-muted hover:bg-raised hover:text-text"
+          className={
+            tone
+              ? `${buttonClass(tone, "M")} ${wide ? "w-full" : ""}`
+              : "inline-flex h-9 min-h-[var(--touch-min)] items-center gap-1 rounded-[var(--radius-control)] px-2 text-13 font-bold text-muted hover:bg-raised hover:text-text"
+          }
         >
           {text}
           <ChevronDown size={14} aria-hidden />

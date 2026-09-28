@@ -89,7 +89,7 @@ export function FeaturesTab({ ctx }: { ctx: SheetCtx }) {
                   onClick={() => void ctx.set(["core", "features", i, "uses"], undefined)}
                   className="min-h-[var(--touch-min)] min-w-[var(--touch-min)] text-13 text-paper-muted underline decoration-dotted hover:text-wax"
                 >
-                  no uses
+                  Remove uses
                 </button>
               )}
             </div>

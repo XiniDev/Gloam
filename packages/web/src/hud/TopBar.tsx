@@ -67,7 +67,7 @@ export function TopBar() {
       >
         <Sparkle size={16} />
         <h1
-          className={phone ? "line-clamp-2 text-14 leading-tight text-bone" : "truncate text-18 text-bone"}
+          className={phone ? "truncate text-14 leading-tight text-bone" : "truncate text-18 text-bone"}
           title={name || undefined}
         >
           {name || "The table"}

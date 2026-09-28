@@ -1,5 +1,6 @@
 import type { ActorView } from "@gloam/shared/protocol";
 import { deriveSheet, statusName } from "@gloam/shared/rules";
+import { Users } from "lucide-react";
 import { useMemo } from "react";
 import { StatusIcon } from "../icons/status.tsx";
 import { useSheets } from "../net/sheets.ts";
@@ -97,9 +98,14 @@ export function PartyPanel() {
   );
   return (
     <div className="flex min-h-0 flex-1 flex-col">
+      {/* Titled like the other panels (the DM panel, the sheet); its sections labelled alike under it. */}
+      <header className="flex items-center gap-2 border-b border-line px-4 py-3">
+        <Users size={18} className="text-brass" aria-hidden />
+        <h2 className="text-18 text-bone">Party</h2>
+      </header>
       {characters.length ? (
         <section className="border-b border-line px-2 py-2" aria-label="Characters">
-          <h2 className="caps px-2 pb-1 text-12 text-fog">Characters</h2>
+          <h3 className="caps px-2 pb-1 text-12 text-fog">Characters</h3>
           <ul>
             {characters.map((a) => {
               const who = presence.find((p) => p.userId === a.ownerUserId);
@@ -108,12 +114,12 @@ export function PartyPanel() {
           </ul>
         </section>
       ) : null}
-      <header className="border-b border-line px-4 py-3">
-        <h2 className="text-18 text-bone">At the table</h2>
-        <p className="text-13 text-muted">
+      <div className="flex items-baseline justify-between gap-2 px-4 pt-3">
+        <h3 className="caps text-12 text-fog">At the table</h3>
+        <p className="tabular text-13 text-muted">
           {people.filter((p) => p.online).length} here · {people.filter((p) => !p.online).length} away
         </p>
-      </header>
+      </div>
       {people.length === 0 ? (
         <EmptyState art="candle" title="Nobody else is here yet." />
       ) : (

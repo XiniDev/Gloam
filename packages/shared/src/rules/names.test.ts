@@ -27,7 +27,7 @@ describe("sheet names on screen (a proposal's diff, AC-SHEET-05)", () => {
     expect(fieldLabel(["core", "senses", "darkvision"])).toBe("Darkvision");
     expect(fieldLabel(["core", "overrides", "skill.perception"])).toBe("Perception (set by hand)");
     expect(fieldLabel(["core", "classes", 0, "level"])).toBe("Class 1 level");
-    expect(fieldLabel(["core", "initiativeBonus"])).toBe("Initiative bonus");
+    expect(fieldLabel(["core", "initiativeBonus"])).toBe("Extra initiative bonus");
     expect(fieldLabel(["core", "notes"])).toBe("Notes");
     const sheet = { custom: [{ title: "Oath" }, { title: "Sanity" }] };
     expect(fieldLabel(["custom", 1, "value"], sheet)).toBe("Sanity value");

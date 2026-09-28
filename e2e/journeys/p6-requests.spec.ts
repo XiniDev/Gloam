@@ -105,16 +105,21 @@ test.describe("P6 — roll requests (DICE-06)", () => {
     await form.getByRole("button", { name: "Ask 2 creatures" }).click();
 
     // Each player: a card for their own character, its formula from their sheet, the DC not shown.
+    // One card per request (its label, the DC when shown), a line per creature the player answers for.
+    const groupFor = (p: Page) => p.getByTestId("request-group");
     const cardFor = (p: Page) => p.getByTestId("request-card");
+    await expect(groupFor(dave)).toHaveCount(1);
+    await expect(groupFor(erin)).toHaveCount(1);
     await expect(cardFor(dave)).toHaveCount(1);
     await expect(cardFor(erin)).toHaveCount(1);
-    await expect(cardFor(dave)).toContainText("Dexterity save");
+    await expect(groupFor(dave)).toContainText("Dexterity save");
+    await expect(groupFor(erin)).toContainText("Dexterity save");
     await expect(cardFor(dave)).toContainText("Thorin");
     await expect(cardFor(dave)).toContainText("1d20 + 2");
     await expect(cardFor(erin)).toContainText("Mira");
     await expect(cardFor(erin)).toContainText("1d20 + 1");
     for (const p of [dave, erin]) {
-      await expect(cardFor(p)).not.toContainText("DC");
+      await expect(groupFor(p)).not.toContainText("DC");
       for (const b of ["Roll", "Enter physical roll", "Skip"])
         await expect(cardFor(p).getByRole("button", { name: b, exact: true })).toBeVisible();
     }
@@ -209,7 +214,7 @@ test.describe("P6 — roll requests (DICE-06)", () => {
     // Only Thorin's player gets a card; the goblins are the DM's to roll.
     await expect(cardFor(dave)).toHaveCount(1);
     await expect(cardFor(erin)).toHaveCount(0);
-    await expect(cardFor(dave)).toContainText("Blind — the DM sees the number, you won't.");
+    await expect(groupFor(dave)).toContainText("Blind — the DM sees the number, you won't.");
     // The DM rolls both goblins with one click, and rolls for Thorin (with his modifiers).
     await blind.getByRole("button", { name: "Roll the 2 that are yours" }).click();
     for (const g of goblins)

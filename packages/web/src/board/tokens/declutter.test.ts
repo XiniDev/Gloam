@@ -143,6 +143,63 @@ describe("overlay declutter", () => {
     expect(dx).toBeGreaterThan(-2);
   });
 
+  it("moves a plate whose own spot sits on another token's face under its own base (critic P6 r2 #5)", () => {
+    // Thorin in front, Mira's tall standee right behind him: his plate's own spot lands on her art — a small share
+    // of her body, but its centre is on her, so it reads as hers.
+    plate("thorin", 100, 40, 3);
+    setOverlayBody("thorin", { x0: 75, y0: 46, x1: 125, y1: 80 });
+    bodyOnly("mira");
+    setOverlayBody("mira", { x0: 70, y0: 0, x1: 130, y1: 45 });
+    layoutOverlays(camera, W, H);
+    expect(overlayClear("thorin")).toBe(1);
+    const r = rect("thorin");
+    // Under his base, centred on him.
+    expect(r?.y0).toBeCloseTo(80 + 6, 3);
+    expect(overlayOffset("thorin").dx).toBe(0);
+  });
+
+  it("slides a plate under its base onto the screen for a token at the edge", () => {
+    // Thorin at the left edge, Mira behind him: his own spot (half off the screen) and its slide are on her.
+    plate("thorin", 10, 40, 3);
+    setOverlayBody("thorin", { x0: -15, y0: 46, x1: 35, y1: 80 });
+    bodyOnly("mira");
+    setOverlayBody("mira", { x0: -20, y0: 0, x1: 60, y1: 45 });
+    layoutOverlays(camera, W, H);
+    expect(overlayClear("thorin")).toBe(1);
+    expect(rect("thorin")?.y0).toBeCloseTo(86, 3);
+    expect(rect("thorin")?.x0).toBeCloseTo(4, 3);
+  });
+
+  it("nudges the plate under a base sideways off a HUD piece beside it", () => {
+    // As above, but a toolbar stands where the left of the spot under his base would be.
+    plate("thorin", 100, 40, 3);
+    setOverlayBody("thorin", { x0: 75, y0: 46, x1: 125, y1: 80 });
+    bodyOnly("mira");
+    setOverlayBody("mira", { x0: 70, y0: 0, x1: 130, y1: 45 });
+    layoutOverlays(camera, W, H, [{ x0: 0, y0: 60, x1: 90, y1: H }]);
+    expect(overlayClear("thorin")).toBe(1);
+    const r = rect("thorin");
+    expect(r?.y0).toBeCloseTo(86, 3);
+    expect(r && r.x0 >= 90).toBe(true);
+  });
+
+  it("brings a visible token's plate down onto the free board when its own spot is off the top or under the HUD", () => {
+    // Mira's standee reaches past the top of the screen: her plate's own spot is above it.
+    plate("mira", 100, -3, 2);
+    setOverlayBody("mira", { x0: 70, y0: -20, x1: 130, y1: 60 });
+    layoutOverlays(camera, W, H);
+    expect(overlayClear("mira")).toBe(1);
+    expect(rect("mira")?.y0).toBeCloseTo(4, 3);
+    // With a top bar over its column: just under the bar.
+    layoutOverlays(camera, W, H, [{ x0: 0, y0: 0, x1: W, y1: 14 }]);
+    expect(overlayClear("mira")).toBe(1);
+    expect(rect("mira")?.y0).toBeCloseTo(17, 3);
+    // Its token wholly above the free board: nothing to bring it down onto.
+    setOverlayBody("mira", { x0: 70, y0: -40, x1: 130, y1: 12 });
+    layoutOverlays(camera, W, H, [{ x0: 0, y0: 0, x1: W, y1: 14 }]);
+    expect(overlayClear("mira")).toBe(0);
+  });
+
   it("still shows a plate over a token when that's the only room left", () => {
     plate("hero", 100, 50, 3);
     plate("goblin", 100, 50, 1);

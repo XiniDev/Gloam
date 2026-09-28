@@ -1,7 +1,7 @@
 import { ABILITIES, SKILL_IDS, SKILLS, type SkillId } from "@gloam/shared";
 import type { RollRequestView } from "@gloam/shared/protocol";
 import { Check, Pencil, SkipForward, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { D20Icon } from "../../icons/dice.tsx";
 import {
   answerRequest,
@@ -11,6 +11,7 @@ import {
   useSheets,
 } from "../../net/sheets.ts";
 import { useBoard } from "../../state/entities.ts";
+import { prefersReducedMotion } from "../../state/settings.ts";
 import { useUi } from "../../state/ui.ts";
 import { Button, IconButton } from "../../ui/Button.tsx";
 import { Segmented, Select, Toggle } from "../../ui/controls.tsx";
@@ -99,13 +100,14 @@ function NewRequest() {
   const selection = useUi((s) => s.selection);
   return (
     <section aria-label="New roll request" className="flex flex-col gap-3" data-testid="new-request">
+      <h3 className="caps text-13 text-brass">New request</h3>
       <div className="flex flex-col gap-1.5">
-        <div className="flex items-baseline justify-between gap-2">
-          <h3 className="caps text-12 text-fog">Who rolls</h3>
-          <span className="flex gap-2 text-13">
+        <div className="flex items-center justify-between gap-2">
+          <span className="caps text-12 text-fog">Who rolls</span>
+          <span className="-mr-1.5 flex text-13">
             <button
               type="button"
-              className="text-brass hover:text-brass-bright"
+              className={QUICK}
               onClick={() => setPicked(candidates.filter((c) => c.party).map((c) => c.id))}
             >
               All party
@@ -113,14 +115,18 @@ function NewRequest() {
             {selection.length ? (
               <button
                 type="button"
-                className="text-brass hover:text-brass-bright"
+                className={QUICK}
                 onClick={() => setPicked(selection.filter((id) => known.has(id)))}
               >
                 Selected
               </button>
             ) : null}
             {targets.length ? (
-              <button type="button" className="text-muted hover:text-bone" onClick={() => setPicked([])}>
+              <button
+                type="button"
+                className={`${QUICK} !text-muted hover:!text-bone`}
+                onClick={() => setPicked([])}
+              >
                 None
               </button>
             ) : null}
@@ -138,12 +144,14 @@ function NewRequest() {
                     type="button"
                     aria-pressed={on}
                     onClick={() => toggle(c.id)}
-                    className={`h-8 min-h-[var(--touch-min)] rounded-chip border px-2.5 text-13 transition-colors duration-[var(--dur-fast)] ${
+                    // Picked: the brass hairline with its 2-px glow and a check (§27.4 selected).
+                    className={`inline-flex h-8 min-h-[var(--touch-min)] items-center gap-1 rounded-chip border px-2.5 text-13 transition-[color,border-color,box-shadow] duration-[var(--dur-fast)] ${
                       on
-                        ? "border-brass bg-[var(--glow-brass-soft)] text-brass-bright"
+                        ? "border-brass bg-[var(--glow-brass-soft)] text-brass-bright shadow-[0_0_0_2px_var(--glow-brass-soft)]"
                         : "border-line text-muted hover:border-line-strong hover:text-bone"
                     }`}
                   >
+                    {on ? <Check size={13} aria-hidden className="-ml-0.5" /> : null}
                     {c.name}
                   </button>
                 </li>
@@ -211,7 +219,7 @@ function NewRequest() {
         label="Label (optional)"
         value={label}
         maxLength={80}
-        placeholder={kind === "attack" ? "Attack" : "Named from the roll"}
+        placeholder={`Auto: ${autoLabel(kind, ability, skill)}`}
         onChange={(e) => setLabel(e.target.value)}
       />
       <div className="grid grid-cols-[5rem_1fr] items-end gap-3">
@@ -278,6 +286,17 @@ function NewRequest() {
 }
 
 /** A caption over a control (the segmented controls carry no visible label of their own). */
+/** The request form's quick picks: text buttons with a full touch target. */
+const QUICK =
+  "inline-flex min-h-8 min-w-[var(--touch-min)] items-center justify-center rounded-[var(--radius-control)] px-1.5 text-brass hover:bg-raised hover:text-brass-bright pointer-coarse:min-h-[var(--touch-min)] max-sm:min-h-[var(--touch-min)]";
+
+/** What a request is called when the DM names it nothing (as the server names it). */
+function autoLabel(kind: Kind, ability: AbilityKey, skill: SkillId | ""): string {
+  if (kind === "save") return `${abilityName(ability)} save`;
+  if (kind === "check") return skill ? `${skillName(skill)} check` : `${abilityName(ability)} check`;
+  return kind === "attack" ? "Attack" : "Roll";
+}
+
 function Caption({ text, children }: { text: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-1.5">
@@ -334,7 +353,7 @@ function Row({ r, t }: { r: RollRequestView; t: RollRequestView["targets"][numbe
         {pending ? (
           <span className="caps text-12 text-fog">{STATE_WORD.pending}</span>
         ) : (
-          <span className="flex items-baseline gap-1.5">
+          <span className="flex items-center gap-1.5">
             <span className="caps text-12 text-fog">{STATE_WORD[res.state]}</span>
             {res.total !== undefined ? (
               <span className={`tabular text-18 font-bold ${outcome}`} data-testid="request-total">
@@ -344,6 +363,11 @@ function Row({ r, t }: { r: RollRequestView; t: RollRequestView["targets"][numbe
             {res.success !== undefined ? (
               <span className={`caps text-12 ${outcome}`}>{res.success ? "pass" : "fail"}</span>
             ) : null}
+            {setting ? null : (
+              <IconButton label="Change the result" onClick={() => setSetting(true)}>
+                <Pencil size={15} />
+              </IconButton>
+            )}
           </span>
         )}
       </div>
@@ -372,28 +396,20 @@ function Row({ r, t }: { r: RollRequestView; t: RollRequestView["targets"][numbe
             <X size={16} />
           </IconButton>
         </form>
-      ) : (
+      ) : pending ? (
+        // A creature still to roll: its actions on one row under it (answered ones change their result inline).
         <div className="flex flex-wrap gap-1.5">
-          {pending ? (
-            <Button size="S" variant="secondary" loading={busy} onClick={() => void act("roll")}>
-              {t.controllers.length ? "Roll for them" : "Roll"}
-            </Button>
-          ) : null}
-          <Button size="S" variant="ghost" icon={<Pencil size={14} />} onClick={() => setSetting(true)}>
-            {pending ? "Set" : "Change"}
+          <Button size="S" variant="secondary" loading={busy} onClick={() => void act("roll")}>
+            {t.controllers.length ? "Roll for them" : "Roll"}
           </Button>
-          {pending ? (
-            <Button
-              size="S"
-              variant="ghost"
-              icon={<SkipForward size={14} />}
-              onClick={() => void act("skip")}
-            >
-              Skip
-            </Button>
-          ) : null}
+          <Button size="S" variant="ghost" icon={<Pencil size={14} />} onClick={() => setSetting(true)}>
+            Set
+          </Button>
+          <Button size="S" variant="ghost" icon={<SkipForward size={14} />} onClick={() => void act("skip")}>
+            Skip
+          </Button>
         </div>
-      )}
+      ) : null}
     </li>
   );
 }
@@ -468,8 +484,20 @@ export function RequestsPanel() {
     () => [...requests.values()].filter((r) => r.status === "open").sort((a, b) => b.createdAt - a.createdAt),
     [requests],
   );
+  // A request just asked comes into view at the top (on a phone the form had scrolled it away).
+  const scroller = useRef<HTMLDivElement>(null);
+  const newest = open[0]?.id;
+  const seen = useRef(newest);
+  useEffect(() => {
+    if (!newest || newest === seen.current) return;
+    seen.current = newest;
+    scroller.current?.scrollTo({ top: 0, behavior: prefersReducedMotion() ? "auto" : "smooth" });
+  }, [newest]);
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-5 overflow-y-auto overflow-x-clip px-3 py-3">
+    <div
+      ref={scroller}
+      className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-y-auto overflow-x-clip px-3 py-3"
+    >
       {open.length ? (
         <section aria-label="Open requests" className="flex flex-col gap-2">
           <h3 className="caps text-12 text-fog">Open</h3>
@@ -480,6 +508,7 @@ export function RequestsPanel() {
           </ul>
         </section>
       ) : null}
+      {open.length ? <div className="engraved-divider mx-6 my-1" aria-hidden /> : null}
       <NewRequest />
     </div>
   );

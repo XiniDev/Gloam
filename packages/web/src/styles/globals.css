@@ -1,6 +1,18 @@
 @import "tailwindcss";
 @import "./tokens.css";
 
+/* Digits set in the caps face come from the UI face: Cinzel's 1 reads as an I ("LEVEL I", "SESSION I"). Only the ten
+   digits (unicode-range), from the bundled file (no network at runtime). */
+@font-face {
+  font-family: "Gloam Caps Digits";
+  src: url("../../node_modules/@fontsource/alegreya-sans/files/alegreya-sans-latin-700-normal.woff2")
+    format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0030-0039;
+}
+
 @layer base {
   *,
   *::before,
@@ -26,7 +38,9 @@
     font-family: var(--font-ui);
     font-size: var(--text-16);
     line-height: var(--leading-body);
-    font-feature-settings: "kern", "liga", "onum";
+    /* Lining figures everywhere (§27.3): the HUD's numbers are data, and an old-style 0 reads as the letter o. */
+    font-feature-settings: "kern", "liga";
+    font-variant-numeric: lining-nums;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     overscroll-behavior: none;
@@ -83,6 +97,11 @@
   input::placeholder,
   textarea::placeholder {
     color: var(--text-faint);
+  }
+  /* A number typed in lines up with the numbers shown. */
+  input[inputmode="numeric"],
+  input[type="number"] {
+    font-variant-numeric: tabular-nums lining-nums;
   }
   ::-webkit-scrollbar {
     width: 10px;
@@ -156,6 +175,13 @@
     --raised: var(--parchment-200);
     --border: color-mix(in srgb, var(--parchment-ink) 22%, transparent);
     --border-strong: color-mix(in srgb, var(--parchment-ink) 40%, transparent);
+    --select-caret: var(--brass-600);
+    --edge-shade: var(--paper-edge-shade);
+  }
+  /* A bar that stays on top of a scrolling parchment page (its tabs): the same paper, opaque. */
+  .parchment-bar {
+    background-color: var(--parchment-100);
+    background-image: var(--parchment-fibre);
   }
   /* …and an ink panel laid on parchment is ink again. */
   .parchment .panel,
@@ -167,6 +193,8 @@
     --raised: var(--ink-800);
     --border: var(--ink-700);
     --border-strong: var(--ink-600);
+    --select-caret: var(--brass-400);
+    --edge-shade: var(--scrim-soft);
   }
   .engraved-divider {
     height: 1px;
@@ -204,6 +232,24 @@
     min-width: var(--hit-target);
     min-height: var(--hit-target);
   }
+}
+
+/* Every select draws the same caret — brass on ink, deep brass on parchment — instead of the platform's chevron
+   (§28). Outside the layers on purpose: the room for the caret wins over a utility's padding. The picker itself stays
+   the platform's (keyboard, screen readers, touch). */
+select:not([multiple]) {
+  appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--select-caret, var(--brass-400)) 50%),
+    linear-gradient(135deg, var(--select-caret, var(--brass-400)) 50%, transparent 50%);
+  background-position:
+    calc(100% - 15px) 50%,
+    calc(100% - 10px) 50%;
+  background-size:
+    5px 5px,
+    5px 5px;
+  background-repeat: no-repeat;
+  padding-inline-end: 1.6rem;
 }
 
 @keyframes candle-sweep {

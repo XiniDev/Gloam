@@ -50,7 +50,10 @@ function Proposal({ p }: { p: ProposalView }) {
         <tbody>
           {p.changes.map((c) => (
             <tr key={c.path.join("/")} className="border-t border-line/60 align-baseline">
-              <th scope="row" className="w-[45%] py-1 pr-2 text-left font-normal text-muted">
+              <th
+                scope="row"
+                className="w-px max-w-[12rem] truncate py-1 pr-3 text-left font-normal whitespace-nowrap text-muted"
+              >
                 {c.label}
               </th>
               <td className="py-1 text-left">
@@ -75,7 +78,7 @@ function Proposal({ p }: { p: ProposalView }) {
         maxLength={500}
         placeholder="A note back (optional)"
         onChange={(e) => setNote(e.target.value)}
-        className="h-9 rounded-[var(--radius-control)] border border-line bg-ink-950/60 px-2 text-14 text-bone placeholder:text-fog focus:border-accent focus:outline-none"
+        className="h-9 min-h-[var(--touch-min)] rounded-[var(--radius-control)] border border-line bg-ink-950/60 px-2 text-14 text-bone placeholder:text-fog-dim focus:border-accent focus:outline-none"
       />
       <div className="flex gap-2">
         <Button

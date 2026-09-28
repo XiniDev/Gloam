@@ -126,6 +126,9 @@
   /* translucent tones (derived) */
   --scrim: rgba(7, 9, 12, 0.72);
   --scrim-soft: rgba(7, 9, 12, 0.45);
+  /* The shade at a scroll edge with more beyond it: ink on ink, brown on parchment. */
+  --edge-shade: var(--scrim-soft);
+  --paper-edge-shade: rgba(43, 33, 24, 0.3);
   --vignette-edge: rgba(7, 9, 12, 0.62); /* board vignette (SPEC §24.6: subtle) */
   --selection-fill: rgba(212, 175, 106, 0.12); /* box-selection rectangle */
   --glow-brass: rgba(212, 175, 106, 0.35);
@@ -143,7 +146,7 @@
   /* type (SPEC §27.3) */
   --font-display: "Fraunces Variable", serif;
   --font-ui: "Alegreya Sans", sans-serif;
-  --font-caps: "Cinzel", serif;
+  --font-caps: "Gloam Caps Digits", "Cinzel", serif;
   --font-mono: "JetBrains Mono Variable", monospace;
   --text-12: 12px;
   --text-13: 13px;

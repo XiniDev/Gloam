@@ -492,7 +492,7 @@ export function DerivedValue({
 /** A section's heading on the page. */
 export function SectionTitle({ children, action }: { children: ReactNode; action?: ReactNode }) {
   return (
-    <div className="mb-1.5 mt-3 flex items-center justify-between gap-2 border-b border-parchment-edge/70 pb-1 first:mt-0">
+    <div className="mb-1.5 mt-4 flex items-center justify-between gap-2 border-b border-parchment-edge/70 pb-1 first:mt-0">
       <h3 className="caps text-12 text-paper-muted">{children}</h3>
       {action}
     </div>

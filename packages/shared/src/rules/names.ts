@@ -54,7 +54,7 @@ export function derivedName(key: string): string {
   }
 }
 
-/** "initiativeBonus" → "Initiative bonus". */
+/** "initiativeBonus" → "Extra initiative bonus". */
 function humanize(key: string): string {
   const words = key.replace(/([A-Z])/g, " $1").toLowerCase();
   return words.charAt(0).toUpperCase() + words.slice(1);
@@ -70,7 +70,7 @@ const CORE: Record<string, string> = {
   classes: "Classes",
   xp: "XP",
   size: "Size",
-  initiativeBonus: "Initiative bonus",
+  initiativeBonus: "Extra initiative bonus",
   conditions: "Conditions",
   conditionImmunities: "Condition immunities",
   resistances: "Resistances",

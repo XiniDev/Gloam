@@ -684,9 +684,10 @@ test.describe("P2 — tokens (TOK)", () => {
           continue;
         }
         // Moved only when its own spot is taken — by another shown plate (within the layout's 3-px pad), the
-        // screen's edge, the HUD over the board, or another token it would bury (cover more than half of; P6
-        // refinement, DECISIONS) — and then no further than the layout's spots (up to its width aside, two rows up;
-        // never down onto its token), with a leader line back to its token.
+        // screen's edge, the HUD over the board, or another token it would sit on (cover more than half of, or have
+        // its centre on: it would read as that token's; P6 refinements, DECISIONS) — and then no further than the
+        // layout's spots: up to its width aside, two rows up, under its own base, or (off the top or under the HUD)
+        // brought down onto its own token; with a leader back to its token unless it sits on it.
         const pad = 3;
         const takenBy = shown.some(
           (b) =>
@@ -702,17 +703,37 @@ test.describe("P2 — tokens (TOK)", () => {
           (Math.max(0, Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0)) *
             Math.max(0, Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0))) /
           Math.max(1, (b.x1 - b.x0) * (b.y1 - b.y0));
-        const buries = all.some((b) => b.id !== o.id && b.token && share(own, b.token) > 0.5);
+        const cxo = (own.x0 + own.x1) / 2;
+        const cyo = (own.y0 + own.y1) / 2;
+        const sitsOn = all.some(
+          (b) =>
+            b.id !== o.id &&
+            b.token &&
+            (share(own, b.token) > 0.5 ||
+              (cxo > b.token.x0 && cxo < b.token.x1 && cyo > b.token.y0 && cyo < b.token.y1)),
+        );
         expect(
-          takenBy || offScreen || underHud || buries,
+          takenBy || offScreen || underHud || sitsOn,
           `${label}: moved though its own spot was free`,
         ).toBe(true);
         const pw = own.x1 - own.x0;
         const ph = own.y1 - own.y0 + pad;
         expect(Math.abs(dx), label).toBeLessThanOrEqual(pw + 0.5);
-        expect(dy, label).toBeLessThanOrEqual(0.5);
         expect(dy, label).toBeGreaterThanOrEqual(-2 * ph - 0.5);
-        expect(o.leader, `${label}: a moved plate points back to its token`).toBe(true);
+        // Under its base: a few px below its token's lowest point (the layout's 6-px gap, measured from the token's
+        // silhouette; this rectangle is the meshes' projected boxes, a couple of px off it) — nudged sideways at most
+        // as far as the other spots (checked above).
+        const below = plate.y0 >= tok.y1 - 3 && plate.y0 <= tok.y1 + 12;
+        const broughtDown = (offScreen || underHud) && plate.y0 < tok.y1;
+        if (dy > 0.5)
+          expect(
+            below || broughtDown,
+            `${label}: down only under its base, or onto its own token (plate ${JSON.stringify(plate)}, token ${JSON.stringify(tok)}, dx ${dx})`,
+          ).toBe(true);
+        const onItsToken = overlap(plate, tok);
+        const endUnderHud = covers.some((c) => overlap(tok, c));
+        if (!onItsToken && !endUnderHud)
+          expect(o.leader, `${label}: a moved plate points back to its token`).toBe(true);
       }
       for (const [i, a] of shown.entries())
         for (const b of shown.slice(i + 1))

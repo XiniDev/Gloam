@@ -179,14 +179,16 @@ export function DrawingPad({
       width={760}
       footer={
         phone ? (
-          // A phone's room goes to the canvas: the three uses under one button.
-          <div className="flex items-center justify-between gap-2 max-sm:!flex-row [&_button]:!w-auto">
+          // A phone's room goes to the canvas: the three uses under one main button, Close under it.
+          <div className="flex items-center justify-end gap-2">
             <Button variant="ghost" onClick={onClose}>
               Close
             </Button>
             <Menu
               label="Use the drawing as"
               text={busy ? "Saving…" : "Use as…"}
+              tone="primary"
+              wide
               up
               items={[
                 { label: "Portrait", onSelect: () => void use("portrait") },
@@ -249,7 +251,7 @@ export function DrawingPad({
           >
             <span
               aria-hidden
-              className="block h-6 w-6 rounded-full"
+              className="block h-6 w-6 rounded-chip"
               style={{
                 background: color,
                 boxShadow: "0 0 0 1px color-mix(in srgb, var(--fog-300) 55%, transparent)",
@@ -276,11 +278,11 @@ export function DrawingPad({
                 setColor(s.hex);
                 setPalette(false);
               }}
-              className={`grid h-7 min-h-[var(--touch-min)] w-7 min-w-[var(--touch-min)] place-items-center rounded-full border-2 ${color === s.hex ? "border-bone" : "border-transparent"}`}
+              className={`grid h-7 min-h-[var(--touch-min)] w-7 min-w-[var(--touch-min)] place-items-center rounded-[var(--radius-control)] border-2 ${color === s.hex ? "border-bone" : "border-transparent"}`}
             >
               <span
                 aria-hidden
-                className="block h-5 w-5 rounded-full"
+                className="block h-5 w-5 rounded-chip"
                 style={{
                   background: s.hex,
                   boxShadow: "0 0 0 1px color-mix(in srgb, var(--fog-300) 55%, transparent)",

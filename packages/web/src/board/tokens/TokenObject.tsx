@@ -39,7 +39,14 @@ import { pressToken } from "../move/input.ts";
 import { TIERS, useTier } from "../tiers.ts";
 import { withFog } from "../vision/fogMaterial.ts";
 import { AUTO_COIN_PITCH, approach, crossfadeStep } from "./crossfade.ts";
-import { overlayClear, overlayOffset, PRIORITY, registerOverlay, setOverlayBody } from "./declutter.ts";
+import {
+  overlayClear,
+  overlayOffset,
+  PRIORITY,
+  registerOverlay,
+  setOverlayBody,
+  underCover,
+} from "./declutter.ts";
 import { canRaise, heightLabel } from "./elevation.ts";
 import { cylinder, plane, torus } from "./geometries.ts";
 import { hiddenBadgeTexture, initialsTexture } from "./glyphs.ts";
@@ -962,6 +969,8 @@ function Overlay({
   const shape = useRef<Silhouette>({ top: 0, bottom: 0, left: 0, right: 0 });
   /** The plate's lowest edge below its origin (plate units), from the last layout. */
   const lowest = useRef(-BAR_H / 2 - CHIP_PAD_Y);
+  /** The plate's chip in its own units (half its width, its top and bottom): where a leader leaves it. */
+  const plateExt = useRef({ halfW: 1, top: 1, bottom: -BAR_H / 2 - CHIP_PAD_Y });
 
   useFrame((state) => {
     const g = group.current;
@@ -1035,21 +1044,43 @@ function Overlay({
       if (at.distanceToSquared(a0.position) > 1e-6) again();
       a0.position.copy(at);
     }
-    // The leader: from the plate's bottom to the top of its token, when the plate sits aside.
+    // The leader, when the plate sits aside: from the plate's edge nearest its token to a dot well inside the token's
+    // art (never along the plate's edge like a gauge, never on a rim or the seam with a neighbour); none when that end
+    // is under the HUD.
     const moved = Math.abs(off.dx) > 0.5 || Math.abs(off.dy) > 0.5;
-    leader.group.visible = moved;
-    if (moved) {
-      const sy = lowest.current;
-      const ex = -off.dx / pxPerPlate;
-      const ey = off.dy / pxPerPlate + lowest.current - PLATE_GAP;
+    let drawLeader = false;
+    if (moved && seen) {
+      const s = shape.current;
+      const W = state.size.width;
+      const H = state.size.height;
       const px = 1 / pxPerPlate;
-      const len = Math.hypot(ex, ey - sy);
-      const rot = Math.atan2(ey - sy, ex);
+      // The token's body in the plate's own units (origin at its anchor, y up).
+      const bw = ((s.right - s.left) / 2) * W;
+      const bh = ((s.top - s.bottom) / 2) * H;
+      const top = off.dy * px + lowest.current - PLATE_GAP;
+      const bottom = top - bh * px;
+      const left = -off.dx * px - (bw / 2) * px;
+      const right = -off.dx * px + (bw / 2) * px;
+      const inset = Math.min(40, 0.35 * Math.min(bw, bh)) * px;
+      const pe = plateExt.current;
+      const into = (v: number, lo: number, hi: number) =>
+        lo > hi ? (lo + hi) / 2 : Math.min(hi, Math.max(lo, v));
+      const ex = into(0, left + inset, right - inset);
+      const ey = into((pe.top + pe.bottom) / 2, bottom + inset, top - inset);
+      const sx = Math.min(pe.halfW, Math.max(-pe.halfW, ex));
+      const sy = Math.min(pe.top, Math.max(pe.bottom, ey));
+      const len = Math.hypot(ex - sx, ey - sy);
+      // Where the dot lands on screen (px, y down).
+      const liftPx = (PLATE_GAP - lowest.current) * pxPerPlate;
+      const endX = (((s.left + s.right) / 2 + 1) / 2) * W + off.dx + ex * pxPerPlate;
+      const endY = ((1 - s.top) / 2) * H - liftPx + off.dy - ey * pxPerPlate;
+      drawLeader = len > 4 * px && !underCover(endX, endY);
+      const rot = Math.atan2(ey - sy, ex - sx);
       for (const [m, across] of [
         [leader.halo, 4],
         [leader.line, 2],
       ] as const) {
-        m.position.set(0, sy, 0);
+        m.position.set(sx, sy, 0);
         m.rotation.z = rot;
         m.scale.set(len, across * px, 1);
       }
@@ -1059,6 +1090,7 @@ function Overlay({
       leader.dotHalo.position.set(ex, ey, 0);
       leader.dotHalo.scale.setScalar(4 * px);
     }
+    leader.group.visible = drawLeader;
     // Overlays always read on top of other tokens and the map (troika re-derives its materials — an array of
     // outline + fill when outlined — so reapply every frame; the chip and bar keep their own lower orders).
     g.traverse((o) => {
@@ -1192,6 +1224,7 @@ function Overlay({
       cm.position.set(0, (nameTop + bottom) / 2, -0.01);
     }
     lowest.current = bottom - CHIP_PAD_Y;
+    plateExt.current = { halfW: w / 2, top: nameTop + CHIP_PAD_Y, bottom: bottom - CHIP_PAD_Y };
   };
 
   return (

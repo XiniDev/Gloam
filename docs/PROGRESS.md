@@ -318,3 +318,30 @@ PASSING 112/224
 - Journeys after the fixes: p2-tokens (6), p2-camera, p4-phone, p5-dice (3), p6-sheets (3), p6-requests, p6-art,
   p6-phone pass. Flaky under a loaded machine, to look at: `wallGen.test.ts` "stays fast on a large map" (1.7 s vs a
   1.5-s budget once) and `assets.test.ts` AC-AST-03 (a socket closed once); both pass on reruns.
+
+## 2026-09-28 — P6 visual review, round 2 (critic 6/10): fixes in; P7 groundwork committed
+
+- The critic's 7 BLOCKING and 14 IMPORTANT items fixed, most NICE ones too (DECISIONS, "P6 critic round 2"): the sheet
+  is one scrolling page with sticky tabs (a phone now shows the section, not the header); request cards are one per
+  request with a line per creature, and a one-line strip inside a phone's panel; inventory rows split on a narrow
+  page; the cutout keeps both sliders in view and dialogs shade a scrollable edge; touch targets on the request form
+  and proposals; the waiting-proposal line; caps digits in the UI face (Cinzel's 1 read as an I), lining figures, one
+  select caret; spells rhythm, Cast, abilities table; plates — refused on another token's face, brought down onto
+  the free board rather than dropped, under the base when the head is crowded, a leader into the token.
+- Found on the way: the plate layout could swap two plates for ever at a far zoom (ordered by where a plate had been
+  moved to) — fixed and pinned by the p2-tokens journey; an answered request card's 6-s timer restarted on every
+  re-render (never stepped aside on a phone) — counted once now.
+- Tests: declutter 13 unit tests (+4: another token's face, under the base, nudged under the base, brought down from
+  the top); `visibleTabs` (3); p2-tokens' plate rule restated for the new spots; p6-requests for the grouped card; the
+  P6 shots gained step 21 (a request over the board, no panel) and wait for plates to finish fading; all 21 steps
+  render at 1440×900, 1024×768 and 390×844. Journeys: p2-tokens (5), p6-sheets (3), p6-requests, p6-phone, p6-art
+  pass (p6-art's drawing upload got the sticker's 30-s wait: server-side processing is slow with the suite running).
+  `pnpm check`: 430 unit/integration tests pass. Two critic rounds done for P6 (the cap).
+- P7 groundwork committed (3e16633): consequences of damage and healing and the death-save machine (pure rules, 8
+  tests), the HP / condition / prompt command schemas, the `dm_prompts` table; AC-HP-01 passes (30 table cases).
+- Next: P7 server (`hp.apply`, `status.change`, DM prompts, concentration and death-save requests, rests), then its UI.
+
+```
+PASSING 113/224 · DISPUTED 0 · FAILING 111
+P1 28/28 · P2 32/32 · P3 16/17 · P4 12/12 · P5 9/9 · P6 14/14 · P7 1/17 · P9 1/16
+```

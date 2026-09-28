@@ -169,7 +169,7 @@ export function PaperCutout({
           {bitmap ? "Choose another photo…" : "Choose a photo…"}
         </Button>
         <div
-          className="grid min-h-48 place-items-center rounded-[var(--radius-control)] border border-line p-2"
+          className="grid min-h-32 place-items-center rounded-[var(--radius-control)] border border-line p-2 sm:min-h-48"
           // A checkerboard shows what's transparent.
           style={{
             backgroundImage:
@@ -182,14 +182,15 @@ export function PaperCutout({
             <canvas
               ref={preview}
               data-testid="cutout-preview"
-              className="max-h-80 max-w-full"
+              // As tall as the screen leaves room for (a phone keeps both sliders in view under it).
+              className="max-h-[min(20rem,30dvh)] max-w-full"
               aria-label="The sticker"
             />
           ) : (
             <p className="text-14 text-muted">No photo yet.</p>
           )}
         </div>
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-2 gap-4">
           <Slider
             label="Paper tolerance"
             labelled

@@ -49,7 +49,7 @@ export function InventoryTab({ ctx }: { ctx: SheetCtx }) {
           style={{ width: `${Math.min(100, (load / Math.max(1, cap)) * 100)}%` }}
         />
       </div>
-      <ul className="flex flex-col" data-testid="sheet-inventory">
+      <ul className="@container flex flex-col" data-testid="sheet-inventory">
         {c.inventory.map((it, i) => (
           <ItemRow
             key={i}
@@ -119,7 +119,9 @@ function ItemRow({
   const set = (key: string, v: unknown) => void ctx.set(["core", "inventory", i, key], v);
   return (
     <li className="border-b border-parchment-edge/30 py-0.5" data-testid="inventory-item">
-      <div className="grid grid-cols-[auto_minmax(0,1fr)_auto_auto_auto] items-center gap-1">
+      {/* One line when the panel is wide enough; on a narrow one (a phone) the quantity and weight drop to a second
+          line under the name, so the name keeps its room. */}
+      <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-1 @min-[420px]:grid-cols-[auto_minmax(0,1fr)_auto_auto_auto]">
         <label
           className="grid h-8 min-h-[var(--touch-min)] w-6 min-w-[var(--touch-min)] place-items-center"
           title="Equipped"
@@ -139,26 +141,28 @@ function ItemRow({
           disabled={ro}
           onCommit={(v) => v.trim() && set("name", v.trim())}
         />
-        <Stepper
-          label={`${it.name} quantity`}
-          value={it.qty}
-          min={0}
-          max={99_999}
-          disabled={ro}
-          onChange={(v) => set("qty", v)}
-        />
-        <span className="flex items-center text-13 text-paper-muted">
-          <NumberField
-            label={`${it.name} weight`}
-            value={it.weight}
+        <div className="order-1 col-span-2 col-start-2 flex items-center gap-3 @min-[420px]:contents">
+          <Stepper
+            label={`${it.name} quantity`}
+            value={it.qty}
             min={0}
-            max={10_000}
-            width="2.5rem"
+            max={99_999}
             disabled={ro}
-            onCommit={(v) => set("weight", v)}
+            onChange={(v) => set("qty", v)}
           />
-          lb
-        </span>
+          <span className="flex items-center text-13 text-paper-muted">
+            <NumberField
+              label={`${it.name} weight`}
+              value={it.weight}
+              min={0}
+              max={10_000}
+              width="2.5rem"
+              disabled={ro}
+              onCommit={(v) => set("weight", v)}
+            />
+            lb
+          </span>
+        </div>
         <button
           type="button"
           aria-expanded={open}

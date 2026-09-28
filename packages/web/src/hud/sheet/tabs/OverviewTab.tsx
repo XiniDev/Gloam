@@ -41,7 +41,9 @@ export function OverviewTab({ ctx }: { ctx: SheetCtx }) {
             value={c.xp}
             min={0}
             max={10_000_000}
-            width="6rem"
+            width="8rem"
+            // Boxed and lined up like the text fields above it (left, regular weight), not a centred stat.
+            className="justify-self-start !border-parchment-edge/60 !bg-parchment/60 !px-2 !text-left !font-normal"
             disabled={ro}
             onCommit={(v) => void ctx.set(["core", "xp"], v)}
           />

@@ -115,7 +115,7 @@ export function ImportDialog({
       title={mode === "ai" ? "Import with AI" : "Import a sheet"}
       description={
         mode === "ai"
-          ? "No account needed: copy the prompt, paste it into Claude with a photo or PDF of any character sheet, and paste the JSON it answers with below."
+          ? "No account needed: copy the prompt, paste it into Claude (or another AI assistant) with a photo or PDF of any character sheet, and paste the JSON it answers with below."
           : "Paste a Gloam character JSON, or choose a file. Nothing changes until you confirm."
       }
       width={600}
@@ -137,8 +137,10 @@ export function ImportDialog({
     >
       <div className="flex flex-col gap-3" data-testid="import-dialog">
         {mode === "ai" ? (
-          <ol className="flex list-decimal flex-col gap-1 pl-5 text-14 text-muted">
-            <li>
+          // Numbered steps whose numbers sit centred on their line (a button's line too), not on its baseline.
+          <ol className="flex flex-col gap-1.5 text-14 text-muted">
+            <li className="flex items-center gap-2">
+              <StepNo n={1} />
               <Button
                 variant="secondary"
                 size="S"
@@ -148,8 +150,14 @@ export function ImportDialog({
                 Copy AI prompt
               </Button>
             </li>
-            <li>Paste it into your assistant, with a photo, PDF or text of the sheet.</li>
-            <li>Paste its reply here.</li>
+            <li className="flex items-center gap-2">
+              <StepNo n={2} />
+              Paste it into Claude, with a photo, PDF or text of the sheet.
+            </li>
+            <li className="flex items-center gap-2">
+              <StepNo n={3} />
+              Paste its reply here.
+            </li>
           </ol>
         ) : (
           <div>
@@ -237,7 +245,8 @@ export function ImportDialog({
             ) : null}
             {target ? (
               <div className="mt-2" data-testid="import-diff">
-                <p className="caps text-12 text-paper-muted">
+                <p className="caps text-12 text-paper-muted">Changes</p>
+                <p className="text-13 text-paper-muted">
                   Against {target.sheet.core.name}'s sheet:{" "}
                   {diff.length ? `${diff.length} change${diff.length === 1 ? "" : "s"}` : "no changes"}
                 </p>
@@ -257,5 +266,17 @@ export function ImportDialog({
         ) : null}
       </div>
     </Dialog>
+  );
+}
+
+/** A step's number, centred on its line. */
+function StepNo({ n }: { n: number }) {
+  return (
+    <span
+      aria-hidden
+      className="tabular grid h-6 w-6 shrink-0 place-items-center rounded-chip border border-line text-12"
+    >
+      {n}
+    </span>
   );
 }

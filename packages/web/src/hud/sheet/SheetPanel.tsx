@@ -1,12 +1,25 @@
 import { CONDITION_IDS } from "@gloam/shared";
 import type { ActorView } from "@gloam/shared/protocol";
 import { statusName, statusSummary } from "@gloam/shared/rules";
-import { FileDown, FileUp, Lock, Plus, Sparkles, Trash2, Unlock, UserPlus, X } from "lucide-react";
+import {
+  ChevronDown,
+  FileDown,
+  FileUp,
+  Lock,
+  Plus,
+  ScrollText,
+  Sparkles,
+  Trash2,
+  Unlock,
+  UserPlus,
+  X,
+} from "lucide-react";
 import { useLayoutEffect, useRef, useState } from "react";
 import { StatusIcon } from "../../icons/status.tsx";
 import { useSheets } from "../../net/sheets.ts";
 import { request, useTable } from "../../net/table.ts";
 import { useBoard } from "../../state/entities.ts";
+import { prefersReducedMotion } from "../../state/settings.ts";
 import { type SheetTab, useUi } from "../../state/ui.ts";
 import { Button, IconButton } from "../../ui/Button.tsx";
 import { Segmented } from "../../ui/controls.tsx";
@@ -31,6 +44,7 @@ import { NotesTab } from "./tabs/NotesTab.tsx";
 import { OverviewTab } from "./tabs/OverviewTab.tsx";
 import { SpellsTab } from "./tabs/SpellsTab.tsx";
 import { TokenTab } from "./tabs/TokenTab.tsx";
+import { visibleTabs } from "./tabsLayout.ts";
 
 const TABS: { id: SheetTab; label: string }[] = [
   { id: "overview", label: "Overview" },
@@ -70,7 +84,8 @@ export function SheetPanel() {
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="sheet-panel">
       <div className="flex items-center gap-2 border-b border-line px-3 py-2">
-        <h2 className="caps text-13 text-bone">Sheet</h2>
+        <ScrollText size={18} className="shrink-0 text-brass" aria-hidden />
+        <h2 className="text-18 text-bone">Sheet</h2>
         {readable.length > 1 ? (
           <select
             aria-label="Character"
@@ -119,33 +134,34 @@ export function SheetPanel() {
 
 const TAB_CLASS =
   "h-9 min-h-[var(--touch-min)] shrink-0 whitespace-nowrap px-2 text-13 font-semibold transition-[color,box-shadow] duration-[var(--dur-fast)]";
-/** The More button's room in the row ("+4 ▾" and a gap). */
-const MORE_W = 60;
-
 /**
- * The sheet's sections (§29.7): one row of tabs in their fixed order — as many as the panel's width holds, the rest
- * under "+n" — and the section being read, when it's one of those, added at the end (never pushing out an earlier
- * one). Widths come from an invisible copy of every tab, measured again as the panel is resized.
+ * The sheet's sections (§29.7): one row of tabs in their fixed order — as many as the bar holds, the rest under "+n".
+ * Widths come from an invisible copy of every tab and of the More button, measured again as the panel is resized and
+ * once the fonts have loaded.
  */
 function SheetTabs({ tab }: { tab: SheetTab }) {
-  const row = useRef<HTMLDivElement>(null);
+  const bar = useRef<HTMLDivElement>(null);
   const ruler = useRef<HTMLDivElement>(null);
-  const [room, setRoom] = useState<{ avail: number; widths: number[] } | null>(null);
+  const [room, setRoom] = useState<{ avail: number; widths: number[]; moreW: number } | null>(null);
   useLayoutEffect(() => {
-    const el = row.current;
+    const el = bar.current;
     const m = ruler.current;
     if (!el || !m) return;
     const update = () => {
       const cs = getComputedStyle(el);
       const avail = el.clientWidth - Number.parseFloat(cs.paddingLeft) - Number.parseFloat(cs.paddingRight);
-      const widths = [...m.children].map((c) => (c as HTMLElement).getBoundingClientRect().width);
+      const all = [...m.children].map((c) => (c as HTMLElement).getBoundingClientRect().width);
+      const moreW = all.pop() ?? 0;
       setRoom((r) =>
-        r && r.avail === avail && r.widths.every((w, k) => w === widths[k]) ? r : { avail, widths },
+        r && r.avail === avail && r.moreW === moreW && r.widths.every((w, k) => w === all[k])
+          ? r
+          : { avail, widths: all, moreW },
       );
     };
     update();
     const ro = new ResizeObserver(update);
     ro.observe(el);
+    ro.observe(m);
     void document.fonts?.ready.then(update);
     return () => ro.disconnect();
   }, []);
@@ -153,31 +169,14 @@ function SheetTabs({ tab }: { tab: SheetTab }) {
     0,
     TABS.findIndex((t) => t.id === tab),
   );
-  let shown = TABS.map((_, k) => k);
-  if (room) {
-    const gap = 2;
-    const total = room.widths.reduce((a, w) => a + w + gap, 0);
-    if (total > room.avail) {
-      // The first tabs in order while they fit beside the More button — leaving room for the active one if it
-      // isn't among them — then the active one at the end.
-      const w = (k: number) => (room.widths[k] ?? 0) + gap;
-      let first = 0;
-      let used = MORE_W;
-      while (first < TABS.length) {
-        const next = used + w(first);
-        const needActive = active > first ? w(active) : 0;
-        if (next + needActive > room.avail) break;
-        used = next;
-        first++;
-      }
-      shown = TABS.map((_, k) => k).slice(0, Math.max(0, first));
-      if (!shown.includes(active)) shown = [...shown, active];
-    }
-  }
+  const shown = room ? visibleTabs(room.widths, room.moreW, room.avail, active) : TABS.map((_, k) => k);
   const rest = TABS.filter((_, k) => !shown.includes(k));
   const pick = (id: SheetTab) => useUi.getState().set({ sheetTab: id });
   return (
-    <div className="relative flex shrink-0 items-center border-b border-parchment-edge px-2">
+    <div
+      ref={bar}
+      className="parchment-bar sticky top-0 z-10 flex shrink-0 items-center border-b border-parchment-edge px-2"
+    >
       {/* The widths' ruler, laid out but inside a box of no size (an absolute row of every tab still counted toward
           the page's scroll width, so the page could be slid sideways). */}
       <div
@@ -190,9 +189,14 @@ function SheetTabs({ tab }: { tab: SheetTab }) {
               {t.label}
             </span>
           ))}
+          {/* The More button as it's drawn (Menu's labelled button), widest count. */}
+          <span className="inline-flex h-9 items-center gap-1 px-2 text-13 font-bold">
+            +{TABS.length - 1}
+            <ChevronDown size={14} />
+          </span>
         </div>
       </div>
-      <div ref={row} aria-label="Sheet sections" role="tablist" className="flex min-w-0 flex-1 gap-0.5">
+      <div aria-label="Sheet sections" role="tablist" className="flex min-w-0 flex-1 gap-0.5">
         {shown.map((k) => {
           const t = TABS[k] as (typeof TABS)[number];
           return (
@@ -204,7 +208,7 @@ function SheetTabs({ tab }: { tab: SheetTab }) {
               onClick={() => pick(t.id)}
               className={`${TAB_CLASS} ${
                 tab === t.id
-                  ? "text-paper-ink shadow-[inset_0_-2px_0_var(--wax-500)]"
+                  ? "text-paper-ink shadow-[inset_0_-2px_0_var(--brass-600)]"
                   : "text-paper-muted shadow-[inset_0_-2px_0_transparent] hover:text-paper-ink"
               }`}
             >
@@ -227,18 +231,38 @@ function SheetTabs({ tab }: { tab: SheetTab }) {
 function SheetPage({ actor, onImport }: { actor: ActorView; onImport: (m: "json" | "ai") => void }) {
   const ctx = useSheetCtx(actor);
   const tab = useUi((s) => s.sheetTab);
+  const page = useRef<HTMLElement>(null);
+  const tabsAt = useRef<HTMLDivElement>(null);
+  // Another section opens at its top: a page scrolled past the header comes back to where the tabs stick; and where
+  // the header leaves the section less than half the page (a phone, a short screen), picking one scrolls the header
+  // away so the section is what's in view. (Not when the sheet first opens: its header is what's wanted then.)
+  const opened = useRef(false);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs when the section changes
+  useLayoutEffect(() => {
+    const el = page.current;
+    const mark = tabsAt.current;
+    if (!el || !mark) return;
+    const at = mark.getBoundingClientRect().top - el.getBoundingClientRect().top + el.scrollTop;
+    if (el.scrollTop > at) el.scrollTop = at;
+    else if (opened.current && el.clientHeight - (at - el.scrollTop) < el.clientHeight / 2)
+      el.scrollTo({ top: at, behavior: prefersReducedMotion() ? "auto" : "smooth" });
+    opened.current = true;
+  }, [tab]);
   return (
     <article
-      // Never scrollable sideways (a wide child would slide the whole page left and cut its edge).
-      className="parchment m-2 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden overflow-x-clip"
+      ref={page}
+      // One scrolling page: the header scrolls away and the tabs stay on top (a phone has room for the section,
+      // not only for the header). Never scrollable sideways (a wide child would slide the page left and cut its edge).
+      className="parchment m-2 flex min-h-0 min-w-0 flex-1 scroll-pt-12 flex-col overflow-y-auto overflow-x-clip"
       data-testid="sheet"
       data-actor={actor.id}
       aria-label={`${actor.sheet.core.name}'s sheet`}
     >
       <SheetHeader ctx={ctx} onImport={onImport} />
+      <div ref={tabsAt} aria-hidden className="h-0 shrink-0" />
       <SheetTabs tab={tab} />
       <div
-        className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-clip px-3 pt-2 pb-4"
+        className="min-w-0 flex-1 overflow-x-clip px-3 pt-2 pb-4"
         role="tabpanel"
         data-testid={`sheet-tab-${tab}`}
       >
@@ -336,6 +360,7 @@ function SheetHeader({ ctx, onImport }: { ctx: SheetCtx; onImport: (m: "json" | 
             </p>
           )}
         </div>
+        <Inspiration ctx={ctx} />
         <Menu
           label="Sheet actions"
           items={[
@@ -564,10 +589,12 @@ function NameField({ ctx }: { ctx: SheetCtx }) {
           aria-label={`${name} — rename`}
           className="display min-h-[var(--touch-min)] min-w-0 max-w-full rounded-[var(--radius-control)] px-1 text-left text-22 leading-tight text-paper-ink hover:bg-parchment-deep/50 max-sm:text-18"
         >
-          <span className="block truncate">{name}</span>
+          <span className="line-clamp-2 [overflow-wrap:anywhere] [text-wrap:balance]">{name}</span>
         </button>
       ) : (
-        <h2 className="display truncate px-1 text-22 leading-tight text-paper-ink max-sm:text-18">{name}</h2>
+        <h2 className="display line-clamp-2 px-1 text-22 leading-tight text-paper-ink [overflow-wrap:anywhere] max-sm:text-18">
+          {name}
+        </h2>
       )}
       <LockMark show={ctx.canEdit && !ctx.free(["core", "name"])} />
     </div>
@@ -617,20 +644,27 @@ function Conditions({ ctx }: { ctx: SheetCtx }) {
           ))}
         </select>
       ) : null}
-      <button
-        type="button"
-        disabled={!ctx.canEdit}
-        aria-pressed={c.inspiration}
-        onClick={() => void ctx.set(["core", "inspiration"], !c.inspiration)}
-        className="ml-auto inline-flex h-7 min-h-[var(--touch-min)] items-center gap-1 px-1 text-13 text-paper-ink"
-        title="Heroic Inspiration"
-      >
-        <span className={c.inspiration ? "text-wax" : "text-paper-muted opacity-60"}>
-          <StatusIcon id="inspiration" size={18} label="" />
-        </span>
-        Inspiration
-      </button>
     </div>
+  );
+}
+
+/** Heroic Inspiration: a toggle beside the sheet's menu (lit when the character has it). */
+function Inspiration({ ctx }: { ctx: SheetCtx }) {
+  const on = ctx.sheet.core.inspiration;
+  return (
+    <button
+      type="button"
+      disabled={!ctx.canEdit}
+      aria-pressed={on}
+      aria-label="Heroic Inspiration"
+      title={on ? "Heroic Inspiration — has it" : "Heroic Inspiration"}
+      onClick={() => void ctx.set(["core", "inspiration"], !on)}
+      className={`grid h-9 min-h-[var(--touch-min)] w-9 min-w-[var(--touch-min)] shrink-0 place-items-center rounded-[var(--radius-control)] hover:bg-parchment-deep/60 ${
+        on ? "text-wax" : "text-paper-muted opacity-70"
+      }`}
+    >
+      <StatusIcon id="inspiration" size={20} label="" />
+    </button>
   );
 }
 
@@ -645,7 +679,12 @@ function PendingProposals({ actorId }: { actorId: string }) {
   );
   if (!n) return null;
   return (
-    <span className="caps ml-auto text-12 text-wax" data-testid="sheet-pending">
+    <span
+      className="min-w-0 truncate whitespace-nowrap text-12 text-paper-muted"
+      data-testid="sheet-pending"
+      title={`${n} change${n === 1 ? "" : "s"} waiting for the DM`}
+    >
+      <span aria-hidden>· </span>
       {n} change{n === 1 ? "" : "s"} waiting for the DM
     </span>
   );
