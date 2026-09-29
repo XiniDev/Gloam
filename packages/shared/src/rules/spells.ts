@@ -382,3 +382,24 @@ export function targetingKind(
   if (k === "point" || k === "object") return "point";
   return "creatures";
 }
+
+/**
+ * The area a cast targets (§17): its strike's where a spell strikes within its own lasting area (Call Lightning's bolt
+ * under the cloud), else the spell's area (or an alternative form's).
+ */
+export function castArea(spell: Spell, alt?: number): SpellArea | undefined {
+  if (spell.effect?.strike) return spell.effect.strike;
+  return (alt !== undefined ? spell.areaAlternatives?.[alt]?.area : undefined) ?? spell.area ?? undefined;
+}
+
+/**
+ * How far a sheet attack reaches, from its range as written: "20/60" (normal/long: the long range — past the normal
+ * one it's at Disadvantage, the DM's call), "120 ft", "reach 10 ft", a bare "30"; nothing written, 5 ft.
+ */
+export function attackRangeFt(text: string | undefined): number {
+  const t = text ?? "";
+  const pair = /(\d+)\s*\/\s*(\d+)/.exec(t);
+  if (pair) return Number(pair[2]);
+  const one = /(\d+)/.exec(t);
+  return one ? Number(one[1]) : 5;
+}

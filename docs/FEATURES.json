@@ -855,10 +855,10 @@
       "code": "VIS",
       "phase": "P9",
       "text": "Heavily obscuring effects block sight into and through their area; a viewer inside one sees only their own space; lightly obscuring effects render a haze without blocking.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/spellVision.test.ts › 'AC-VIS-07: a Fog Cloud blocks sight through it and a viewer inside sees only their own space; lightly obscuring, it's a haze that blocks nothing' (a goblin 50 ft off unseen through the fog, a human beside the elf still seen; the elf inside sees no one past its own space; the DM thins it to light obscurement and the goblin is seen again) and e2e/journeys/p9-spells.spec.ts › 'AC-SPL-08/09…' (the thinned Fog Cloud still drawn, as a low translucent haze; screenshot artifacts/screens/p9/haze.png). Heavy clouds' look: lasting-effects.png.",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-29T11:06:14.451Z"
     },
     {
       "id": "AC-VIS-08",
@@ -1471,10 +1471,10 @@
       "code": "SPL",
       "phase": "P9",
       "text": "The spell browser searches and filters by level, school, class, casting time, concentration, ritual, damage type, save and area shape.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p9-spells.spec.ts › 'AC-SPL-02: the spell browser searches…' (DM panel → Spells → Browse: 339 spells; a search for fireball leads with Fireball; Level 3 · Evocation · Wizard, then Fire · DEX · Sphere, Ritual, Concentration · Bonus, Emanation (with other forms) — each count equal to the SRD pack's own, computed in the test from spells.json; a picked spell's card beside the list; screenshot artifacts/screens/p9/spell-browser.png). Filter logic unit-tested in packages/server/src/content/spellRules.test.ts.",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-29T09:40:47.465Z"
     },
     {
       "id": "AC-SPL-03",
@@ -1482,10 +1482,10 @@
       "code": "SPL",
       "phase": "P9",
       "text": "Casting chooses a slot (with upcast scaling), shows area templates with range rings and line-of-effect validation, supports multi-target selection, and applies self spells immediately.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p9-spells.spec.ts › 'AC-SPL-03/04/05/06: Dave casts Fireball…' (the cast dialog's slots, the 3rd's 8d6; the template following the pointer with its range ring — the targeting hook — taking the goblins inside) and › 'AC-SPL-03/07: Magic Missile at 2nd level…' (upcast: 4 darts, a repeated pick, cast on the last; See Invisibility (self) on Mira at once, no aiming; Web past its 60 ft refused 'Out of range', in range behind a wall 'No clear path there', a click there not casting; screenshots artifacts/screens/p9/darts-picking.png, web-blocked.png). Server: spells.test.ts (slots, darts ×3 on one row, self-centred areas).",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-29T10:14:50.773Z"
     },
     {
       "id": "AC-SPL-04",
@@ -1493,10 +1493,10 @@
       "code": "SPL",
       "phase": "P9",
       "text": "Area targeting detects affected creatures per §17.3, and the DM can add or remove targets on the card.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/spells.test.ts › 'Fireball: its sphere takes every creature inside with a clear line…' (targets in the sphere 'in', one behind a wall 'blocked', one outside absent; the DM adds the blocked one and leaves it out again, a player can't) and e2e/journeys/p9-spells.spec.ts › 'AC-SPL-03/04/05/06: Dave casts Fireball…' (Dave's client shows the two goblins inside and one cut off while aiming; the DM's card has them in/in/blocked, 'Add anyway' then 'Leave out'; screenshots artifacts/screens/p9/fireball-aim.png, fireball-card-dm.png). §17.3 geometry: packages/shared/src/aoe/aoe.test.ts.",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-29T09:40:47.532Z"
     },
     {
       "id": "AC-SPL-05",
@@ -1504,10 +1504,10 @@
       "code": "SPL",
       "phase": "P9",
       "text": "The resolution card handles attack rolls, save requests, NPC one-click saves, damage/healing rolls, half/none on save, resistances/vulnerabilities/immunities, conditions, editable finals, and Apply/Apply all/Skip/Cancel & refund.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p9-spells.spec.ts › 'AC-SPL-03/04/05/06: Dave casts Fireball…' (NPC saves on one DM click, the damage rolled by the caster, Apply all: each goblin down by all or half by its save), › 'AC-SPL-05/12/13: Dave's dagger…' (an attack roll on the card and the DM's Hit, an edited final applied, Hold Person's Failed landing Paralyzed, Cancel & refund slot giving the slot back, Skip leaving a target with nothing; screenshot artifacts/screens/p9/hold-person-card.png) and › 'AC-SPL-05/08/13: a cultist's Fireball catches Mira…' (Dave's own save card — Roll — his result on the DM's card; a damage total entered; Cure Wounds' healing card rolled and applied, her HP up). packages/server/src/test/spells.test.ts: half on a success halved again by resistance; conditions and apply grouped per creature.",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-29T10:40:33.480Z"
     },
     {
       "id": "AC-SPL-06",
@@ -1526,10 +1526,10 @@
       "code": "SPL",
       "phase": "P9",
       "text": "Casting a second concentration spell prompts to end the first; ending concentration removes linked effects.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p9-spells.spec.ts › 'AC-SPL-03/07: …' (Blur while Web holds: 'End concentration?' naming Web — 'End it and cast' — the web gone from the board; screenshot artifacts/screens/p9/concentration-ask.png) and › 'AC-SPL-05/12/13: …' (a second Hold Person ends the first, its Paralyzed going with it); packages/server/src/test/spells.test.ts › 'concentration: …' (refused until endConcentration; the first web removed; one undo puts both back) and spellEffects.test.ts (Fog Cloud ends with its caster's concentration; a dispelled or timed-out effect ends it).",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-29T10:14:50.841Z"
     },
     {
       "id": "AC-SPL-08",
@@ -1537,10 +1537,10 @@
       "code": "SPL",
       "phase": "P9",
       "text": "The 16 named persistent effects behave as specified (duration, attachment, movement, light/obscurement/darkness integration with vision, difficult terrain, trigger prompts).",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/spellEffects.test.ts (15 tests: Fog Cloud, Darkness, Daylight, Light, Spirit Guardians, Moonbeam, Web, Spike Growth, Sleet Storm, Stinking Cloud, Cloudkill, Wall of Fire, Silence, Faerie Fire, Flaming Sphere, Call Lightning as SRD 5.2.1 has them — which save when they appear, triggers on entering / turns / every 5 ft / the area moving in / a rolled sphere, once a turn, Wall of Fire's burning side, Sleet Storm ending Concentration, Stinking Cloud's Poisoned to the end of the turn, Silence's Deafened and no Verbal spells, dispels, a 10-round duration ending at its caster's turn with her Concentration), spells.test.ts (the web doubling a move's cost; concentration), spellVision.test.ts (Darkness, Fog Cloud, See Invisibility, Faerie Fire in the vision engine); e2e/journeys/p9-spells.spec.ts › 'AC-SPL-05/08/13…' (Moonbeam dragged by its caster's handle, held to 60 ft; Call Lightning's chip → Strike again → a bolt's card; screenshots artifacts/screens/p9/moonbeam-drag.png, call-lightning-strike.png) and › 'AC-SPL-08/09…' (all 16 drawn; lasting-effects.png).",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-29T10:59:17.127Z"
     },
     {
       "id": "AC-SPL-09",
@@ -1548,10 +1548,10 @@
       "code": "SPL",
       "phase": "P9",
       "text": "Each of the 12 VFX presets plays on cast, and persistent areas animate subtly within the performance budget.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p9-spells.spec.ts › 'AC-SPL-08/09: each of the 12 VFX presets plays on a real cast…' (fireball, ray of frost, lightning bolt, thunderwave, acid splash, poison spray, chill touch, sacred flame, magic missile, vicious mockery, cure wounds, sleep: the VFX hook records all 12 presets played, each with parts; two casts' particles within 2 × 1600 at the tier's share; the 16 lasting effects each drawn with parts; idle, the board redraws them at the ambient pace — more than 2 and at most 26 frames a second, not every display frame; screenshots artifacts/screens/p9/vfx-casts.png, lasting-effects.png). The GPU-time half of §24.5's budget (≤ 2 ms for two casts on High) can't be measured under software GL: the particle cap and the ambient pace are its proxies (DECISIONS 2026-09-29).",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-29T10:59:17.430Z"
     },
     {
       "id": "AC-SPL-10",
@@ -1559,10 +1559,10 @@
       "code": "SPL",
       "phase": "P9",
       "text": "The homebrew builder validates every field with a live preview; players' proposals require DM approval; SRD spells can be duplicated as templates.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p9-spells.spec.ts › 'AC-SPL-10/11: the DM's builder checks every field…' (New spell: 'to fix' until valid; the id follows the name; a bad damage formula named in the errors; fixed, 'Ready' and the live card shows Frost Nova and 3d8 — saved into the list; Fireball duplicated from the browser into Poison Ball (type, VFX) and saved; Dave's sheet → New homebrew spell… → 'Propose to the DM': waiting on the DM on his sheet, in the DM panel's Proposed by players — approved, in use; screenshot artifacts/screens/p9/homebrew-builder.png) and packages/server/src/test/homebrew.test.ts (the DM's in use at once, an SRD id refused, a bad formula refused with where; a player's a proposal only its author and the DM see, a player can't approve; cast like any spell).",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-29T11:13:20.071Z"
     },
     {
       "id": "AC-SPL-11",
@@ -1570,10 +1570,10 @@
       "code": "SPL",
       "phase": "P9",
       "text": "JSON import via the UI and REST validates against the published schema, supports dry runs, and resolves conflicts by skip/overwrite/rename. (The MCP path is covered by AC-API-04.)",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/homebrew.test.ts › 'REST import…' (POST /api/v1/content/spells:import: a dry run reports 3 of 4 valid, the invalid one's level error, clashes with the SRD's and a homebrew spell, nothing changed; rename imports fireball-2 and poison-ball-2; overwrite replaces the homebrew clash in place and renames the SRD one; skip adds nothing; a player gets 403) and › 'the spell schema is published' (GET /api/v1/schemas/spell.json); e2e/journeys/p9-spells.spec.ts › 'AC-SPL-10/11…' (the Import spells dialog: pasted JSON, Dry run — '3 of 4 valid', the clashes, 'Invalid (1)' with why — Rename, Dry run, Import: the three in the homebrew list; screenshot artifacts/screens/p9/import-dry-run.png). The MCP path: AC-API-04.",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-29T11:13:20.157Z"
     },
     {
       "id": "AC-SPL-12",
@@ -1581,10 +1581,10 @@
       "code": "SPL",
       "phase": "P9",
       "text": "Weapon attacks and features use the same resolution card flow.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p9-spells.spec.ts › 'AC-SPL-05/12/13: Dave's dagger through the same card…' (Actions → Attack… on the sheet's Dagger → the goblin → the resolution card: Dave rolls to hit, the DM calls it a hit, Dave rolls its damage on the card, the DM edits the final to 7 and applies it: 30 → 23; screenshot artifacts/screens/p9/dagger-card-dm.png).",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-29T10:14:50.910Z"
     },
     {
       "id": "AC-SPL-13",
@@ -1592,10 +1592,10 @@
       "code": "SPL",
       "phase": "P9",
       "text": "The cover hint appears on attack and save cards and matches the §17.5 algorithm in unit tests.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/shared/src/aoe/aoe.test.ts (§17.5: five rays from the attacker's centre to the target's centre and four points — none, 1–2 half, 3–4 three-quarters, 5 total; a creature in the way gives half) and e2e/journeys/p9-spells.spec.ts › 'AC-SPL-05/12/13…' (Hold Person at a goblin just past a wall's end: '◐ ½' on its row and 'Cover hint: Goblin 2 has half cover (+2 (to AC; not this save))' on the save card; a goblin wholly behind it refused on the bar 'behind total cover', as the server refuses it) and › 'AC-SPL-05/08/13…' (the dagger's attack card: the hint 'to its AC').",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-29T10:40:33.550Z"
     },
     {
       "id": "AC-UNDO-01",

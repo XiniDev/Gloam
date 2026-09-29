@@ -1757,8 +1757,12 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
       // An effect moved (the DM's drag, its caster's, a drift): whoever it now covers (its "enter" trigger).
       if (e.name === "effect.moved") {
         try {
-          const m = e.payload as { effectId: string; before: import("@gloam/shared/schemas").AreaShape };
-          this.effects.effectMoved(m.effectId, m.before);
+          const m = e.payload as {
+            effectId: string;
+            before: import("@gloam/shared/schemas").AreaShape;
+            rammed?: string;
+          };
+          this.effects.effectMoved(m.effectId, m.before, m.rammed);
         } catch (err) {
           roomCtx().log.error({ err }, "an effect's move follow-up failed");
         }

@@ -266,12 +266,14 @@ function TargetRow({
         <span className="text-12 text-muted" data-testid="save-waiting">
           waiting…
         </span>
-      ) : saved.total !== undefined ? (
+      ) : saved.total !== undefined || typeof saved.success === "boolean" ? (
+        // A roll's total — or, set by the DM without one, the word (saves / fails).
         <span
           className={`tabular text-13 font-bold ${saved.success ? "text-[var(--hp-high)]" : "text-ember"}`}
           data-testid="save-result"
         >
-          {saved.autoFail ? "fails" : saved.total} {saved.success ? "✓" : "✗"}
+          {saved.autoFail ? "fails" : (saved.total ?? (saved.success ? "saves" : "fails"))}{" "}
+          {saved.success ? "✓" : "✗"}
         </span>
       ) : null
     ) : null;
@@ -283,7 +285,7 @@ function TargetRow({
         data-testid="attack-result"
       >
         {atk.total}
-        {dm && atk.hit !== undefined && atk.hit !== null ? (atk.hit ? " hit" : " miss") : ""}
+        {atk.hit !== undefined && atk.hit !== null ? (atk.hit ? " hit" : " miss") : ""}
         {atk.crit ? " crit" : ""}
       </span>
     ) : c.can.roll && t.state === "in" ? (

@@ -10,14 +10,15 @@ import {
 } from "@gloam/shared/aoe";
 import { circlePolygon, type P } from "@gloam/shared/geometry";
 import { blocksMove, blocksSight } from "@gloam/shared/movement";
-import { areaAtSlot, targetingKind } from "@gloam/shared/rules";
+import { areaAtSlot, castArea, targetingKind } from "@gloam/shared/rules";
 import type { TokenView } from "@gloam/shared/state";
 import CameraControlsImpl from "camera-controls";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { DoubleSide, MeshBasicMaterial, Shape, ShapeGeometry } from "three";
 import { useTable } from "../../net/table.ts";
 import { boardData, useEntities } from "../../state/entities.ts";
 import { type Targeting, useTargeting } from "../../state/targeting.ts";
+import { provideTestHook } from "../../test/hooks.ts";
 import { cameraRig } from "../CameraRig.tsx";
 import { C } from "../colors.ts";
 import { disposeLater } from "../dispose.ts";
@@ -94,8 +95,8 @@ export function aimOf(
     spell.range.kind === "touch" ? 5 : spell.range.kind === "ranged" ? (spell.range.ft ?? null) : null;
   const ring = reach !== null ? circlePolygon(caster.pos, reach + caster.sizeFt / 2, 96, true) : null;
   if (targetingKind(spell) !== "area") return { ...none, ring, ok: true };
-  const alt = t.alt !== undefined ? spell.areaAlternatives?.[t.alt] : undefined;
-  const base = alt?.area ?? spell.area;
+  // Where it strikes (Call Lightning's bolt under its cloud), else its area or the alternative form's.
+  const base = castArea(spell, t.alt);
   if (!base) return { ...none, ring };
   const area = areaAtSlot(base, spell.level, t.level);
   const at = t.at ?? caster.pos;
@@ -190,6 +191,27 @@ export function TargetingLayer() {
     () => (t ? aimOf(t, tokens, barriers, coverage, dm) : null),
     [t, tokens, barriers, coverage, dm],
   );
+  // Tests: the aim as drawn — where, what it takes, whether it may be cast, the range ring.
+  const shown = useRef({ t, aim });
+  shown.current = { t, aim };
+  useEffect(() => {
+    if (!__GLOAM_TEST__) return;
+    provideTestHook("targeting", () => {
+      const { t: now, aim: a } = shown.current;
+      return now
+        ? {
+            spellId: now.spell.id,
+            at: now.at,
+            picks: now.picks,
+            ok: a?.ok ?? false,
+            why: a?.why ?? null,
+            inside: a?.inside ?? [],
+            blocked: a?.blocked ?? [],
+            ring: Boolean(a?.ring),
+          }
+        : null;
+    });
+  }, []);
   const color = t ? (aim?.ok ? VFX[t.spell.vfx].glow : C.ember400) : C.bone100;
   const fillMat = useMemo(
     () =>

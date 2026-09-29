@@ -43,7 +43,15 @@ export interface CastData {
     roll: DamageRoll | null;
   } | null;
   /** Conditions the spell applies (on a failed save, or always). */
-  conditions: { id: ConditionId; onFailedSave: boolean; rounds?: number }[];
+  conditions: {
+    id: ConditionId;
+    onFailedSave: boolean;
+    rounds?: number;
+    /** Until the end of the creature's current turn (Stinking Cloud's Poisoned). */
+    endsTurn?: boolean;
+  }[];
+  /** A failed save also ends the creature's Concentration (Sleet Storm). */
+  breaksConcentration?: boolean;
   targets: CastTargetData[];
   /** The persistent effect the cast made, if any. */
   effectId: string | null;
@@ -53,7 +61,11 @@ export interface CastData {
   requestId: string | null;
   vfx: Spell["vfx"];
   /** The trigger it came from (an effect's). */
-  trigger?: { effectId: string; when: "enter" | "startTurn" | "endTurn" | "per5ft"; note?: string };
+  trigger?: {
+    effectId: string;
+    when: "enter" | "startTurn" | "endTurn" | "per5ft" | "moveInto" | "action";
+    note?: string;
+  };
   createdBy: string;
 }
 

@@ -39,6 +39,8 @@ export interface Targeting {
   busy: boolean;
   /** A sheet's attack aimed instead of a spell (its index on the sheet; §8.13 Weapons and abilities). */
   attack?: { index: number } | undefined;
+  /** Why the last creature clicked couldn't be picked (out of range, behind total cover) — the bar says so. */
+  refusal?: string | null | undefined;
 }
 
 interface TargetingStore {

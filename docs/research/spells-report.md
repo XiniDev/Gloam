@@ -94,8 +94,8 @@ Every prose-vs-Foundry conflict found by the build is resolved (by the PDF or a 
 | Ice Knife | 1 | 141 | judgment call (spell-areas.json): No area template: the 5-ft explosion is centred on the attack's target; the DM adds nearby creatures on the card. |
 | Acid Arrow | 2 | 107 | judgment call (spell-mechanics.json): Delayed damage (2d4 at the end of the target's next turn) kept in the text so it isn't rolled with the hit. |
 | Aid | 2 | 107 | judgment call (spell-mechanics.json): Hit Point maximum increases are not recorded as healing. |
-| Flaming Sphere | 2 | 132 | judgment call (spell-areas.json): The damaging zone is a 5-ft Emanation from the sphere as an object token (5-ft diameter). |
-| Call Lightning | 3 | 114 | judgment call (spell-effects.json): The storm cloud is the effect; each bolt (Magic action, 5-ft radius under the cloud) is resolved as a new roll by the DM. |
+| Flaming Sphere | 2 | 132 | judgment call (spell-areas.json): The damaging zone is a 5-ft Emanation from the 5-ft sphere object at its point. |
+| Call Lightning | 3 | 114 | judgment call (spell-effects.json): The storm cloud is the effect (the spell's area, centred over its caster); each bolt — the cast's first, then its caster's action — strikes a 5-ft radius at a point under it. |
 | Black Tentacles | 4 | 113 | flat square on the ground represented as a Cube of the same side (§17.1 has no square) |
 | Conjure Minor Elementals | 4 | 118 | judgment call (spell-effects.json): Difficult Terrain for enemies only can't be expressed in the effect props, so it is left to the DM. |
 | Vitriolic Sphere | 4 | 172 | judgment call (spell-mechanics.json): Delayed damage (5d4 at the end of the target's next turn) kept in the text. |
@@ -753,7 +753,7 @@ Every prose-vs-Foundry conflict found by the build is resolved (by the PDF or a 
 - area: emanation 5 · save: dex (half) · damage: 2d6 fire +1d6/slot · light: 20/20 · effect template · vfx: fire
 - provenance: area ← overlay:spell-areas.json; damage ← foundry; damage.scaling ← prose:increases by NdM for each spell slot level above; effect ← overlay:spell-effects.json; light ← overlay:spell-light.json; save ← prose:makes/succeeds on a <Ability> saving throw + half as much damage+foundry; targeting ← derived:area; vfx ← derived:primary damage fire
 - **resolved** (area): overlay (p. 132) → emanation 5; prose: no pattern; Foundry: no template
-- **manual review:** judgment call (spell-areas.json): The damaging zone is a 5-ft Emanation from the sphere as an object token (5-ft diameter).
+- **manual review:** judgment call (spell-areas.json): The damaging zone is a 5-ft Emanation from the 5-ft sphere object at its point.
 
 #### Gentle Repose (`gentle-repose`, level 2, p. 135)
 
@@ -985,7 +985,7 @@ Every prose-vs-Foundry conflict found by the build is resolved (by the PDF or a 
 - **info** (area): Foundry item template ignored: cylinder without a height (cylinder 60)
 - **resolved** (area): overlay (p. 114) → cylinder r60 h10; prose: cylinder r60 h10 [Cylinder that is N feet tall with a N-foot radius] (agrees); Foundry: no template
 - **info** (damage): Foundry part 4d10 in "damage" has no damage type (none); skipped
-- **manual review:** judgment call (spell-effects.json): The storm cloud is the effect; each bolt (Magic action, 5-ft radius under the cloud) is resolved as a new roll by the DM.
+- **manual review:** judgment call (spell-effects.json): The storm cloud is the effect (the spell's area, centred over its caster); each bolt — the cast's first, then its caster's action — strikes a 5-ft radius at a point under it.
 
 #### Clairvoyance (`clairvoyance`, level 3, p. 115)
 

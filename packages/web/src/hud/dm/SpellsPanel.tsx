@@ -5,7 +5,7 @@ import { decideHomebrew, deleteHomebrew, type HomebrewSpell, useSpells } from ".
 import { Button, IconButton } from "../../ui/Button.tsx";
 import { EmptyState } from "../../ui/EmptyState.tsx";
 import { toast } from "../../ui/Toast.tsx";
-import { HomebrewBuilder } from "../spells/HomebrewBuilder.tsx";
+import { duplicateOf, HomebrewBuilder } from "../spells/HomebrewBuilder.tsx";
 import { ImportSpellsDialog } from "../spells/ImportSpellsDialog.tsx";
 import { SpellBrowserDialog } from "../spells/SpellBrowserDialog.tsx";
 
@@ -134,9 +134,3 @@ function Row({ h, onOpen, children }: { h: HomebrewSpell; onOpen: () => void; ch
 }
 
 /** A spell as a homebrew template: a new id and name ("Fireball (copy)"), homebrew source, the rest as it is. */
-export function duplicateOf(s: Spell, homebrew: HomebrewSpell[]): Spell {
-  const taken = new Set(homebrew.map((h) => h.spell.id));
-  let id = `${s.id}-copy`;
-  for (let n = 2; taken.has(id); n++) id = `${s.id}-copy-${n}`;
-  return { ...s, id, name: `${s.name} (copy)`, source: { pack: "homebrew" } };
-}

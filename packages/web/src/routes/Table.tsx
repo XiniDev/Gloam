@@ -29,6 +29,7 @@ import { RadialMenu } from "../hud/RadialMenu.tsx";
 import { RollFeed } from "../hud/RollFeed.tsx";
 import { SceneTransition } from "../hud/SceneTransition.tsx";
 import { watchPendingArt } from "../hud/sheet/art.ts";
+import { EffectChip } from "../hud/spells/EffectChip.tsx";
 import { TargetingBar } from "../hud/spells/TargetingBar.tsx";
 import { TopBar } from "../hud/TopBar.tsx";
 import { useUndoKeys } from "../hud/useUndoKeys.ts";
@@ -160,6 +161,7 @@ export default function TableRoute() {
       <MeasureLabels />
       <ActionBar />
       <TargetingBar />
+      <EffectChip />
       <RollFeed />
       <TurnTracker />
       <TurnBanner />

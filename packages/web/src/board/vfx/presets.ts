@@ -3,7 +3,7 @@ import type { AreaShape } from "@gloam/shared/schemas";
 import { Group, type Object3D } from "three";
 import { type Preset, VFX } from "./palette.ts";
 import { type EmitterSpec, particleBurst, seeded } from "./particles.ts";
-import { bolt, decal, floorRing, pillar, shell } from "./shapes.ts";
+import { bolt, curtain, decal, floorRing, pillar, shell } from "./shapes.ts";
 
 /**
  * The twelve VFX presets (SPEC §24.5): what a cast looks like — a burst over its area, a projectile to each creature it
@@ -409,6 +409,7 @@ export function areaLoop(
     speedHalved?: boolean;
     outline?: boolean;
     light?: unknown;
+    bodyFt?: number;
   },
   name: string,
   shapeKind: string,
@@ -441,6 +442,24 @@ export function areaLoop(
     ...extra,
   });
   // Named looks (§24.5 "Persistent areas").
+  // Lightly obscured (Web; a fog the DM thins): a haze — a low, translucent mist that hides nothing (AC-VIS-07) —
+  // under whatever else it draws.
+  if (props.obscurement === "light") {
+    const haze = shell({
+      radius: R,
+      life: 1,
+      core: "#D8DEE6",
+      glow: "#9AA6B4",
+      rough: 0.5,
+      additive: false,
+      opacity: 0.2,
+      loop: true,
+    });
+    haze.scale.set(1, 0.28, 1);
+    g.add(place(haze, [w.c[0], w.c[1] + R * 0.05, w.c[2]]));
+    // Only a haze (a thinned fog): nothing of its preset's loop over it. (Web adds its strands below.)
+    if (!props.difficult) return g;
+  }
   if (props.magicalDarkness) {
     // Darkness: an inky sphere with a swirling edge.
     g.add(
@@ -460,38 +479,82 @@ export function areaLoop(
     );
     return g;
   }
-  if (props.obscurement === "heavy" && (preset === "poison" || /cloud/i.test(name))) {
-    // Stinking Cloud, Cloudkill: slow churning green-grey clouds.
-    g.add(
-      loopBurst(
-        [
-          drift(Math.round(R * 2.2), 0.25, [5, 8], [R * 0.45, R * 0.7], {
-            sizeCurve: [0.6, 1, 0.9],
-            alphaCurve: [0, 0.75, 0],
-          }),
-        ],
-        { core: p.glow, glow: p.shadow, additive: false, opacity: 0.55 },
-      ),
-    );
-    return g;
-  }
   if (props.obscurement === "heavy") {
-    // Fog Cloud, Sleet Storm: layered soft billboards of grey fog.
+    // Clouds that hide what's in them (Fog Cloud, Sleet Storm, Stinking Cloud, Cloudkill): a soft body — a squat
+    // noise-edged dome, so it reads as heavy at every tier — and big billboards churning in it; in each one's colour.
+    const gas = /stinking/i.test(name)
+      ? { core: "#D9C85A", glow: "#8A7B2A" }
+      : /cloudkill/i.test(name) || preset === "poison"
+        ? { core: "#B9C95A", glow: "#5F6E24" }
+        : preset === "cold"
+          ? { core: "#DCE6F0", glow: "#8FA3B8" }
+          : { core: "#C9D0D8", glow: "#8492A6" };
+    const body = shell({
+      radius: R,
+      life: 1,
+      core: gas.core,
+      glow: gas.glow,
+      rough: 0.55,
+      additive: false,
+      opacity: 0.5,
+      loop: true,
+    });
+    body.scale.set(1, 0.42, 1);
+    g.add(place(body, [w.c[0], w.c[1] + R * 0.12, w.c[2]]));
     g.add(
-      loopBurst(
+      particleBurst(
         [
-          drift(Math.round(R * 2.5), 0.15, [6, 9], [R * 0.5, R * 0.8], {
+          drift(Math.round(R * 1.6), 0.2, [6, 9], [R * 0.5, R * 0.85], {
             sizeCurve: [0.7, 1, 0.9],
-            alphaCurve: [0, 0.8, 0],
+            alphaCurve: [0, 0.7, 0],
           }),
         ],
-        { core: "#B7BEC8", glow: "#8492A6", additive: false, opacity: 0.6 },
+        { seed, loop: true, core: gas.core, glow: gas.glow, additive: false, opacity: 0.5 },
+        // Billboards this big cost fill, not count: a floor under the tier's share, or the cloud comes apart.
+        Math.max(scale, 0.6),
       ),
     );
     if (preset === "cold")
+      // Sleet: streaks falling through it.
       g.add(
-        loopBurst([drift(40, -3, [1.2, 2], [0.15, 0.3])], { core: p.core, glow: p.glow, seed: seed + 3 }),
+        particleBurst(
+          [drift(Math.round(R * 3), -9, [0.6, 1.1], [0.12, 0.22], { alphaCurve: [0, 0.9, 0] })],
+          { seed: seed + 3, loop: true, core: "#EEF4FA", glow: "#B7C6D6" },
+          Math.max(scale, 0.5),
+        ),
       );
+    return g;
+  }
+  if (props.bodyFt) {
+    // An object at its centre (Flaming Sphere): the burning ball itself, flames licking up off it, and a faint ring
+    // where its heat reaches (the zone a creature ending its turn in burns).
+    const r = props.bodyFt / 2;
+    g.add(
+      place(shell({ radius: r, life: 1, core: p.core, glow: p.glow, rough: 0.6, loop: true, opacity: 0.9 }), [
+        w.c[0],
+        w.c[1] + r,
+        w.c[2],
+      ]),
+    );
+    g.add(
+      loopBurst(
+        [
+          {
+            ...drift(Math.round(40 * r), 3.2, [0.5, 0.9], [0.4, 0.8], { sizeCurve: [0.8, 1, 0.2] }),
+            origin: (_i, rnd) => {
+              const a = rnd() * Math.PI * 2;
+              const u = rnd() * 2 - 1;
+              const s2 = Math.sqrt(1 - u * u);
+              return [w.c[0] + Math.cos(a) * s2 * r, w.c[1] + r + u * r, w.c[2] + Math.sin(a) * s2 * r];
+            },
+          },
+        ],
+        { core: p.core, glow: p.glow },
+      ),
+    );
+    g.add(
+      place(floorRing({ radius: R, life: 1, core: p.core, glow: p.glow, loop: true, opacity: 0.25 }), floor),
+    );
     return g;
   }
   if (props.difficult && shapeKind === "cube" && props.obscurement === "light") {
@@ -502,10 +565,10 @@ export function areaLoop(
           kind: "web",
           radius: R,
           life: 1,
-          core: "#EDE6D6",
+          core: "#F6F2E6",
           glow: "#A9B4C2",
           loop: true,
-          opacity: 0.7,
+          opacity: 1,
         }),
         floor,
       ),
@@ -523,7 +586,7 @@ export function areaLoop(
           core: "#3F5A2A",
           glow: "#1E2A14",
           loop: true,
-          opacity: 0.8,
+          opacity: 1,
         }),
         floor,
       ),
@@ -575,7 +638,10 @@ export function areaLoop(
     return g;
   }
   if (shapeKind === "wall" && wallPoints && wallPoints.length >= 2) {
-    // Wall of Fire (and other walls): a curtain along its line.
+    // Wall of Fire (and other walls): a curtain along its line — the flames themselves one ribbon, the embers above.
+    g.add(curtain({ points: wallPoints, height: 9, core: p.core, glow: p.glow, opacity: 0.8 }));
+    // The burning ground along it: seen from above, where the curtain is edge-on.
+    g.add(curtain({ points: wallPoints, height: 0, core: p.core, glow: p.glow, opacity: 0.55, floor: 1.2 }));
     const segs = wallPoints.slice(1).map((b, i) => [wallPoints[i] as { x: number; y: number }, b] as const);
     const total = segs.reduce((s, [a, b]) => s + Math.hypot(b.x - a.x, b.y - a.y), 0) || 1;
     g.add(
@@ -662,9 +728,9 @@ export function areaLoop(
       );
       break;
     case "lightning":
-      // Call Lightning's storm cloud overhead, and an occasional arc.
+      // Call Lightning's storm cloud overhead, and an occasional arc. (Big billboards: a floor under the tier's share.)
       g.add(
-        loopBurst(
+        particleBurst(
           [
             {
               ...drift(Math.round(R * 1.2), 0.05, [6, 9], [R * 0.25, R * 0.45], { alphaCurve: [0, 0.8, 0] }),
@@ -674,7 +740,8 @@ export function areaLoop(
               },
             },
           ],
-          { core: "#3B3A55", glow: "#1F1E2E", additive: false, opacity: 0.7 },
+          { seed, loop: true, core: "#3B3A55", glow: "#1F1E2E", additive: false, opacity: 0.7 },
+          Math.max(scale, 0.6),
         ),
       );
       break;

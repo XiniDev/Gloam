@@ -41,6 +41,32 @@ function inside(a: Area, t: TokenEntity): boolean {
   return contains(f, t.pos) || sampleRim(t.pos, r).some((p) => contains(f, p));
 }
 
+/**
+ * Whether a creature is within `reach` ft of a wall's damaging side (SRD Wall of Fire: "within 10 feet of that side").
+ * The side is the left of each drawn segment (facing from its start to its end, y down: left is (dy, −dx)) — "right"
+ * the other; a creature counts from its space's nearest edge.
+ */
+function onDamagingSide(w: Extract<AreaShape, { kind: "wall" }>, t: TokenEntity, reach: number): boolean {
+  const side = w.damagingSide ?? "left";
+  const n = w.points.length;
+  const r = t.sizeFt / 2;
+  for (let i = 0; i + 1 < n + (w.closed ? 1 : 0); i++) {
+    const a = w.points[i] as P;
+    const b = w.points[(i + 1) % n] as P;
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const len = Math.hypot(dx, dy);
+    if (len < 1e-6) continue;
+    const u = ((t.pos.x - a.x) * dx + (t.pos.y - a.y) * dy) / (len * len);
+    if (u < -r / len || u > 1 + r / len) continue;
+    // Signed distance off the line: + on the left.
+    const s = ((t.pos.x - a.x) * dy - (t.pos.y - a.y) * dx) / len;
+    const off = side === "right" ? -s : s;
+    if (side === "both" ? Math.abs(s) - r <= reach : off > -r && off - r <= reach) return true;
+  }
+  return false;
+}
+
 const sampleRim = (c: P, r: number): P[] =>
   Array.from({ length: 8 }, (_, k) => ({
     x: c.x + Math.cos((k / 8) * 2 * Math.PI) * r * 0.9,
@@ -60,11 +86,21 @@ export class EffectFlow {
 
   private fire(
     e: EffectEntity,
-    when: "enter" | "startTurn" | "endTurn" | "per5ft",
-    tokenIds: string[],
+    when: "enter" | "startTurn" | "endTurn" | "per5ft" | "moveInto",
+    ids: string[],
     times = 1,
   ) {
-    if (!tokenIds.length || !e.triggers.some((t) => t.when === when)) return;
+    if (!e.triggers.some((t) => t.when === when)) return;
+    // "A creature makes this save only once per turn" (Spirit Guardians, Moonbeam, Cloudkill): whichever trigger.
+    const tokenIds = e.props.oncePerTurn
+      ? ids.filter((id) => {
+          const key = `${e.id}|${id}|once`;
+          if (this.firedThisTurn.has(key)) return false;
+          this.firedThisTurn.add(key);
+          return true;
+        })
+      : ids;
+    if (!tokenIds.length) return;
     try {
       this.host.bus().execute("cast.trigger", { effectId: e.id, when, tokenIds, times }, SYSTEM_ACTOR);
     } catch (err) {
@@ -78,12 +114,13 @@ export class EffectFlow {
   turn(e: CombatTurn): void {
     if (e.back) return;
     const model = this.host.model();
-    this.firedThisTurn.clear();
-    this.movedInside.clear();
+    // The turn that ended: its end-of-turn triggers, still counted in it (once a turn) — then a fresh turn.
     if (e.from) {
       const t = model.get("token", e.from);
       if (t) for (const fx of model.inScene("effect", t.sceneId)) this.inside(fx, t, "endTurn");
     }
+    this.firedThisTurn.clear();
+    this.movedInside.clear();
     if (!e.to) return;
     const c = combatOn(model, e.sceneId);
     const d = c ? dataOf(c) : null;
@@ -108,11 +145,16 @@ export class EffectFlow {
 
   /** A creature inside an effect at a moment of its turn: the trigger for that moment. */
   private inside(fx: EffectEntity, t: TokenEntity, when: "startTurn" | "endTurn"): void {
-    if (!fx.triggers.some((x) => x.when === when)) return;
+    const trig = fx.triggers.find((x) => x.when === when);
+    if (!trig) return;
     if (fx.props.exempt?.includes(t.id)) return;
     const a = areaOf(this.host.model(), fx);
-    if (!a || !inside(a, t)) return;
-    this.fire(fx, when, [t.id]);
+    if (!a) return;
+    // In it — or, for a wall's trigger that reaches out of its damaging side (Wall of Fire's 10 ft), on that side.
+    const hit =
+      inside(a, t) ||
+      (trig.sideFt !== undefined && fx.shape.kind === "wall" && onDamagingSide(fx.shape, t, trig.sideFt));
+    if (hit) this.fire(fx, when, [t.id]);
   }
 
   private end(fx: EffectEntity, why: string): void {
@@ -190,7 +232,9 @@ export class EffectFlow {
           was = now;
         }
       }
-      if (entered && fx.shape.kind !== "emanation") this.once(fx, "enter", t.id);
+      // (Its own emanation goes with it: that isn't walking into it — the spirits reaching others is below.)
+      const own = fx.shape.kind === "emanation" && fx.shape.sourceTokenId === t.id;
+      if (entered && !own) this.once(fx, "enter", t.id);
       if (feet > 0 && fx.triggers.some((x) => x.when === "per5ft")) {
         const key = `${fx.id}|${t.id}`;
         const total = (this.movedInside.get(key) ?? 0) + feet;
@@ -219,11 +263,17 @@ export class EffectFlow {
     }
   }
 
-  /** An effect moved onto creatures (Moonbeam, Flaming Sphere, a drift): each it now covers that it didn't. */
-  effectMoved(effectId: string, before: AreaShape): void {
+  /**
+   * An effect moved. An object rolled into a creature (Flaming Sphere — the move stopped at it): that creature's
+   * `moveInto` save. An area moved onto creatures (Moonbeam, a Cloudkill's drift): each it now covers that it didn't —
+   * "when the spell's area moves into its space".
+   */
+  effectMoved(effectId: string, before: AreaShape, rammed?: string): void {
     const model = this.host.model();
     const fx = model.get("effect", effectId);
-    if (!fx?.triggers.some((x) => x.when === "enter")) return;
+    if (!fx) return;
+    if (rammed) this.fire(fx, "moveInto", [rammed]);
+    if (!fx.triggers.some((x) => x.when === "enter")) return;
     const now = areaOf(model, fx);
     const was = resolveArea(before, (id) => {
       const t = model.get("token", id);

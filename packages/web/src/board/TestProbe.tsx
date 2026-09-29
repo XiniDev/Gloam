@@ -467,6 +467,8 @@ export function TestProbe() {
     });
     /** The token as this viewer holds it (its view shape, tags included), or null. */
     provideTestHook("token", (id: string) => boardData(useEntities.getState()).tokens.get(id) ?? null);
+    // The lasting effects this viewer has, as the board has them.
+    provideTestHook("effects", () => [...boardData(useEntities.getState()).effects.values()]);
     provideTestHook("tokens", () => [...boardData(useEntities.getState()).tokens.values()]);
     // The tokens drawn (viewing as a player: exactly theirs).
     provideTestHook("visibleTokenIds", () => {
@@ -588,6 +590,13 @@ export function TestProbe() {
         .pings.map((p) => ({ x: p.x, y: p.y, color: p.color, spotlight: p.spotlight, by: p.by })),
     );
     provideTestHook("remoteMoveLog", () => [...remoteLog]);
+    /** Frames the board has drawn so far (how often lasting animation redraws it). */
+    provideTestHook("frameCount", () => boardApi.frames);
+    /** The quality tier in use and its particle share (§24.6). */
+    provideTestHook("tier", () => {
+      const name = useTier.getState().name;
+      return { name, particles: TIERS[name].particles };
+    });
     /** Keeps the board drawing for `ms` (a burst of ordinary redraws, as camera or store changes cause). */
     provideTestHook("redraw", (ms: number) => {
       const before = boardApi.frames;

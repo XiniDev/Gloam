@@ -5,12 +5,15 @@
  * (Enter or Cast finishes it; a click on its first point closes a ring). A targeted spell picks creatures by clicking
  * them: one that takes a single target goes at once, others when they're all picked (or Cast now). Esc cancels.
  */
-import { areaAtSlot, targetingKind } from "@gloam/shared/rules";
+import { coverHint } from "@gloam/shared/aoe";
+import { areaAtSlot, castArea, targetingKind } from "@gloam/shared/rules";
 import { commitCast } from "../../hud/spells/casting.ts";
+import { useTable } from "../../net/table.ts";
 import { boardData, useEntities } from "../../state/entities.ts";
 import { useTargeting } from "../../state/targeting.ts";
 import { boardApi } from "../boardApi.ts";
 import { again } from "../frames.ts";
+import { barriersOfView } from "./TargetingLayer.tsx";
 
 const STEP = 15;
 
@@ -18,8 +21,7 @@ const STEP = 15;
 function areaShape(): string | null {
   const t = useTargeting.getState().t;
   if (!t) return null;
-  const alt = t.alt !== undefined ? t.spell.areaAlternatives?.[t.alt] : undefined;
-  const a = alt?.area ?? t.spell.area;
+  const a = castArea(t.spell, t.alt);
   return a ? areaAtSlot(a, t.spell.level, t.level).shape : null;
 }
 
@@ -97,6 +99,33 @@ export function targetToken(tokenId: string): void {
     return;
   }
   if (kind !== "creatures") return;
+  // What the server will refuse, refused here with its reason (§8.13: range from the caster's edge; a target behind
+  // total cover can't be targeted) — the DM picks anything.
+  const d = boardData(useEntities.getState());
+  const caster = d.tokens.get(t.casterTokenId);
+  const target = d.tokens.get(tokenId);
+  const me = useTable.getState().me;
+  const dm = me?.role === "dm" || me?.role === "admin";
+  if (caster && target && !dm && tokenId !== caster.id) {
+    const reach =
+      t.spell.range.kind === "touch" ? 5 : t.spell.range.kind === "ranged" ? t.spell.range.ft : undefined;
+    const gap =
+      Math.hypot(target.pos.x - caster.pos.x, target.pos.y - caster.pos.y) -
+      target.sizeFt / 2 -
+      caster.sizeFt / 2;
+    const refusal =
+      reach !== undefined && gap > reach + 0.5
+        ? `${target.name} is out of range (${reach} ft)`
+        : coverHint(caster.pos, { pos: target.pos, r: target.sizeFt / 2 }, barriersOfView(d.walls.values()))
+              .cover === "total"
+          ? `${target.name} is behind total cover`
+          : null;
+    useTargeting.getState().set({ refusal });
+    if (refusal) {
+      again();
+      return;
+    }
+  }
   let picks = t.picks;
   if (!t.repeat && picks.includes(tokenId)) picks = picks.filter((x) => x !== tokenId);
   else if (picks.length < t.max) picks = [...picks, tokenId];

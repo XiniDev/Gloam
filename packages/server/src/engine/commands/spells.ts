@@ -5,6 +5,7 @@ import {
   type Barrier,
   type Body,
   canPlace,
+  contains,
   coverHint,
   dirOf,
   footprint,
@@ -13,6 +14,7 @@ import {
   resolveArea,
 } from "@gloam/shared/aoe";
 import { parseFormula } from "@gloam/shared/dice";
+import type { P } from "@gloam/shared/geometry";
 import { blocksMove, blocksSight } from "@gloam/shared/movement";
 import {
   AttackStart,
@@ -23,6 +25,7 @@ import {
   CastSet,
   CastSkip,
   CastTarget,
+  EffectAct,
   EffectMove,
   EffectRemove,
   EffectUpdate,
@@ -34,6 +37,7 @@ import {
   applyToStatus,
   areaAtSlot,
   CONDITIONS,
+  castArea,
   controlsToken,
   deriveSheet,
   durationRounds,
@@ -52,6 +56,7 @@ import {
 import type {
   AreaShape,
   EffectEntity,
+  EffectTrigger,
   Sheet,
   Spell,
   SpellArea,
@@ -257,6 +262,13 @@ function placeShape(
         ? { kind: "cube", origin: edge, dirDeg: pl.dirDeg, size: size ?? a.size, originOnFace: true }
         : { kind: "cube", origin: at, dirDeg: pl.dirDeg, size: size ?? a.size, originOnFace: false };
     case "emanation":
+      // Round an object put down at a point (Flaming Sphere's sphere): the distance out from the object's edge.
+      if (spell.effect?.attach === "object" && !pl.attachTo)
+        return {
+          kind: "sphere",
+          origin: at,
+          radius: (size ?? a.distance) + (spell.effect.bodyFt ?? 0) / 2,
+        };
       return { kind: "emanation", sourceTokenId: pl.attachTo ?? caster.id, distance: size ?? a.distance };
     case "wall":
       return {
@@ -502,6 +514,13 @@ function makeEffect(
   if (rounds === 0) return null;
   const vfx = vfxFor(spell);
   let sh = shape;
+  // A spell that strikes within its lasting area (Call Lightning): the cast was a strike; the effect is the spell's
+  // area — the cloud — over its caster (or where the strike was, if the text puts it there).
+  if (tpl.strike && spell.area) {
+    const home = { x: caster.token.pos.x, y: caster.token.pos.y, z: caster.token.elevation };
+    const o = tpl.centre === "caster" || !shape ? home : (originPoint(ctx, shape) ?? home);
+    sh = ownArea(spell.area, o, tpl.centre === "caster" ? CLOUD_ABOVE_FT : 0);
+  }
   if (!sh) sh = { kind: "emanation", sourceTokenId: on ?? caster.token.id, distance: 0 };
   else if (tpl.attach === "caster" && sh.kind !== "emanation")
     sh = {
@@ -524,6 +543,8 @@ function makeEffect(
     props.exempt = [caster.token.id];
   }
   if (tp.seeInvisible) props.seeInvisible = true;
+  if (tpl.oncePerTurn) props.oncePerTurn = true;
+  if (tpl.bodyFt) props.bodyFt = tpl.bodyFt;
   if (tp.senses) props.senses = { ...tp.senses };
   if (tp.light)
     props.light = {
@@ -561,6 +582,12 @@ function makeEffect(
           }
         : {}),
       ...(t.condition ? { condition: t.condition } : {}),
+      ...(t.conditionEnds ? { conditionEnds: t.conditionEnds } : {}),
+      ...(t.breaksConcentration ? { breaksConcentration: true } : {}),
+      ...(t.side !== undefined ? { sideFt: t.side } : {}),
+      ...(t.when === "action"
+        ? { strikeFt: tpl.strike && "radius" in tpl.strike ? (tpl.strike.radius as number) : 5 }
+        : {}),
       ...(t.note ? { note: t.note } : {}),
     })),
     concentrationTokenId: spell.duration.concentration ? caster.token.id : null,
@@ -600,9 +627,62 @@ function dispelOps(ctx: CommandCtx, e: EffectEntity): Op[] {
     const hit = daylight ? o.props.magicalDarkness === true && lvl <= 3 : Boolean(o.props.light) && lvl <= 2;
     if (!hit) continue;
     const other = effectArea(ctx, o);
-    if (other && footprintsOverlap(f, footprint(other))) ops.push(deleteOp("effect", o));
+    if (other && footprintsOverlap(f, footprint(other))) ops.push(...endEffectOps(ctx, o));
   }
   return ops;
+}
+
+/**
+ * An effect ending — ended by the DM or its caster, dispelled, or its time up: it goes, and so does its caster's
+ * Concentration on it (§8.13: the spell ends; its other effects and conditions follow in concentration.cleanup).
+ */
+function endEffectOps(ctx: CommandCtx, e: EffectEntity): Op[] {
+  const ops: Op[] = [deleteOp("effect", e)];
+  const casterId = e.concentrationTokenId;
+  if (casterId && ctx.model.get("token", casterId)) {
+    const caster = casterOf(ctx, casterId);
+    const conc = caster.h.status.concentration;
+    if (conc && (conc.effectId === e.id || (e.source.castId && conc.castId === e.source.castId)))
+      ops.push(...casterStateOps(ctx, caster, null, withConcentration(caster.h.status, null)));
+  }
+  return ops;
+}
+
+/** Whose turn it is in the scene's running fight, if one has begun. */
+function activeTurnOf(ctx: CommandCtx): string | undefined {
+  const cb = activeCombat(ctx);
+  const d = cb ? dataOf(cb) : null;
+  return cb && d?.begun ? d.combatants[cb.turnIndex]?.tokenId : undefined;
+}
+
+/** How high over its caster a cloud it calls stands (Call Lightning: "at a point … above yourself"). */
+const CLOUD_ABOVE_FT = 20;
+
+/** An effect's own area placed at a point (Call Lightning's cloud), raised by `z` over it. */
+function ownArea(a: SpellArea, o: { x: number; y: number; z: number }, z: number): AreaShape {
+  const at = { x: o.x, y: o.y, z: o.z + z };
+  switch (a.shape) {
+    case "cylinder":
+      return { kind: "cylinder", origin: at, radius: a.radius, height: a.height };
+    case "cube":
+      return { kind: "cube", origin: at, dirDeg: 0, size: a.size, originOnFace: false };
+    case "sphere":
+      return { kind: "sphere", origin: at, radius: a.radius };
+    default:
+      return { kind: "sphere", origin: at, radius: "radius" in a ? (a.radius as number) : 5 };
+  }
+}
+
+/**
+ * Whether the cast itself resolves on a card. A lasting area whose triggers are what act (Web, Spirit Guardians,
+ * Stinking Cloud, Sleet Storm, Spike Growth, Flaming Sphere) asks nothing of those already in it when it appears — only
+ * where the text says they save then (`onAppear`: Moonbeam, Cloudkill, Wall of Fire); an effect on each target that
+ * fails (Faerie Fire) and one whose only trigger is its caster's action (Call Lightning's first bolt) resolve at once.
+ */
+function castResolves(spell: Spell): boolean {
+  const e = spell.effect;
+  if (!e || e.attach === "target" || e.onAppear) return true;
+  return !e.triggers.some((t) => t.when !== "action");
 }
 
 // ── the card ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -778,8 +858,8 @@ export const spellCast: CommandDef<
     // Where it goes, and who it takes.
     let shape: AreaShape | null = null;
     let targets: CastTargetData[] = [];
-    const alt = p.placement?.alt !== undefined ? spell.areaAlternatives?.[p.placement.alt] : undefined;
-    const area = alt?.area ?? spell.area ?? null;
+    // Where it strikes: its strike's area under a lasting one (Call Lightning's bolt), else its (alternative) area.
+    const area = castArea(spell, p.placement?.alt) ?? null;
     if (!p.narrative && area && kind === "area") {
       // An area that is simply round the caster (an emanation; a sphere on itself) has nothing to place: an API
       // caller needn't send a placement for it.
@@ -799,6 +879,16 @@ export const spellCast: CommandDef<
       }
       // In range, with a clear line from the caster (§17.3) — the DM may place anywhere (P2).
       const o = originPoint(ctx, shape);
+      // A strike from a lasting area over its caster (Call Lightning's bolt) lands under it.
+      const reach = spell.effect?.strike && spell.effect.centre === "caster" ? spell.area : undefined;
+      if (
+        !dm &&
+        o &&
+        reach &&
+        "radius" in reach &&
+        Math.hypot(o.x - t.pos.x, o.y - t.pos.y) > reach.radius + 0.5
+      )
+        throw new GloamError("INVALID", `That point isn't under ${spell.name}'s cloud.`);
       if (!dm && o && spell.range.kind !== "self") {
         const r =
           spell.range.kind === "touch"
@@ -836,7 +926,11 @@ export const spellCast: CommandDef<
             if (e) effects.push(e);
           }
       } else {
-        effect = makeEffect(ctx, spell, level, shape, caster, castId, p.placement?.attachTo ?? null);
+        // On an object (Light): the object where it was put, or — cast at a creature — the one it holds.
+        const holder =
+          p.placement?.attachTo ??
+          (spell.effect.attach === "object" && !shape ? (p.targets?.[0] ?? null) : null);
+        effect = makeEffect(ctx, spell, level, shape, caster, castId, holder);
         if (effect) effects.push(effect);
       }
     }
@@ -880,7 +974,8 @@ export const spellCast: CommandDef<
 
     // The card.
     const inArea = targets.filter((x) => x.state === "in");
-    const card = !p.narrative && needsCard(spell) && (targets.length > 0 || Boolean(shape));
+    const card =
+      !p.narrative && needsCard(spell) && castResolves(spell) && (targets.length > 0 || Boolean(shape));
     let cast: CastEntity | null = null;
     if (card) {
       const origin = shape ? originPoint(ctx, shape) : { x: t.pos.x, y: t.pos.y, z: t.elevation };
@@ -1346,7 +1441,8 @@ export const castApply: CommandDef<z.infer<typeof CastApply>, { applied: number 
       for (const { row } of mine)
         for (const cid of conditionsFor(d, row)) {
           if (status.conditions.some((x) => x.id === cid) || h.stats.conditionImmune.includes(cid)) continue;
-          const rounds = d.conditions.find((x) => x.id === cid)?.rounds;
+          const spec = d.conditions.find((x) => x.id === cid);
+          const rounds = spec?.rounds;
           status = {
             ...status,
             conditions: [
@@ -1357,11 +1453,22 @@ export const castApply: CommandDef<z.infer<typeof CastApply>, { applied: number 
                 ...(d.caster.tokenId ? { sourceTokenId: d.caster.tokenId } : {}),
                 ...(d.concentration ? { castId: c.id } : {}),
                 ...(rounds && cb ? { untilRound: cb.round + rounds } : {}),
+                // "Until the end of the current turn" — the turn it's in (its own, when a trigger at its start).
+                ...(spec?.endsTurn ? { endsWithTurnOf: activeTurnOf(ctx) ?? id } : {}),
               },
             ],
           };
           lines.push(`${h.name}: ${CONDITIONS[cid].name}`);
         }
+      // A failed save that also ends Concentration (Sleet Storm): its spell's effects go with it (cleanup).
+      if (
+        d.breaksConcentration &&
+        status.concentration &&
+        mine.some(({ row }) => (d.save ? row.save?.autoFail || row.save?.success === false : true))
+      ) {
+        status = withConcentration(status, null);
+        lines.push(`${h.name} loses Concentration`);
+      }
       // An effect on each creature that failed (Faerie Fire's outline and glow).
       const spell = d.spell;
       if (
@@ -1594,6 +1701,19 @@ export const effectMove: CommandDef<z.infer<typeof EffectMove>, { ok: true }> = 
     if (!mayMoveEffect(ctx, e)) throw new GloamError("FORBIDDEN", "Only the DM or its caster moves it.");
     const at = effectAt(e);
     if (!at) throw new GloamError("INVALID", "It moves with its creature.");
+    // Its caster moves it on its own turn (Moonbeam's Magic action, Flaming Sphere's Bonus Action).
+    if (!isDm(ctx.actor.role) && e.source.casterTokenId) {
+      const cb = activeCombat(ctx);
+      const d = cb ? dataOf(cb) : null;
+      const caster = e.source.casterTokenId;
+      if (
+        cb &&
+        d?.begun &&
+        d.combatants.some((x) => x.tokenId === caster) &&
+        d.combatants[cb.turnIndex]?.tokenId !== caster
+      )
+        throw new GloamError("NOT_YOUR_TURN", `${e.name} moves on its caster's turn.`);
+    }
     if (!isDm(ctx.actor.role) && e.movement?.maxFt !== undefined) {
       const d = Math.hypot(p.to.x - at.x, p.to.y - at.y);
       if (d > e.movement.maxFt + 0.5)
@@ -1602,17 +1722,20 @@ export const effectMove: CommandDef<z.infer<typeof EffectMove>, { ok: true }> = 
   },
   plan(ctx, p) {
     const e = mustGet(ctx, "effect", p.effectId);
-    const shape = movedShape(e.shape, p.to, p.dirDeg);
+    // An object rolled along (Flaming Sphere): it stops at the first creature it runs into, which saves (SRD p. 132).
+    const ram = rammed(ctx, e, p.to);
+    const to = ram ? ram.at : p.to;
+    const shape = movedShape(e.shape, to, p.dirDeg);
     const ops = setOps("effect", e, { shape });
     ops.push(...dispelOps(ctx, { ...e, shape }));
     return {
       ops,
-      summary: `${e.name} moved`,
+      summary: ram ? `${e.name} rolled into ${ram.name}` : `${e.name} moved`,
       sceneId: e.sceneId,
       events: [
         {
           name: "effect.moved",
-          payload: { effectId: e.id, before: e.shape, after: shape },
+          payload: { effectId: e.id, before: e.shape, after: shape, ...(ram ? { rammed: ram.id } : {}) },
           to: { dms: true },
         },
       ],
@@ -1620,6 +1743,40 @@ export const effectMove: CommandDef<z.infer<typeof EffectMove>, { ok: true }> = 
     };
   },
 };
+
+/**
+ * Where an effect's object (`bodyFt`, with a moveInto trigger) moving from where it stands toward `to` first runs
+ * into a creature's space — the creature, and the point it stops at (touching it) — or null when nothing is in its way.
+ */
+function rammed(ctx: CommandCtx, e: EffectEntity, to: P): { id: string; name: string; at: P } | null {
+  const body = e.props.bodyFt;
+  const from = effectAt(e);
+  if (!body || !from || !e.triggers.some((t) => t.when === "moveInto")) return null;
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const len = Math.hypot(dx, dy);
+  if (len < 1e-6) return null;
+  const ux = dx / len;
+  const uy = dy / len;
+  let best: { id: string; name: string; at: P; s: number } | null = null;
+  for (const t of ctx.model.inScene("token", e.sceneId)) {
+    if (t.hidden || e.props.exempt?.includes(t.id)) continue;
+    const R = body / 2 + t.sizeFt / 2;
+    // Where along the way the object's edge first meets the creature's (ray–circle), past where it began.
+    const fx = from.x - t.pos.x;
+    const fy = from.y - t.pos.y;
+    if (Math.hypot(fx, fy) < R - 1e-6) continue; // already against it: moving away isn't running into it
+    const b = fx * ux + fy * uy;
+    const c = fx * fx + fy * fy - R * R;
+    const disc = b * b - c;
+    if (disc < 0) continue;
+    const s = -b - Math.sqrt(disc);
+    if (s < 0 || s > len) continue;
+    if (!best || s < best.s)
+      best = { id: t.id, name: t.name, at: { x: from.x + ux * s, y: from.y + uy * s }, s };
+  }
+  return best ? { id: best.id, name: best.name, at: best.at } : null;
+}
 
 /** `effect.remove` (the DM; its caster): it ends (its caster's concentration on it with it). */
 export const effectRemove: CommandDef<z.infer<typeof EffectRemove>, { ok: true }> = {
@@ -1635,15 +1792,12 @@ export const effectRemove: CommandDef<z.infer<typeof EffectRemove>, { ok: true }
   },
   plan(ctx, p) {
     const e = mustGet(ctx, "effect", p.effectId);
-    const ops: Op[] = [deleteOp("effect", e)];
-    const casterId = e.concentrationTokenId;
-    if (casterId && ctx.model.get("token", casterId)) {
-      const caster = casterOf(ctx, casterId);
-      const conc = caster.h.status.concentration;
-      if (conc && (conc.effectId === e.id || (e.source.castId && conc.castId === e.source.castId)))
-        ops.push(...casterStateOps(ctx, caster, null, withConcentration(caster.h.status, null)));
-    }
-    return { ops, summary: `${e.name} ended`, sceneId: e.sceneId, result: { ok: true } };
+    return {
+      ops: endEffectOps(ctx, e),
+      summary: `${e.name} ended`,
+      sceneId: e.sceneId,
+      result: { ok: true },
+    };
   },
 };
 
@@ -1776,16 +1930,18 @@ export function concentrationsEnded(
  */
 export const CastTriggerIn = z.strictObject({
   effectId: z.string().min(3).max(40),
-  when: z.enum(["enter", "startTurn", "endTurn", "per5ft"]),
+  when: z.enum(["enter", "startTurn", "endTurn", "per5ft", "moveInto"]),
   tokenIds: z.array(z.string().min(3).max(40)).min(1).max(40),
   /** Per 5 ft: how many 5-ft stretches. */
   times: z.number().int().min(1).max(100).default(1),
 });
-const WHEN_TEXT: Record<"enter" | "startTurn" | "endTurn" | "per5ft", string> = {
+const WHEN_TEXT: Record<EffectTrigger["when"], string> = {
   enter: "entered it",
   startTurn: "started a turn in it",
   endTurn: "ended a turn in it",
   per5ft: "moved in it",
+  moveInto: "had it rolled into them",
+  action: "were under the bolt",
 };
 export const castTrigger: CommandDef<z.infer<typeof CastTriggerIn>, { castId: string | null }> = {
   type: "cast.trigger",
@@ -1797,78 +1953,155 @@ export const castTrigger: CommandDef<z.infer<typeof CastTriggerIn>, { castId: st
   },
   plan(ctx, p) {
     const e = mustGet(ctx, "effect", p.effectId);
-    const trig = e.triggers.find((t) => t.when === p.when);
-    if (!trig || (!trig.save && !trig.damage && !trig.condition))
-      return { ops: [], summary: "", result: { castId: null }, undoable: false };
-    const exempt = new Set(e.props.exempt ?? []);
-    const tokens = p.tokenIds
-      .map((id) => ctx.model.get("token", id))
-      .filter((t): t is TokenEntity => Boolean(t) && !exempt.has((t as TokenEntity).id));
-    if (!tokens.length) return { ops: [], summary: "", result: { castId: null }, undoable: false };
-    const casterTok = e.source.casterTokenId ? ctx.model.get("token", e.source.casterTokenId) : undefined;
-    const origin = effectAt(e);
-    const barriers = barriersOf(ctx, e.sceneId);
-    const all = ctx.model.inScene("token", e.sceneId);
-    const from = origin ?? (casterTok ? casterTok.pos : null);
-    const targets = tokens.map((t) => {
-      const row = targetRow(ctx, t, from, barriers, all, "in");
-      return trig.save ? { ...row, save: row.pc ? { pending: true, by: "player" as const } : {} } : row;
-    });
-    const formula = trig.damage
-      ? p.times > 1
-        ? addDice(trig.damage.formula, trig.damage.formula, p.times - 1)
-        : trig.damage.formula
-      : null;
-    const castId = newId("cst");
-    const names = tokens.map((t) => t.name).join(", ");
-    const data: CastData = {
-      kind: "trigger",
-      name: e.name,
-      subtitle:
-        p.when === "per5ft" ? `${names} moved ${p.times * 5} ft in it` : `${names} ${WHEN_TEXT[p.when]}`,
-      spell: null,
-      spellId: e.source.contentId ?? null,
-      level: e.source.slot ?? null,
-      spent: null,
-      caster: { tokenId: casterTok?.id ?? null, actorId: null, name: casterTok?.name ?? e.name },
-      origin: from ? { x: from.x, y: from.y, z: 0 } : null,
-      area: e.shape,
-      save: trig.save ? { ability: trig.save.ability, onSuccess: trig.save.onSuccess } : null,
-      dc: trig.save ? trig.save.dc : null,
-      dcRevealed: false,
-      attack: null,
-      damage:
-        formula && trig.damage
-          ? { parts: [{ formula, type: trig.damage.type }], healing: false, per: "cast", roll: null }
-          : null,
-      conditions: trig.condition ? [{ id: trig.condition, onFailedSave: Boolean(trig.save) }] : [],
-      targets,
-      effectId: e.id,
-      concentration: Boolean(e.concentrationTokenId),
-      requestId: null,
-      vfx: e.vfx,
-      trigger: { effectId: e.id, when: p.when, ...(trig.note ? { note: trig.note } : {}) },
-      createdBy: "system",
+    const card = triggerCard(ctx, e, p.when, p.tokenIds, p.times, null);
+    if (!card) return { ops: [], summary: "", result: { castId: null }, undoable: false };
+    return { ...card, result: { castId: card.castId } };
+  },
+};
+
+/**
+ * A trigger's card for the DM (§8.13: effects' triggers "create DM prompts with the configured save and damage"): its
+ * creatures (those the effect spares left out), its save, its damage (per 5 ft: as many times over), the condition a
+ * failure lands — for how long — and whether it ends Concentration. `from`: where it strikes from (a bolt's point),
+ * else the effect's centre or its caster.
+ */
+function triggerCard(
+  ctx: CommandCtx,
+  e: EffectEntity,
+  when: EffectTrigger["when"],
+  tokenIds: string[],
+  times: number,
+  from0: P | null,
+): { ops: Op[]; summary: string; sceneId: string; events: RoomEvent[]; castId: string } | null {
+  const trig = e.triggers.find((t) => t.when === when);
+  if (!trig || (!trig.save && !trig.damage && !trig.condition)) return null;
+  const exempt = new Set(e.props.exempt ?? []);
+  const tokens = tokenIds
+    .map((id) => ctx.model.get("token", id))
+    .filter((t): t is TokenEntity => Boolean(t) && !exempt.has((t as TokenEntity).id));
+  if (!tokens.length) return null;
+  const casterTok = e.source.casterTokenId ? ctx.model.get("token", e.source.casterTokenId) : undefined;
+  const origin = from0 ?? effectAt(e);
+  const barriers = barriersOf(ctx, e.sceneId);
+  const all = ctx.model.inScene("token", e.sceneId);
+  const from = origin ?? (casterTok ? casterTok.pos : null);
+  const targets = tokens.map((t) => {
+    const row = targetRow(ctx, t, from, barriers, all, "in");
+    return trig.save ? { ...row, save: row.pc ? { pending: true, by: "player" as const } : {} } : row;
+  });
+  const formula = trig.damage
+    ? times > 1
+      ? addDice(trig.damage.formula, trig.damage.formula, times - 1)
+      : trig.damage.formula
+    : null;
+  const castId = newId("cst");
+  const names = tokens.map((t) => t.name).join(", ");
+  const data: CastData = {
+    kind: "trigger",
+    name: e.name,
+    subtitle: when === "per5ft" ? `${names} moved ${times * 5} ft in it` : `${names} ${WHEN_TEXT[when]}`,
+    spell: null,
+    spellId: e.source.contentId ?? null,
+    level: e.source.slot ?? null,
+    spent: null,
+    caster: { tokenId: casterTok?.id ?? null, actorId: null, name: casterTok?.name ?? e.name },
+    origin: from ? { x: from.x, y: from.y, z: 0 } : null,
+    area: e.shape,
+    save: trig.save ? { ability: trig.save.ability, onSuccess: trig.save.onSuccess } : null,
+    dc: trig.save ? trig.save.dc : null,
+    dcRevealed: false,
+    attack: null,
+    damage:
+      formula && trig.damage
+        ? { parts: [{ formula, type: trig.damage.type }], healing: false, per: "cast", roll: null }
+        : null,
+    conditions: trig.condition
+      ? [
+          {
+            id: trig.condition,
+            onFailedSave: Boolean(trig.save),
+            ...(trig.conditionEnds === "turnEnd" ? { endsTurn: true } : {}),
+          },
+        ]
+      : [],
+    ...(trig.breaksConcentration ? { breaksConcentration: true } : {}),
+    targets,
+    effectId: e.id,
+    concentration: Boolean(e.concentrationTokenId),
+    requestId: null,
+    vfx: e.vfx,
+    trigger: { effectId: e.id, when, ...(trig.note ? { note: trig.note } : {}) },
+    createdBy: "system",
+  };
+  const cast: CastEntity = {
+    id: castId,
+    campaignId: ctx.model.campaign.id,
+    sceneId: e.sceneId,
+    status: "open",
+    data,
+    createdAt: ctx.now,
+    updatedAt: ctx.now,
+  };
+  const follow: CastFollowup = {
+    castId,
+    ...(trig.save ? { askSaves: [...new Set(targets.filter((t) => t.pc).map((t) => t.id))] } : {}),
+  };
+  return {
+    ops: [createOp("cast", cast)],
+    summary: `${e.name}: ${data.subtitle}`,
+    sceneId: e.sceneId,
+    events: [{ name: CAST_FOLLOWUP, payload: follow, to: { dms: true } }],
+    castId,
+  };
+}
+
+/**
+ * `effect.act` (its caster's controller, on its turn; the DM): an effect's action again at a point in it — Call
+ * Lightning's next bolt, a Magic action: those within its bolt's reach of the point (the spell's own area there, with
+ * a clear line) on a card, as its trigger says.
+ */
+export const effectAct: CommandDef<z.infer<typeof EffectAct>, { castId: string | null }> = {
+  type: "effect.act",
+  schema: EffectAct,
+  undoable: true,
+  authorize(ctx, p) {
+    const e = mustGet(ctx, "effect", p.effectId);
+    if (!e.triggers.some((t) => t.when === "action"))
+      throw new GloamError("INVALID", `${e.name} has no action to take again.`);
+    const caster = e.source.casterTokenId ? ctx.model.get("token", e.source.casterTokenId) : undefined;
+    if (isDm(ctx.actor.role)) return;
+    if (!caster || !controlsToken(ctx.actor.role, ctx.actor.userId, caster))
+      throw new GloamError("FORBIDDEN", "Only its caster (or the DM) calls it.");
+    const cb = activeCombat(ctx);
+    const d = cb ? dataOf(cb) : null;
+    if (
+      cb &&
+      d?.begun &&
+      d.combatants.some((x) => x.tokenId === caster.id) &&
+      d.combatants[cb.turnIndex]?.tokenId !== caster.id
+    )
+      throw new GloamError("NOT_YOUR_TURN", `It isn't ${caster.name}'s turn.`);
+  },
+  plan(ctx, p) {
+    const e = mustGet(ctx, "effect", p.effectId);
+    const area = effectArea(ctx, e);
+    if (!area || !contains(footprint(area), p.at))
+      throw new GloamError("INVALID", `That point isn't under ${e.name}.`);
+    const bolt: AreaShape = {
+      kind: "sphere",
+      origin: { x: p.at.x, y: p.at.y, z: 0 },
+      radius: e.triggers.find((t) => t.when === "action")?.strikeFt ?? 5,
     };
-    const cast: CastEntity = {
-      id: castId,
-      campaignId: ctx.model.campaign.id,
-      sceneId: e.sceneId,
-      status: "open",
-      data,
-      createdAt: ctx.now,
-      updatedAt: ctx.now,
-    };
-    const follow: CastFollowup = {
-      castId,
-      ...(trig.save ? { askSaves: [...new Set(targets.filter((t) => t.pc).map((t) => t.id))] } : {}),
-    };
+    const inBolt = areaTargets(ctx, bolt, e.sceneId, { sourceId: null, includeSource: true })
+      .filter((x) => x.state === "in")
+      .map((x) => x.id);
+    const card = inBolt.length ? triggerCard(ctx, e, "action", inBolt, 1, p.at) : null;
     return {
-      ops: [createOp("cast", cast)],
-      summary: `${e.name}: ${data.subtitle}`,
+      ops: card?.ops ?? [],
+      summary: card ? card.summary : `${e.name}: nobody there`,
       sceneId: e.sceneId,
-      events: [{ name: CAST_FOLLOWUP, payload: follow, to: { dms: true } }],
-      result: { castId },
+      events: card?.events ?? [],
+      result: { castId: card?.castId ?? null },
     };
   },
 };
@@ -1889,4 +2122,5 @@ export const SPELL_COMMANDS = [
   effectUpdate,
   concentrationCleanup,
   castTrigger,
+  effectAct,
 ] as unknown as CommandDef<never, unknown>[];

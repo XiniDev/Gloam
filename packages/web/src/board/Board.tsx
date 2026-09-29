@@ -76,6 +76,7 @@ import { WallToolLayer } from "./tools/WallToolLayer.tsx";
 import { useWallTool, wallsDoubleClick, wallsDown, wallsKey, wallsMove, wallsUp } from "./tools/walls.ts";
 import { ZoneToolLayer } from "./tools/ZoneToolLayer.tsx";
 import { zonesDoubleClick, zonesDown, zonesKey, zonesMove, zonesUp } from "./tools/zones.ts";
+import { EffectHandles } from "./vfx/EffectHandles.tsx";
 import { EffectsLayer } from "./vfx/EffectsLayer.tsx";
 import { VfxLayer } from "./vfx/VfxLayer.tsx";
 import { fogUniforms } from "./vision/fogMaterial.ts";
@@ -588,6 +589,7 @@ export default function Board() {
         {/* Lasting spell areas (§8.13) and casts' VFX (§24.5). */}
         <Contained>
           <EffectsLayer />
+          <EffectHandles />
           <VfxLayer />
         </Contained>
         <Contained>

@@ -2,6 +2,8 @@ import {
   addDice,
   areaAtSlot,
   areaText,
+  attackRangeFt,
+  castArea,
   critFormula,
   defaultSlot,
   durationRounds,
@@ -127,5 +129,25 @@ describe("spells at the table (§8.13)", () => {
     expect(lead).toBeGreaterThan(0);
     expect(q.slice(lead).some((id) => spell(id).name.toLowerCase().startsWith("fire"))).toBe(false);
     expect(spellRank(spell("fire-bolt"), "fire")).toBeLessThan(spellRank(spell("burning-hands"), "fire"));
+  });
+});
+
+describe("sheet attacks and strikes", () => {
+  it("an attack's reach from its range as written: normal/long takes the long, a number its feet, nothing 5 ft", () => {
+    expect(attackRangeFt("20/60")).toBe(60);
+    expect(attackRangeFt("80/320 ft")).toBe(320);
+    expect(attackRangeFt("120 ft")).toBe(120);
+    expect(attackRangeFt("reach 10 ft")).toBe(10);
+    expect(attackRangeFt("30")).toBe(30);
+    expect(attackRangeFt(undefined)).toBe(5);
+    expect(attackRangeFt("Melee")).toBe(5);
+  });
+
+  it("the area a cast targets: Call Lightning's bolt (5 ft) under its 60-ft cloud; otherwise the spell's area, or its other form's", () => {
+    expect(castArea(spell("call-lightning"))).toEqual({ shape: "sphere", radius: 5 });
+    expect(spell("call-lightning").area).toEqual({ shape: "cylinder", radius: 60, height: 10 });
+    expect(castArea(spell("fireball"))).toEqual(spell("fireball").area);
+    const dark = spell("darkness");
+    expect(castArea(dark, 0)).toEqual(dark.areaAlternatives?.[0]?.area);
   });
 });

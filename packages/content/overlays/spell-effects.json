@@ -1,5 +1,5 @@
 {
-  "$comment": "Persistent-effect templates (SPEC §8.13 F13, §12.3 Effect), hand-authored from the SRD 5.2.1 PDF. The 16 effects F13 requires are first; emanations follow (§33.4: they move with the caster unless the text makes them immobile/stationary), then other persistent areas. `attach`: caster = moves with the caster; object = an object at the point it's placed (`bodyFt` its size) or on the creature holding it; target = on each affected creature/object; point = fixed where cast. Triggers create DM prompts: `enter` (a creature enters, or the area moves into its space), `startTurn`/`endTurn` (a creature's own turn inside), `per5ft` (each 5 ft moved inside), `moveInto` (the effect's object moved into a creature's space), `action` (its caster's action repeats it: Call Lightning). `onAppear`: creatures in the area when it appears make the spell's save; otherwise only its triggers act. `oncePerTurn`: one save a turn across its triggers. A trigger's `side` reaches that far out of a wall's damaging side; `breaksConcentration` and `conditionEnds` add to a failed save. DCs and slot scaling come from the cast; damage formulas are the base level. `movement.drift` moves the effect at the start of the caster's turns.",
+  "$comment": "Persistent-effect templates (SPEC §8.13 F13, §12.3 Effect), hand-authored from the SRD 5.2.1 PDF. The 16 effects F13 requires are first; emanations follow (§33.4: they move with the caster unless the text makes them immobile/stationary), then other persistent areas. `attach`: caster = moves with the caster; object = an object at the point it's placed (`bodyFt` its size) or on the creature holding it; target = on each affected creature/object; point = fixed where cast. Triggers create DM prompts: `enter` (a creature enters, or the area moves into its space), `startTurn`/`endTurn` (a creature's own turn inside), `per5ft` (each 5 ft moved inside), `moveInto` (the effect's object moved into a creature's space), `action` (its caster's action strikes again: Call Lightning, where `strike` is each bolt's area). `onAppear`: creatures in the area when it appears make the spell's save; otherwise only its triggers act. `oncePerTurn`: one save a turn across its triggers. A trigger's `side` reaches that far out of a wall's damaging side; `breaksConcentration` and `conditionEnds` add to a failed save. DCs and slot scaling come from the cast; damage formulas are the base level. `movement.drift` moves the effect at the start of the caster's turns.",
   "spells": {
     "fog-cloud": {
       "page": 133,
@@ -431,7 +431,7 @@
     "call-lightning": {
       "page": 114,
       "source": "\"A storm cloud appears at a point within range that you can see above yourself. It takes the shape of a Cylinder that is 10 feet tall with a 60-foot radius … Until the spell ends, you can take a Magic action to call down lightning in that way again\" — each bolt: creatures within 5 feet of a point under the cloud make a Dexterity save (3d10 Lightning, half on success). The cloud itself has no triggers.",
-      "review": "The storm cloud is the effect, centred over its caster; the cast is the first bolt (5-ft radius at the chosen point), and its caster calls the next ones from the cloud (an action trigger).",
+      "review": "The storm cloud is the effect (the spell's area, centred over its caster); each bolt — the cast's first, then its caster's action — strikes a 5-ft radius at a point under it.",
       "set": {
         "effect": {
           "props": {},
@@ -450,12 +450,11 @@
             }
           ],
           "attach": "point",
-          "area": {
-            "shape": "cylinder",
-            "radius": 60,
-            "height": 10
-          },
-          "centre": "caster"
+          "centre": "caster",
+          "strike": {
+            "shape": "sphere",
+            "radius": 5
+          }
         }
       }
     },

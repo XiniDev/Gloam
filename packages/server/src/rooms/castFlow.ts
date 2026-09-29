@@ -261,8 +261,16 @@ export class CastFlow {
             },
           }
         : {}),
+      // Whether it hit — as the DM would say "that hits" — never the AC it was measured against (§8.13).
       ...(t.attack
-        ? { attack: { total: t.attack.total, natural: t.attack.natural, crit: t.attack.crit } }
+        ? {
+            attack: {
+              total: t.attack.total,
+              natural: t.attack.natural,
+              crit: t.attack.crit,
+              ...(typeof t.attack.hit === "boolean" ? { hit: t.attack.hit } : {}),
+            },
+          }
         : {}),
       ...(t.roll ? { roll: { total: t.roll.total, formula: t.roll.formula } } : {}),
       outcome: outcomeOf(d, t),

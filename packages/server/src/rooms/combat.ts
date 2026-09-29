@@ -284,6 +284,7 @@ export class CombatFlow {
       return;
     }
     if (e.from) this.hazards(e.from, "endTurn");
+    if (e.from) this.turnEnded(e.from);
     this.expire(e);
     if (!e.to) return;
     const c = combatOn(model, e.sceneId);
@@ -353,6 +354,37 @@ export class CombatFlow {
    * creator's turn when one is known, else from the top of that round — taken off (one undoable change each
    * creature), and the DM and the creature's players told.
    */
+  /**
+   * A creature's turn ended: conditions that last "until the end of the current turn" end with it (Stinking Cloud's
+   * Poisoned, `endsWithTurnOf`) — on anyone they were tied to that turn.
+   */
+  private turnEnded(tokenId: string): void {
+    const model = this.host.model();
+    const t = model.get("token", tokenId);
+    if (!t) return;
+    for (const o of model.inScene("token", t.sceneId)) {
+      let h: ReturnType<typeof holderOf>;
+      try {
+        h = holderOf(this.ctx(), { tokenId: o.id });
+      } catch {
+        continue;
+      }
+      const gone = h.status.conditions.filter((x) => x.endsWithTurnOf === tokenId).map((x) => x.id as string);
+      if (!gone.length) continue;
+      const dm = [...this.host.viewers()].find((v) => v.dm);
+      this.host
+        .bus()
+        .execute(
+          "status.change",
+          { tokenId: o.id, remove: gone },
+          dm ? this.host.actorOf(dm.userId) : SYSTEM_ACTOR,
+        );
+      const msg = { tokenId: o.id, name: h.name, what: gone.map((id) => statusName(id)).join(", ") };
+      this.host.toDms("combat.expired", msg);
+      for (const u of controllersOf(model, o.id)) this.host.toUser(u, "combat.expired", msg);
+    }
+  }
+
   private expire(e: CombatTurn): void {
     if (!e.to) return;
     const model = this.host.model();

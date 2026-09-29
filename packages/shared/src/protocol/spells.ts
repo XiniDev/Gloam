@@ -144,6 +144,12 @@ export const EffectMove = z.strictObject({
   dirDeg: Deg.optional(),
 });
 
+/** An effect's action again at a point in it (Call Lightning's next bolt: its caster, on its turn; the DM). */
+export const EffectAct = z.strictObject({
+  effectId: Id,
+  at: z.strictObject({ x: Coord, y: Coord }),
+});
+
 /** End an effect (the DM; its caster). */
 export const EffectRemove = z.strictObject({ effectId: Id });
 

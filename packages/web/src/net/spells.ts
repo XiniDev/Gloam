@@ -127,6 +127,9 @@ export const castNpcSaves = (castId: string) => request<{ rolled: number }>("cas
 export const moveEffect = (effectId: string, to: { x: number; y: number }, dirDeg?: number) =>
   request("effect.move", { effectId, to, ...(dirDeg !== undefined ? { dirDeg } : {}) });
 export const removeEffect = (effectId: string) => request("effect.remove", { effectId });
+/** An effect's action again at a point in it (Call Lightning's next bolt). */
+export const actEffect = (effectId: string, at: { x: number; y: number }) =>
+  request<{ castId: string | null }>("effect.act", { effectId, at: { x: at.x, y: at.y } });
 export const updateEffect = (
   effectId: string,
   p: {

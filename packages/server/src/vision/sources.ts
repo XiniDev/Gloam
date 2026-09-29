@@ -1,4 +1,4 @@
-import { areaHeight, areaPolygon, resolveArea } from "@gloam/shared/aoe";
+import { footprint as aoeFootprint, areaHeight, areaPolygon, contains, resolveArea } from "@gloam/shared/aoe";
 import type { P, Seg } from "@gloam/shared/geometry";
 import { effectiveTokenState } from "@gloam/shared/rules";
 import type { EffectEntity, TokenEntity } from "@gloam/shared/schemas";
@@ -92,6 +92,32 @@ export function effectSlow(
         ]
       : [];
   });
+}
+
+/**
+ * Whether a creature stands entirely inside a Silence (SRD p. 166: "creatures have the Deafened condition while
+ * entirely inside it") — its whole space: the centre and its rim.
+ */
+export function inSilence(model: CampaignModel, t: TokenEntity): boolean {
+  for (const e of model.inScene("effect", t.sceneId)) {
+    if (!e.props.silence) continue;
+    const area = resolveArea(e.shape, (id) => {
+      const o = model.get("token", id);
+      return o ? { pos: o.pos, r: o.sizeFt / 2, z: o.elevation, height: Math.max(o.sizeFt, 2.5) } : null;
+    });
+    if (!area) continue;
+    const f = aoeFootprint(area);
+    const r = t.sizeFt / 2;
+    const pts = [
+      t.pos,
+      ...Array.from({ length: 8 }, (_, k) => ({
+        x: t.pos.x + Math.cos((k / 8) * 2 * Math.PI) * r,
+        y: t.pos.y + Math.sin((k / 8) * 2 * Math.PI) * r,
+      })),
+    ];
+    if (pts.every((p) => contains(f, p))) return true;
+  }
+  return false;
 }
 
 export interface EffectInputs {

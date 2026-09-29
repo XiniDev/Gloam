@@ -1151,3 +1151,11 @@ function Chips({
     </div>
   );
 }
+
+/** A spell as a homebrew one's starting point (§8.13 "Poison Ball" from Fireball): a fresh id, "(copy)", homebrew. */
+export function duplicateOf(s: Spell, homebrew: { spell: Spell }[]): Spell {
+  const taken = new Set(homebrew.map((h) => h.spell.id));
+  let id = `${s.id}-copy`;
+  for (let n = 2; taken.has(id); n++) id = `${s.id}-copy-${n}`;
+  return { ...s, id, name: `${s.name} (copy)`, source: { pack: "homebrew" } };
+}

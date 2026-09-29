@@ -442,3 +442,19 @@ P1 28/28 · P2 32/32 · P3 16/17 · P4 12/12 · P5 9/9 · P6 14/14 · P7 1/17 ·
 - Next: commit P8 round 2 with the P9 work so far once the P8 journeys and shots pass; then P9's journeys (browser
   filters, a Fireball cast end to end, self spells, the concentration prompt, the 16 effects, 12 VFX presets, the
   homebrew builder, import, a weapon attack, the cover hint), its key screens, critic, rules-auditor and security review.
+
+## 2026-09-29 — P9: spells, effects and VFX — 16/16
+
+- The named effects as SRD 5.2.1 has them (a rules pass: which save when they appear, once a turn, Wall of Fire's
+  burning side, Flaming Sphere's sphere and ram, Call Lightning's cloud and strikes, Sleet Storm's lost Concentration,
+  Stinking Cloud's end-of-turn Poisoned, Silence's Deafened, dispels ending Concentration); effect handles on the board
+  (drag within the caster's reach, Strike again, End), the chip; the targeting bar in the clear area; picks refused
+  with their reason (range, total cover); the caster's card says hit or miss; sheet attack ranges ("20/60"); players
+  propose homebrew from their sheet; the clouds, Wall of Fire's curtain, a haze for light obscurement, a reworked
+  runic ring. Found by the new tests and journeys: an undo crash in the card push, self-centred areas needing a
+  placement, the spell list collapsing when its filters opened, the caster unable to roll a hit's damage.
+- Tests: server spells (5), spellVision (3), spellEffects (15), homebrew (4), rules units (range parser, castArea,
+  halved cost, the drawn range limit); journeys p9-spells (7: browser, Fireball end to end, darts/self/line of
+  effect/concentration, attack/cover/card controls, saves/healing/handles, VFX and the 16 effects, builder/import).
+- ACs: SPL-02…13, VIS-06/07/08 — P9 16/16. PASSING 166/224. `pnpm check`: 558 tests.
+- Next: P9 key screens, the visual critic (≤ 2 rounds), the rules-auditor and security review; then P10.

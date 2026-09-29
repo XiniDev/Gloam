@@ -2,8 +2,10 @@ import { ABILITIES } from "@gloam/shared";
 import type { DerivedKey, Spell } from "@gloam/shared/schemas";
 import { Fragment, useState } from "react";
 import { allSpells, loadSrdSpells, useSpells } from "../../../net/spells.ts";
+import { useTable } from "../../../net/table.ts";
 import { toast } from "../../../ui/Toast.tsx";
 import { CastDialog, type CastRequest } from "../../spells/CastDialog.tsx";
+import { duplicateOf, HomebrewBuilder } from "../../spells/HomebrewBuilder.tsx";
 import { SpellBrowserDialog } from "../../spells/SpellBrowserDialog.tsx";
 import { casterTokenOf } from "../../spells/useCaster.ts";
 import { overrideDerived, type SheetCtx } from "../context.ts";
@@ -24,6 +26,11 @@ export function SpellsTab({ ctx }: { ctx: SheetCtx }) {
   const [newSpell, setNewSpell] = useState({ name: "", level: 1 });
   const [casting, setCasting] = useState<CastRequest | null>(null);
   const [browsing, setBrowsing] = useState(false);
+  // A homebrew spell of one's own (§8.13 Homebrew builder): a player's goes to the DM as a proposal (AC-SPL-10).
+  const [brewing, setBrewing] = useState<{ spell: Spell | null; replaces?: string } | null>(null);
+  const homebrew = useSpells((st) => st.homebrew);
+  const me = useTable((st) => st.me);
+  const mine = homebrew.filter((h) => h.createdBy === me?.userId && h.status !== "active");
   if (!sc)
     return (
       <div className="flex flex-col items-start gap-2 text-14 text-paper-ink">
@@ -310,24 +317,42 @@ export function SpellsTab({ ctx }: { ctx: SheetCtx }) {
         open={browsing}
         onClose={() => setBrowsing(false)}
         title={`Add spells to ${ctx.sheet.core.name}`}
-        actions={(s) =>
-          sc.spells.some((x) => x.contentId === s.id || x.name.toLowerCase() === s.name.toLowerCase()) ? (
-            <span className="text-13 italic text-paper-muted">On the sheet</span>
-          ) : (
+        actions={(s) => (
+          <>
+            {sc.spells.some((x) => x.contentId === s.id || x.name.toLowerCase() === s.name.toLowerCase()) ? (
+              <span className="text-13 italic text-paper-muted">On the sheet</span>
+            ) : (
+              <button
+                type="button"
+                onClick={() =>
+                  void ctx.set(
+                    ["core", "spellcasting", "spells"],
+                    [...sc.spells, { name: s.name, level: s.level, prepared: false, contentId: s.id }],
+                  )
+                }
+                className={PAPER_BUTTON}
+              >
+                Add to the sheet
+              </button>
+            )}
             <button
               type="button"
-              onClick={() =>
-                void ctx.set(
-                  ["core", "spellcasting", "spells"],
-                  [...sc.spells, { name: s.name, level: s.level, prepared: false, contentId: s.id }],
-                )
-              }
-              className="h-8 min-h-[var(--touch-min)] rounded-[var(--radius-control)] border border-paper-ink/35 px-3 text-13 font-semibold text-paper-ink hover:border-paper-ink/60 hover:bg-parchment-deep"
+              onClick={() => {
+                setBrowsing(false);
+                setBrewing({ spell: duplicateOf(s, homebrew) });
+              }}
+              className={PAPER_BUTTON}
             >
-              Add to the sheet
+              Duplicate as homebrew
             </button>
-          )
-        }
+          </>
+        )}
+      />
+      <HomebrewBuilder
+        open={brewing !== null}
+        initial={brewing?.spell ?? null}
+        {...(brewing?.replaces ? { replaces: brewing.replaces } : {})}
+        onClose={() => setBrewing(null)}
       />
       {ro ? null : (
         <>
@@ -344,6 +369,27 @@ export function SpellsTab({ ctx }: { ctx: SheetCtx }) {
           >
             Add a spell
           </SectionTitle>
+          {/* Homebrew of one's own: a new spell, or one from the list duplicated — a player's goes to the DM. */}
+          <div className="flex flex-wrap items-center gap-2" data-testid="own-homebrew">
+            <button type="button" onClick={() => setBrewing({ spell: null })} className={PAPER_BUTTON}>
+              New homebrew spell…
+            </button>
+            {mine.map((h) => (
+              <button
+                key={h.id}
+                type="button"
+                data-testid="own-homebrew-row"
+                data-status={h.status}
+                onClick={() => setBrewing({ spell: h.spell, replaces: h.id })}
+                className="inline-flex min-h-[var(--touch-min)] items-center gap-1.5 text-13 text-paper-ink hover:text-wax"
+              >
+                {h.spell.name}
+                <span className="caps text-12 text-paper-muted">
+                  {h.status === "proposed" ? "waiting on the DM" : "not approved"}
+                </span>
+              </button>
+            ))}
+          </div>
           <div className="flex items-center gap-1.5">
             <input
               aria-label="New spell name"
@@ -372,3 +418,7 @@ export function SpellsTab({ ctx }: { ctx: SheetCtx }) {
     </div>
   );
 }
+
+/** A button on the sheet's parchment (the spell list's actions, homebrew). */
+const PAPER_BUTTON =
+  "h-8 min-h-[var(--touch-min)] rounded-[var(--radius-control)] border border-paper-ink/35 px-3 text-13 font-semibold text-paper-ink hover:border-paper-ink/60 hover:bg-parchment-deep";

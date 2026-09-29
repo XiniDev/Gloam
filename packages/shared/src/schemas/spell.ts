@@ -128,7 +128,11 @@ export const Obscurement = z.enum(["light", "heavy", "magicalDarkness"]);
 /** Trigger templates on a persistent effect (SPEC §12.3). The DC comes from the caster at cast time. */
 export const EffectTriggerTemplate = z
   .object({
-    when: z.enum(["enter", "startTurn", "endTurn", "per5ft"]),
+    when: z
+      .enum(["enter", "startTurn", "endTurn", "per5ft", "moveInto", "action"])
+      .describe(
+        "enter: a creature enters (or the area moves into its space); startTurn/endTurn: its own turn inside; per5ft: each 5 ft it moves inside; moveInto: the effect's object is moved into its space (Flaming Sphere); action: its caster's action repeats it at a point in the area (Call Lightning)",
+      ),
     save: z
       .object({
         ability: Ability,
@@ -139,6 +143,17 @@ export const EffectTriggerTemplate = z
       .optional(),
     damage: z.object({ formula: Formula, type: DamageType }).strict().optional(),
     condition: ConditionId.optional(),
+    conditionEnds: z
+      .enum(["turnEnd"])
+      .optional()
+      .describe("The condition lasts until the end of the creature's current turn (Stinking Cloud)"),
+    breaksConcentration: z
+      .boolean()
+      .optional()
+      .describe("A failed save also ends the creature's Concentration (Sleet Storm)"),
+    side: Ft.optional().describe(
+      "A wall's trigger reaches this far out of its damaging side as well as inside it (Wall of Fire: 10 ft)",
+    ),
     note: ShortText.optional(),
   })
   .strict();
@@ -195,6 +210,30 @@ export const EffectTemplate = z
     props: EffectPropsTemplate.default({}),
     triggers: z.array(EffectTriggerTemplate).max(8).default([]),
     attach: z.enum(["caster", "object", "point", "target"]).default("point"),
+    onAppear: z
+      .boolean()
+      .optional()
+      .describe(
+        "Creatures in the area when it appears make the spell's save (Moonbeam, Cloudkill, Wall of Fire); otherwise only its triggers act",
+      ),
+    oncePerTurn: z
+      .boolean()
+      .optional()
+      .describe(
+        "A creature makes its save only once per turn, whichever trigger (Spirit Guardians, Moonbeam)",
+      ),
+    bodyFt: Ft.optional().describe(
+      "An object's diameter at the effect's centre (Flaming Sphere: 5): its area reaches round the object, and it's what moves into a creature's space",
+    ),
+    strike: SpellArea.optional().describe(
+      "Where each strike lands, when that isn't the spell's area (Call Lightning's bolt, a 5-ft radius under the cloud): the cast's targets and each action's; the spell's area is then the effect itself",
+    ),
+    centre: z
+      .enum(["cast", "caster"])
+      .optional()
+      .describe(
+        "Where the effect's area is centred: the cast's point (default) or over its caster (Call Lightning)",
+      ),
     movement: z
       .object({
         by: z.enum(["caster", "dm"]),

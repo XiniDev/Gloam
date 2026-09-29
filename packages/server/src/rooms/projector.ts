@@ -17,6 +17,7 @@ import type {
 import {
   COLLECTIONS,
   type CollectionName,
+  type EffectControl,
   EffectS,
   type EffectView,
   LightS,
@@ -37,6 +38,7 @@ import {
 import { groundRadii } from "@gloam/shared/vision";
 import type { CampaignModel } from "../engine/model.ts";
 import type { EntityKind, Op } from "../engine/ops.ts";
+import { inSilence } from "../vision/sources.ts";
 
 /**
  * The state projector (SPEC §13.3): turns model entities into the plain view shapes and keeps the Colyseus state's
@@ -62,6 +64,8 @@ export function tokenView(t: TokenEntity, ctx: ProjectionCtx): TokenView {
   const actor = t.actorId ? ctx.model.get("actor", t.actorId) : undefined;
   const { stats, status } = effectiveTokenState(t, actor);
   const conditions = status.conditions.map((c) => c.id as string);
+  // Deafened while entirely inside a Silence (derived from where it stands, never stored).
+  if (!conditions.includes("deafened") && inSilence(ctx.model, t)) conditions.push("deafened");
   const shown = t.hpDisplay === "exact" || t.hpDisplay === "bar";
   const max = Math.max(1, stats.hpMax);
   const light = t.lightId ? ctx.model.get("light", t.lightId) : undefined;
@@ -297,12 +301,26 @@ export function effectView(e: EffectEntity, ctx: ProjectionCtx): EffectView {
     vfx: e.vfx,
     roundsLeft: "never" in e.expires ? -1 : Math.max(0, e.expires.round - round),
     name: e.name,
+    controlJson: JSON.stringify(effectControl(e)),
     dmHidden: e.visibility === "dm",
   };
   const tokenId = e.attachedTokenId ?? "";
   const casterId = e.source.casterTokenId ?? "";
   if (tokenId || casterId) v.link = { tokenId, casterId };
   return v;
+}
+
+/** How an effect moves and what its caster can do with it (the board's handle; `EffectControl`). */
+function effectControl(e: EffectEntity): EffectControl {
+  const out: EffectControl = {};
+  if (e.movement) {
+    out.moveBy = e.movement.by;
+    if (e.movement.maxFt !== undefined) out.maxFt = e.movement.maxFt;
+    if (e.movement.drift) out.drifts = true;
+  }
+  const act = e.triggers.find((t) => t.when === "action");
+  if (act) out.strike = act.strikeFt ?? 5;
+  return out;
 }
 
 /**
@@ -616,6 +634,14 @@ export class StateProjector {
       if (op.e === "light") {
         const l = m.get("light", op.id) ?? (op.k === "delete" ? (op.prev as LightEntity) : undefined);
         if (l?.tokenId) touch("tokens", l.tokenId, l.sceneId);
+      }
+      // A Silence came, went or moved: the creatures of its scene (Deafened while inside it).
+      if (op.e === "effect") {
+        const fx = (m.get("effect", op.id) ?? (op.k === "delete" ? op.prev : undefined)) as
+          | { sceneId?: string; props?: { silence?: boolean } }
+          | undefined;
+        if (fx?.props?.silence && fx.sceneId)
+          for (const t of m.inScene("token", fx.sceneId)) touch("tokens", t.id, t.sceneId);
       }
       if (op.e === "token") {
         const t = m.get("token", op.id);

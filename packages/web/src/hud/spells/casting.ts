@@ -4,7 +4,7 @@
  * and a narrative or self spell sent at once. Every cast is the server's `spell.cast`; the board, the card and the
  * log follow from what it sends back.
  */
-import { areaAtSlot, targetingKind } from "@gloam/shared/rules";
+import { areaAtSlot, attackRangeFt, castArea, targetingKind } from "@gloam/shared/rules";
 import type { Spell } from "@gloam/shared/schemas";
 import { create } from "zustand";
 import { castSpell, startAttack } from "../../net/spells.ts";
@@ -23,8 +23,7 @@ export function castPayload(t: Targeting, endConcentration: boolean) {
   const kind = targetingKind(t.spell);
   const caster = boardData(useEntities.getState()).tokens.get(t.casterTokenId);
   const at = t.at ?? caster?.pos ?? { x: 0, y: 0 };
-  const alt = t.alt !== undefined ? t.spell.areaAlternatives?.[t.alt] : undefined;
-  const area = alt?.area ?? t.spell.area;
+  const area = castArea(t.spell, t.alt);
   return {
     casterTokenId: t.casterTokenId,
     spellId: t.spell.id,
@@ -82,7 +81,7 @@ export async function commitCast(t: Targeting, endConcentration = false): Promis
 
 /** A sheet's attack as the board aims it: a creature (or more, for more swings) to click, then the card. */
 export function beginAttack(casterTokenId: string, index: number, name: string, rangeText?: string): void {
-  const ft = Number(/(\d+)\s*(?:ft|feet)/i.exec(rangeText ?? "")?.[1] ?? 5);
+  const ft = attackRangeFt(rangeText);
   const spell: Spell = {
     id: `attack-${index}`,
     name,
@@ -173,7 +172,8 @@ export async function beginCast(
   }
   useTargeting.getState().start(base);
   // An emanation stands on its caster: nothing to aim, only what it takes to confirm.
-  const area = spell.area ? areaAtSlot(spell.area, spell.level, opts.level) : null;
+  const cast = castArea(spell);
+  const area = cast ? areaAtSlot(cast, spell.level, opts.level) : null;
   if (area?.shape === "emanation") {
     const c = boardData(useEntities.getState()).tokens.get(casterTokenId);
     if (c) useTargeting.getState().set({ at: { ...c.pos } });

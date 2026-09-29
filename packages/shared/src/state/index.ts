@@ -198,6 +198,7 @@ export const EffectS = schema(
     vfx: t.string(),
     roundsLeft: t.int16(),
     name: t.string(),
+    controlJson: t.string(), // how it moves and what its caster can do with it (EffectControl)
     link: t.ref(LinkS).view(TAG_LINK), // attached token and caster, only while perceivable
     /** DMs: hidden from the players (the DM's own). */
     dmHidden: t.boolean().view(TAG_DM),

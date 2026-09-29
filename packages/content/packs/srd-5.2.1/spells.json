@@ -6980,7 +6980,7 @@
           "note": "Within 5 feet of the sphere."
         },
         {
-          "when": "enter",
+          "when": "moveInto",
           "save": {
             "ability": "dex",
             "onSuccess": "half"
@@ -6993,6 +6993,7 @@
         }
       ],
       "attach": "object",
+      "bodyFt": 5,
       "movement": {
         "by": "caster",
         "maxFt": 30,
@@ -8040,6 +8041,8 @@
         }
       ],
       "attach": "point",
+      "onAppear": true,
+      "oncePerTurn": true,
       "movement": {
         "by": "caster",
         "maxFt": 60,
@@ -9601,8 +9604,26 @@
     ],
     "effect": {
       "props": {},
-      "triggers": [],
-      "attach": "point"
+      "triggers": [
+        {
+          "when": "action",
+          "save": {
+            "ability": "dex",
+            "onSuccess": "half"
+          },
+          "damage": {
+            "formula": "3d10",
+            "type": "lightning"
+          },
+          "note": "A Magic action: another bolt at a point under the cloud — creatures within 5 feet of it save."
+        }
+      ],
+      "attach": "point",
+      "strike": {
+        "shape": "sphere",
+        "radius": 5
+      },
+      "centre": "caster"
     },
     "vfx": "lightning",
     "source": {
@@ -11301,6 +11322,7 @@
             "onSuccess": "none"
           },
           "condition": "prone",
+          "breaksConcentration": true,
           "note": "First time it enters on a turn. On a failure it also loses Concentration."
         },
         {
@@ -11310,6 +11332,7 @@
             "onSuccess": "none"
           },
           "condition": "prone",
+          "breaksConcentration": true,
           "note": "On a failure it also loses Concentration."
         }
       ],
@@ -11615,7 +11638,8 @@
           "note": "Necrotic instead if you are evil. Once per turn; designated creatures are unaffected."
         }
       ],
-      "attach": "caster"
+      "attach": "caster",
+      "oncePerTurn": true
     },
     "vfx": "radiant",
     "source": {
@@ -11704,6 +11728,7 @@
             "onSuccess": "none"
           },
           "condition": "poisoned",
+          "conditionEnds": "turnEnd",
           "note": "Poisoned until the end of the current turn; while Poisoned this way it can’t take an action or a Bonus Action."
         }
       ],
@@ -14435,10 +14460,12 @@
             "formula": "5d8",
             "type": "fire"
           },
+          "side": 10,
           "note": "Inside the wall or within 10 feet of its damaging side. No save."
         }
       ],
-      "attach": "point"
+      "attach": "point",
+      "onAppear": true
     },
     "vfx": "fire",
     "source": {
@@ -14825,6 +14852,8 @@
         }
       ],
       "attach": "point",
+      "onAppear": true,
+      "oncePerTurn": true,
       "movement": {
         "by": "caster",
         "drift": {

@@ -1,4 +1,4 @@
-import { areaAtSlot, SPELL_LEVEL_NAMES, targetingKind } from "@gloam/shared/rules";
+import { areaAtSlot, castArea, SPELL_LEVEL_NAMES, targetingKind } from "@gloam/shared/rules";
 import { useMemo, useRef } from "react";
 import { aimOf, barriersOfView } from "../../board/cast/TargetingLayer.tsx";
 import { useTable } from "../../net/table.ts";
@@ -7,7 +7,7 @@ import { useTargeting } from "../../state/targeting.ts";
 import { Button } from "../../ui/Button.tsx";
 import { Toggle } from "../../ui/controls.tsx";
 import { Dialog } from "../../ui/Dialog.tsx";
-import { insetMeasures, useCover, useIsPhone, useMeasuredInset } from "../insets.ts";
+import { insetMeasures, useCover, useHudInsets, useIsPhone, useMeasuredInset } from "../insets.ts";
 import { commitCast, useConcentrationAsk } from "./casting.ts";
 
 /**
@@ -24,6 +24,8 @@ export function TargetingBar() {
   const me = useTable((s) => s.me);
   const dm = me?.role === "dm" || me?.role === "admin";
   const phone = useIsPhone();
+  const hudLeft = useHudInsets((s) => s.left);
+  const hudRight = useHudInsets((s) => s.right);
   const ref = useRef<HTMLDivElement>(null);
   useMeasuredInset("bottom", ref, insetMeasures.bottom, t !== null);
   useCover("targeting", ref, t !== null);
@@ -38,7 +40,7 @@ export function TargetingBar() {
   const kind = targetingKind(spell);
   const level = spell.level === 0 ? "cantrip" : `${SPELL_LEVEL_NAMES[t.level]} level`;
   const alt = t.alt !== undefined ? spell.areaAlternatives?.[t.alt] : undefined;
-  const area = alt?.area ?? spell.area;
+  const area = castArea(spell, t.alt);
   const scaled = area ? areaAtSlot(area, spell.level, t.level) : null;
   const self = spell.range.kind === "self";
   // Include myself matters where the area starts at its caster: a cone, line or cube from them, an emanation.
@@ -54,14 +56,16 @@ export function TargetingBar() {
           : `Click where it goes${scaled && scaled.shape !== "sphere" && scaled.shape !== "cylinder" ? " — [ and ] or the wheel to turn it" : ""}`;
   return (
     <>
+      {/* Centred in the board's clear width — between the toolbar and the dock or its open page (the sheet it was
+          cast from stays open beside it), never under them (as the action bar, critic P8 r2 B1). */}
       <div
-        className="pointer-events-none absolute bottom-4 left-1/2 z-40 flex -translate-x-1/2 justify-center"
-        style={{ width: "min(720px, calc(100vw - 24px))" }}
+        className="pointer-events-none absolute bottom-4 z-40 flex justify-center"
+        style={phone ? { left: 12, right: 12 } : { left: hudLeft, right: hudRight }}
       >
         <div
           ref={ref}
           data-testid="targeting-bar"
-          className={`panel pointer-events-auto flex items-center gap-3 border-brass/60 px-3 py-2 ${phone ? "flex-col items-stretch" : ""}`}
+          className={`panel pointer-events-auto flex w-[min(720px,100%)] items-center gap-3 border-brass/60 px-3 py-2 ${phone ? "flex-col items-stretch" : ""}`}
         >
           <span className="flex min-w-0 flex-1 flex-col">
             <span className="display truncate text-18 leading-tight text-bone">
@@ -70,7 +74,11 @@ export function TargetingBar() {
             <span className="text-13 text-muted" data-testid="targeting-hint">
               {hint}
             </span>
-            {aim && !aim.ok && aim.why ? (
+            {kind === "creatures" && t.refusal ? (
+              <span className="text-13 text-ember" data-testid="targeting-why">
+                {t.refusal}
+              </span>
+            ) : aim && !aim.ok && aim.why ? (
               <span className="text-13 text-ember" data-testid="targeting-why">
                 {aim.why}
               </span>

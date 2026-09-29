@@ -92,7 +92,8 @@ export function shell(o: {
       uFacet: { value: o.facet ? 1 : 0 },
     },
   });
-  const m = new Mesh(new IcosahedronGeometry(1, 4), mat);
+  // Finer for a big one (a 20-ft cloud's outline showed its facets at detail 4).
+  const m = new Mesh(new IcosahedronGeometry(1, o.radius > 8 ? 5 : 4), mat);
   m.renderOrder = 11;
   m.raycast = () => {};
   m.frustumCulled = false;
@@ -109,19 +110,37 @@ uniform float uTime; uniform float uLife; uniform float uRadius; uniform vec3 uC
 uniform float uLoop; uniform float uRunes; uniform float uWidth;
 varying vec2 vUv; varying vec2 vP;
 float hash(float x) { return fract(sin(x * 127.1) * 43758.5453); }
+/** A band of width w round r0, anti-aliased by the pixel's footprint (no hard, stepped edges at any zoom). */
+float line(float r, float r0, float w) {
+  float aa = max(fwidth(r), 1e-4);
+  return 1.0 - smoothstep(w, w + aa * 1.5, abs(r - r0));
+}
 void main() {
   float u = uLoop > 0.5 ? fract(uTime * 0.25) : clamp(uTime / uLife, 0.0, 1.0);
   float r = length(vP) / uRadius;
-  // A ring sweeping out (a shockwave, frost) or standing (a runic circle) with a band of glyph ticks.
-  float front = uRunes > 0.5 ? 0.92 : (uLoop > 0.5 ? 0.35 + 0.6 * u : 0.15 + 0.85 * (1.0 - pow(1.0 - u, 2.0)));
-  float band = 1.0 - smoothstep(0.0, uWidth, abs(r - front));
-  float inner = uRunes > 0.5 ? (1.0 - smoothstep(0.0, 0.012, abs(r - 0.78))) * 0.8 : 0.0;
-  float ang = atan(vP.y, vP.x) + uTime * (uRunes > 0.5 ? 0.25 : 0.0);
-  float ticks = uRunes > 0.5 ? step(0.55, hash(floor(ang * 9.549))) * step(0.8, r) * step(r, 0.9) : 0.0;
+  // A ring sweeping out (a shockwave, frost), or standing: a runic circle — an outer and an inner line and, between
+  // them, a slow-turning band of glyphs (short strokes and dots, each anti-aliased), in the preset's colour.
+  float front = uRunes > 0.5 ? 0.93 : (uLoop > 0.5 ? 0.35 + 0.6 * u : 0.15 + 0.85 * (1.0 - pow(1.0 - u, 2.0)));
+  float band = uRunes > 0.5 ? line(r, front, 0.008) : 1.0 - smoothstep(0.0, uWidth, abs(r - front));
+  float inner = uRunes > 0.5 ? line(r, 0.77, 0.005) * 0.7 : 0.0;
+  float glyphs = 0.0;
+  if (uRunes > 0.5) {
+    float ang = atan(vP.y, vP.x) + uTime * 0.12;
+    float seg = ang * 7.639; // 48 cells round the circle
+    float id = floor(seg);
+    float c = fract(seg) - 0.5;
+    float h = hash(id + 11.0);
+    float across = max(fwidth(seg), 1e-4);
+    // A stroke across the band (most cells), a dot (some), a gap (a few).
+    float stroke = (1.0 - smoothstep(0.06, 0.06 + across * 1.5, abs(c))) * line(r, 0.85, 0.035);
+    float dotted = 1.0 - smoothstep(0.1, 0.1 + across * 1.5, length(vec2(c, (r - 0.85) * 7.6)));
+    glyphs = h < 0.15 ? 0.0 : h < 0.45 ? dotted : stroke;
+  }
   float fade = uLoop > 0.5 ? (uRunes > 0.5 ? 1.0 : 1.0 - u) : 1.0 - smoothstep(0.55, 1.0, u);
-  float a = max(max(band, inner), ticks * 0.9) * fade * uOpacity;
+  float a = max(max(band, inner), glyphs * 0.75) * fade * uOpacity;
   if (a < 0.004) discard;
-  gl_FragColor = vec4(mix(uGlow, uCore, band), a);
+  vec3 col = uRunes > 0.5 ? mix(uGlow, uCore, band * 0.5) : mix(uGlow, uCore, band);
+  gl_FragColor = vec4(col, a);
   #include <colorspace_fragment>
 }`;
 
@@ -389,4 +408,109 @@ export function bolt(
 /** A ring outline of an area (a lasting one's edge), for shapes the other pieces don't draw. */
 export function ringGeometry(inner: number, outer: number): RingGeometry {
   return new RingGeometry(inner, outer, 96);
+}
+
+// ── curtains ─────────────────────────────────────────────────────────────────────────────────────────────
+
+const CURTAIN_VERT = /* glsl */ `
+attribute float along;
+varying vec2 vUv; varying float vAlong;
+void main() {
+  vUv = uv; vAlong = along;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}`;
+
+const CURTAIN_FRAG = /* glsl */ `
+uniform float uTime; uniform vec3 uCore; uniform vec3 uGlow; uniform float uOpacity;
+varying vec2 vUv; varying float vAlong;
+${NOISE}
+void main() {
+  // Tongues of flame rising along the line: noise scrolled upward, thinning toward the top.
+  float n = noise(vec3(vAlong * 0.35, vUv.y * 2.2 - uTime * 1.6, uTime * 0.3)) * 0.65
+    + noise(vec3(vAlong * 0.9, vUv.y * 5.0 - uTime * 3.1, 7.0)) * 0.35;
+  float h = vUv.y;
+  float body = smoothstep(h * 1.15 - 0.05, h * 1.15 + 0.25, n) * (1.0 - smoothstep(0.55, 1.0, h));
+  float a = body * uOpacity;
+  if (a < 0.01) discard;
+  // Orange-bodied flames, only their roots near white (additive: a white body burns out to a line).
+  vec3 col = mix(mix(uCore, uGlow, 0.55), uGlow, smoothstep(0.05, 0.6, h));
+  gl_FragColor = vec4(col, a);
+  #include <colorspace_fragment>
+}`;
+
+/**
+ * A curtain of flame along a line (Wall of Fire, §24.5 "flame curtain along the wall line"): a vertical ribbon `height`
+ * ft tall over the wall's points, tongues of fire rising in its shader — one draw, whatever the tier.
+ */
+export function curtain(o: {
+  points: { x: number; y: number }[];
+  closed?: boolean;
+  height: number;
+  core: string;
+  glow: string;
+  opacity?: number;
+  /** A flat ribbon on the ground instead, this wide (ft): the line burning, seen from above. */
+  floor?: number;
+}): Mesh {
+  const pts =
+    o.closed && o.points.length > 2 ? [...o.points, o.points[0] as { x: number; y: number }] : o.points;
+  const n = pts.length;
+  const pos = new Float32Array(n * 2 * 3);
+  const uv = new Float32Array(n * 2 * 2);
+  const along = new Float32Array(n * 2);
+  const index: number[] = [];
+  let d = 0;
+  for (let i = 0; i < n; i++) {
+    const p = pts[i] as { x: number; y: number };
+    if (i > 0) {
+      const q = pts[i - 1] as { x: number; y: number };
+      d += Math.hypot(p.x - q.x, p.y - q.y);
+    }
+    // The ribbon's across: up (a curtain), or sideways on the floor (the segment's normal).
+    const q = pts[Math.min(n - 1, i + 1)] as { x: number; y: number };
+    const r = pts[Math.max(0, i - 1)] as { x: number; y: number };
+    const dx = q.x - r.x;
+    const dy = q.y - r.y;
+    const len = Math.hypot(dx, dy) || 1;
+    for (const k of [0, 1] as const) {
+      const v = i * 2 + k;
+      if (o.floor)
+        pos.set(
+          [p.x + (-dy / len) * o.floor * (k - 0.5), 0.12, p.y + (dx / len) * o.floor * (k - 0.5)],
+          v * 3,
+        );
+      else pos.set([p.x, k ? o.height : 0.1, p.y], v * 3);
+      // On the floor the flames' "height" runs across it, bright down the middle.
+      uv.set([d, o.floor ? Math.abs(k - 0.5) * 0.6 : k], v * 2);
+      along[v] = d;
+    }
+    if (i < n - 1) {
+      const a = i * 2;
+      index.push(a, a + 2, a + 1, a + 1, a + 2, a + 3);
+    }
+  }
+  const g = new BufferGeometry();
+  g.setAttribute("position", new BufferAttribute(pos, 3));
+  g.setAttribute("uv", new BufferAttribute(uv, 2));
+  g.setAttribute("along", new BufferAttribute(along, 1));
+  g.setIndex(index);
+  g.computeBoundingSphere();
+  const mat = new ShaderMaterial({
+    vertexShader: CURTAIN_VERT,
+    fragmentShader: CURTAIN_FRAG,
+    transparent: true,
+    depthWrite: false,
+    side: DoubleSide,
+    blending: AdditiveBlending,
+    uniforms: {
+      uTime: { value: 0 },
+      uCore: { value: new Color(o.core) },
+      uGlow: { value: new Color(o.glow) },
+      uOpacity: { value: o.opacity ?? 0.9 },
+    },
+  });
+  const m = new Mesh(g, mat);
+  m.renderOrder = 11;
+  m.raycast = () => {};
+  return m;
 }

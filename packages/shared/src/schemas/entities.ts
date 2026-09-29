@@ -167,6 +167,8 @@ export interface TokenStatusT {
     untilRound?: number;
     sourceTokenId?: string;
     castId?: string;
+    /** It ends when this creature's turn ends (Stinking Cloud's Poisoned: "until the end of the current turn"). */
+    endsWithTurnOf?: string;
   }[];
   markers: {
     id: MarkerId | `custom:${string}`;
@@ -297,13 +299,25 @@ export interface EffectProps {
   seeInvisible?: boolean;
   /** Creatures its triggers and slowing leave alone (Spirit Guardians' "designated creatures"). */
   exempt?: string[];
+  /** One save a turn for a creature, whichever trigger (Spirit Guardians, Moonbeam, Cloudkill). */
+  oncePerTurn?: boolean;
+  /** The object at its centre (Flaming Sphere's 5-ft sphere), its diameter: what moves into a creature's space. */
+  bodyFt?: Ft;
 }
 
 export interface EffectTrigger {
-  when: "enter" | "startTurn" | "endTurn" | "per5ft";
+  when: "enter" | "startTurn" | "endTurn" | "per5ft" | "moveInto" | "action";
   save?: { ability: Ability; dc: number; onSuccess: "half" | "none" | "special" };
   damage?: { formula: string; type: DamageType };
   condition?: ConditionId;
+  /** The condition lasts until the end of the creature's current turn (Stinking Cloud). */
+  conditionEnds?: "turnEnd";
+  /** A failed save also ends the creature's Concentration (Sleet Storm). */
+  breaksConcentration?: boolean;
+  /** A wall's trigger reaches this far out of its damaging side as well (Wall of Fire: 10 ft). */
+  sideFt?: Ft;
+  /** An action trigger's strike: its radius round the point (Call Lightning's bolt: 5 ft). */
+  strikeFt?: Ft;
   note?: string;
 }
 

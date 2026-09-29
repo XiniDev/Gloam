@@ -158,6 +158,18 @@ export interface ZoneView {
   dmJson?: string;
 }
 
+/**
+ * How an effect moves and what its caster can do with it (§8.13 "movement rules"), as the board offers it: moved by
+ * its caster (up to `maxFt` a move: Moonbeam 60, Flaming Sphere 30) or only by the DM; drifting on its own
+ * (Cloudkill); struck again at a point in it (`strike`: Call Lightning's bolt radius).
+ */
+export interface EffectControl {
+  moveBy?: "caster" | "dm";
+  maxFt?: number;
+  drifts?: boolean;
+  strike?: number;
+}
+
 export interface EffectView {
   id: string;
   shapeJson: string;
@@ -165,6 +177,8 @@ export interface EffectView {
   vfx: string;
   roundsLeft: number;
   name: string;
+  /** JSON EffectControl. */
+  controlJson: string;
   link?: LinkView;
   /** DMs: hidden from the players. */
   dmHidden?: boolean;
