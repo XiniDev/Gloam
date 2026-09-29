@@ -70,7 +70,9 @@ function onMessage(type: string, payload: unknown): void {
         tally?: { name: string; dealt: number; taken: number }[];
       };
       toast.info(
-        `Combat ended · ${p.rounds} ${p.rounds === 1 ? "round" : "rounds"}`,
+        p.rounds > 0
+          ? `Combat ended · ${p.rounds} ${p.rounds === 1 ? "round" : "rounds"}`
+          : "Combat called off",
         createElement(CombatSummary, { downed: p.downed ?? [], tally: p.tally ?? [] }),
       );
       s.set({ turn: null });

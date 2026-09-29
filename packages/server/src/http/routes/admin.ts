@@ -4,6 +4,7 @@ import type { Express } from "express";
 import { z } from "zod";
 import type { ServerContext } from "../../context.ts";
 import { dirSize } from "../../dataDir.ts";
+import { createLanternCrypt } from "../../demo/lanternCrypt.ts";
 import { LOCAL_ONLY_SETTINGS, type SettingKey, type Settings } from "../../services/settings.ts";
 import { body, ok, requireAdmin, requireLocal, route } from "../helpers.ts";
 
@@ -200,6 +201,21 @@ export function adminRoutes(app: Express, ctx: ServerContext): void {
       const c = ctx.campaigns.create({ name: b.name, rulesPack: defaults.rulesPack, units: defaults.units });
       if (b.select || !ctx.settings.get().selectedCampaignId) await selectCampaign(ctx, c.id);
       ok(res, { id: c.id });
+    }),
+  );
+  // The demo campaign (SPEC §8.24): the Lantern Crypt, made by code, selected for the table.
+  app.post(
+    "/api/admin/campaigns/demo",
+    route(async (req, res) => {
+      const a = requireAdmin(req);
+      const { campaignId } = await createLanternCrypt(ctx, {
+        userId: a.user.id,
+        name: a.user.displayName,
+        role: "admin",
+        lobby: false,
+      });
+      if (!ctx.table.isOpen) await selectCampaign(ctx, campaignId);
+      ok(res, { id: campaignId });
     }),
   );
   app.post(

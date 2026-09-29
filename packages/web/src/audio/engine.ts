@@ -66,6 +66,11 @@ class AudioEngine {
   private voices = new Map<Channel, number[]>();
   /** Test builds: a meter on each channel's output (after its fader) and on the master's. */
   private meters = new Map<Channel, AnalyserNode>();
+  /** Music's input, before its fader, and a spectrum on it: the DM's Sound panel shows what's playing moving (even
+   * with music turned down on this page). */
+  private musicIn: GainNode | null = null;
+  private musicTap: AnalyserNode | null = null;
+  private spectrum: Uint8Array<ArrayBuffer> | null = null;
   private unlockBound = false;
 
   /** Creates the context lazily (first call happens inside a user gesture wherever possible). */
@@ -108,6 +113,14 @@ class AudioEngine {
         this.reverbTaps.set(c, tap);
       }
     }
+    const musicIn = ctx.createGain();
+    musicIn.connect(this.channels.get("music") as GainNode);
+    const tap = ctx.createAnalyser();
+    tap.fftSize = 256;
+    tap.smoothingTimeConstant = 0.75;
+    musicIn.connect(tap);
+    this.musicIn = musicIn;
+    this.musicTap = tap;
     if (__GLOAM_TEST__)
       for (const c of CHANNELS) {
         const a = ctx.createAnalyser();
@@ -171,7 +184,34 @@ class AudioEngine {
 
   /** Where a music or ambience source connects: its channel's input. */
   input(c: "music" | "ambience"): GainNode | null {
+    if (c === "music") {
+      this.ensure();
+      return this.musicIn;
+    }
     return this.channel(c);
+  }
+
+  /**
+   * The music's level now in `n` bands, low to high, each 0…1 (before the fader) — null while there's no sound here
+   * yet. Never starts the sound itself.
+   */
+  musicBands(n: number): number[] | null {
+    const tap = this.musicTap;
+    if (!tap || !this.ctx) return null;
+    if (!this.spectrum) this.spectrum = new Uint8Array(tap.frequencyBinCount);
+    const d = this.spectrum;
+    tap.getByteFrequencyData(d);
+    // Bands on a rough log scale over the lower half of the bins (where music's energy is).
+    const out: number[] = [];
+    const top = d.length / 2;
+    for (let b = 0; b < n; b++) {
+      const lo = Math.floor(top ** (b / n));
+      const hi = Math.max(lo + 1, Math.floor(top ** ((b + 1) / n)));
+      let sum = 0;
+      for (let i = lo; i < hi; i++) sum += d[i] ?? 0;
+      out.push(sum / (hi - lo) / 255);
+    }
+    return out;
   }
 
   /** Loopable 10-s noise buffers (white, pink, brown), generated once (SPEC §25.4). */

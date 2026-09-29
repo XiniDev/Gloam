@@ -11,6 +11,9 @@ const FUNC_COLOR = /\b(?:rgba?|hsla?|oklch|oklab|lab|lch)\(/g;
 const FONT_FAMILY = /font-family\s*:/g;
 const RAW_RADIUS = /\brounded(?:-[trblse]{1,2})?-\[\d+(?:\.\d+)?px\]/g;
 const RAW_TEXT = /\btext-\[\d+(?:\.\d+)?(?:px|rem|em)\]/g;
+/** The type scale (tokens.css @theme): a `text-<n>` off it generates no CSS at all, silently. */
+const TYPE_SCALE = new Set([12, 13, 14, 16, 18, 22, 28, 36, 48, 64]);
+const SCALE_TEXT = /(?<![\w-])(?:[a-z0-9-]+:)*text-(\d+)(?![\w-])/g;
 const RAW_DURATION = /\b(?:duration|delay)-\[\d+m?s\]/g;
 const RAW_SPACING =
   /\b(?:-?(?:p|px|py|pt|pr|pb|pl|m|mx|my|mt|mr|mb|ml|gap|gap-x|gap-y|space-x|space-y))-\[(\d+(?:\.\d+)?)px\]/g;
@@ -29,6 +32,12 @@ export function scan(text, rel) {
       problems.push(`${at}: raw radius ${m[0]} (use rounded-chip / -control / -panel / -full)`);
     for (const m of line.matchAll(RAW_TEXT))
       problems.push(`${at}: raw type size ${m[0]} (use the text-12 … text-64 scale)`);
+    if (!css)
+      for (const m of line.matchAll(SCALE_TEXT))
+        if (!TYPE_SCALE.has(Number(m[1])))
+          problems.push(
+            `${at}: text-${m[1]} isn't on the type scale (12 13 14 16 18 22 28 36 48 64) — it does nothing`,
+          );
     for (const m of line.matchAll(RAW_DURATION))
       problems.push(`${at}: raw duration ${m[0]} (use var(--dur-*))`);
     for (const m of line.matchAll(RAW_SPACING))

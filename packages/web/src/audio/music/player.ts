@@ -60,6 +60,17 @@ class TrackSource implements Source {
   private timer: ReturnType<typeof setInterval>;
   private nudging = false;
   private lastDrift = 0;
+  /**
+   * How far behind a seek lands (ms), learned: an element set to a time and told to play starts a moment later (its
+   * decoder, a busy page), so the next seek aims that much ahead.
+   */
+  private lead = 0;
+  /** Until when (performance.now) a fresh start is checked closely, and how many re-seeks it may take. */
+  private settleUntil = 0;
+  private settleSeeks = 0;
+  private lastCorrect = 0;
+  /** When the last seek finished (performance.now): a start is judged once it has been playing a moment. */
+  private seekedAt = 0;
 
   private readonly ctx: AudioContext;
   private readonly loudness: (id: string) => number | undefined;
@@ -80,7 +91,12 @@ class TrackSource implements Source {
       .connect(this.bus)
       .connect(audio.input("music") as GainNode);
     this.update(m, a);
-    this.timer = setInterval(() => this.correct(), 2000);
+    // (A seek done, or playback begun after one: either way the clock restarts there.)
+    for (const ev of ["seeked", "playing"])
+      this.el.addEventListener(ev, () => {
+        this.seekedAt = performance.now();
+      });
+    this.timer = setInterval(() => this.tick(), 250);
   }
 
   /** Where it should be now (ms into the track). */
@@ -98,6 +114,7 @@ class TrackSource implements Source {
       this.ctx.currentTime,
       0.05,
     );
+    this.settleSeeks = 0;
     if (m.paused) {
       fade(this.ctx, this.bus.gain, 0, 0.3);
       setTimeout(() => {
@@ -112,10 +129,34 @@ class TrackSource implements Source {
   private seek(): void {
     const go = () => {
       const d = Number.isFinite(this.el.duration) ? this.el.duration : Number.POSITIVE_INFINITY;
-      this.el.currentTime = Math.max(0, Math.min(this.expected() / 1000, d - 0.05));
+      this.el.currentTime = Math.max(0, Math.min((this.expected() + this.lead) / 1000, d - 0.05));
+      this.settleUntil = performance.now() + 5000;
     };
     if (this.el.readyState >= 1) go();
     else this.el.addEventListener("loadedmetadata", go, { once: true });
+  }
+
+  /**
+   * Every 250 ms. For a few seconds after a seek the start is checked closely: landed more than 40 ms off, it seeks
+   * again, aiming ahead by what the last one lost (at most three times — a seek's own glitch is inaudible under the
+   * fade-in, a run of them isn't). After that, the 2-s drift correction.
+   */
+  private tick(): void {
+    if (this.m.paused || this.el.paused || this.el.readyState < 2) return;
+    const now = performance.now();
+    if (now < this.settleUntil && this.settleSeeks < 3) {
+      if (now - this.seekedAt < 400) return;
+      const drift = this.el.currentTime * 1000 - this.expected();
+      if (Math.abs(drift) > 40) {
+        this.lead = Math.min(1500, Math.max(0, this.lead - drift));
+        this.settleSeeks++;
+        this.seek();
+      }
+      return;
+    }
+    if (now - this.lastCorrect < 2000) return;
+    this.lastCorrect = now;
+    this.correct();
   }
 
   /** Every 2 s: nudged back into step past 50 ms, sought past 500 ms (sound.md §4.3). */

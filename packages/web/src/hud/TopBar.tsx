@@ -38,7 +38,7 @@ function Initials({ p, mine }: { p: PresenceView; mine: boolean }) {
       ) : (
         portrait
       )}
-      {p.handRaised ? <HandBadge className="absolute -right-1.5 -top-1.5" /> : null}
+      {p.handRaised ? <HandBadge className="absolute -right-2 -top-2" /> : null}
     </div>
   );
 }
@@ -65,9 +65,10 @@ export function TopBar() {
         ref={title}
         className="pointer-events-auto flex min-w-0 items-center gap-2 rounded-[var(--radius-control)] bg-[var(--scrim-soft)] px-3 py-1.5 backdrop-blur-[3px]"
       >
-        <Sparkle size={16} />
+        {/* A phone gives the mark's room to the name: one line whenever it fits (critic P11 r1 I10). */}
+        {phone ? null : <Sparkle size={16} />}
         <h1
-          // A phone: two lines rather than the name cut short (critic P8 r1 #30).
+          // A phone: two lines rather than the name cut short (critic P8 r1 #30) — only when one won't hold it.
           className={phone ? "line-clamp-2 text-14 leading-tight text-bone" : "truncate text-18 text-bone"}
           title={name || undefined}
         >

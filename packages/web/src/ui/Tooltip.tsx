@@ -6,13 +6,25 @@ import {
   type Ref,
   useEffect,
   useId,
+  useLayoutEffect,
   useRef,
   useState,
 } from "react";
 import { createPortal } from "react-dom";
 import { KeyHint } from "./KeyHint.tsx";
 
-/** SPEC §28 Tooltip: 400 ms delay, shows a shortcut hint; positioned above the trigger, clamped to the viewport. */
+/** Where a tooltip stands beside its trigger. */
+type Side = "above" | "below" | "left" | "right";
+/** Room kept between a tooltip and the screen's edge, and between it and its trigger (px). */
+const MARGIN = 8;
+/** A trigger this close to the screen's left or right edge is on a rail: its tooltip stands beside it (px). */
+const RAIL = 72;
+
+/**
+ * SPEC §28 Tooltip: 400 ms delay, shows a shortcut hint. Above the trigger — below one at the top of the screen, and
+ * beside one on a rail at the screen's side (the dock's rail, the toolbar), centred on it — measured and clamped
+ * inside the screen. It goes the moment the trigger is pressed, and stands under the toasts (critic P11 r1 B5).
+ */
 export function Tooltip({
   label,
   shortcut,
@@ -23,7 +35,8 @@ export function Tooltip({
   children: ReactElement;
 }) {
   const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState<{ x: number; y: number; below: boolean } | null>(null);
+  const [pos, setPos] = useState<{ x: number; y: number; side: Side } | null>(null);
+  const tip = useRef<HTMLDivElement>(null);
   const timer = useRef<number | null>(null);
   const ref = useRef<HTMLElement | null>(null);
   const id = useId();
@@ -36,8 +49,13 @@ export function Tooltip({
       const el = ref.current;
       if (!el) return;
       const r = el.getBoundingClientRect();
-      const below = r.top < 56;
-      setPos({ x: r.left + r.width / 2, y: below ? r.bottom + 8 : r.top - 8, below });
+      const cy = r.top + r.height / 2;
+      if (r.right > window.innerWidth - RAIL && r.top >= 56)
+        setPos({ x: r.left - MARGIN, y: cy, side: "left" });
+      else if (r.left < RAIL && r.top >= 56 && r.width < RAIL)
+        setPos({ x: r.right + MARGIN, y: cy, side: "right" });
+      else if (r.top < 56) setPos({ x: r.left + r.width / 2, y: r.bottom + MARGIN, side: "below" });
+      else setPos({ x: r.left + r.width / 2, y: r.top - MARGIN, side: "above" });
       setOpen(true);
     }, 400);
   };
@@ -51,6 +69,19 @@ export function Tooltip({
     },
     [],
   );
+  // Placed by its own measured size, wholly inside the screen.
+  useLayoutEffect(() => {
+    const el = tip.current;
+    if (!open || !pos || !el) return;
+    const w = el.offsetWidth;
+    const h = el.offsetHeight;
+    const x = pos.side === "left" ? pos.x - w : pos.side === "right" ? pos.x : pos.x - w / 2;
+    const y = pos.side === "above" ? pos.y - h : pos.side === "below" ? pos.y : pos.y - h / 2;
+    const clamp = (v: number, max: number) => Math.round(Math.min(Math.max(v, MARGIN), max - MARGIN));
+    el.style.left = `${clamp(x, window.innerWidth - w)}px`;
+    el.style.top = `${clamp(y, window.innerHeight - h)}px`;
+    el.style.visibility = "visible";
+  }, [open, pos]);
 
   if (!isValidElement(children)) return <>{children}</>;
   // The trigger keeps its own ref and handlers (a Menu measures its button through its ref): composed, not replaced.
@@ -58,6 +89,7 @@ export function Tooltip({
     ref?: Ref<HTMLElement>;
     onPointerEnter?: (e: unknown) => void;
     onPointerLeave?: (e: unknown) => void;
+    onPointerDown?: (e: unknown) => void;
     onFocus?: (e: unknown) => void;
     onBlur?: (e: unknown) => void;
   };
@@ -73,6 +105,11 @@ export function Tooltip({
     },
     onPointerLeave: (e: unknown) => {
       own.onPointerLeave?.(e);
+      hide();
+    },
+    // Pressed: what it does is what's wanted now, not its name (the tooltip would stand over what opens).
+    onPointerDown: (e: unknown) => {
+      own.onPointerDown?.(e);
       hide();
     },
     // Keyboard focus only: a dialog focusing its close button, or a click, isn't a request for the tooltip.
@@ -94,13 +131,12 @@ export function Tooltip({
         createPortal(
           // The placement on an outer box, the rise-in animation on the inner one: an animated transform would
           // override the placement's while it runs (the tooltip drew over its own trigger, then jumped).
+          // (Above dialogs, under the toasts and menus.)
           <div
-            className="pointer-events-none fixed z-[1000]"
-            style={{
-              left: Math.min(window.innerWidth - 140, Math.max(140, pos.x)),
-              top: pos.y,
-              transform: `translate(-50%, ${pos.below ? "0" : "-100%"})`,
-            }}
+            ref={tip}
+            className="pointer-events-none fixed z-[940]"
+            style={{ left: 0, top: 0, visibility: "hidden" }}
+            data-side={pos.side}
           >
             <div
               id={id}

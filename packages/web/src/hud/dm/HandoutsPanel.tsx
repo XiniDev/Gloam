@@ -182,7 +182,7 @@ function SecretNote({ players }: { players: PresenceView[] }) {
       />
       <textarea
         aria-label="The note"
-        placeholder="Only you notice the glyph glowing…"
+        placeholder="Write the note — only they will see it"
         rows={3}
         maxLength={2000}
         value={text}

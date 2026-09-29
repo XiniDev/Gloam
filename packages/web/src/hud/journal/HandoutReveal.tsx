@@ -49,7 +49,7 @@ export function HandoutReveal() {
             role="dialog"
             aria-modal="true"
             aria-label={h.kind === "note" ? "A secret note for you" : `Handout: ${h.title}`}
-            className="flex max-h-[88vh] w-[min(560px,100%)] flex-col gap-3 overflow-y-auto"
+            className="flex max-h-[88vh] w-[min(520px,100%)] flex-col gap-4 overflow-y-auto"
             style={{ transformOrigin: "50% 0%" }}
             // Unrolled from its top: the scroll drops open, then settles.
             initial={still ? { opacity: 0 } : { scaleY: 0.04, opacity: 0.4, y: -30 }}
@@ -57,10 +57,7 @@ export function HandoutReveal() {
             exit={{ opacity: 0, y: 20 }}
             transition={still ? { duration: 0.14 } : { duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
           >
-            <p className="caps text-center text-12 text-brass">
-              {h.kind === "note" ? "A secret note from the DM" : "A handout from the DM"}
-            </p>
-            <HandoutCard h={h} />
+            <HandoutCard h={h} eyebrow={h.kind === "note" ? "A secret note" : "A handout from the DM"} />
             <div className="flex justify-center gap-2">
               <Button
                 variant="secondary"

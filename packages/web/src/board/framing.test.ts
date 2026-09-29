@@ -1,6 +1,6 @@
 import { PerspectiveCamera, Vector3 } from "three";
 import { describe, expect, it } from "vitest";
-import { frameBounds, type ScreenRect } from "./framing.ts";
+import { frameBounds, frameReadable, pxPerFoot, readableRegion, type ScreenRect } from "./framing.ts";
 
 /** Where the framed camera puts the map's corners on screen. */
 function cornersOnScreen(
@@ -76,4 +76,54 @@ describe("framing a scene into the part of the screen the HUD leaves visible (SP
       );
       expect(outside).toBe(true);
     });
+});
+
+describe("a phone opens a scene too big to read at a readable scale, round the viewer's creatures (critic P11 r1 I8)", () => {
+  const bounds = { minX: 0, minY: 0, maxX: 60, maxY: 40 };
+  const [W, H] = [390, 844];
+  const visible = { left: 12, top: 64, right: 378, bottom: 844 - 92 };
+  const whole = frameBounds({ bounds, width: W, height: H, fovDeg: 40, pitchDeg: 55, visible });
+  it("the whole 60×40 map on a portrait phone is too small to read (a 5-ft square under 40 px)", () => {
+    expect(pxPerFoot(whole, W, H, 40) * 5).toBeLessThan(40);
+  });
+  it("the region round a creature near the west wall: inside the map, the creature in it, squares ≥ 40 px", () => {
+    const focus = { x: 6, y: 20 };
+    const region = readableRegion({ bounds, visible, pitchDeg: 55, focus, pxPerFt: 8 });
+    expect(region.minX).toBe(0);
+    expect(region.maxX).toBeLessThan(60);
+    expect(region.minY).toBeGreaterThanOrEqual(0);
+    expect(region.maxY).toBeLessThanOrEqual(40);
+    expect(focus.x).toBeGreaterThanOrEqual(region.minX);
+    expect(focus.x).toBeLessThanOrEqual(region.maxX);
+    // Framed (narrowed until the middle reads — perspective makes the near edge bind first): squares ≥ 40 px there,
+    // the creature on screen inside the visible area.
+    const f = frameReadable({
+      bounds,
+      width: W,
+      height: H,
+      fovDeg: 40,
+      pitchDeg: 55,
+      visible,
+      focus,
+      pxPerFt: 8,
+    });
+    expect(pxPerFoot(f, W, H, 40) * 5).toBeGreaterThanOrEqual(39.5);
+    const [c] = cornersOnScreen(f, W, H, { minX: focus.x, minY: focus.y, maxX: focus.x, maxY: focus.y });
+    expect(c?.x).toBeGreaterThanOrEqual(visible.left);
+    expect(c?.x).toBeLessThanOrEqual(visible.right);
+    expect(c?.y).toBeGreaterThanOrEqual(visible.top);
+    expect(c?.y).toBeLessThanOrEqual(visible.bottom);
+  });
+  it("a side the map already fits is kept whole", () => {
+    const tall = { minX: 0, minY: 0, maxX: 30, maxY: 200 };
+    const region = readableRegion({
+      bounds: tall,
+      visible,
+      pitchDeg: 55,
+      focus: { x: 15, y: 100 },
+      pxPerFt: 8,
+    });
+    expect([region.minX, region.maxX]).toEqual([0, 30]);
+    expect(region.maxY - region.minY).toBeLessThan(200);
+  });
 });

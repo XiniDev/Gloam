@@ -2219,10 +2219,10 @@
       "code": "DEMO",
       "phase": "P12",
       "text": "Creating the demo campaign produces the Lantern Crypt with all listed elements, using no external or uploaded assets.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/demo.test.ts › AC-DEMO-01: makes the Lantern Crypt with every listed element, from code alone (rooms, door + secret door, 5 torch sconces + brazier + moonlight, darkness, water + rubble, 4 goblins + large Crypt Warden with code-drawn art through the upload pipeline, 2 handouts, crypt ambience, pregen; assets only the demo's own)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-29T23:18:21.725Z"
     },
     {
       "id": "AC-DEMO-02",
@@ -2230,10 +2230,10 @@
       "code": "DEMO",
       "phase": "P12",
       "text": "The demo showcases lighting (sconces flicker, darkness pocket blocks darkvision), fog of war (dynamic), a secret door, water and difficult terrain, and a ready-to-run combat.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/demo.test.ts › AC-DEMO-02: on an open table — dynamic fog, a creature in the magical darkness unseen by a darkvision scout while one in plain dark is seen, the secret door a plain wall to the player, combat.quickStart takes the four goblins and the Warden (flicker: the sconces' torch animation, AC-LGT tests)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-29T23:18:21.929Z"
     },
     {
       "id": "AC-DEMO-03",

@@ -364,7 +364,13 @@ function RollCard({
         <span className="flex min-w-0 flex-1 flex-col">
           {/* Unlabelled: its formula is what it was (critic P8 r2 N3), the roller underneath as for any other. */}
           <span className="line-clamp-2 text-13 font-bold leading-snug text-bone [overflow-wrap:anywhere]">
-            {masked ? name : keepPhrases(roll.label || roll.formula)}
+            {masked ? (
+              name
+            ) : roll.label ? (
+              keepPhrases(roll.label)
+            ) : (
+              <FormulaText formula={roll.normalized || roll.formula} />
+            )}
           </span>
           {!masked || roll.manual || hidden ? (
             <span className="flex items-center gap-1.5 text-12 text-muted">
@@ -454,9 +460,12 @@ function Body({ roll, settled, expanded }: { roll: RollRecord; settled: boolean;
   const open = settled && expanded;
   return (
     <div className="flex flex-col gap-1">
-      <span className={`text-12 text-faint ${open ? "break-words" : "truncate"}`}>
-        <FormulaText formula={roll.normalized || roll.formula} />
-      </span>
+      {/* An unlabelled roll's title is its formula already: never the same line twice (a phone's dice need the room). */}
+      {roll.label || open ? (
+        <span className={`text-12 text-faint ${open ? "break-words" : "truncate"}`}>
+          <FormulaText formula={roll.normalized || roll.formula} />
+        </span>
+      ) : null}
       {open ? (
         <Breakdown roll={roll} />
       ) : (
@@ -595,10 +604,11 @@ function Chip({
       data-testid="die-chip"
       data-kind={kind}
       data-empty={text === "" ? "1" : undefined}
-      className={`tabular relative inline-flex h-6 min-w-6 items-center justify-center rounded-[var(--radius-chip)] border px-1 text-12 font-bold pointer-coarse:h-7 pointer-coarse:min-w-7 max-sm:h-7 max-sm:min-w-7 ${text === "" ? "border-dashed border-line bg-transparent" : `bg-ink-900 ${tone}`} ${dropped ? "text-faint line-through opacity-60" : ""}`}
+      className={`tabular relative inline-flex h-6 min-w-6 items-center justify-center rounded-[var(--radius-chip)] border px-1 text-12 font-bold pointer-coarse:h-7 pointer-coarse:min-w-7 max-sm:h-7 max-sm:min-w-7 ${text === "" ? "border-line bg-ink-900 text-muted" : `bg-ink-900 ${tone}`} ${dropped ? "text-faint line-through opacity-60" : ""}`}
       title={`${kind}${dropped ? " (dropped)" : ""}${exploded ? " (exploded)" : ""}`}
     >
-      {text}
+      {/* Still rolling: a small turning d20, not an empty box (critic P11 r1). */}
+      {text === "" ? <D20Spinner size={12} label="Rolling" /> : text}
       {exploded ? <SparkIcon size={10} className="absolute -top-1 -right-1 text-brass-bright" /> : null}
     </span>
   );

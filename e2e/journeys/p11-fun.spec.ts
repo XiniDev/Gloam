@@ -168,7 +168,7 @@ test.describe("P11 — table flavour (FUN)", () => {
     const journal = async (p: Page, tab: "Log" | RegExp) => {
       if (!(await p.getByRole("region", { name: "Journal" }).isVisible()))
         await p.getByRole("button", { name: /^Journal/ }).click();
-      await p.getByRole("radio", { name: tab }).click();
+      await p.getByRole("tab", { name: tab }).click();
     };
     await journal(dave, /^Handouts/);
     await expect(dave.getByTestId("handouts-list").getByTestId("handout-card")).toHaveCount(1);

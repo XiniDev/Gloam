@@ -5,6 +5,7 @@ import { pendingCount, useLibrary } from "../../state/library.ts";
 import { type DmSection, useUi } from "../../state/ui.ts";
 import { Menu } from "../../ui/Menu.tsx";
 import { WaxSeal } from "../../ui/ornaments.tsx";
+import { TAB_CLASS, Tab } from "../../ui/Tabs.tsx";
 import { visibleTabs } from "../sheet/tabsLayout.ts";
 import { ApprovalsPanel } from "./ApprovalsPanel.tsx";
 import { CombatPanel } from "./CombatPanel.tsx";
@@ -32,8 +33,6 @@ const SECTIONS: { id: DmSection; label: string }[] = [
   { id: "approvals", label: "Approvals" },
 ];
 
-const TAB_CLASS =
-  "relative flex h-10 min-h-[var(--touch-min)] shrink-0 items-center gap-1.5 whitespace-nowrap px-3 text-14 font-bold transition-colors duration-[var(--dur-fast)]";
 /** The tabs' gap (`gap-1`). */
 const GAP = 4;
 
@@ -109,18 +108,10 @@ function DmTabs({ section, pending }: { section: DmSection; pending: number }) {
           const s = SECTIONS[k] as (typeof SECTIONS)[number];
           const on = s.id === section;
           return (
-            <button
-              key={s.id}
-              type="button"
-              role="tab"
-              aria-selected={on}
-              onClick={() => pick(s.id)}
-              className={`${TAB_CLASS} ${on ? "text-brass-bright" : "text-muted hover:text-bone"}`}
-            >
+            <Tab key={s.id} on={on} onSelect={() => pick(s.id)}>
               {s.label}
               {badge(s.id)}
-              {on ? <span className="absolute inset-x-2 bottom-0 h-0.5 bg-accent" aria-hidden /> : null}
-            </button>
+            </Tab>
           );
         })}
       </div>

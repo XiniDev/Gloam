@@ -4,7 +4,7 @@ import { WaxSeal } from "./ornaments.tsx";
 
 /**
  * A person's or creature's portrait (SPEC §27.4: circles only for portraits, pips and the dice button): their picture,
- * or their initials, in a ring of their colour; a DM's wax seal on its lower-right edge.
+ * or their initials, in a ring of their colour — a DM's in brass, with the wax seal on the rim at four o'clock.
  */
 export function Portrait({
   name,
@@ -26,16 +26,25 @@ export function Portrait({
   sealRoom?: boolean;
 }) {
   const ring = size >= 28 ? 1.5 : 1;
+  const ringColor = dm ? "var(--brass-400)" : color || "var(--border)";
+  const seal = Math.max(14, Math.round(size * 0.5));
+  // The seal's centre on a circle just outside the rim, at four o'clock (30° below the horizontal).
+  const sealX = size / 2 + size * 0.56 * Math.cos(Math.PI / 6) - seal / 2;
+  const sealY = size / 2 + size * 0.56 * Math.sin(Math.PI / 6) - seal / 2;
   return (
     <span
       className="relative inline-block shrink-0"
-      style={{ width: size, height: size, marginRight: dm && sealRoom ? Math.round(size * 0.34) : undefined }}
+      style={{
+        width: size,
+        height: size,
+        marginRight: dm && sealRoom ? Math.round(sealX + seal - size) : undefined,
+      }}
     >
       <span
         className="grid h-full w-full place-items-center overflow-hidden rounded-full bg-ink-800 font-caps leading-none text-bone [font-size:var(--mono)] pointer-coarse:[font-size:max(13px,var(--mono))]"
         style={
           {
-            boxShadow: `0 0 0 ${size >= 28 ? 2 : 1.5}px var(--ink-950), 0 0 0 ${(size >= 28 ? 2 : 1.5) + ring}px ${color || "var(--border)"}`,
+            boxShadow: `0 0 0 ${size >= 28 ? 2 : 1.5}px var(--ink-950), 0 0 0 ${(size >= 28 ? 2 : 1.5) + ring}px ${ringColor}`,
             opacity: dim ? 0.45 : 1,
             // Never under the HUD's 12 px (13 on touch; §27.3, critic P8 r2 B5).
             ["--mono" as string]: `${Math.max(12, Math.round(size * 0.38))}px`,
@@ -50,8 +59,8 @@ export function Portrait({
         )}
       </span>
       {dm ? (
-        <span className="absolute" style={{ right: -size * 0.3, bottom: -size * 0.18 }}>
-          <WaxSeal size={Math.max(14, Math.round(size * 0.56))} label={dm} />
+        <span className="absolute" style={{ left: Math.round(sealX), top: Math.round(sealY) }}>
+          <WaxSeal size={seal} label={dm} />
         </span>
       ) : null}
     </span>

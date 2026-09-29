@@ -3,25 +3,46 @@ import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { boardApi } from "../board/boardApi.ts";
-import { bodyRectOf, plateRectOf } from "../board/tokens/declutter.ts";
+import { bodyRectOf, bodyRects, plateRectOf } from "../board/tokens/declutter.ts";
 import { EMOTE_MS, type LiveEmote, useFun } from "../net/fun.ts";
 import { boardData, useEntities } from "../state/entities.ts";
 import { prefersReducedMotion } from "../state/settings.ts";
 import { provideTestHook } from "../test/hooks.ts";
+import { stackTop } from "../ui/Toast.tsx";
+import { useBoardCovers, useCover, useHudInsets } from "./insets.ts";
 
 const GLYPH = new Map<string, string>(EMOTES.map((e) => [e.id, e.glyph]));
+/** An emote pop's disc (px): the glyph on ink, ringed in its sender's colour — legible over any floor. */
+const DISC = 52;
+/** A phrase pop's height (px). */
+const PHRASE_H = 40;
 
-/** Where an emote pops: above its sender's token when this page sees it on screen, else above their portrait. */
+/**
+ * Where an emote pops: above its sender's token when this page sees it on screen — above its plate, never over its
+ * name, and up past any other creature the pop would cover — else under their portrait in the top bar.
+ */
 function anchorOf(e: LiveEmote): { x: number; y: number; over: "token" | "portrait" } | null {
   if (e.tokenId) {
     const t = boardData(useEntities.getState()).tokens.get(e.tokenId);
     const canvas = boardApi.element?.getBoundingClientRect();
-    // Above its plate (never over its name), else above its body, as the board has placed them (canvas px).
+    // Above its plate, else above its body, as the board has placed them (canvas px).
     const top = t && canvas ? (plateRectOf(e.tokenId) ?? bodyRectOf(e.tokenId)) : null;
     if (top && canvas) {
-      const x = canvas.left + (top.x0 + top.x1) / 2;
-      const y = canvas.top + top.y0 - 6;
-      if (x > 0 && y > 60 && x < window.innerWidth && y < window.innerHeight) return { x, y, over: "token" };
+      const x = (top.x0 + top.x1) / 2;
+      const h = e.emote ? DISC : PHRASE_H;
+      const w = e.emote ? DISC : 200;
+      let y = top.y0 - 6;
+      // Another creature where the pop would stand: the pop rises above it (a few at most — a crowd stacks up).
+      const others = bodyRects().filter((b) => b.id !== e.tokenId);
+      for (let i = 0; i < 4; i++) {
+        const hit = others.find(({ r }) => r.x0 < x + w / 2 && r.x1 > x - w / 2 && r.y0 < y && r.y1 > y - h);
+        if (!hit) break;
+        y = hit.r.y0 - 4;
+      }
+      const sx = canvas.left + x;
+      const sy = canvas.top + y;
+      if (sx > 0 && sy - h > 60 && sx < window.innerWidth && sy < window.innerHeight)
+        return { x: sx, y: sy, over: "token" };
     }
   }
   const el = document.querySelector<HTMLElement>(`[data-presence="${CSS.escape(e.userId)}"]`);
@@ -82,17 +103,22 @@ function Pop({ e }: { e: LiveEmote }) {
       <motion.div
         initial={still ? { opacity: 0 } : { opacity: 0, scale: 0.3, y: below ? -6 : 8 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.8, y: below ? 4 : -10 }}
+        // (It bounces in; it goes in a quick fade — the entry's spring made its going last as long again.)
+        exit={{ opacity: 0, scale: 0.8, y: below ? 4 : -10, transition: { duration: 0.2, ease: "easeIn" } }}
         transition={still ? { duration: 0.12 } : { type: "spring", stiffness: 520, damping: 14, mass: 0.7 }}
         style={{ transformOrigin: below ? "50% 0%" : "50% 100%" }}
       >
         {e.emote ? (
-          <span className="block text-32 leading-none drop-shadow-[0_3px_6px_rgba(0,0,0,0.55)]" aria-hidden>
-            {GLYPH.get(e.emote)}
+          <span
+            className="grid place-items-center rounded-full bg-ink-900"
+            style={{ width: DISC, height: DISC, boxShadow: `0 0 0 2px ${e.color}, var(--shadow-panel)` }}
+            aria-hidden
+          >
+            <span className="text-36 leading-none">{GLYPH.get(e.emote)}</span>
           </span>
         ) : (
           <span
-            className="panel relative block max-w-[240px] whitespace-nowrap px-3 py-1.5 text-14 font-bold text-bone"
+            className="panel relative block max-w-[240px] whitespace-nowrap px-3 py-2 text-16 font-bold text-bone"
             style={{ borderColor: e.color }}
           >
             {e.phrase}
@@ -106,22 +132,32 @@ function Pop({ e }: { e: LiveEmote }) {
 /**
  * Emotes as they come (SPEC §8.18; AC-FUN-01): each pops over its sender's token — or, when this page doesn't see
  * the token, their portrait in the top bar — with a bounce for 2.5 s, and joins a small transient feed at the top
- * left (who, what) that fades after a few seconds.
+ * left (who, what) that fades after a few seconds — below whatever HUD stands in its column (the title, the tracker;
+ * on a phone it stands right of the tools button), the way the toasts keep clear.
  */
 export function EmoteLayer() {
   const emotes = useFun((s) => s.emotes);
   useEffect(() => provideTestHook("emotePops", () => popLog.map((p) => ({ ...p }))), []);
   const [now, setNow] = useState(() => performance.now());
-  const timer = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Each pop goes when its 2.5 s are up — a timer for the next one due, not a poll that could hold it a beat longer.
   useEffect(() => {
-    if (!emotes.length) return;
-    timer.current = setInterval(() => setNow(performance.now()), 250);
-    return () => {
-      if (timer.current) clearInterval(timer.current);
-    };
-  }, [emotes.length]);
+    const t = performance.now();
+    const due = emotes.map((e) => e.shownAt + EMOTE_MS).filter((d) => d > now);
+    if (!due.length) return;
+    const id = setTimeout(() => setNow(performance.now()), Math.max(0, Math.min(...due) - t) + 5);
+    return () => clearTimeout(id);
+  }, [emotes, now]);
   const showing = emotes.filter((e) => now - e.shownAt < EMOTE_MS);
   const feed = emotes.slice(-4);
+  // The feed is HUD over the board while it holds a line: plates keep out from under it.
+  const ref = useRef<HTMLOListElement>(null);
+  useCover("emote-feed", ref, feed.length > 0);
+  const covers = useBoardCovers((s) => s.rects);
+  const phone = useHudInsets((s) => s.cornerLeft) > 0;
+  const x0 = phone ? (covers.toolbar?.right ?? 12) + 8 : 16;
+  const width = Math.min(260, window.innerWidth - x0 - 12);
+  const { "emote-feed": _self, ...others } = covers;
+  const top = stackTop(phone ? 12 : 64, x0, x0 + width, others, ref.current?.offsetHeight ?? 0);
   return createPortal(
     <>
       <AnimatePresence>
@@ -130,7 +166,9 @@ export function EmoteLayer() {
         ))}
       </AnimatePresence>
       <ol
-        className="pointer-events-none fixed left-4 top-[68px] z-[35] flex flex-col gap-1"
+        ref={ref}
+        className="pointer-events-none fixed z-[35] flex flex-col items-start gap-1"
+        style={{ left: x0, top, width }}
         aria-label="Emotes"
         aria-live="polite"
         data-testid="emote-feed"
@@ -139,16 +177,20 @@ export function EmoteLayer() {
           {feed.map((e) => (
             <motion.li
               key={e.key}
-              layout
+              layout="position"
               initial={{ opacity: 0, x: -8 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0 }}
-              className="flex max-w-[260px] items-center gap-1.5 rounded-[var(--radius-chip)] bg-[var(--scrim-soft)] px-2 py-0.5 text-13 text-bone backdrop-blur-[3px]"
+              className="panel flex max-w-full items-center gap-2 px-2.5 py-1 text-13 text-bone"
             >
               <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: e.color }} aria-hidden />
               <span className="font-bold">{e.name}</span>
               {e.emote ? (
-                <span role="img" aria-label={EMOTES.find((x) => x.id === e.emote)?.label}>
+                <span
+                  className="text-16 leading-none"
+                  role="img"
+                  aria-label={EMOTES.find((x) => x.id === e.emote)?.label}
+                >
                   {GLYPH.get(e.emote)}
                 </span>
               ) : (

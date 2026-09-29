@@ -5,13 +5,14 @@ import { useEffect, useLayoutEffect, useRef } from "react";
 import { Box3, MathUtils, type OrthographicCamera as OrthoCam, Vector3 } from "three";
 import { create } from "zustand";
 import { clearArea, isPhoneNow, useHudInsets } from "../hud/insets.ts";
-import { tableEvents } from "../net/table.ts";
+import { tableEvents, useTable } from "../net/table.ts";
+import { boardData, useEntities } from "../state/entities.ts";
 import { useSettings } from "../state/settings.ts";
 import { useUi } from "../state/ui.ts";
 import { boardApi } from "./boardApi.ts";
 import { boardDiag } from "./diag.ts";
 import { again, wake } from "./frames.ts";
-import { frameBounds } from "./framing.ts";
+import { frameBounds, frameReadable, pxPerFoot } from "./framing.ts";
 import { type Bounds, boundsSize } from "./scene.ts";
 
 const { ACTION } = CameraControlsImpl;
@@ -19,6 +20,21 @@ const DEG = MathUtils.DEG2RAD;
 
 /** Camera presets by pitch above the table (SPEC §8.4). Polar angle = 90° − pitch. */
 export const PRESETS = { top: 90, tabletop: 55, low: 30 } as const;
+/** A 5-ft square's size a phone opens a scene at, at least: tokens big enough to carry their names (NAMES_FROM_PX). */
+const READABLE_SQUARE_PX = 40;
+
+/** Where a phone's first view of a scene centres: this viewer's own creatures, else the party's, else the map's middle. */
+function focusOf(bounds: Bounds): { x: number; y: number } {
+  const tokens = [...boardData(useEntities.getState()).tokens.values()];
+  const me = useTable.getState().me?.userId;
+  const mine = me ? tokens.filter((t) => t.ownerIds.includes(me)) : [];
+  const group = mine.length ? mine : tokens.filter((t) => t.disposition === "party");
+  if (!group.length) return { x: (bounds.minX + bounds.maxX) / 2, y: (bounds.minY + bounds.maxY) / 2 };
+  return {
+    x: group.reduce((a, t) => a + t.pos.x, 0) / group.length,
+    y: group.reduce((a, t) => a + t.pos.y, 0) / group.length,
+  };
+}
 export const PITCH_MIN = 25;
 export const DISTANCE = { min: 8, max: 400 } as const;
 const PRESET_MS = 400;
@@ -239,14 +255,25 @@ export function CameraRig({ bounds, sceneId }: { bounds: Bounds; sceneId: string
     const el = gl.domElement;
     const W = el.clientWidth || window.innerWidth;
     const H = el.clientHeight || window.innerHeight;
-    const f = frameBounds({
-      bounds,
-      width: W,
-      height: H,
-      fovDeg: (camera as { fov?: number }).fov ?? 40,
-      pitchDeg: PRESETS.tabletop,
-      visible: clearArea(useHudInsets.getState(), W, H, isPhoneNow()),
-    });
+    const fovDeg = (camera as { fov?: number }).fov ?? 40;
+    const visible = clearArea(useHudInsets.getState(), W, H, isPhoneNow());
+    const at = (area: Bounds) =>
+      frameBounds({ bounds: area, width: W, height: H, fovDeg, pitchDeg: PRESETS.tabletop, visible });
+    let f = at(bounds);
+    // A phone where the whole map would be too small to read: the part of it round this viewer's own creatures (the
+    // party's, else the middle) at a readable scale — a pinch out shows the rest.
+    const readable = READABLE_SQUARE_PX / 5;
+    if (isPhoneNow() && pxPerFoot(f, W, H, fovDeg) < readable)
+      f = frameReadable({
+        bounds,
+        width: W,
+        height: H,
+        fovDeg,
+        pitchDeg: PRESETS.tabletop,
+        visible,
+        focus: focusOf(bounds),
+        pxPerFt: readable,
+      });
     void c.setLookAt(...f.position, ...f.target, false);
     applyNow(c);
     cameraRig.framedScene = sceneId;

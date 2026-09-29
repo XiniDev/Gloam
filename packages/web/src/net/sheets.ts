@@ -20,6 +20,8 @@ interface SheetsStore {
   cards: Map<string, RequestCard>;
   /** DMs: the requests on the live board. */
   requests: Map<string, RollRequestView>;
+  /** The first snapshot has come (until then "no character" means "not known yet"). */
+  loaded: boolean;
   set(p: Partial<Omit<SheetsStore, "set">>): void;
 }
 
@@ -28,6 +30,7 @@ export const useSheets = create<SheetsStore>((set) => ({
   proposals: new Map(),
   cards: new Map(),
   requests: new Map(),
+  loaded: false,
   set: (p) => set(p),
 }));
 
@@ -55,7 +58,7 @@ function onMessage(type: string, payload: unknown): void {
   switch (type) {
     case "actor.snapshot": {
       const list = (payload as { actors: ActorView[] }).actors;
-      s.set({ actors: new Map(list.map((a) => [a.id, a])) });
+      s.set({ actors: new Map(list.map((a) => [a.id, a])), loaded: true });
       return;
     }
     case "actor.view":

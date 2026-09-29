@@ -446,7 +446,13 @@ export class CombatFlow {
   stopped(e: CombatStopped): void {
     // Initiative still being asked for: the cards go (there's nothing to roll it for now).
     this.host.closeAsked(e.combatId);
-    const parts = [`Combat ended after ${e.rounds} ${e.rounds === 1 ? "round" : "rounds"}.`];
+    // Stopped before its first turn: called off, not "ended after 0 rounds" (critic P11 r1 I7 — the log is exported and
+    // read by the recap).
+    const parts = [
+      e.rounds > 0
+        ? `Combat ended after ${e.rounds} ${e.rounds === 1 ? "round" : "rounds"}.`
+        : "Combat called off before it began.",
+    ];
     if (e.downed.length) parts.push(`Down: ${e.downed.join(", ")}.`);
     const hits = e.tally.filter((x) => x.dealt || x.taken);
     if (hits.length)

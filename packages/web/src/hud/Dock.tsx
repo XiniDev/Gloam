@@ -9,6 +9,7 @@ import { IconButton } from "../ui/Button.tsx";
 import { ErrorBoundary } from "../ui/ErrorBoundary.tsx";
 import { lazyPage } from "../ui/lazyPage.ts";
 import { Sparkle } from "../ui/ornaments.tsx";
+import { FirstSteps, useNeedsCharacter } from "./FirstSteps.tsx";
 import { PromptCards } from "./health/PromptCards.tsx";
 import { hudOrder } from "./Intro.tsx";
 import { insetMeasures, useCover, useHudInsets, useIsPhone, useMeasuredInset } from "./insets.ts";
@@ -24,6 +25,8 @@ const MIN_W = 320;
 const MAX_W = 520;
 /** The rail, the gap beside it and both screen gutters. */
 const RAIL_ROOM = 84;
+/** A phone's right inset: its gutter (the rail is a row in the corner). */
+const PHONE_RIGHT = () => 12;
 
 function loadWidth(): number {
   try {
@@ -53,7 +56,9 @@ export function Dock() {
   const banner = useHudInsets((s) => s.banner);
   const tracker = useHudInsets((s) => s.tracker);
   const actionBand = useHudInsets((s) => s.bottom);
-  useMeasuredInset("right", asideRef, insetMeasures.right);
+  // A phone's rail is a row in the top-right corner (cornerRight), not a column down the side: nothing holds the
+  // right edge below it, so the HUD beside it and the board's clear area take the whole width.
+  useMeasuredInset("right", asideRef, phone ? PHONE_RIGHT : insetMeasures.right);
   // What of it is drawn over the board: the open panel and the rail (the dock's own box is an invisible column the
   // height of the screen — plates beside the rail were hidden under nothing).
   const panelRef = useRef<HTMLElement>(null);
@@ -79,8 +84,10 @@ export function Dock() {
   // A phone's panel is a page (§8.10: "a full-screen page on phones"): the whole width, the rail folded into a bar
   // across its top with the close button.
   const page = phone && tab !== null;
+  const needsCharacter = useNeedsCharacter();
   const railButtons = tabs.map((t) => (
     <div key={t.id} className="relative">
+      {t.id === "sheet" && needsCharacter && tab === null ? <FirstSteps /> : null}
       <IconButton
         label={
           t.badge ? `${t.label} (${t.badge} ${t.id === "journal" ? "new" : "waiting for approval"})` : t.label
@@ -197,7 +204,7 @@ export function Dock() {
         ref={railRef}
         aria-label="Panels"
         hidden={page}
-        className="panel pointer-events-auto flex flex-col items-center gap-1 self-start p-1.5"
+        className={`panel pointer-events-auto flex items-center gap-1 self-start p-1.5 ${phone ? "flex-row" : "flex-col"}`}
       >
         {page ? null : railButtons}
       </nav>

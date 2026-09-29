@@ -1,6 +1,6 @@
 import { X } from "lucide-react";
 import { AnimatePresence, motion, useIsPresent } from "motion/react";
-import { type ReactNode, type RefObject, useEffect, useId, useRef } from "react";
+import { type ReactNode, type RefObject, useEffect, useId, useLayoutEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { create } from "zustand";
 import { IconButton } from "./Button.tsx";
@@ -113,8 +113,13 @@ export function Dialog({
   );
 }
 
-/** How many modal dialogs are open (the toasts keep out of them). */
-export const useModalOpen = create<{ count: number }>(() => ({ count: 0 }));
+/**
+ * How many modal dialogs are open, and where the top one's card stands at rest (screen px): the toasts keep out of it.
+ */
+export const useModalOpen = create<{
+  count: number;
+  box: { left: number; top: number; right: number; bottom: number } | null;
+}>(() => ({ count: 0, box: null }));
 
 /** The scrim and the layer the dialog sits in: nothing under it is clickable — until it starts to leave. */
 function DialogLayer({ children }: { children: ReactNode }) {
@@ -163,6 +168,34 @@ function DialogCard({
   children?: ReactNode;
 }) {
   const present = useIsPresent();
+  // Its box at rest (layout, not the entrance's transform), for the toasts to keep out of.
+  useLayoutEffect(() => {
+    const el = cardRef.current;
+    if (!el || !present) return;
+    const put = () => {
+      const r = { left: el.offsetLeft, top: el.offsetTop, right: 0, bottom: 0 };
+      r.right = r.left + el.offsetWidth;
+      r.bottom = r.top + el.offsetHeight;
+      const cur = useModalOpen.getState().box;
+      if (
+        !cur ||
+        cur.left !== r.left ||
+        cur.top !== r.top ||
+        cur.right !== r.right ||
+        cur.bottom !== r.bottom
+      )
+        useModalOpen.setState({ box: r });
+    };
+    put();
+    const ro = new ResizeObserver(put);
+    ro.observe(el);
+    window.addEventListener("resize", put);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", put);
+      useModalOpen.setState({ box: null });
+    };
+  }, [cardRef, present]);
   return (
     <motion.div
       ref={cardRef}

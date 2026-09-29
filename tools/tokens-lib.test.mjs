@@ -11,6 +11,7 @@ describe("design-token lint (AC-DS-01)", () => {
       '<p className="text-[15px]" />',
       '<i className="duration-[250ms]" />',
       '<b className="px-[13px]" />',
+      '<em className="text-15 sm:text-32" />',
     ].join("\n");
     const found = scan(bad, "hud/Bad.tsx");
     expect(found.some((p) => p.includes("raw colour #123456"))).toBe(true);
@@ -20,6 +21,8 @@ describe("design-token lint (AC-DS-01)", () => {
     expect(found.some((p) => p.includes("raw type size text-[15px]"))).toBe(true);
     expect(found.some((p) => p.includes("raw duration duration-[250ms]"))).toBe(true);
     expect(found.some((p) => p.includes("off-grid spacing px-[13px]"))).toBe(true);
+    expect(found.some((p) => p.includes("text-15 isn't on the type scale"))).toBe(true);
+    expect(found.some((p) => p.includes("text-32 isn't on the type scale"))).toBe(true);
     expect(found.every((p) => p.startsWith("hud/Bad.tsx:"))).toBe(true);
   });
 

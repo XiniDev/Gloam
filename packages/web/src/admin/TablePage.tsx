@@ -607,6 +607,22 @@ function InstallCard({ os, onRecheck, busy }: { os: string; onRecheck: () => voi
 function FirstCampaign({ onCreated }: { onCreated: () => void }) {
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
+  const [demoBusy, setDemoBusy] = useState(false);
+  const demo = async () => {
+    setDemoBusy(true);
+    try {
+      await post("/api/admin/campaigns/demo", {});
+      toast.success(
+        "The Lantern Crypt is ready",
+        "A small dungeon with lights, fog, goblins and a secret door.",
+      );
+      onCreated();
+    } catch (err) {
+      toast.danger("Couldn't make the demo", (err as Error).message);
+    } finally {
+      setDemoBusy(false);
+    }
+  };
   return (
     <form
       className="panel mt-6 p-5"
@@ -639,6 +655,18 @@ function FirstCampaign({ onCreated }: { onCreated: () => void }) {
         />
         <Button type="submit" variant="primary" loading={busy} disabled={!name.trim()}>
           Create campaign
+        </Button>
+      </div>
+      <div className="mt-5 flex flex-wrap items-center gap-3 border-t border-line pt-4">
+        <div className="min-w-[220px] flex-1">
+          <p className="text-16 font-bold text-bone">Or try the demo first</p>
+          <p className="text-13 text-muted">
+            The Lantern Crypt: a torchlit dungeon with fog of war, a secret door, goblins and a warden — ready
+            to open and play in a minute.
+          </p>
+        </div>
+        <Button type="button" variant="secondary" loading={demoBusy} onClick={() => void demo()}>
+          Start with the demo
         </Button>
       </div>
     </form>

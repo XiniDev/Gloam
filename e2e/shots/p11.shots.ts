@@ -1,6 +1,6 @@
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import {
   adminAtTable,
   admitPlayer,
@@ -73,6 +73,34 @@ test("P10–P11 key screens", async ({ admin, browser, gloam, guardLog }, info) 
       await page.screenshot({ path: join(dir, `_failed-${name}.png`) }).catch(() => {});
     }
   };
+  // A pop at rest: fully opaque and unscaled for a moment (toBeVisible passes at opacity 0, mid-bounce; critic P11 r1 I1).
+  const popSettled = async (pop: Locator) =>
+    expect
+      .poll(
+        () =>
+          pop.evaluate((el) => {
+            const inner = el.firstElementChild as HTMLElement | null;
+            if (!inner) return false;
+            const cs = getComputedStyle(inner);
+            return (
+              cs.opacity === "1" && (cs.transform === "none" || cs.transform === "matrix(1, 0, 0, 1, 0, 0)")
+            );
+          }),
+        { timeout: 3000, intervals: [50] },
+      )
+      .toBe(true);
+  // No dice on the board (they're not what these shots are about).
+  const diceClear = async (p: Page, name: string) =>
+    expect
+      .poll(
+        async () => {
+          const st = await hook<{ throws: { done: boolean }[] } | null>(p, "diceStage").catch(() => null);
+          return !st || st.throws.every((t) => t.done);
+        },
+        { timeout: 20_000 },
+      )
+      .toBe(true)
+      .catch(() => notes.push(`${name}: dice were still on the board`));
   const closeDock = async (p: Page) => {
     const close = p.getByRole("button", { name: "Close panel" });
     if (await close.isVisible().catch(() => false)) await close.click();
@@ -153,6 +181,8 @@ test("P10–P11 key screens", async ({ admin, browser, gloam, guardLog }, info) 
     await admin.getByRole("menuitem", { name: "The road north" }).click();
     await panel.getByRole("button", { name: "Tavern hearth", exact: true }).click();
     await expect(panel.getByTestId("now-playing")).toContainText("Lantern waltz");
+    // (Picking the ambience scrolled the panel down: this shot is the player and its tracks.)
+    await panel.getByTestId("now-playing").scrollIntoViewIfNeeded();
   });
   await step("03-sound-panel-ambience", admin, async () => {
     await admin
@@ -184,9 +214,13 @@ test("P10–P11 key screens", async ({ admin, browser, gloam, guardLog }, info) 
     admin,
     async () => {
       await dave.getByTestId("emote-wheel").getByRole("button", { name: "Party" }).click();
-      await expect(admin.locator(`[data-testid="emote-pop"][data-user="${daveId}"]`)).toBeVisible();
+      const onAdmin = admin.locator(`[data-testid="emote-pop"][data-user="${daveId}"]`);
+      const onErin = erin.locator(`[data-testid="emote-pop"][data-user="${daveId}"]`);
+      await expect(onAdmin).toBeVisible();
+      await expect(onErin).toBeVisible();
+      await popSettled(onAdmin);
       await admin.screenshot({ path: join(dir, "06-emote-over-token.png") });
-      await expect(erin.locator(`[data-testid="emote-pop"][data-user="${daveId}"]`)).toBeVisible();
+      await popSettled(onErin);
       await erin.screenshot({ path: join(dir, "07-emote-under-portrait.png") });
     },
     false,
@@ -197,7 +231,9 @@ test("P10–P11 key screens", async ({ admin, browser, gloam, guardLog }, info) 
     erin,
     async () => {
       await req(dave, "emote.send", { phrase: "I have a plan…" });
-      await expect(erin.locator('[data-testid="emote-pop"]', { hasText: "I have a plan" })).toBeVisible();
+      const pop = erin.locator('[data-testid="emote-pop"]', { hasText: "I have a plan" });
+      await expect(pop).toBeVisible();
+      await popSettled(pop);
       await erin.screenshot({ path: join(dir, "08-phrase.png") });
     },
     false,
@@ -212,6 +248,8 @@ test("P10–P11 key screens", async ({ admin, browser, gloam, guardLog }, info) 
     ).toBeVisible({
       timeout: 20_000,
     });
+    // The NPCs' initiative dice have faded.
+    await diceClear(admin, "09-hand-raised");
   });
   await req(admin, "combat.stop", {}).catch(() => {});
   await req(dave, "hand.toggle", { raised: false });
@@ -265,12 +303,12 @@ test("P10–P11 key screens", async ({ admin, browser, gloam, guardLog }, info) 
   await req(dave, "log.add", { text: "We found the second stair.\nDave kept the key." });
   await step("14-journal-log", dave, async () => {
     await dave.getByRole("button", { name: /^Journal/ }).click();
-    await dave.getByRole("radio", { name: "Log" }).click();
+    await dave.getByRole("tab", { name: "Log" }).click();
     await expect(dave.getByTestId("campaign-log")).toContainText("We found the second stair.");
   });
   await step("15-journal-handouts", erin, async () => {
     await erin.getByRole("button", { name: /^Journal/ }).click();
-    await erin.getByRole("radio", { name: /^Handouts/ }).click();
+    await erin.getByRole("tab", { name: /^Handouts/ }).click();
     await expect(erin.getByTestId("handouts-list").getByTestId("handout-card")).toHaveCount(2);
   });
 
@@ -280,10 +318,15 @@ test("P10–P11 key screens", async ({ admin, browser, gloam, guardLog }, info) 
     await board.goto(`${gloam.url}/dev/sounds`);
     await board.getByRole("button", { name: "Measure all" }).click();
     await expect(board.getByTestId("sound-row").filter({ hasText: "Not allowed" }).first()).toBeVisible();
+    // Every sound measured (the dice's tumble is continuous: never), and the button back.
     await expect
-      .poll(async () => (await board.getByTestId("sound-row").last().innerText()).includes("-"), {
-        timeout: 120_000,
-      })
+      .poll(
+        async () =>
+          (await board
+            .locator('[data-testid="sound-row"]:not([data-measured]):not([data-sound="diceRumble"])')
+            .count()) === 0 && (await board.getByRole("button", { name: "Measure all" }).isEnabled()),
+        { timeout: 180_000 },
+      )
       .toBe(true);
   });
   await step("17-saves", board, async () => {

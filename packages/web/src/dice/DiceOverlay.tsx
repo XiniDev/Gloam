@@ -18,10 +18,17 @@ import {
 import { audio } from "../audio/engine.ts";
 import type { SfxName } from "../audio/recipes.ts";
 import { again } from "../board/frames.ts";
-import { frameBounds } from "../board/framing.ts";
+import { frameBounds, pxPerFoot } from "../board/framing.ts";
 import type { TierSpec } from "../board/tiers.ts";
 import { bodyRects } from "../board/tokens/declutter.ts";
-import { clearArea, isPhoneNow, largestClear, useHudInsets, useHudObstacles } from "../hud/insets.ts";
+import {
+  clearArea,
+  isPhoneNow,
+  largestClear,
+  type ScreenArea,
+  useHudInsets,
+  useHudObstacles,
+} from "../hud/insets.ts";
 import { useTable } from "../net/table.ts";
 import { prefersReducedMotion } from "../state/settings.ts";
 import { provideTestHook } from "../test/hooks.ts";
@@ -30,7 +37,7 @@ import { contactShadowTexture, diceEnvironment, diceMaterial } from "./materials
 import type { ThrowResult } from "./simulate.ts";
 import { POSE, STEP_S, TRAY_MAX, trayFor } from "./simulate.ts";
 import { type DieKind, landedMarker, markerFor, remap, type Solid, solid } from "./solids.ts";
-import { type FeedRoll, isMasked, useRolls } from "./state.ts";
+import { type FeedRoll, isMasked, useDiceStage, useRolls } from "./state.ts";
 import { throwDice } from "./throws.ts";
 
 /**
@@ -109,6 +116,7 @@ export function DiceOverlay({ tier }: { tier: TierSpec }) {
   // Mounted only while there are dice to show: its render pass (after the board's) exists only then.
   const queued = useRolls((s) => s.queue.length);
   const [active, setActive] = useState(false);
+  useEffect(() => useDiceStage.setState({ on: active }), [active]);
   useEffect(() => {
     if (queued > 0) setActive(true);
   }, [queued]);
@@ -574,6 +582,56 @@ const DICE_PITCH = 72;
 const MAX_MIN_FRAME_CM = 12;
 const MIN_DIE_PX = 64;
 const DIE_CM = 1.6;
+/** The smallest a die may be drawn at rest (px): below this its number stops reading on a phone. */
+const LEGIBLE_DIE_PX = 48;
+
+/**
+ * How large (px) a throw's dice would be drawn at rest if framed inside `visible` — from the recording's last poses,
+ * framed as `frameDice` frames them.
+ */
+function restingDiePx(t: Throw, visible: ScreenArea, W: number, H: number): number {
+  const res = t.result;
+  if (!res) return Number.POSITIVE_INFINITY;
+  const n = t.kinds.length;
+  let [x0, x1, z0, z1] = [
+    Number.POSITIVE_INFINITY,
+    Number.NEGATIVE_INFINITY,
+    Number.POSITIVE_INFINITY,
+    Number.NEGATIVE_INFINITY,
+  ];
+  for (let i = 0; i < n; i++) {
+    const o = (res.steps * n + i) * POSE;
+    const [x, y, z] = [res.frames[o] as number, res.frames[o + 1] as number, res.frames[o + 2] as number];
+    x0 = Math.min(x0, x - DIE_R);
+    x1 = Math.max(x1, x + DIE_R);
+    z0 = Math.min(z0, z - y * cot - DIE_R);
+    z1 = Math.max(z1, z + DIE_R);
+  }
+  if (!Number.isFinite(x0)) return Number.POSITIVE_INFINITY;
+  const margin = isPhoneNow() ? 12 : 24;
+  const short = Math.max(
+    1,
+    Math.min(visible.right - visible.left, visible.bottom - visible.top) - 2 * margin,
+  );
+  const minFrame = Math.min(MAX_MIN_FRAME_CM, (short / MIN_DIE_PX) * DIE_CM);
+  const grow = (a: number, b: number) => {
+    const c = (a + b) / 2;
+    const h = Math.max(minFrame, b - a) / 2;
+    return [c - h, c + h] as const;
+  };
+  const [minX, maxX] = grow(x0, x1);
+  const [minY, maxY] = grow(z0, z1);
+  const f = frameBounds({
+    bounds: { minX, maxX, minY, maxY },
+    width: W,
+    height: H,
+    fovDeg: 30,
+    pitchDeg: DICE_PITCH,
+    visible,
+    margin,
+  });
+  return pxPerFoot(f, W, H, 30) * DIE_CM;
+}
 /** Room kept round each die's centre in the frame (cm): its circumradius (0.8) and a little. */
 const DIE_R = 0.95;
 /**
@@ -656,11 +714,14 @@ function frameDice(
   // leave them much less room than the HUD alone does (a crowded board). Decided once per throw: no jumping mid-roll.
   const hud = Object.values(useHudObstacles.getState().rects);
   const latest = throws[throws.length - 1];
-  if (latest && latest.avoidTokens === undefined) {
+  // Nor when the dice, at rest where the recording puts them, would read smaller than LEGIBLE_DIE_PX in that room: a
+  // phone zoomed in on the party has big tokens, and keeping clear of them squeezed the dice under the floor.
+  if (latest?.result && latest.avoidTokens === undefined) {
     const fit = (r: typeof area) => Math.min((r.right - r.left) / aspect, r.bottom - r.top);
+    const clearOfTokens = largestClear(area, [...hud, ...tokenAreas()], aspect);
     latest.avoidTokens =
-      fit(largestClear(area, [...hud, ...tokenAreas()], aspect)) >=
-      0.6 * fit(largestClear(area, hud, aspect));
+      fit(clearOfTokens) >= 0.6 * fit(largestClear(area, hud, aspect)) &&
+      restingDiePx(latest, clearOfTokens, W, H) >= LEGIBLE_DIE_PX;
   }
   const visible = largestClear(area, latest?.avoidTokens ? [...hud, ...tokenAreas()] : hud, aspect);
   // A phone keeps less margin round the dice (its screen is the tightest); obstacles already carry their own gap.

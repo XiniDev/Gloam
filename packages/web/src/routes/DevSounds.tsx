@@ -4,6 +4,7 @@ import { SOUND_GROUPS } from "../audio/catalogue.ts";
 import { audio, CHANNELS, type Channel, useAudioStatus } from "../audio/engine.ts";
 import { measureRecipe, PLAN_PEAK_DB } from "../audio/measure.ts";
 import { RECIPES, type SfxName } from "../audio/recipes.ts";
+import { useIsPhone } from "../hud/insets.ts";
 import { CHANNEL_LABEL, Volume } from "../hud/SettingsPopover.tsx";
 import { provideTestHook } from "../test/hooks.ts";
 import { Button } from "../ui/Button.tsx";
@@ -133,86 +134,163 @@ export default function DevSounds() {
               <h2 className="caps border-b border-[var(--line-soft)] px-4 py-2.5 text-12 text-brass">
                 {g.title}
               </h2>
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[560px] table-fixed text-13">
-                  {/* One set of columns for every group, so they line up down the page. */}
-                  <colgroup>
-                    <col />
-                    <col className="w-[120px]" />
-                    <col className="w-[96px]" />
-                    <col className="w-[120px]" />
-                    <col className="w-[72px]" />
-                    <col className="w-[56px]" />
-                  </colgroup>
-                  <thead>
-                    <tr className="caps text-left text-11 text-fog">
-                      <th className="py-2 pl-4 font-normal">Sound</th>
-                      <th className="font-normal">Channel</th>
-                      <th className="text-right font-normal">Peak dBFS</th>
-                      <th className="text-right font-normal">Loudness LUFS</th>
-                      <th className="pr-4 text-right font-normal">Plan</th>
-                      <th>
-                        <span className="sr-only">Play</span>
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {g.title === "Dice" ? (
-                      <tr
-                        className="border-t border-[var(--line-soft)]"
-                        data-testid="sound-row"
-                        data-sound="diceRumble"
-                      >
-                        <td className="py-1.5 pl-4 text-bone">Dice tumbling</td>
-                        <td>
-                          <ChannelChip c="dice" />
-                        </td>
-                        <td className="text-right text-muted">continuous</td>
-                        <td />
-                        <td className="pr-4 text-right tabular-nums text-muted">−24.4</td>
-                        <td className="pr-3 text-right">
-                          <PlayButton label="Dice tumbling" onPlay={playTumble} />
-                        </td>
-                      </tr>
-                    ) : null}
-                    {g.sounds.map((s) => {
-                      const l = levels[s.name];
-                      const plan = PLAN_PEAK_DB[s.name];
-                      const off = l && plan !== undefined ? Math.abs(l.peakDb - plan) : 0;
-                      return (
-                        <tr
-                          key={s.name}
-                          className="border-t border-[var(--line-soft)]"
-                          data-testid="sound-row"
-                          data-sound={s.name}
-                        >
-                          <td className="py-1.5 pl-4 text-bone">{s.label}</td>
-                          <td>
-                            <ChannelChip c={channelOf(s.name)} />
-                          </td>
-                          <td
-                            className={`text-right tabular-nums ${off > 3 ? "text-danger-text" : "text-bone"}`}
-                          >
-                            {l ? fmt(l.peakDb) : ""}
-                          </td>
-                          <td className="text-right tabular-nums text-muted">{l ? fmt(l.lufsM) : ""}</td>
-                          <td className="pr-4 text-right tabular-nums text-muted">
-                            {plan !== undefined ? fmt(plan) : "—"}
-                          </td>
-                          <td className="pr-3 text-right">
-                            <PlayButton label={s.label} onPlay={() => audio.play(s.name)} />
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+              <SoundRows
+                rows={[
+                  ...(g.title === "Dice"
+                    ? [
+                        {
+                          name: "diceRumble",
+                          label: "Dice tumbling",
+                          channel: "dice" as Channel,
+                          peak: null,
+                          lufs: null,
+                          target: -24.4,
+                          off: 0,
+                          continuous: true,
+                          onPlay: playTumble,
+                        },
+                      ]
+                    : []),
+                  ...g.sounds.map((s) => {
+                    const l = levels[s.name];
+                    const plan = PLAN_PEAK_DB[s.name];
+                    return {
+                      name: s.name,
+                      label: s.label,
+                      channel: channelOf(s.name),
+                      peak: l ? l.peakDb : null,
+                      lufs: l ? l.lufsM : null,
+                      target: plan ?? null,
+                      off: l && plan !== undefined ? Math.abs(l.peakDb - plan) : 0,
+                      continuous: false,
+                      onPlay: () => audio.play(s.name),
+                    };
+                  }),
+                ]}
+              />
             </section>
           ))}
         </div>
       </div>
     </main>
+  );
+}
+
+interface SoundRow {
+  name: string;
+  label: string;
+  channel: Channel;
+  peak: number | null;
+  lufs: number | null;
+  /** The planned peak (dBFS), from sound.md. */
+  target: number | null;
+  /** How far the measured peak is from the plan (dB). */
+  off: number;
+  continuous: boolean;
+  onPlay: () => void;
+}
+
+/** A column header with its unit set in the body face (Cinzel caps would turn "dBFS" into "DBFS"). */
+function Head({ name, unit, className = "" }: { name: string; unit?: string; className?: string }) {
+  return (
+    <th className={`text-right font-normal ${className}`}>
+      <span className="caps">{name}</span>
+      {unit ? (
+        <span className="ml-1 font-ui text-12 normal-case tracking-normal text-faint">{unit}</span>
+      ) : null}
+    </th>
+  );
+}
+
+/**
+ * A group's sounds: a table whose columns line up down the page — on a phone, a two-line card each (the table's five
+ * columns don't fit 390 px; critic P11 r1 I13).
+ */
+function SoundRows({ rows }: { rows: SoundRow[] }) {
+  const phone = useIsPhone();
+  const peak = (r: SoundRow) => (r.continuous ? "continuous" : r.peak !== null ? fmt(r.peak) : "");
+  if (phone)
+    return (
+      <ul>
+        {rows.map((r) => (
+          <li
+            key={r.name}
+            className="flex items-center gap-3 border-t border-[var(--line-soft)] px-4 py-2 first:border-t-0"
+            data-testid="sound-row"
+            data-sound={r.name}
+            data-measured={r.peak !== null ? "1" : undefined}
+          >
+            <div className="flex min-w-0 flex-1 flex-col gap-1">
+              <span className="flex items-center gap-2">
+                <span className="truncate text-14 text-bone">{r.label}</span>
+                <ChannelChip c={r.channel} />
+              </span>
+              <span className="tabular flex flex-wrap gap-x-3 text-12 text-muted">
+                <span className={r.off > 3 ? "text-danger-text" : "text-bone"}>
+                  {peak(r) || "—"}
+                  {r.continuous ? "" : " dBFS"}
+                </span>
+                {r.lufs !== null ? <span>{fmt(r.lufs)} LUFS</span> : null}
+                <span>target {r.target !== null ? fmt(r.target) : "—"}</span>
+              </span>
+            </div>
+            <PlayButton label={r.label} onPlay={r.onPlay} />
+          </li>
+        ))}
+      </ul>
+    );
+  return (
+    <table className="w-full table-fixed text-13">
+      {/* One set of columns for every group, so they line up down the page. */}
+      <colgroup>
+        <col />
+        <col className="w-[120px]" />
+        <col className="w-[104px]" />
+        <col className="w-[128px]" />
+        <col className="w-[96px]" />
+        <col className="w-[56px]" />
+      </colgroup>
+      <thead>
+        <tr className="text-left text-12 text-fog">
+          <th className="caps py-2 pl-4 text-left font-normal">Sound</th>
+          <th className="caps text-left font-normal">Channel</th>
+          <Head name="Peak" unit="dBFS" />
+          <Head name="Loudness" unit="LUFS" />
+          <Head name="Target" unit="dBFS" className="pr-4" />
+          <th>
+            <span className="sr-only">Play</span>
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((r) => (
+          <tr
+            key={r.name}
+            className="border-t border-[var(--line-soft)]"
+            data-testid="sound-row"
+            data-sound={r.name}
+            data-measured={r.peak !== null ? "1" : undefined}
+          >
+            <td className="py-1.5 pl-4 text-bone">{r.label}</td>
+            <td>
+              <ChannelChip c={r.channel} />
+            </td>
+            <td
+              className={`text-right tabular-nums ${r.continuous ? "text-muted" : r.off > 3 ? "text-danger-text" : "text-bone"}`}
+            >
+              {peak(r)}
+            </td>
+            <td className="text-right tabular-nums text-muted">{r.lufs !== null ? fmt(r.lufs) : ""}</td>
+            <td className="pr-4 text-right tabular-nums text-muted">
+              {r.target !== null ? fmt(r.target) : "—"}
+            </td>
+            <td className="pr-3 text-right">
+              <PlayButton label={r.label} onPlay={r.onPlay} />
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 

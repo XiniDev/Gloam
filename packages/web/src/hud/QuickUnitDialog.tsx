@@ -100,7 +100,7 @@ function Num({
           aria-invalid={error || undefined}
           onChange={(e) => onChange(e.target.value)}
           onFocus={(e) => e.target.select()}
-          className={`h-9 w-full rounded-[var(--radius-control)] border bg-ink-900 px-2 text-15 text-bone tabular-nums focus:border-brass ${
+          className={`h-9 w-full rounded-[var(--radius-control)] border bg-ink-900 px-2 text-16 text-bone tabular-nums focus:border-brass ${
             error ? "border-danger" : "border-line hover:border-line-strong"
           } ${suffix ? "pr-7" : ""}`}
         />

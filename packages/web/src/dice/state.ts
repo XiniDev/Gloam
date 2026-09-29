@@ -25,6 +25,9 @@ interface RollsState {
   take(): FeedRoll | undefined;
 }
 
+/** The 3D dice are on the board (thrown, resting or fading): HUD that would take their room steps aside. */
+export const useDiceStage = create<{ on: boolean }>(() => ({ on: false }));
+
 export const useRolls = create<RollsState>((set, get) => ({
   feed: [],
   rolling: new Set(),

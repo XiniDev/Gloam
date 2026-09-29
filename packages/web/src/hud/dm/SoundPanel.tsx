@@ -20,6 +20,7 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { audio } from "../../audio/engine.ts";
 import {
   measureTrack,
   musicAction,
@@ -39,6 +40,7 @@ import {
 import { serverNow } from "../../net/clock.ts";
 import { request } from "../../net/table.ts";
 import { type AssetItem, useLibrary } from "../../state/library.ts";
+import { prefersReducedMotion } from "../../state/settings.ts";
 import { Button, IconButton } from "../../ui/Button.tsx";
 import { Slider } from "../../ui/controls.tsx";
 import { Menu } from "../../ui/Menu.tsx";
@@ -190,6 +192,66 @@ function NowPlaying({ tracks }: { tracks: Map<string, AssetItem> }) {
   );
 }
 
+/** Each preset's mark: a brass line drawn like its music moves (a slow swell, a skipping tune, a hammering figure,
+ * rising sparkles). */
+const MOTIF: Record<MusicPreset, string> = {
+  dungeon: "M1 9c4 0 5-5 9-5s5 7 9 7 5-5 9-5 5 3 9 3",
+  tavern: "M1 11c2-5 4-5 6 0M9 11c2-6 4-6 6 0M17 11c2-5 4-5 6 0M25 11c2-7 4-7 6 0M33 11c2-5 4-5 6 0",
+  battle: "M1 12 5 3l4 9 4-9 4 9 4-9 4 9 4-9 4 9 4-9 3 6",
+  wonder: "M2 13c6-2 10-6 14-10M16 3v4M14 5h4M24 12c4-1 7-4 9-7M33 5v3M31.5 6.5h3M8 5.5h.01M28 11h.01",
+};
+
+function Motif({ p, on }: { p: MusicPreset; on: boolean }) {
+  return (
+    <svg
+      width="40"
+      height="16"
+      viewBox="0 0 40 16"
+      fill="none"
+      stroke={on ? "var(--brass-300)" : "var(--brass-600)"}
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d={MOTIF[p]} />
+    </svg>
+  );
+}
+
+/** What's playing, moving: four level bars from the music itself (held still with reduced motion). */
+function LevelBars() {
+  const bars = useRef<(HTMLSpanElement | null)[]>([]);
+  const still = prefersReducedMotion();
+  useEffect(() => {
+    if (still) return;
+    let raf = 0;
+    const step = () => {
+      const b = audio.musicBands(4);
+      bars.current.forEach((el, i) => {
+        if (el) el.style.transform = `scaleY(${Math.max(0.15, Math.min(1, (b?.[i] ?? 0) * 1.6))})`;
+      });
+      raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [still]);
+  return (
+    <span className="flex h-3.5 items-end gap-1" role="img" aria-label="Playing" data-testid="level-bars">
+      {[0.55, 0.9, 0.7, 0.4].map((h, i) => (
+        <span
+          key={i}
+          ref={(el) => {
+            bars.current[i] = el;
+          }}
+          className="block h-full w-[3px] origin-bottom rounded-chip bg-brass-bright"
+          style={{ transform: `scaleY(${still ? h : 0.15})` }}
+        />
+      ))}
+    </span>
+  );
+}
+
 /** The four generative presets. */
 function Presets() {
   const m = useAudioSync((s) => s.state.music);
@@ -212,8 +274,14 @@ function Presets() {
               }
               className={`flex min-h-[64px] flex-col items-start gap-0.5 rounded-[var(--radius-control)] border px-3 py-2 text-left transition-colors duration-[var(--dur-fast)] ${on ? "border-brass bg-raised" : "border-line hover:border-brass-deep hover:bg-raised"}`}
             >
-              <span className={`text-14 font-bold ${on ? "text-brass-bright" : "text-bone"}`}>
-                {PRESET_LABEL[p].name}
+              <span className="flex w-full items-center gap-2">
+                <span className={`text-14 font-bold ${on ? "text-brass-bright" : "text-bone"}`}>
+                  {PRESET_LABEL[p].name}
+                </span>
+                {on ? <LevelBars /> : null}
+                <span className="ml-auto">
+                  <Motif p={p} on={on} />
+                </span>
               </span>
               <span className="text-12 leading-snug text-muted">{PRESET_LABEL[p].mood}</span>
             </button>
@@ -251,9 +319,7 @@ function TrackRow({
         </IconButton>
         <div className="min-w-0 flex-1">
           <p className={`truncate text-14 ${playing ? "text-brass-bright" : "text-bone"}`}>{t.name}</p>
-          <p className="tabular text-12 text-muted">
-            {t.durationMs ? clock(t.durationMs) : "length not measured yet"}
-          </p>
+          <p className="tabular text-12 text-muted">{t.durationMs ? clock(t.durationMs) : "—:—"}</p>
         </div>
         {playlists.length ? (
           <Menu

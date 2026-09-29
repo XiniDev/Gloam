@@ -4,8 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { addLogEntry, logMarkdown, useFun } from "../../net/fun.ts";
 import { useTable } from "../../net/table.ts";
 import { Button } from "../../ui/Button.tsx";
-import { Segmented } from "../../ui/controls.tsx";
 import { EmptyState } from "../../ui/EmptyState.tsx";
+import { Tabs } from "../../ui/Tabs.tsx";
 import { toast } from "../../ui/Toast.tsx";
 import { HandoutCard } from "./HandoutCard.tsx";
 
@@ -87,7 +87,7 @@ function Log() {
             placeholder="Search the log"
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            className="h-9 w-full rounded-[var(--radius-control)] border border-line bg-ink-950 pl-8 pr-2 text-14 text-bone placeholder:text-fog focus:border-brass focus:outline-none"
+            className="h-9 min-h-[var(--touch-min)] w-full rounded-[var(--radius-control)] border border-line bg-ink-950 pl-8 pr-2 text-14 text-bone placeholder:text-fog focus:border-brass focus:outline-none"
           />
         </label>
         <Button
@@ -100,49 +100,53 @@ function Log() {
           Markdown
         </Button>
       </div>
-      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-3">
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-2">
         {!loaded ? null : groups.length ? (
-          groups.map(([session, entries]) => (
-            <section
-              key={session}
-              aria-label={session ? `Session ${session}` : "Before the first session"}
-              data-testid="log-session"
-            >
-              <h3 className="mb-1.5 flex items-baseline justify-between gap-2 border-b border-[var(--line-soft)] pb-1">
-                <span className="font-display text-16 text-bone">
-                  {session ? `Session ${session}` : "Before the first session"}
-                </span>
-                <span className="text-12 text-muted">{day((entries[0] as LogEntryView).createdAt)}</span>
-              </h3>
-              <ol className="flex flex-col gap-1.5">
-                {entries.map((e) => (
-                  <li
-                    key={e.id}
-                    className="grid grid-cols-[44px_1fr] gap-2 text-14"
-                    data-testid="log-entry"
-                    data-kind={e.kind}
-                  >
-                    <span className="tabular pt-px text-12 text-fog">{time(e.createdAt)}</span>
-                    <span className={e.kind === "manual" ? "text-bone" : "text-muted"}>
-                      {e.kind === "manual" ? (
-                        <>
-                          <span className="font-bold text-brass-bright">{e.author ?? "Someone"}</span>{" "}
-                          <span className="whitespace-pre-wrap">{e.text}</span>
-                        </>
-                      ) : (
-                        <>
-                          {KIND[e.kind] ? (
-                            <span className="caps mr-1.5 text-11 text-brass">{KIND[e.kind]}</span>
-                          ) : null}
-                          {e.text}
-                        </>
-                      )}
-                    </span>
-                  </li>
-                ))}
-              </ol>
-            </section>
-          ))
+          // The log itself is a document (§27.1): the sessions on a parchment sheet, the search and the pen on ink.
+          <div className="parchment flex flex-col gap-4 px-4 py-3" data-testid="log-sheet">
+            {groups.map(([session, entries]) => (
+              <section
+                key={session}
+                aria-label={session ? `Session ${session}` : "Before the first session"}
+                data-testid="log-session"
+              >
+                <h3 className="mb-1.5 flex items-baseline justify-between gap-2 border-b border-parchment-edge/70 pb-1">
+                  <span className="font-display text-18 text-paper-ink">
+                    {session ? `Session ${session}` : "Before the first session"}
+                  </span>
+                  <span className="text-12 text-paper-muted">
+                    {day((entries[0] as LogEntryView).createdAt)}
+                  </span>
+                </h3>
+                <ol className="flex flex-col gap-1.5">
+                  {entries.map((e) => (
+                    // Three columns — when, what kind, what — so every line's text starts at one edge.
+                    <li
+                      key={e.id}
+                      className="grid grid-cols-[56px_72px_minmax(0,1fr)] items-baseline gap-2 text-14"
+                      data-testid="log-entry"
+                      data-kind={e.kind}
+                    >
+                      <span className="tabular whitespace-nowrap text-12 text-paper-muted">
+                        {time(e.createdAt)}
+                      </span>
+                      <span className="caps truncate text-12 text-brass-deep">{KIND[e.kind] ?? ""}</span>
+                      <span className="text-paper-ink">
+                        {e.kind === "manual" ? (
+                          <>
+                            <span className="font-bold">{e.author ?? "Someone"}</span>{" "}
+                            <span className="whitespace-pre-wrap">{e.text}</span>
+                          </>
+                        ) : (
+                          e.text
+                        )}
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+              </section>
+            ))}
+          </div>
         ) : (
           <EmptyState
             title={
@@ -206,7 +210,10 @@ function Handouts() {
   );
 }
 
-/** The dock's Journal (SPEC §8.18): the campaign log, and this person's handouts and notes. */
+/**
+ * The dock's Journal (SPEC §8.18): the campaign log, and this person's handouts and notes, under the same tabs as the
+ * DM panel's.
+ */
 export function JournalPanel() {
   const [tab, setTab] = useState<"log" | "handouts">("log");
   const count = useFun((s) => s.handouts.length);
@@ -214,19 +221,33 @@ export function JournalPanel() {
   useEffect(() => useFun.getState().set({ unread: 0 }), []);
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <header className="flex items-center justify-between gap-2 border-b border-line px-4 pb-2.5 pt-3">
-        <h2 className="text-18 text-bone">Journal</h2>
-        <Segmented
-          label="Journal"
-          value={tab}
-          onChange={setTab}
-          options={[
-            { value: "log", label: "Log" },
-            { value: "handouts", label: count ? `Handouts (${count})` : "Handouts" },
-          ]}
-        />
+      <header className="flex items-center gap-2 border-b border-line px-4 pb-0 pt-3">
+        <h2 className="pb-2 text-18 text-bone">Journal</h2>
       </header>
-      {tab === "log" ? <Log /> : <Handouts />}
+      <Tabs
+        label="Journal pages"
+        value={tab}
+        onChange={setTab}
+        tabs={[
+          { id: "log", label: "Log" },
+          {
+            id: "handouts",
+            label: (
+              <>
+                Handouts
+                {count ? <span className="tabular text-13 text-muted">{count}</span> : null}
+              </>
+            ),
+          },
+        ]}
+      />
+      <div
+        role="tabpanel"
+        aria-label={tab === "log" ? "Log" : "Handouts"}
+        className="flex min-h-0 flex-1 flex-col"
+      >
+        {tab === "log" ? <Log /> : <Handouts />}
+      </div>
     </div>
   );
 }

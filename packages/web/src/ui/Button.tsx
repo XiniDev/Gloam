@@ -77,7 +77,8 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(functio
 ) {
   const toneCls =
     tone === "danger"
-      ? "text-danger-text hover:bg-[var(--danger-soft)]"
+      ? // Muted at rest, red when pointed at: a column of red bins shouts (critic P11 r1).
+        "text-muted hover:bg-[var(--danger-soft)] hover:text-danger-text focus-visible:text-danger-text"
       : tone === "accent"
         ? "text-accent hover:bg-[var(--glow-brass-soft)]"
         : // Selected (§27.4): a brass icon inside a 1-px brass hairline with a 2-px outer glow — louder than a hover,

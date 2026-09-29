@@ -248,9 +248,9 @@ export function SavesPage() {
           <Archive size={20} aria-hidden /> Move a campaign
         </h2>
         <p className="max-w-[62ch] text-14 text-muted">
-          A <span className="mono">.gloam</span> file holds a whole campaign — its scenes, characters and
-          library. Import one on another machine: it becomes a new campaign there, and every file in it is
-          checked again as it comes in.
+          A <span className="font-bold text-bone">.gloam</span> file holds a whole campaign — its scenes,
+          characters and library. Import one on another machine: it becomes a new campaign there, and every
+          file in it is checked again as it comes in.
         </p>
         <div className="flex flex-wrap gap-2">
           <Button
@@ -322,7 +322,7 @@ export function SavesPage() {
         >
           {(backups?.backups ?? []).map((b) => (
             <li key={b.name} className="flex items-center gap-3 px-3 py-2 text-14" data-testid="backup-row">
-              <span className="mono min-w-0 flex-1 truncate text-bone">{b.name}</span>
+              <span className="tabular min-w-0 flex-1 truncate text-bone">{b.name}</span>
               <span className="text-12 text-muted">
                 {when(b.createdAt)} · {size(b.bytes)}
               </span>

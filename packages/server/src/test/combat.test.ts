@@ -523,5 +523,10 @@ describe("P8 — combat on the server (§8.12, §16.5)", () => {
     ).toEqual({
       status: "closed",
     });
+    // Never begun: the log says it was called off, not that it ended after 0 rounds.
+    const log = t.server.ctx.campaigns.log(campaignId);
+    expect(log.filter((e) => e.kind === "combat.summary").at(-1)?.text).toMatch(
+      /^Combat called off before it began\./,
+    );
   });
 });

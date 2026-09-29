@@ -29,8 +29,9 @@ import { useAssetImage } from "../useAssetImage.ts";
 
 /** Widths the strip is laid out with (px): a portrait's column, the active one's, their gap, the round divider, "+n". */
 const W = { entry: 40, active: 52, gap: 6, wrap: 34, more: 40 } as const;
-/** A phone's compact strip (§29.4: 48 px tall): its portraits, the active one's. */
-const PHONE = { entry: 34, active: 36 } as const;
+/** A phone's compact strip (§29.4: 48 px tall): the same, smaller. */
+const PHONE = { entry: 34, active: 36, gap: 6, wrap: 28, more: 34 } as const;
+type Widths = typeof W | typeof PHONE;
 
 /**
  * The turn tracker (SPEC §8.12, §29.4; AC-CMB-04): a strip of portraits at the top centre, from the creature whose turn
@@ -58,7 +59,10 @@ export function TurnTracker() {
   const dockOpen = useUi((s) => s.dock !== null);
   const shown = view.active && !(phone && dockOpen);
   useMeasuredInset("tracker", ref, insetMeasures.tracker, shown);
-  useCover("tracker", ref, shown);
+  // The strip's panel, not the full-width row it's centred in: HUD beside it (the toasts, the emote feed) stands
+  // beside it, not under the row's empty ends (critic P11 r1: the toasts dropped below a tracker 10 px clear of them).
+  const panelRef = useRef<HTMLDivElement>(null);
+  useCover("tracker", panelRef, shown);
   const [dragging, setDragging] = useState<string | null>(null);
   // Room for the portraits: the strip's width less the round label and the controls (critic P8 r2: without the
   // label, "+n" ran under the Previous button).
@@ -70,9 +74,11 @@ export function TurnTracker() {
     if (!outer || !fixed || !label || !shown) return;
     const measure = () => {
       const avail = outer.getBoundingClientRect().width;
-      // The panel's padding (10 px a side), the list's (4 px a side), the gaps between the three parts.
+      // The panel's padding (10 px a side; a phone's 8), the list's (4 px a side), the gaps between the three parts
+      // (8 px; a phone's 6).
+      const chrome = phone ? 16 + 8 + 12 : 20 + 8 + 16;
       const r = Math.floor(
-        avail - fixed.getBoundingClientRect().width - label.getBoundingClientRect().width - 20 - 8 - 16,
+        avail - fixed.getBoundingClientRect().width - label.getBoundingClientRect().width - chrome,
       );
       setRoom((x) => (x === r ? x : r));
     };
@@ -82,7 +88,7 @@ export function TurnTracker() {
     ro.observe(fixed);
     ro.observe(label);
     return () => ro.disconnect();
-  }, [shown]);
+  }, [shown, phone]);
   if (!shown) return null;
   const n = view.entries.length;
   const start = view.activeIndex >= 0 ? view.activeIndex : 0;
@@ -91,7 +97,9 @@ export function TurnTracker() {
     const j = (start + i) % n;
     return { e: view.entries[j] as CombatViewEntry, index: j, next: view.begun && j < start };
   });
-  const visible = phone ? order.slice(0, 3) : fit(order, room, view.begun);
+  // As many whole portraits as the strip has room for beside the round and the controls — a phone's too (critic P11
+  // r1 B4: a fixed three ran under the DM's Begin button on a narrow phone).
+  const visible = fit(order, room, view.begun, phone ? PHONE : W);
   const hidden = order.length - visible.length;
   const wrapAt = visible.findIndex((x) => x.next);
   const drop = (target: string) => {
@@ -133,6 +141,7 @@ export function TurnTracker() {
       data-testid="turn-tracker"
     >
       <div
+        ref={panelRef}
         className={`panel pointer-events-auto flex max-w-full items-center ${phone ? "h-12 gap-1.5 px-2" : "gap-2 px-2.5 py-1.5"}`}
       >
         {roundLabel}
@@ -311,15 +320,15 @@ export function TurnTracker() {
 }
 
 /** The entries that fit whole in `room` px, from the active one round the order (the rest become "+n"). */
-function fit<T extends { next: boolean }>(order: T[], room: number, begun: boolean): T[] {
+function fit<T extends { next: boolean }>(order: T[], room: number, begun: boolean, size: Widths): T[] {
   let used = 0;
   const out: T[] = [];
   for (const [i, x] of order.entries()) {
     const w =
-      (i === 0 && begun ? W.active : W.entry) +
-      (i ? W.gap : 0) +
-      (x.next && !order[i - 1]?.next && i > 0 ? W.wrap + W.gap : 0);
-    const reserve = i < order.length - 1 ? W.more + W.gap : 0;
+      (i === 0 && begun ? size.active : size.entry) +
+      (i ? size.gap : 0) +
+      (x.next && !order[i - 1]?.next && i > 0 ? size.wrap + size.gap : 0);
+    const reserve = i < order.length - 1 ? size.more + size.gap : 0;
     if (used + w + reserve > room && out.length > 0) break;
     used += w;
     out.push(x);
@@ -421,7 +430,7 @@ function Entry({
             <Portrait name={e.name} color={active ? "var(--brass-400)" : ring} size={size} src={src} />
           )}
         </span>
-        {handUp ? <HandBadge size={compact ? 14 : 16} className="absolute -right-1 -top-1" /> : null}
+        {handUp ? <HandBadge size={18} className="absolute -right-1.5 -top-1.5" /> : null}
         {active ? (
           <svg
             // (Its own key: sharing the swell's with a sibling, React left stale portraits behind as turns passed.)

@@ -7,8 +7,10 @@ import { savePhrases, sendEmote, sendPhrase, toggleHand } from "../net/fun.ts";
 import { useTable } from "../net/table.ts";
 import { prefersReducedMotion } from "../state/settings.ts";
 import { useUi } from "../state/ui.ts";
+import { KeyHint } from "../ui/KeyHint.tsx";
 import { toast } from "../ui/Toast.tsx";
 import { HandBadge } from "./HandBadge.tsx";
+import { useHudInsets } from "./insets.ts";
 
 const RADIUS = 92;
 const SIZE = 2 * RADIUS + 64;
@@ -50,6 +52,7 @@ export function EmoteWheel() {
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState("");
   const box = useRef<HTMLDivElement>(null);
+  const corners = useHudInsets((s) => Math.max(s.cornerLeft, s.cornerRight));
   const close = closeWheel;
   // Closed: its half-written phrase goes with it.
   useEffect(() => {
@@ -84,8 +87,8 @@ export function EmoteWheel() {
   // Kept on screen: the wheel and its phrases (≈ 340 px tall) where there's room.
   const w = Math.max(SIZE, 320);
   const left = Math.min(Math.max(12, at.x - w / 2), window.innerWidth - w - 12);
-  // (On a phone, below the dock's rail in the top-right corner: the wheel is wider than the room beside it.)
-  const minTop = window.innerWidth < 640 ? 236 : 64;
+  // (On a phone, below the corners — the tools button, the dock's rail: the wheel is wider than the room between.)
+  const minTop = window.innerWidth < 640 ? Math.max(64, corners + 8) : 64;
   const top = Math.min(Math.max(minTop, at.y - SIZE / 2), window.innerHeight - SIZE - 150);
   const emote = (id: EmoteId) => {
     close();
@@ -138,7 +141,7 @@ export function EmoteWheel() {
               onPointerEnter={() => setHover(e.label)}
               onPointerLeave={() => setHover(null)}
               onFocus={() => setHover(e.label)}
-              className="absolute grid h-11 w-11 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full text-24 leading-none transition-transform duration-[var(--dur-fast)] hover:scale-125 hover:bg-raised focus-visible:scale-125"
+              className="absolute grid h-11 w-11 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full text-28 leading-none transition-transform duration-[var(--dur-fast)] hover:scale-125 hover:bg-raised focus-visible:scale-125"
               style={{ left: SIZE / 2 + RADIUS * Math.cos(a), top: SIZE / 2 + RADIUS * Math.sin(a) }}
             >
               <span aria-hidden>{e.glyph}</span>
@@ -153,7 +156,7 @@ export function EmoteWheel() {
               <button
                 type="button"
                 onClick={() => phrase(p)}
-                className="h-8 max-w-[260px] truncate rounded-[var(--radius-chip)] border border-line px-2.5 text-13 text-bone hover:border-brass-deep hover:bg-raised"
+                className="h-8 max-w-[260px] truncate rounded-[var(--radius-chip)] border border-line px-2.5 text-13 text-bone hover:border-brass-deep hover:bg-raised pointer-coarse:h-11 max-sm:h-11"
               >
                 {p}
               </button>
@@ -162,7 +165,7 @@ export function EmoteWheel() {
                   type="button"
                   aria-label={`Remove “${p}”`}
                   onClick={() => removePhrase(p)}
-                  className="absolute -right-1.5 -top-1.5 hidden h-4 w-4 place-items-center rounded-full bg-ink-950 text-muted shadow-[0_0_0_1px_var(--line)] hover:text-bone group-focus-within:grid group-hover:grid"
+                  className="absolute -right-1.5 -top-1.5 hidden h-4 w-4 place-items-center rounded-full bg-ink-950 text-muted shadow-[0_0_0_1px_var(--line)] before:absolute before:-inset-2.5 before:content-[''] hover:text-bone group-focus-within:grid group-hover:grid pointer-coarse:-right-2 pointer-coarse:-top-2 pointer-coarse:grid pointer-coarse:h-6 pointer-coarse:w-6 max-sm:grid"
                 >
                   <X size={10} />
                 </button>
@@ -187,11 +190,11 @@ export function EmoteWheel() {
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 placeholder="Up to 40 characters"
-                className="h-8 min-w-0 flex-1 rounded-[var(--radius-control)] border border-line bg-ink-950 px-2 text-13 text-bone placeholder:text-fog focus:border-brass focus:outline-none"
+                className="h-8 min-w-0 flex-1 rounded-[var(--radius-control)] border border-line bg-ink-950 px-2 text-13 text-bone placeholder:text-fog focus:border-brass focus:outline-none pointer-coarse:h-11 max-sm:h-11"
               />
               <button
                 type="submit"
-                className="h-8 rounded-[var(--radius-control)] px-2 text-13 font-bold text-brass hover:bg-raised"
+                className="h-8 rounded-[var(--radius-control)] px-2 text-13 font-bold text-brass hover:bg-raised pointer-coarse:h-11 max-sm:h-11"
               >
                 Save
               </button>
@@ -200,7 +203,7 @@ export function EmoteWheel() {
             <button
               type="button"
               onClick={() => setAdding(true)}
-              className="flex h-8 items-center gap-1 rounded-[var(--radius-control)] px-2 text-13 text-muted hover:bg-raised hover:text-bone"
+              className="flex h-8 items-center gap-1 rounded-[var(--radius-control)] px-2 text-13 text-muted hover:bg-raised hover:text-bone pointer-coarse:h-11 max-sm:h-11"
             >
               <Plus size={14} aria-hidden /> Your own phrase
             </button>
@@ -215,11 +218,13 @@ export function EmoteWheel() {
                 close();
                 void toggleHand().catch(refused);
               }}
-              className="ml-auto flex h-8 items-center gap-1.5 rounded-[var(--radius-control)] px-2 text-13 text-bone hover:bg-raised"
+              className="ml-auto flex h-8 items-center gap-1.5 rounded-[var(--radius-control)] px-2 text-13 text-bone hover:bg-raised pointer-coarse:h-11 max-sm:h-11"
             >
-              <HandBadge size={16} />
+              <HandBadge size={18} />
               {handUp ? "Lower hand" : "Raise hand"}
-              <kbd className="text-11 text-fog">H</kbd>
+              <span className="pointer-coarse:hidden">
+                <KeyHint keys="H" />
+              </span>
             </button>
           ) : null}
         </div>

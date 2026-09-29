@@ -2,7 +2,7 @@ import { X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { type ReactNode, useEffect, useRef } from "react";
 import { create } from "zustand";
-import { type ScreenArea, useBoardCovers, useCover, useHudInsets } from "../hud/insets.ts";
+import { PHONE_BOTTOM_BAND, type ScreenArea, useBoardCovers, useCover, useHudInsets } from "../hud/insets.ts";
 import { provideTestHook } from "../test/hooks.ts";
 import { useModalOpen } from "./Dialog.tsx";
 import { keepHyphenated } from "./text.tsx";
@@ -94,8 +94,9 @@ export const toast = {
   danger: (title: ReactNode, body?: ReactNode) => useToasts.getState().push({ kind: "danger", title, body }),
 };
 
-/** HUD that isn't in the toasts' way wherever it is (the stack itself; the bottom band's pieces). */
-const NOT_IN_THE_WAY = new Set(["toasts", "feed", "actions", "targeting"]);
+/** HUD that isn't in the toasts' way wherever it is (the stack itself; the bottom band's pieces; the emote feed, which
+ * keeps out of theirs). */
+const NOT_IN_THE_WAY = new Set(["toasts", "feed", "actions", "targeting", "emote-feed"]);
 
 /**
  * Where the toast stack starts: below each piece of HUD in its column (x0…x1) that stands within the stack's reach —
@@ -150,8 +151,11 @@ export function Toaster() {
     cards.top < window.innerHeight / 3;
   const x1 = inCards && cards ? cards.right - 4 : window.innerWidth - right;
   const x0 = phoneTable ? 12 : inCards && cards ? cards.left + 4 : x1 - columnW;
-  // A dialog open: the stack keeps out of it (its header, a phone's whole width) — at the foot.
+  // A dialog open: the stack keeps out of it — where it stands in the stack's column, the stack goes to the foot.
   const modal = useModalOpen((s) => s.count > 0);
+  const dialog = useModalOpen((s) => s.box);
+  // A phone's dock page open: its header and tabs are at the top — the stack stands at the foot (critic P11 r1 B6).
+  const dockPage = phoneTable && covers["dock-panel"] !== undefined;
   // The stack is HUD over the board while it holds a toast: plates keep out from under it (critic P7 r2 #2).
   const ref = useRef<HTMLDivElement>(null);
   useCover("toasts", ref, table && items.length > 0);
@@ -160,23 +164,39 @@ export function Toaster() {
   const under = table
     ? stackTop(phoneTable ? cornerLeft : 72, x0, x1, covers, ref.current?.offsetHeight ?? 0)
     : null;
-  // Never in the middle of the board (§27.6): below cards that reach past a third of the screen, or over a dialog, the
-  // stack stands at the foot of the column instead, above the bottom band.
-  const atFoot = table && (modal || (under !== null && under > window.innerHeight * 0.35));
+  const reach = Math.max(96, ref.current?.offsetHeight ?? 0);
+  const overDialog =
+    modal &&
+    (!dialog ||
+      (under !== null &&
+        dialog.left < x1 &&
+        dialog.right > (phoneTable ? 12 : x0) &&
+        dialog.top < under + reach &&
+        dialog.bottom > under));
+  // Never in the middle of the board (§27.6): below cards that reach past a third of the screen, the stack stands at
+  // the foot of the column instead, above the bottom band; over a dialog or a phone's page, at the screen's foot (the
+  // bottom band is under the scrim or the page then — never counted, or the stack stood mid-board: critic P11 r1 B6).
+  const cardsLow = !modal && under !== null && under > window.innerHeight * 0.35;
+  const atFoot = table && (overDialog || dockPage || cardsLow);
   const top = atFoot ? null : under;
-  const bottomBand = useHudInsets((s) => s.bottom);
+  const band = useHudInsets((s) => s.bottom);
+  const bottomBand = cardsLow ? band : dockPage ? 0 : phoneTable ? PHONE_BOTTOM_BAND : 96;
   // Tests: a toast on demand (where it stands beside the HUD).
   useEffect(() => provideTestHook("toast", (title: unknown) => toast.info(String(title))), []);
   return (
     <div
       ref={ref}
       aria-live="polite"
-      className="pointer-events-none fixed right-3 top-[calc(64px+env(safe-area-inset-top))] z-[950] flex w-[min(380px,calc(100vw-24px))] flex-col gap-2 sm:right-4 sm:top-[72px]"
+      // Off the table (the admin's pages): the top right on wide screens, clear of the page's nav; on a phone, whose
+      // top is its nav, at the foot (critic P11 r1 B6).
+      className="pointer-events-none fixed bottom-[calc(16px+env(safe-area-inset-bottom))] right-3 z-[950] flex w-[min(380px,calc(100vw-24px))] flex-col gap-2 md:bottom-auto md:right-4 md:top-4"
       style={
         phoneTable
           ? // (With a page of the dock open across the phone, the stack takes the width, over the page.)
             {
-              ...(atFoot ? { top: "auto", bottom: bottomBand + 12 } : { top: top ?? cornerLeft }),
+              ...(atFoot
+                ? { top: "auto", bottom: bottomBand + 12 }
+                : { top: top ?? cornerLeft, bottom: "auto" }),
               left: 12,
               right: right < window.innerWidth / 2 ? right : 12,
               width: "auto",
@@ -185,7 +205,7 @@ export function Toaster() {
             ? {
                 right: window.innerWidth - x1,
                 width: x1 - x0,
-                ...(atFoot ? { top: "auto", bottom: bottomBand + 12 } : top !== null ? { top } : {}),
+                ...(atFoot ? { top: "auto", bottom: bottomBand + 12 } : { top: top ?? 72, bottom: "auto" }),
               }
             : undefined
       }

@@ -118,3 +118,69 @@ export function frameBounds(opts: {
     distance: d,
   };
 }
+
+/** Screen pixels per foot of ground at a framing's target (east–west), for a camera of this field of view. */
+export function pxPerFoot(f: Framing, width: number, height: number, fovDeg: number): number {
+  const cam = new PerspectiveCamera(fovDeg, width / Math.max(1, height), 0.5, 4000);
+  cam.position.set(...f.position);
+  cam.lookAt(...f.target);
+  cam.updateMatrixWorld();
+  const a = new Vector3(...f.target).project(cam);
+  const b = new Vector3(f.target[0] + 1, 0, f.target[2]).project(cam);
+  return (Math.abs(b.x - a.x) / 2) * width;
+}
+
+/**
+ * The part of a map a small screen opens on so it reads — `pxPerFt` on screen, a token big enough to carry its name
+ * (critic P11 r1 I8: a whole 60×40 map on a portrait phone left 22-px tokens with bare bars): the box the visible
+ * rect holds at that scale (a ground length shows foreshortened by the pitch's sine), centred on `focus` and kept
+ * inside the map. Along a side the map already fits, all of it.
+ */
+export function readableRegion(opts: {
+  bounds: Bounds;
+  visible: ScreenRect;
+  pitchDeg: number;
+  focus: { x: number; y: number };
+  pxPerFt: number;
+  margin?: number;
+}): Bounds {
+  const { bounds: b, visible: v, focus } = opts;
+  const m = opts.margin ?? 24;
+  const wFt = Math.max(1, v.right - v.left - 2 * m) / opts.pxPerFt;
+  const hFt = Math.max(1, v.bottom - v.top - 2 * m) / (opts.pxPerFt * Math.sin(opts.pitchDeg * DEG));
+  const along = (lo: number, hi: number, at: number, span: number): [number, number] => {
+    if (span >= hi - lo) return [lo, hi];
+    const start = Math.min(Math.max(at - span / 2, lo), hi - span);
+    return [start, start + span];
+  };
+  const [minX, maxX] = along(b.minX, b.maxX, focus.x, wFt);
+  const [minY, maxY] = along(b.minY, b.maxY, focus.y, hFt);
+  return { minX, minY, maxX, maxY };
+}
+
+/**
+ * The camera a small screen opens a scene with so its middle reads at `pxPerFt` (readableRegion): the region is
+ * narrowed until the framed view reaches that scale at its centre (perspective makes the near edge bind first) — or
+ * until it's the whole map.
+ */
+export function frameReadable(
+  opts: Parameters<typeof frameBounds>[0] & { focus: { x: number; y: number }; pxPerFt: number },
+): Framing {
+  let want = opts.pxPerFt;
+  let f = frameBounds(opts);
+  for (let i = 0; i < 5; i++) {
+    const region = readableRegion({
+      bounds: opts.bounds,
+      visible: opts.visible,
+      pitchDeg: opts.pitchDeg,
+      focus: opts.focus,
+      pxPerFt: want,
+      ...(opts.margin !== undefined ? { margin: opts.margin } : {}),
+    });
+    f = frameBounds({ ...opts, bounds: region });
+    const got = pxPerFoot(f, opts.width, opts.height, opts.fovDeg);
+    if (got >= opts.pxPerFt * 0.99) break;
+    want *= opts.pxPerFt / got;
+  }
+  return f;
+}

@@ -36,11 +36,20 @@ export function Filigree({ tone = "brass" }: { tone?: "brass" | "ink" }) {
 }
 
 /**
- * The "DM" wax seal (SPEC §27.4). Its letters only where they're legible (≥ 22 px, 12-px caps or near it); smaller, an
- * embossed star in the wax — the role is its accessible name either way.
+ * The "DM" wax seal (SPEC §27.4). Its letters only where they're legible (≥ 22 px, 12-px caps or near it); smaller — or
+ * a seal that says nothing in letters (`mark: "star"`: a secret note's) — an embossed star in the wax. Its label is its
+ * accessible name either way.
  */
-export function WaxSeal({ label = "DM", size = 26 }: { label?: string; size?: number }) {
-  const lettered = size >= 22;
+export function WaxSeal({
+  label = "DM",
+  size = 26,
+  mark,
+}: {
+  label?: string;
+  size?: number;
+  mark?: "letters" | "star";
+}) {
+  const lettered = mark ? mark === "letters" : size >= 22;
   return (
     <span
       className="relative inline-grid place-items-center"
