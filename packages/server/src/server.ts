@@ -31,6 +31,7 @@ import { PeopleService } from "./services/people.ts";
 import { SecurityLog } from "./services/securityLog.ts";
 import { SettingsService } from "./services/settings.ts";
 import { TableService } from "./services/table.ts";
+import { inBlackout } from "./testHooks.ts";
 import { TunnelManager } from "./tunnel/manager.ts";
 
 export interface StartOptions {
@@ -168,7 +169,11 @@ export async function startServer(opts: StartOptions = {}): Promise<GloamServer>
     server: httpServer,
     maxPayload: LIMITS.wsMaxPayload,
     beforeUpgrade: (_req, context) =>
-      isSameOrigin(context.headers) ? undefined : new Response(null, { status: 403 }),
+      inBlackout()
+        ? new Response(null, { status: 503 })
+        : isSameOrigin(context.headers)
+          ? undefined
+          : new Response(null, { status: 403 }),
   });
   const server = defineServer({
     transport,

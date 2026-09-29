@@ -1,3 +1,4 @@
+import { inflateSync } from "node:zlib";
 import type { Room } from "@colyseus/sdk";
 import { type P, pathLength } from "@gloam/shared/geometry";
 import { Table, type TableState } from "@gloam/shared/state";
@@ -5,7 +6,12 @@ import { Raster, rleDecode } from "@gloam/shared/vision";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { moveDurationMs } from "../engine/commands/move.ts";
 import type { TableRoom } from "../rooms/TableRoom.ts";
-import type { FogSnapshot, MoveSeen, VisionService } from "../vision/visionService.ts";
+import {
+  EXPLORED_FLUSH_MS,
+  type FogSnapshot,
+  type MoveSeen,
+  type VisionService,
+} from "../vision/visionService.ts";
 import {
   Agent,
   createCampaign,
@@ -546,5 +552,33 @@ describe("P4 — vision, light and fog on the server (VIS)", () => {
     dm = (await admin.colyseus().joinById(campaignId, {}, Table)) as unknown as TableRoomClient;
     expect(explored((await rq<ViewAs>(dm, "vision.viewAs", { userId: bob.id })).fog).any()).toBe(false);
     expect(explored((await rq<ViewAs>(dm, "vision.viewAs", { userId: anna.id })).fog).at(50, 20)).toBe(0);
+  });
+
+  it("AC-PER-02 (explored memory): what a player sees is on disk within 5 s with nothing closed or flushed — a crash loses at most the last 5 s", async () => {
+    // Straight from the database, as a restarted server would read it after a SIGKILL.
+    const onDisk = () => {
+      const row = t.server.ctx.sqlite
+        .prepare(
+          "SELECT origin_x AS x0, origin_y AS y0, cell_ft AS cell, w, h, data FROM fog_masks WHERE scene_id = ? AND layer = ?",
+        )
+        .get(sceneId, `explored:${anna.id}`) as
+        | { x0: number; y0: number; cell: number; w: number; h: number; data: Buffer }
+        | undefined;
+      return row
+        ? new Raster(row.x0, row.y0, row.cell, row.w, row.h, new Uint8Array(inflateSync(row.data)))
+        : null;
+    };
+    expect(onDisk()?.at(50, 20) ?? 0).toBe(0);
+    // The door opens: Anna sees down the corridor again.
+    await toggleDoor("open");
+    const t0 = Date.now();
+    while (explored((await rq<ViewAs>(dm, "vision.viewAs", { userId: anna.id })).fog).at(50, 20) !== 1) {
+      if (Date.now() - t0 > 3000) throw new Error("Anna never saw the corridor");
+      await sleep(20);
+    }
+    const seenAt = Date.now();
+    await waitFor(() => onDisk()?.at(50, 20) === 1, EXPLORED_FLUSH_MS + 2000);
+    // (The AC's 5 s, not the constant's: raising the interval fails here.)
+    expect(Date.now() - seenAt).toBeLessThanOrEqual(5000 + 250);
   });
 });

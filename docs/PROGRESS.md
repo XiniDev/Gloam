@@ -564,3 +564,19 @@ groundwork; its restart test still to write: spawnServer({ dataDir, env: { PORT 
   AC-MOV-11/12, p5-dice rest (third full-run failure). Next: investigate each from artifacts/logs/e2e-all.log and its
   traces (likely suspects: the zoom-out compact plates and the effect handles' board marks from d6208d7), then re-run
   the P9 shots for step 15, commit, rerun everything, bench.
+
+## 2026-09-29 — P10: persistence and recovery (PER-02, -05, -06, -07 passing)
+
+- `.gloam` export/import (gloamZip.ts, gloamPort.ts, routes/gloam.ts; tests gloamZip.test.ts, gloamPort.test.ts): a
+  fresh install imports row for row with new ids; tampered files, unsafe paths and fake assets refused, nothing left.
+- Admin → Saves page: snapshots, move a campaign, backups.
+- Recovery: test hooks `blackout`/`kill`/`restart`; journey p10-recovery (70 s outage: banners on both screens, no
+  reload, live again; SIGKILL mid-session: board, combat, effects, fog intact; old code refused; session 1 "ended
+  unexpectedly"; returning player by PIN gets the same character, sheet, place and dice).
+- Real bugs found by them: session number reused after a crash (whole-row writes → changed columns only); a returning
+  player's sheet never arriving (per-kind event replay + `sheets.sync`); toasts stacking over the board; the first
+  load crash from a replayed "left" event.
+- `cast.setDc` (DM sets an NPC card's DC; rolled saves re-judged, hand verdicts kept).
+- Open: AC-UNDO-05 (emotes and music, later phase); P10 key screens + visual critic for Saves and History; full E2E run
+  (p3-tools ERR_NO_BUFFER_SPACE source, p4-light-fog timing); P9 round-2 leftovers (effects over unseen fog in the
+  player view, blacked-out token plates); SPEC §24.9 `compileAsync` warm-up.

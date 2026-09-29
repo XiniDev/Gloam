@@ -12,6 +12,7 @@ else if (argv.includes("--dev"))
 
 const { startServer } = await import("./server.ts");
 const { ConfigError } = await import("./config.ts");
+const { testBlackout } = await import("./testHooks.ts");
 
 let gloam: Awaited<ReturnType<typeof startServer>>;
 try {
@@ -62,6 +63,13 @@ if (process.env.NODE_ENV === "test" && typeof process.send === "function") {
           }
         ).clients)
           if (c.auth?.userId === userId) c.ref?.terminate?.();
+    }
+    // The host gone a while and back (AC-PER-06): every table connection cut, none accepted for `ms`.
+    if (typeof m === "object" && m && (m as { type?: string }).type === "gloam:blackout") {
+      testBlackout.until = Date.now() + Number((m as { ms?: number }).ms ?? 0);
+      for (const room of gloam.ctx.rooms.tables.values())
+        for (const c of (room as unknown as { clients: Iterable<{ ref?: { terminate?(): void } }> }).clients)
+          c.ref?.terminate?.();
     }
   });
 }

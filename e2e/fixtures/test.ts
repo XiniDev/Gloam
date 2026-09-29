@@ -17,9 +17,13 @@ export function guard(page: Page, origin: string, g: Guard): void {
     if (
       m.type() === "error" &&
       !/Failed to load resource: the server responded with a status of 4\d\d/.test(t)
-    )
-      g.errors.push(t);
+    ) {
+      // Where it came from too: "Failed to load resource" alone doesn't say what failed to load.
+      const at = m.location().url;
+      g.errors.push(at && /Failed to load resource/.test(t) ? `${t} (${at})` : t);
+    }
   });
+
   page.on("pageerror", (e) => g.errors.push(`pageerror: ${e.message}`));
   // The board hidden at the table (React's Suspense sets display: none on it when a suspension reaches the page):
   // a blank board for the player, its frame loop stopped. Never allowed.

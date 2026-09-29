@@ -139,6 +139,9 @@ async function onConnection(): Promise<void> {
   if (k === asked) return;
   asked = k;
   if (!k) return;
+  // Each new room session asks for its sheets outright: the snapshot pushed on join can arrive before this page
+  // listens (a returning player on a busy table got none — the P10 crash journey), and one request costs nothing.
+  void resync();
   try {
     const list = await request<ProposalView[]>("proposal.list", {});
     useSheets.getState().set({ proposals: new Map(list.map((p) => [p.id, p])) });

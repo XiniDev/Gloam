@@ -1669,10 +1669,10 @@
       "code": "PER",
       "phase": "P10",
       "text": "After SIGKILL mid-session and a restart, the board, tokens, combat state, sheets, effects and fog reveals are intact; at most the last 5 s of explored memory may be missing.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p10-recovery.spec.ts 'AC-PER-02 / AC-PER-07' SIGKILLs the server mid-session (tokens moved, HP applied, Web effect, combat with initiative 17, painted fog reveal), restarts on the same data and compares the admin's board snapshot (tokens+HP, combat round/active/entries, effects, fog layers) equal to before; packages/server/src/test/vision.test.ts 'AC-PER-02 (explored memory)' proves explored memory reaches fog_masks within 5 s with no close/flush (fails with the periodic flush disabled); persistence.test.ts delta column writes keep outside-written columns.",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-29T19:49:15.929Z"
     },
     {
       "id": "AC-PER-03",
@@ -1702,10 +1702,10 @@
       "code": "PER",
       "phase": "P10",
       "text": "Export produces a `.gloam` file that imports on a fresh install with identical content; imported assets are re-validated.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/gloamPort.test.ts › 'imports on a fresh install with identical content — every id new, every reference following it' (exported over HTTP from one install, imported on a fresh one: every table row for row equal through the importer's id map, no old id anywhere, the asset re-processed into B's store) and › 'refuses a file changed since export, and one whose asset isn't what it claims — leaving nothing behind' (hash mismatch; a script posing as the asset fails the upload pipeline; a ../ entry); zip safety in packages/server/src/persistence/gloamZip.test.ts (zip-slip names, symlinks, a lying size, CRC, entry limit)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-29T18:54:04.686Z"
     },
     {
       "id": "AC-PER-06",
@@ -1713,10 +1713,10 @@
       "code": "PER",
       "phase": "P10",
       "text": "Clients show a reconnecting banner on disconnect and resynchronise without a reload after the server returns.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p10-recovery.spec.ts 'AC-PER-06': a 70 s blackout (every table socket cut, upgrades refused 503 — longer than the SDK's own retries) shows 'Connection lost — reconnecting…' on both player and DM (artifacts/screens/p10/reconnecting.png, captured after fade-in), both return to connection 'open' with the same window.__gloam.loadedAt (no reload), and a token the DM creates afterwards reaches the player; web/src/net/eventBus.test.ts covers the replayed per-kind event buffer that resyncs listeners.",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-29T19:49:16.003Z"
     },
     {
       "id": "AC-PER-07",
@@ -1724,10 +1724,10 @@
       "code": "PER",
       "phase": "P10",
       "text": "Crash recovery end to end: kill the server process mid-session, restart, open the table; old invite codes no longer work, the previous session is closed in the log as ended unexpectedly, and a returning player who knocks with their PIN and is admitted gets the same character, sheet, position and dice skin.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p10-recovery.spec.ts 'AC-PER-02 / AC-PER-07': server SIGKILLed mid-session, restarted, the admin opens the table (new code); the old code shows 'That code didn't open the door'; table_sessions shows session 1 ended 'crash' and session 2 open, the log reads 'Session 1 ended unexpectedly.'; Dave returns on a new browser via 'I've played before' + PIN, the DM's knock card shows 'returning ✓ PIN verified', and after Admit he has the same userId, token position (22,14), sheet and dice skin (#aa3355 gemstone); persistence.test.ts proves the session number is not reused after a crash.",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-29T19:49:16.093Z"
     },
     {
       "id": "AC-AST-01",

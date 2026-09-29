@@ -289,13 +289,37 @@ export class CommandBus {
             .where(eq((codec.table as unknown as { id: never }).id, w.id as never))
             .run();
         } else {
-          const row = (codec.toRow as (e: unknown) => Record<string, unknown>)(w.value);
-          const { id: _id, ...rest } = row;
-          this.app.db
-            .insert(codec.table)
-            .values(row as never)
-            .onConflictDoUpdate({ target: (codec.table as unknown as { id: never }).id, set: rest as never })
-            .run();
+          const toRow = codec.toRow as (e: unknown) => Record<string, unknown>;
+          const row = toRow(w.value);
+          const before = this.model.get(w.kind, w.id);
+          const idCol = (codec.table as unknown as { id: never }).id;
+          // A change writes only the columns it changed: a column written outside the bus meanwhile (the campaign's
+          // session counter, bumped when the table opens) must not be put back to the model's older copy of it —
+          // after a crash the next session took the same number again.
+          const changed: Record<string, unknown> = {};
+          if (before !== undefined) {
+            const old = toRow(before);
+            for (const [k, v] of Object.entries(row))
+              if (k !== "id" && !sameColumn(v, old[k])) changed[k] = v;
+          }
+          const wrote =
+            before !== undefined && Object.keys(changed).length
+              ? this.app.db
+                  .update(codec.table)
+                  .set(changed as never)
+                  .where(eq(idCol, w.id as never))
+                  .run().changes
+              : before !== undefined
+                ? 1
+                : 0;
+          if (wrote === 0) {
+            const { id: _id, ...rest } = row;
+            this.app.db
+              .insert(codec.table)
+              .values(row as never)
+              .onConflictDoUpdate({ target: idCol, set: rest as never })
+              .run();
+          }
         }
       }
       for (const op of ops) if (op.k === "fog") this.hooks.fog?.apply(op);
@@ -728,4 +752,13 @@ export class CommandBus {
   canRedo(userId: string): boolean {
     return (this.redoStacks.get(userId)?.length ?? 0) > 0;
   }
+}
+
+/** Whether a column's value is unchanged (JSON documents and blobs by content). */
+function sameColumn(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (a instanceof Uint8Array && b instanceof Uint8Array) return Buffer.from(a).equals(Buffer.from(b));
+  if (a && b && typeof a === "object" && typeof b === "object")
+    return JSON.stringify(a) === JSON.stringify(b);
+  return false;
 }

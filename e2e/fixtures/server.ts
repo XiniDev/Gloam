@@ -28,6 +28,15 @@ export interface GloamProcess {
   stop(): Promise<void>;
   /** Cuts a user's table connections abruptly, like a lost network (test builds only). */
   dropClient(userId: string): void;
+  /**
+   * The host gone for a while and back (a PC asleep, a network down): every table connection cut, and none accepted
+   * for `ms` — longer than the client library's own retries (test builds only; AC-PER-06).
+   */
+  blackout(ms: number): void;
+  /** The server process killed outright (SIGKILL: no shutdown, no flush), its data folder kept (AC-PER-02/07). */
+  kill(): Promise<void>;
+  /** Started again on the same data folder and the same port — the same address for every page (AC-PER-02/07). */
+  restart(): Promise<void>;
 }
 
 /** Spawns a real Gloam server process for one test (SPEC §36.2: deterministic, fake cloudflared, seeded dice). */
@@ -41,55 +50,68 @@ export async function spawnServer(
   }
   const dataDir = opts.dataDir ?? mkdtempSync(join(tmpdir(), "gloam-e2e-"));
   const logFile = join(dataDir, "fake-cf.log");
-  const child = fork(join(ROOT, "packages", "server", "src", "main.ts"), ["--dev"], {
-    cwd: ROOT,
-    env: {
-      ...process.env,
-      NODE_ENV: "test",
-      DATA_DIR: dataDir,
-      PORT: "0",
-      LOG_LEVEL: "info",
-      GLOAM_TEST_WEB_DIST: TEST_WEB_DIST,
-      GLOAM_TEST_SEED: "20260927",
-      METRICS_PORT: String(31000 + Math.floor(Math.random() * 8000)),
-      FAKE_CF_LOG: logFile,
-      ...(opts.cloudflared === "missing"
-        ? { CLOUDFLARED_PATH: join(dataDir, "no-such-cloudflared.exe") }
-        : { CLOUDFLARED_PATH: process.execPath, GLOAM_TEST_CLOUDFLARED_SCRIPT: FAKE_CLOUDFLARED }),
-      ...opts.env,
-    },
-    execArgv: ["--disable-warning=ExperimentalWarning"],
-    stdio: ["ignore", "pipe", "pipe", "ipc"],
-  });
-  let stderr = "";
+  // (Across a restart: every run of the server reports into the same list.)
   const cspReports: string[] = [];
-  child.on("message", (m) => {
-    const r = m as { type?: string; directive?: string; blocked?: string; source?: string; sample?: string };
-    if (r.type === "gloam:csp")
-      cspReports.push(
-        `${r.directive} blocked ${r.blocked || "(inline)"} at ${r.source} ${r.sample ?? ""}`.trim(),
-      );
-  });
-  child.stderr?.on("data", (d: Buffer) => {
-    stderr += d.toString();
-  });
-  const ready = await new Promise<{ port: number; bootstrapLink: string }>((res, rej) => {
-    const t = setTimeout(() => rej(new Error(`server did not start: ${stderr.slice(-2000)}`)), 45_000);
-    child.on("message", (m) => {
-      const r = m as { type?: string; port: number; bootstrapLink: string };
-      if (r.type === "gloam:ready") {
-        clearTimeout(t);
-        res(r);
-      }
+  const launch = async (port: number) => {
+    const child = fork(join(ROOT, "packages", "server", "src", "main.ts"), ["--dev"], {
+      cwd: ROOT,
+      env: {
+        ...process.env,
+        NODE_ENV: "test",
+        DATA_DIR: dataDir,
+        PORT: String(port),
+        LOG_LEVEL: "info",
+        GLOAM_TEST_WEB_DIST: TEST_WEB_DIST,
+        GLOAM_TEST_SEED: "20260927",
+        METRICS_PORT: String(31000 + Math.floor(Math.random() * 8000)),
+        FAKE_CF_LOG: logFile,
+        ...(opts.cloudflared === "missing"
+          ? { CLOUDFLARED_PATH: join(dataDir, "no-such-cloudflared.exe") }
+          : { CLOUDFLARED_PATH: process.execPath, GLOAM_TEST_CLOUDFLARED_SCRIPT: FAKE_CLOUDFLARED }),
+        ...opts.env,
+      },
+      execArgv: ["--disable-warning=ExperimentalWarning"],
+      stdio: ["ignore", "pipe", "pipe", "ipc"],
     });
-    child.once("exit", (code) => rej(new Error(`server exited (${code}): ${stderr.slice(-2000)}`)));
-  });
+    let stderr = "";
+    child.on("message", (m) => {
+      const r = m as {
+        type?: string;
+        directive?: string;
+        blocked?: string;
+        source?: string;
+        sample?: string;
+      };
+      if (r.type === "gloam:csp")
+        cspReports.push(
+          `${r.directive} blocked ${r.blocked || "(inline)"} at ${r.source} ${r.sample ?? ""}`.trim(),
+        );
+    });
+    child.stderr?.on("data", (d: Buffer) => {
+      stderr += d.toString();
+    });
+    const ready = await new Promise<{ port: number; bootstrapLink: string }>((res, rej) => {
+      const t = setTimeout(() => rej(new Error(`server did not start: ${stderr.slice(-2000)}`)), 45_000);
+      child.on("message", (m) => {
+        const r = m as { type?: string; port: number; bootstrapLink: string };
+        if (r.type === "gloam:ready") {
+          clearTimeout(t);
+          res(r);
+        }
+      });
+      child.once("exit", (code) => rej(new Error(`server exited (${code}): ${stderr.slice(-2000)}`)));
+    });
+    return { child, ready };
+  };
+  let { child, ready } = await launch(0);
   return {
     url: `http://localhost:${ready.port}`,
     port: ready.port,
     bootstrapLink: ready.bootstrapLink,
     dataDir,
-    child,
+    get child() {
+      return child;
+    },
     cspReports,
     fakeCloudflaredLog: () =>
       existsSync(logFile)
@@ -101,6 +123,18 @@ export async function spawnServer(
         : [],
     dropClient(userId: string) {
       child.send({ type: "gloam:drop", userId });
+    },
+    blackout(ms: number) {
+      child.send({ type: "gloam:blackout", ms });
+    },
+    async kill() {
+      if (child.exitCode !== null) return;
+      const exited = new Promise((r) => child.once("exit", r));
+      child.kill("SIGKILL");
+      await exited;
+    },
+    async restart() {
+      ({ child, ready } = await launch(ready.port));
     },
     async stop() {
       if (child.exitCode === null) {

@@ -81,3 +81,30 @@ export function uploadAsset(
     xhr.send(form);
   });
 }
+
+/**
+ * Sends one file as multipart to an endpoint of ours (a campaign import) with progress; resolves with its response's
+ * data, or rejects with its message.
+ */
+export function uploadTo<T>(url: string, file: File, onProgress?: (fraction: number) => void): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", url);
+    xhr.withCredentials = true;
+    xhr.setRequestHeader("x-gloam-csrf", csrf());
+    xhr.responseType = "json";
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) onProgress?.(e.loaded / e.total);
+    };
+    xhr.onload = () => {
+      const body = xhr.response as { data?: T; error?: { message: string } } | null;
+      if (xhr.status >= 200 && xhr.status < 300 && body?.data !== undefined) resolve(body.data);
+      else reject(new UploadError(body?.error?.message ?? `The upload failed (${xhr.status}).`));
+    };
+    xhr.onerror = () =>
+      reject(new UploadError("The upload was interrupted — check your connection and try again."));
+    const form = new FormData();
+    form.append("file", file, file.name);
+    xhr.send(form);
+  });
+}

@@ -205,6 +205,9 @@ export class TableService extends EventEmitter {
         throw new GloamError("INVALID", this.error);
       }
       const ts = this.ctx.campaigns.beginTableSession(campaign.id, mode);
+      // The table room's copy of the campaign learns its new session number (it was written outside the room).
+      const room = this.ctx.rooms.tables.get(campaign.id);
+      if (room) room.model.campaign = { ...room.model.campaign, sessionNo: ts.sessionNo };
       this.tableSessionId = ts.id;
       this.sessionNo = ts.sessionNo;
       this.locked = false;

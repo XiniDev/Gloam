@@ -14,6 +14,7 @@ import { assetRoutes } from "./routes/assets.ts";
 import { type AuthRouteHooks, authRoutes } from "./routes/auth.ts";
 import { contentRoutes } from "./routes/content.ts";
 import { fontRoutes } from "./routes/fonts.ts";
+import { gloamRoutes } from "./routes/gloam.ts";
 
 const NONCE_PLACEHOLDER = "__GLOAM_NONCE__";
 const VALID_HOST = /^[A-Za-z0-9.\-:[\]]+$/;
@@ -153,6 +154,7 @@ export async function buildHttpApp(
 
   authRoutes(app, ctx, { sendSpa, onSetupComplete: opts.onSetupComplete });
   adminRoutes(app, ctx);
+  gloamRoutes(app, ctx);
   assetRoutes(app, ctx);
   fontRoutes(app, ctx);
   contentRoutes(app, ctx);

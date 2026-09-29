@@ -6,6 +6,7 @@ import type { TableRoom } from "../rooms/TableRoom.ts";
 import {
   createCampaign,
   openTable,
+  rq,
   setupAdmin,
   sleep,
   startTestServer,
@@ -82,6 +83,50 @@ describe("F15 persistence (PER)", () => {
     ).toBe("After");
     expect(room.model.campaign.name).toBe("After");
     await client.leave();
+  });
+
+  it("a change through the table never puts back a column written outside it: the session counter survives a scene change (found by the P10 crash journey)", async () => {
+    const t = await startTestServer();
+    running.push(t);
+    const admin = await setupAdmin(t);
+    const campaignId = await createCampaign(admin, "Counted");
+    const sessionNo = () =>
+      (
+        t.server.ctx.sqlite.prepare("SELECT session_no AS n FROM campaigns WHERE id = ?").get(campaignId) as {
+          n: number;
+        }
+      ).n;
+    // The room is up before the table opens (the campaign is selected): the session counter is written beside it.
+    await openTable(admin, "local");
+    expect(sessionNo()).toBe(1);
+    const client = await admin.colyseus().joinById(campaignId);
+    client.onMessage("*", () => {});
+    const room = t.server.ctx.rooms.tables.get(campaignId) as unknown as TableRoom;
+    expect(room.model.campaign.sessionNo).toBe(1);
+    // A change to the campaign's own row through the room (its name, its active scene) — the counter stays.
+    // (And a column the room's copy knows nothing of, written directly: a command changing another column leaves it.)
+    t.server.ctx.sqlite.prepare("UPDATE campaigns SET units = 'm' WHERE id = ?").run(campaignId);
+    await rq(client, "campaign.update", { name: "Counted again" });
+    await waitFor(
+      () =>
+        (
+          t.server.ctx.sqlite.prepare("SELECT name FROM campaigns WHERE id = ?").get(campaignId) as {
+            name: string;
+          }
+        ).name === "Counted again",
+    );
+    expect(sessionNo()).toBe(1);
+    expect(
+      (
+        t.server.ctx.sqlite.prepare("SELECT units FROM campaigns WHERE id = ?").get(campaignId) as {
+          units: string;
+        }
+      ).units,
+    ).toBe("m");
+    // Close and open again: session 2, never 1 twice.
+    await admin.post("/api/admin/table/close", {});
+    await openTable(admin, "local");
+    expect(sessionNo()).toBe(2);
   });
 
   it("AC-PER-03 automatic snapshots while open (24 kept), on close and on shutdown; manual named; pre-restore on restore", async () => {

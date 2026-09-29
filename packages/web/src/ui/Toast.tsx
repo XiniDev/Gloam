@@ -41,8 +41,28 @@ export const useToasts = create<ToastStore>((set, get) => ({
   items: [],
   push(t) {
     const id = t.id ?? `t${++seq}`;
-    const item: ToastItem = { duration: t.kind === "knock" ? 0 : 5000, ...t, id };
+    // The same message again (a second "Spotlight", a second "Saved") replaces the one showing and starts its time
+    // over, rather than stacking copies over the board — three of them ate a DM's next click on it.
+    const same =
+      !t.key &&
+      !t.actions?.length &&
+      typeof t.title === "string" &&
+      (t.body === undefined || typeof t.body === "string")
+        ? `same:${t.kind}|${t.title}|${t.body ?? ""}`
+        : undefined;
+    const item: ToastItem = {
+      duration: t.kind === "knock" ? 0 : 5000,
+      ...t,
+      id,
+      ...(same ? { key: same } : {}),
+    };
     set((s) => {
+      const replaced = item.key ? s.items.filter((x) => x.key === item.key) : [];
+      for (const r of replaced) {
+        const old = timers.get(r.id);
+        if (old) window.clearTimeout(old);
+        timers.delete(r.id);
+      }
       const withoutKey = item.key ? s.items.filter((x) => x.key !== item.key) : s.items;
       return { items: [...withoutKey, item].slice(-4) };
     });

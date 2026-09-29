@@ -1114,9 +1114,12 @@ function Txt({
   error?: string | null;
 }) {
   const id = useId();
+  // (The message under it, outside its label: inside, it became part of the field's name.)
   return (
-    <label htmlFor={id} className={`flex flex-col gap-1 ${wide ? "min-w-[12rem] flex-1" : "w-36"}`}>
-      <span className="caps text-12 text-fog">{label}</span>
+    <div className={`flex flex-col gap-1 ${wide ? "min-w-[12rem] flex-1" : "w-36"}`}>
+      <label htmlFor={id} className="caps text-12 text-fog">
+        {label}
+      </label>
       <input
         id={id}
         value={typeof value === "string" ? value : ""}
@@ -1131,7 +1134,7 @@ function Txt({
           {error}
         </span>
       ) : null}
-    </label>
+    </div>
   );
 }
 

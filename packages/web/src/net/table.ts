@@ -18,6 +18,7 @@ import { provideTestHook } from "../test/hooks.ts";
 import { useToasts } from "../ui/Toast.tsx";
 import { preloadAssets } from "./assets.ts";
 import { colyseus, leaveRoom, rejectionMessage } from "./colyseus.ts";
+import { ReplayBus } from "./eventBus.ts";
 import { loadFog, onExploredPatch, onFogPatch } from "./fog.ts";
 import { auditLive, noteChanges, resetSync, syncFull, syncLive } from "./sync.ts";
 import { type UploadPurpose, uploadAsset } from "./upload.ts";
@@ -138,42 +139,8 @@ export interface TableEventMap {
   "asset.pending": AssetItem;
   spotlight: { x: number; y: number; by: string };
 }
-type EventName = keyof TableEventMap;
-type Listener<K extends EventName> = (payload: TableEventMap[K]) => void;
 
-/**
- * Table events with a replay buffer: the connection starts before the table screen mounts (during the waiting
- * room's dissolve, AC-AUTH-03), so an event emitted while nobody listens is kept and delivered to the first
- * listener of its type. Bounded, so an unobserved type can't grow without limit.
- */
-class TableEventBus {
-  private listeners = new Map<EventName, Set<Listener<EventName>>>();
-  private pending: { type: EventName; payload: unknown }[] = [];
-
-  on<K extends EventName>(type: K, fn: Listener<K>): () => void {
-    const set = this.listeners.get(type) ?? new Set();
-    set.add(fn as Listener<EventName>);
-    this.listeners.set(type, set);
-    const replay = this.pending.filter((e) => e.type === type);
-    this.pending = this.pending.filter((e) => e.type !== type);
-    for (const e of replay) fn(e.payload as TableEventMap[K]);
-    return () => set.delete(fn as Listener<EventName>);
-  }
-
-  emit<K extends EventName>(type: K, payload: TableEventMap[K]): void {
-    const set = this.listeners.get(type);
-    if (set?.size) for (const fn of [...set]) fn(payload);
-    else {
-      this.pending.push({ type, payload });
-      if (this.pending.length > 100) this.pending.shift();
-    }
-  }
-
-  reset(): void {
-    this.pending = [];
-  }
-}
-export const tableEvents = new TableEventBus();
+export const tableEvents = new ReplayBus<TableEventMap>();
 
 let current: { campaignId: string; joining: Promise<Room<unknown, TableState>> } | null = null;
 

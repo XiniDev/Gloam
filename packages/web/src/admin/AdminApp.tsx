@@ -1,5 +1,5 @@
 import type { Room } from "@colyseus/sdk";
-import { LogOut, Settings as SettingsIcon, Swords, Table2 } from "lucide-react";
+import { Archive, LogOut, Settings as SettingsIcon, Swords, Table2 } from "lucide-react";
 import { type FormEvent, type ReactNode, useEffect, useState } from "react";
 import { NavLink, Route, Routes, useNavigate, useSearchParams } from "react-router";
 import { leaveRoom } from "../net/colyseus.ts";
@@ -11,6 +11,7 @@ import { FullScreenLoader } from "../ui/FullScreenLoader.tsx";
 import { Filigree, Sparkle } from "../ui/ornaments.tsx";
 import { SoundChip } from "../ui/SoundChip.tsx";
 import { useAdminLive, watchLobby } from "./realtime.ts";
+import { SavesPage } from "./SavesPage.tsx";
 import { SettingsPage } from "./SettingsPage.tsx";
 import { TablePage } from "./TablePage.tsx";
 
@@ -153,6 +154,9 @@ function Console() {
           <NavItem to="/admin" icon={<Table2 size={17} />}>
             Table
           </NavItem>
+          <NavItem to="/admin/saves" icon={<Archive size={17} />}>
+            Saves
+          </NavItem>
           <NavItem to="/admin/settings" icon={<SettingsIcon size={17} />}>
             Settings
           </NavItem>
@@ -180,6 +184,7 @@ function Console() {
       <main className="min-w-0 flex-1 px-4 py-6 md:px-10 md:py-8">
         <Routes>
           <Route index element={<TablePage />} />
+          <Route path="saves" element={<SavesPage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="*" element={<TablePage />} />
         </Routes>
