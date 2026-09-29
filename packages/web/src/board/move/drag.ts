@@ -1,7 +1,20 @@
 import { type P, pathLength, simplifyPath } from "@gloam/shared/geometry";
-import { clearanceRadius, pathCost, route, truncateAtCollision } from "@gloam/shared/movement";
+import {
+  clearanceRadius,
+  type MoveWorld,
+  maxReachPoint,
+  type OpportunityMark,
+  opportunityMarks,
+  pathCost,
+  route,
+  type Side,
+  truncateAtCollision,
+  withCreatureSpaces,
+} from "@gloam/shared/movement";
+import { incapacitates } from "@gloam/shared/rules";
 import type { TokenView } from "@gloam/shared/state";
 import { create } from "zustand";
+import { useCombat } from "../../net/combat.ts";
 import { request, send, useTable } from "../../net/table.ts";
 import { boardData, useEntities } from "../../state/entities.ts";
 import { toast } from "../../ui/Toast.tsx";
@@ -22,6 +35,12 @@ export interface MovePreview {
   difficultFt: number;
   /** A route exists (routed mode) — false shows "No path". */
   ok: boolean;
+  /** In combat, on its turn: the movement left (ft); absent where no budget applies (exploration, the DM). */
+  budget?: number;
+  /** Where the budget runs out along the path — the hollow marker (AC-MOV-01) — when it does. */
+  reach?: P;
+  /** Where the path leaves a visible hostile's reach (AC-MOV-15). */
+  oa?: OpportunityMark[];
 }
 
 export type MoveMode = "route" | "freehand";
@@ -182,6 +201,63 @@ function schedule(): void {
   });
 }
 
+const dmOverrides = (t: TokenView): { countAsMovement?: boolean } => {
+  try {
+    return t.dm?.overridesJson ? (JSON.parse(t.dm.overridesJson) as { countAsMovement?: boolean }) : {};
+  } catch {
+    return {};
+  }
+};
+
+/**
+ * The movement a planned move may spend (§8.6, §16.5): in combat, the creature whose turn it is — its budget less
+ * what it used — unless it (or everyone) moves freely; a DM's move only when its "Count as movement" is on. Else none.
+ */
+function budgetFor(t: TokenView): number | null {
+  const v = useCombat.getState().view;
+  if (!v.active || !v.begun || v.freeMovement || t.own?.freeMovement || !t.own) return null;
+  if (v.entries[v.activeIndex]?.tokenId !== t.id) return null;
+  if (isDm() && !dmOverrides(t).countAsMovement) return null;
+  return Math.max(0, t.own.budgetFt - t.own.usedFt);
+}
+
+/** Whether other creatures' spaces shape a player's move now (house rule "Enforce creature spaces"). */
+function spacesApply(): boolean {
+  if (isDm()) return false;
+  const rule = useTable.getState().houseRules.creatureSpaces;
+  return rule === "always" || (rule === "combat" && useCombat.getState().view.active);
+}
+
+const side = (t: TokenView) => (t.disposition || "neutral") as Side;
+const others = (t: TokenView) =>
+  [...boardData(useEntities.getState()).tokens.values()].filter((o) => o.id !== t.id);
+
+/** The world with the other creatures' spaces in it, rebuilt only when they (or the scene) change. */
+let spaced: { base: MoveWorld; key: string; world: MoveWorld } | null = null;
+function withSpaces(base: MoveWorld, t: TokenView): MoveWorld {
+  const crowd = others(t).map((o) => ({
+    id: o.id,
+    pos: { x: o.pos.x, y: o.pos.y },
+    sizeFt: o.sizeFt,
+    size: (o.size || "medium") as "medium",
+    disposition: side(o),
+    incapacitated: incapacitates(o.conditions),
+  }));
+  const key = `${t.id}|${t.size}|${t.disposition}|${JSON.stringify(crowd)}`;
+  if (spaced?.base === base && spaced.key === key) return spaced.world;
+  const me = {
+    id: t.id,
+    pos: t.pos,
+    sizeFt: t.sizeFt,
+    size: (t.size || "medium") as "medium",
+    disposition: side(t),
+    incapacitated: false,
+  };
+  const world = withCreatureSpaces(base, me, crowd, useTable.getState().rulesPack);
+  spaced = { base, key, world };
+  return world;
+}
+
 /** Recomputes the preview for the current goal, waypoints and mode. */
 function compute(): void {
   const s = useMove.getState();
@@ -191,8 +267,9 @@ function compute(): void {
     return;
   }
   const opts = optionsFor(t);
-  const world = clientMoveWorld({ swim: false });
-  if (!world) return;
+  const base = clientMoveWorld({ swim: false });
+  if (!base) return;
+  const world = spacesApply() ? withSpaces(base, t) : base;
   let preview: MovePreview;
   if (s.mode === "freehand") {
     const raw = simplifyPath([s.from, ...s.trail], FREEHAND_TOL_FT);
@@ -205,6 +282,29 @@ function compute(): void {
     preview = r
       ? { points: r.points, cost: r.cost, difficultFt: r.difficultFt, ok: true }
       : { points: [s.from, ...s.waypoints, s.goal], cost: 0, difficultFt: 0, ok: false };
+  }
+  // Its budget and where it runs out; where it leaves a hostile's reach (in combat, a hint only).
+  const budget = budgetFor(t);
+  if (budget !== null && preview.ok) {
+    preview.budget = budget;
+    const reach = maxReachPoint(world, preview.points, opts, budget);
+    if (reach) preview.reach = reach;
+  }
+  if (useCombat.getState().view.active && preview.ok) {
+    const marks = opportunityMarks(
+      preview.points,
+      { sizeFt: t.sizeFt, disposition: side(t), disengaged: t.markers.includes("disengaged") },
+      others(t).map((o) => ({
+        id: o.id,
+        name: o.name,
+        pos: o.pos,
+        sizeFt: o.sizeFt,
+        reachFt: o.reachFt || 5,
+        disposition: side(o),
+        incapacitated: incapacitates(o.conditions),
+      })),
+    );
+    if (marks.length) preview.oa = marks;
   }
   useMove.setState({ preview });
   moveDiag.resultAt = performance.now();

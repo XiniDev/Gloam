@@ -12,11 +12,16 @@ import {
   CombatSet,
   CombatStart,
   GloamError,
+  MoveTurn,
 } from "@gloam/shared/protocol";
 import {
+  bonusMoveActive,
+  CONDITIONS,
   type CombatantEntry,
   type CombatData,
+  type ConditionInfo,
   controlsToken,
+  effectiveSpeed,
   effectiveTokenState,
   emptyTally,
   fixedInitiative,
@@ -27,9 +32,11 @@ import {
   moveAfter,
   orderCombatants,
   PIP,
+  standUpCost,
   stepTurn,
   type TieBreak,
   type TurnState,
+  turnBudget,
 } from "@gloam/shared/rules";
 import type { TokenEntity } from "@gloam/shared/schemas";
 import type { z } from "zod";
@@ -38,7 +45,8 @@ import type { CombatEntity } from "../codecs.ts";
 import type { CommandCtx, CommandDef, RoomEvent } from "../commandBus.ts";
 import type { CampaignModel } from "../model.ts";
 import type { Op } from "../ops.ts";
-import { createOp, mustGet, requireDm, setOps } from "../plan.ts";
+import { createOp, mustGet, requireDm, setOps, setPathOp } from "../plan.ts";
+import { holderOf, holderOps } from "./health.ts";
 
 /**
  * Combat and initiative (SPEC §8.12; AC-CMB-01…11): a combat on the active scene — its combatants in tracker order,
@@ -717,14 +725,51 @@ export const combatPip: CommandDef<z.infer<typeof CombatPip>, { pips: number }> 
     const cur = d.pips[p.tokenId] ?? 0;
     const bit = PIP[p.pip];
     const pips = p.used ? cur | bit : cur & ~bit;
+    // Its own path (undoing a pip never clashes with a move, nor a move with a pip).
+    const op = setPathOp("combat", c, ["data", "pips", p.tokenId], pips);
     return {
-      ops: setOps("combat", c, { data: { ...d, pips: { ...d.pips, [p.tokenId]: pips } } }),
+      ops: op ? [op] : [],
       summary: `${p.pip} ${p.used ? "used" : "back"}`,
       sceneId: c.sceneId,
       result: { pips },
     };
   },
 };
+
+/**
+ * A creature's movement in a combat (§19.4): its speed in its movement mode after conditions and Exhaustion, times
+ * (1 + dashes), plus the DM's bonus movement while it lasts (never doubled by Dash); what it has used this turn (only
+ * the creature whose turn it is has used any). Outside a combat, or for a creature not in it: none.
+ */
+export function movementOf(
+  model: CampaignModel,
+  t: TokenEntity,
+): { budget: number; used: number; dashes: number; bonus: number; speed: number; active: boolean } | null {
+  const c = combatOn(model, t.sceneId);
+  if (!c) return null;
+  const d = dataOf(c);
+  if (!d.combatants.some((e) => e.tokenId === t.id)) return null;
+  const a = t.actorId ? model.get("actor", t.actorId) : undefined;
+  const { stats, status } = effectiveTokenState(t, a && a.deletedAt === null ? a : undefined);
+  const modes = ["walk", "fly", "swim", "climb", "burrow"] as const;
+  const mode = modes.find((m) => m === t.moveMode) ?? "walk";
+  const speed = effectiveSpeed(
+    t.overrides.speedOverride ?? stats.speeds[mode],
+    status.conditions.map((x) => x.id as string),
+    status.exhaustion,
+    t.overrides.ignoreConditionSpeed === true,
+  );
+  // A Speed of 0 can't be increased (SPEC R1 §19.4): a Speed-0 condition zeroes the bonus with the rest.
+  const zeroed =
+    t.overrides.ignoreConditionSpeed !== true &&
+    status.conditions.some((x) => (CONDITIONS as Record<string, ConditionInfo>)[x.id]?.speedZero);
+  const bonus =
+    !zeroed && bonusMoveActive(t.overrides.bonusMove, c.round) ? (t.overrides.bonusMove?.ft ?? 0) : 0;
+  const active = d.begun && d.combatants[c.turnIndex]?.tokenId === t.id;
+  const turn = active && d.turn?.tokenId === t.id ? d.turn : null;
+  const dashes = turn?.dashes ?? 0;
+  return { budget: turnBudget(speed, dashes, bonus), used: turn?.usedFt ?? 0, dashes, bonus, speed, active };
+}
 
 /** Whether a player may act for this token now: DMs always; a controller on its turn, or while it moves freely. */
 export function onItsTurn(ctx: CommandCtx, c: CombatEntity, t: TokenEntity): boolean {
@@ -733,6 +778,142 @@ export function onItsTurn(ctx: CommandCtx, c: CombatEntity, t: TokenEntity): boo
   if (d.freeMovement || t.overrides.freeMovement) return true;
   return d.begun && d.combatants[c.turnIndex]?.tokenId === t.id;
 }
+
+// ── the turn's own moves: Reset, Dash, Stand up (§8.6, §16.5) ─────────────────────────────────────────────────
+
+/** The combat and turn of the creature whose turn it is, for a command about it (its controller, or the DM). */
+function ownTurn(ctx: CommandCtx, tokenId: string) {
+  const t = mustGet(ctx, "token", tokenId);
+  if (!controlsToken(ctx.actor.role, ctx.actor.userId, t))
+    throw new GloamError("FORBIDDEN", "That creature isn't yours.");
+  const c = combatOn(ctx.model, t.sceneId);
+  if (!c) throw new GloamError("CONFLICT", "There's no combat running.");
+  const d = dataOf(c);
+  const turn = d.turn;
+  if (!d.begun || !turn || turn.tokenId !== t.id || d.combatants[c.turnIndex]?.tokenId !== t.id)
+    throw new GloamError("NOT_YOUR_TURN", "It isn't this creature's turn.");
+  return { t, c, d, turn };
+}
+
+/**
+ * `move.reset` (§8.6 Reset move; AC-MOV-05): the creature back where its turn began — as it was, prone included — its
+ * movement unspent (a stand-up refunded with it); a Dash already taken stays. Players only on its turn, and by the
+ * house rule: always (Xini's choice), until an action is used, or never.
+ */
+export const moveReset: CommandDef<z.infer<typeof MoveTurn>, { pos: { x: number; y: number } }> = {
+  type: "move.reset",
+  schema: MoveTurn,
+  undoable: true,
+  authorize(ctx, p) {
+    const { d } = ownTurn(ctx, p.tokenId);
+    if (isDm(ctx.actor.role)) return;
+    const rule = ctx.model.campaign.houseRules.moveReset;
+    if (rule === "never") throw new GloamError("FORBIDDEN", "Moves can't be reset at this table.");
+    if (rule === "untilAction" && ((d.pips[p.tokenId] ?? 0) & PIP.action) !== 0)
+      throw new GloamError("FORBIDDEN", "Its action is used: the move can't be reset now.");
+  },
+  plan(ctx, p) {
+    const { t, c, turn } = ownTurn(ctx, p.tokenId);
+    const start = turn.turnStart;
+    const ops: Op[] = [];
+    const patch: Partial<TokenEntity> = {};
+    if (t.pos.x !== start.x || t.pos.y !== start.y) patch.pos = { x: start.x, y: start.y };
+    if (t.elevation !== start.elevation) patch.elevation = start.elevation;
+    ops.push(...setOps("token", t, patch));
+    const light = t.lightId ? ctx.model.get("light", t.lightId) : undefined;
+    if (light && patch.pos) ops.push(...setOps("light", light, { pos: patch.pos }));
+    // Prone as it was when the turn began (a stand-up undone, or a fall).
+    const h = holderOf(ctx, { tokenId: t.id });
+    const prone = h.status.conditions.some((x) => x.id === "prone");
+    if (prone !== start.prone) {
+      const status = start.prone
+        ? { ...h.status, conditions: [...h.status.conditions, { id: "prone" as const }] }
+        : { ...h.status, conditions: h.status.conditions.filter((x) => x.id !== "prone") };
+      ops.push(...holderOps(ctx, h, { hp: h.hp, hpTemp: h.hpTemp, status }));
+    }
+    for (const [path, value] of [
+      [["data", "turn", "usedFt"], 0],
+      [["data", "turn", "segments"], []],
+      [["data", "turn", "stood"], false],
+    ] as const) {
+      const op = setPathOp("combat", c, [...path], value);
+      if (op) ops.push(op);
+    }
+    const events: RoomEvent[] = patch.pos
+      ? [
+          {
+            name: "token.moved",
+            payload: { id: t.id, path: [t.pos, patch.pos], durationMs: 350 },
+            to: { viewersOf: t.id },
+          },
+        ]
+      : [];
+    return { ops, summary: `${t.name}'s move reset`, sceneId: t.sceneId, events, result: { pos: start } };
+  },
+};
+
+/** `move.dash` (§19.4; AC-MOV-09): another speed's worth of movement this turn (not the DM's bonus); its action used. */
+export const moveDash: CommandDef<z.infer<typeof MoveTurn>, { dashes: number }> = {
+  type: "move.dash",
+  schema: MoveTurn,
+  undoable: true,
+  authorize(ctx, p) {
+    ownTurn(ctx, p.tokenId);
+  },
+  plan(ctx, p) {
+    const { t, c, d, turn } = ownTurn(ctx, p.tokenId);
+    const dashes = turn.dashes + 1;
+    const ops = [
+      setPathOp("combat", c, ["data", "turn", "dashes"], dashes),
+      setPathOp("combat", c, ["data", "pips", t.id], (d.pips[t.id] ?? 0) | PIP.action),
+    ].filter((o): o is Op => o !== null);
+    return { ops, summary: `${t.name} dashes`, sceneId: t.sceneId, result: { dashes } };
+  },
+};
+
+/** `move.stand` (§19.4; AC-MOV-09): up from Prone for half its speed — refused when that much isn't left. */
+export const moveStand: CommandDef<z.infer<typeof MoveTurn>, { cost: number }> = {
+  type: "move.stand",
+  schema: MoveTurn,
+  undoable: true,
+  authorize(ctx, p) {
+    ownTurn(ctx, p.tokenId);
+  },
+  plan(ctx, p) {
+    const { t, c, turn } = ownTurn(ctx, p.tokenId);
+    const h = holderOf(ctx, { tokenId: t.id });
+    if (!h.status.conditions.some((x) => x.id === "prone"))
+      throw new GloamError("CONFLICT", `${t.name} isn't prone.`);
+    const m = movementOf(ctx.model, t);
+    const walk = (() => {
+      const a = t.actorId ? ctx.model.get("actor", t.actorId) : undefined;
+      const { stats, status } = effectiveTokenState(t, a && a.deletedAt === null ? a : undefined);
+      return effectiveSpeed(
+        t.overrides.speedOverride ?? stats.speeds.walk,
+        status.conditions.map((x) => x.id as string),
+        status.exhaustion,
+        t.overrides.ignoreConditionSpeed === true,
+      );
+    })();
+    const cost = standUpCost(walk);
+    const left = m ? m.budget - m.used : 0;
+    if (walk <= 0) throw new GloamError("SPEED_ZERO", `${t.name} can't stand: its speed is 0.`);
+    if (cost > left + 0.05)
+      throw new GloamError(
+        "OVER_BUDGET",
+        `Standing up takes ${cost} ft; ${Math.max(0, Math.floor(left))} ft left.`,
+      );
+    const status = { ...h.status, conditions: h.status.conditions.filter((x) => x.id !== "prone") };
+    const ops: Op[] = [
+      ...holderOps(ctx, h, { hp: h.hp, hpTemp: h.hpTemp, status }),
+      ...[
+        setPathOp("combat", c, ["data", "turn", "usedFt"], turn.usedFt + cost),
+        setPathOp("combat", c, ["data", "turn", "stood"], true),
+      ].filter((o): o is Op => o !== null),
+    ];
+    return { ops, summary: `${t.name} stands up (${cost} ft)`, sceneId: t.sceneId, result: { cost } };
+  },
+};
 
 export const COMBAT_COMMANDS = [
   combatStart,
@@ -750,4 +931,7 @@ export const COMBAT_COMMANDS = [
   combatRemove,
   combatFreeMovement,
   combatPip,
+  moveReset,
+  moveDash,
+  moveStand,
 ] as unknown as CommandDef<never, unknown>[];

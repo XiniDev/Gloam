@@ -25,6 +25,7 @@ import { newId } from "../../ids.ts";
 import type { CommandCtx, CommandDef } from "../commandBus.ts";
 import { clone, type Op } from "../ops.ts";
 import { createOp, deleteOp, mustGet, requireDm, setOps } from "../plan.ts";
+import { combatOn } from "./combat.ts";
 
 /** An asset reference usable on this campaign's board (approved, or the uploader's own pending upload for DMs). */
 export function assertAsset(ctx: CommandCtx, assetId: string | undefined): void {
@@ -171,6 +172,42 @@ function mergeStats(cur: TokenStats, p: StatsPatchT): TokenStats {
   return next;
 }
 
+/**
+ * The DM's per-token overrides (§8.19) applied: null clears one; bonus movement's end is fixed now from the scene's
+ * combat — "this turn" lasts through the current round, "N rounds" through the round N − 1 after it (§19.4).
+ */
+function withOverrides(
+  ctx: Parameters<CommandDef["plan"]>[0],
+  t: TokenEntity,
+  cur: TokenEntity["overrides"],
+  p: NonNullable<z.infer<typeof TokenUpdate>["overrides"]>,
+): TokenEntity["overrides"] {
+  const next = { ...cur };
+  const round = combatOn(ctx.model, t.sceneId)?.round ?? 1;
+  if (p.speedOverride !== undefined) {
+    if (p.speedOverride === null) delete next.speedOverride;
+    else next.speedOverride = p.speedOverride;
+  }
+  if (p.bonusMove !== undefined) {
+    if (p.bonusMove === null || p.bonusMove.ft <= 0) delete next.bonusMove;
+    else
+      next.bonusMove = {
+        ft: p.bonusMove.ft,
+        until: p.bonusMove.until,
+        ...(p.bonusMove.until === "turn" ? { untilRound: round } : {}),
+        ...(p.bonusMove.until === "rounds"
+          ? { rounds: p.bonusMove.rounds ?? 1, untilRound: round + (p.bonusMove.rounds ?? 1) - 1 }
+          : {}),
+      };
+  }
+  for (const k of ["freeMovement", "lockMovement", "ignoreConditionSpeed", "countAsMovement"] as const)
+    if (p[k] !== undefined) {
+      if (p[k]) next[k] = true;
+      else delete next[k];
+    }
+  return next;
+}
+
 /** `token.update` — DMs change anything; a token's owners may change its appearance and name. */
 export const tokenUpdate: CommandDef<z.infer<typeof TokenUpdate>> = {
   type: "token.update",
@@ -203,6 +240,8 @@ export const tokenUpdate: CommandDef<z.infer<typeof TokenUpdate>> = {
     if (p.dmNote !== undefined) patch.dmNote = p.dmNote;
     if (p.shareVisionWith !== undefined)
       patch.overrides = { ...t.overrides, shareVisionWith: [...new Set(p.shareVisionWith)] };
+    if (p.overrides)
+      patch.overrides = withOverrides(ctx, t, { ...t.overrides, ...patch.overrides }, p.overrides);
     if (p.appearance) patch.appearance = mergeAppearance(t.appearance, p.appearance);
     if (p.size !== undefined) {
       patch.sizeFt = SIZE_BASE_FT[p.size];

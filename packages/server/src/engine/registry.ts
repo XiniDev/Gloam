@@ -2,6 +2,7 @@ import type { CommandBus, CommandDef } from "./commandBus.ts";
 import { ACTOR_COMMANDS } from "./commands/actor.ts";
 import { ASSET_COMMANDS } from "./commands/asset.ts";
 import { campaignUpdate } from "./commands/campaign.ts";
+import { COMBAT_COMMANDS } from "./commands/combat.ts";
 import { FOG_COMMANDS } from "./commands/fog.ts";
 import { HEALTH_COMMANDS } from "./commands/health.ts";
 import { LIGHT_COMMANDS } from "./commands/light.ts";
@@ -28,6 +29,7 @@ export const ALL_COMMANDS: CommandDef<never, unknown>[] = [
   ...PARTY_COMMANDS,
   ...HEALTH_COMMANDS,
   ...REST_COMMANDS,
+  ...COMBAT_COMMANDS,
 ];
 
 /** Room message rate limits per command (SPEC §13.5); default 10/s. */
@@ -53,6 +55,10 @@ export const COMMAND_RATES: Record<string, { capacity: number; perSecond: number
   "hp.apply": { capacity: 10, perSecond: 5 },
   "status.change": { capacity: 10, perSecond: 5 },
   "rest.apply": { capacity: 3, perSecond: 1 },
+  // Combat (§13.5: 10/s): the DM steps through turns; a pip ticked, a dash, a reset.
+  ...Object.fromEntries(COMBAT_COMMANDS.map((d) => [d.type, { capacity: 10, perSecond: 10 }])),
+  "combat.start": { capacity: 3, perSecond: 1 },
+  "combat.quickStart": { capacity: 3, perSecond: 1 },
 };
 
 export function registerCommands(bus: CommandBus): void {

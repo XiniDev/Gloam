@@ -4,6 +4,7 @@ import { D20Icon } from "../icons/dice.tsx";
 import { useTable } from "../net/table.ts";
 import { useUi } from "../state/ui.ts";
 import { Tooltip } from "../ui/Tooltip.tsx";
+import { TurnControls } from "./combat/TurnControls.tsx";
 import { ElevationControl } from "./ElevationControl.tsx";
 import { insetMeasures, useCover, useMeasuredInset } from "./insets.ts";
 
@@ -13,9 +14,9 @@ const typing = (t: EventTarget | null) => {
 };
 
 /**
- * The bottom action bar (SPEC §29.3): centred along the bottom — the selected creature's controls (its height, for
- * now; its turn's pips and moves arrive with combat) and the dice. A tool with its own options bar owns the bottom
- * edge while it's picked; the tray still opens with D.
+ * The bottom action bar (SPEC §29.3): centred along the bottom — the turn's controls in combat (pips, movement,
+ * Dash, Stand up, Reset, End turn), the selected creature's height, and the dice. A tool with its own options bar
+ * owns the bottom edge while it's picked; the tray still opens with D.
  */
 export function ActionBar() {
   const tool = useUi((s) => s.tool);
@@ -48,6 +49,7 @@ function Bar({ tray }: { tray: boolean }) {
     <div className="pointer-events-none absolute bottom-4 left-1/2 z-30 flex -translate-x-1/2 items-end gap-2">
       {/* The creature's controls in their own panel; the dice button stands on its own, round (no tile round it). */}
       <div ref={ref} data-testid="action-bar" className="flex items-center gap-2">
+        <TurnControls />
         <ElevationControl />
         <DiceButton open={tray} />
       </div>

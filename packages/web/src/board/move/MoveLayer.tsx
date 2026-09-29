@@ -2,6 +2,7 @@ import { type P, pathLength } from "@gloam/shared/geometry";
 import { useFrame } from "@react-three/fiber";
 import { useEffect, useMemo } from "react";
 import { BufferGeometry, MeshBasicMaterial, type ShaderMaterial } from "three";
+import { useTable } from "../../net/table.ts";
 import { boardData, useEntities } from "../../state/entities.ts";
 import { useSettings } from "../../state/settings.ts";
 import { C, ringColorOf } from "../colors.ts";
@@ -29,10 +30,24 @@ export function MoveLayer() {
   const tokenId = useMove((s) => s.tokenId);
   const remote = useRemoteMoves((s) => s.byToken);
   const waypoints = useMove((s) => s.waypoints);
+  // In combat past its budget (AC-MOV-01): verdigris to the max-reach point, ember beyond it — the ghost where the
+  // move would stop (clamped there; with "Overlong moves: reject" where it was aimed, refused), a hollow ring there.
+  const split = preview?.reach ? splitAt(preview.points, preview.reach) : null;
+  const reject = useTable((s) => s.houseRules.overlongMoves) === "reject";
   return (
     <group name="moves">
-      {preview && tokenId && preview.points.length > 1 ? (
+      {preview && tokenId && preview.points.length > 1 && !split ? (
         <PathLine tokenId={tokenId} points={preview.points} ok={preview.ok} opacity={0.95} />
+      ) : null}
+      {preview && tokenId && split ? (
+        <>
+          <PathLine tokenId={tokenId} points={split.within} ok ghost={!reject} opacity={0.95} />
+          <PathLine tokenId={tokenId} points={split.beyond} ok={false} ghost={false} opacity={0.95} />
+          <Dots points={[preview.reach as P]} kind="ring" px={20} color={C.bone100} />
+        </>
+      ) : null}
+      {preview?.oa?.length ? (
+        <Dots points={preview.oa.map((m) => m.at)} kind="swords" px={26} color={C.ember400} />
       ) : null}
       {[...remote].map(([id, r]) =>
         id === tokenId || r.points.length < 2 ? null : (
@@ -45,12 +60,31 @@ export function MoveLayer() {
 }
 const NONE: P[] = [];
 
+/** A path cut at a point on it: the part up to it, and the rest from it. */
+function splitAt(points: P[], at: P): { within: P[]; beyond: P[] } {
+  let best = 1;
+  let bestD = Number.POSITIVE_INFINITY;
+  for (let i = 1; i < points.length; i++) {
+    const a = points[i - 1] as P;
+    const b = points[i] as P;
+    const len2 = (b.x - a.x) ** 2 + (b.y - a.y) ** 2 || 1;
+    const t = Math.max(0, Math.min(1, ((at.x - a.x) * (b.x - a.x) + (at.y - a.y) * (b.y - a.y)) / len2));
+    const d = Math.hypot(a.x + (b.x - a.x) * t - at.x, a.y + (b.y - a.y) * t - at.y);
+    if (d < bestD) {
+      bestD = d;
+      best = i;
+    }
+  }
+  return { within: [...points.slice(0, best), at], beyond: [at, ...points.slice(best)] };
+}
+
 function PathLine({
   tokenId,
   points,
   ok,
   opacity,
   mover,
+  ghost = ok,
 }: {
   tokenId: string;
   points: P[];
@@ -58,6 +92,8 @@ function PathLine({
   opacity: number;
   /** Another viewer's drag: their player colour, for the ghost's ring. */
   mover?: string;
+  /** The token's ghost at the path's end (where it would stand). */
+  ghost?: boolean;
 }) {
   const cb = useSettings((s) => s.colorBlind);
   const color = ok ? (cb ? CB.ok : C.verdigris400) : cb ? CB.no : C.ember400;
@@ -101,7 +137,7 @@ function PathLine({
   return (
     <group>
       <mesh geometry={geo} material={mat} renderOrder={5} raycast={() => null} />
-      {ok ? (
+      {ghost ? (
         <group position={[end.x, 0, end.y]} userData={{ part: "moveGhost", tokenId }}>
           <mesh
             position-y={0.08}

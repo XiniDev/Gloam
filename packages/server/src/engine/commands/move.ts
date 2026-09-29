@@ -1,20 +1,34 @@
+import { SIZES, type Size } from "@gloam/shared";
 import { dist, type P, pathLength } from "@gloam/shared/geometry";
 import {
+  clampToBudget,
   clearanceRadius,
   flightCost,
   hazardPrompts,
+  lastClearPoint,
   maxMoveLength,
   pathCost,
+  type SpaceCreature,
   validateMove,
+  withCreatureSpaces,
 } from "@gloam/shared/movement";
 import { GloamError, MoveCommit } from "@gloam/shared/protocol";
-import { controlsToken, effectiveTokenState, isDm } from "@gloam/shared/rules";
+import {
+  CONDITIONS,
+  type ConditionInfo,
+  controlsToken,
+  effectiveTokenState,
+  incapacitates,
+  isDm,
+  statusName,
+} from "@gloam/shared/rules";
 import type { TokenEntity } from "@gloam/shared/schemas";
 import type { z } from "zod";
 import type { CommandDef, RoomEvent } from "../commandBus.ts";
 import { moveWorldOf } from "../movement.ts";
 import type { Op } from "../ops.ts";
-import { mustGet, setOps } from "../plan.ts";
+import { mustGet, setOps, setPathOp } from "../plan.ts";
+import { combatOn, dataOf, movementOf, onItsTurn } from "./combat.ts";
 
 /** Visual speed of a committed move (SPEC §8.6 Others see planning): 30 ft/s, at least 250 ms, at most 2 s. */
 export const MOVE_FT_PER_S = 30;
@@ -51,6 +65,22 @@ export const moveCommit: CommandDef<z.infer<typeof MoveCommit>, MoveResult> = {
     if (isDm(ctx.actor.role)) return;
     if (t.locked) throw new GloamError("MOVEMENT_LOCKED", "The DM locked this token.");
     if (t.overrides.lockMovement) throw new GloamError("MOVEMENT_LOCKED", "This token's movement is locked.");
+    // In combat (§16.5 step 1): only the creature whose turn it is, unless it (or everyone) moves freely.
+    const c = combatOn(ctx.model, t.sceneId);
+    if (c && dataOf(c).combatants.some((e) => e.tokenId === t.id) && !onItsTurn(ctx, c, t))
+      throw new GloamError(
+        "NOT_YOUR_TURN",
+        dataOf(c).begun ? "It isn't this creature's turn." : "Initiative is still being found.",
+      );
+    // Speed-0 conditions (§16.5 step 2, AC-MOV-09): no move at all, and why.
+    if (!t.overrides.ignoreConditionSpeed) {
+      const actor = t.actorId ? ctx.model.get("actor", t.actorId) : undefined;
+      const { status } = effectiveTokenState(t, actor);
+      const zero = status.conditions.find(
+        (x) => (CONDITIONS as Record<string, ConditionInfo>)[x.id]?.speedZero,
+      );
+      if (zero) throw new GloamError("SPEED_ZERO", `${t.name} can't move: ${statusName(zero.id)} (speed 0).`);
+    }
   },
   plan(ctx, p) {
     const t = mustGet(ctx, "token", p.tokenId);
@@ -71,22 +101,55 @@ export const moveCommit: CommandDef<z.infer<typeof MoveCommit>, MoveResult> = {
     const points: P[] = [{ ...t.pos }, ...p.points.slice(1).map((q) => ({ x: q.x, y: q.y }))];
     const actor = t.actorId ? ctx.model.get("actor", t.actorId) : undefined;
     const { stats, status } = effectiveTokenState(t, actor);
-    const world = moveWorldOf(ctx.model, t.sceneId, { swim: stats.speeds.swim > 0 });
-    // Prone and not standing up: crawling, +1 per foot (§16.4). Standing up is a combat action (Phase 8).
+    const rules = ctx.model.campaign.houseRules;
+    const base = moveWorldOf(ctx.model, t.sceneId, { swim: stats.speeds.swim > 0 });
+    // Prone and not standing up: crawling, +1 per foot (§16.4); standing up is its own command (move.stand).
     const crawl = status.conditions.some((c) => c.id === "prone");
+    // In combat on its turn (§16.5 step 5): what it may spend — unless it moves freely; a DM's move only when the
+    // token's "Count as movement" is on (AC-MOV-07).
+    const combat = combatOn(ctx.model, t.sceneId);
+    const d = combat ? dataOf(combat) : null;
+    const m = movementOf(ctx.model, t);
+    const free = d?.freeMovement === true || t.overrides.freeMovement === true;
+    const counts = !dm || t.overrides.countAsMovement === true;
+    const budget = m?.active && !free && counts ? Math.max(0, m.budget - m.used) : null;
+    // Creature spaces (§16.5 step 6, AC-MOV-16): players' moves, when the house rule enforces them.
+    const spaces =
+      !dm && (rules.creatureSpaces === "always" || (rules.creatureSpaces === "combat" && Boolean(combat)));
+    const crowd = spaces ? creaturesAround(ctx, t) : [];
+    const me = spaceOf(ctx, t);
+    const world = spaces ? withCreatureSpaces(base, me, crowd, ctx.model.campaign.rulesPack) : base;
     let path = points;
     let bumped = false;
     let unseen = false;
     let cost: number;
-    if (dm) cost = pathCost(world, path, { crawl }).cost;
-    else {
-      const rc = clearanceRadius(t.sizeFt, ctx.model.campaign.houseRules.squeeze);
-      const v = validateMove(world, points, { rc, crawl }, null);
-      if ("error" in v) throw new GloamError("OVER_BUDGET", "Not enough movement left.");
+    if (dm) {
+      cost = pathCost(world, path, { crawl }).cost;
+      if (budget !== null && cost > budget + 0.05) {
+        path = clampToBudget(world, path, { crawl }, budget);
+        cost = pathCost(world, path, { crawl }).cost;
+      }
+    } else {
+      const rc = clearanceRadius(t.sizeFt, rules.squeeze);
+      const v = validateMove(world, points, { rc, crawl }, budget, rules.overlongMoves);
+      if ("error" in v)
+        throw new GloamError(
+          "OVER_BUDGET",
+          `That move is ${Math.round(v.cost)} ft; ${Math.floor(budget ?? 0)} ft of movement left.`,
+        );
       path = v.points;
       bumped = v.bumped;
       cost = v.cost;
       if (v.hitWall !== null) unseen = hiddenFromPlayers(ctx.model, world.walls[v.hitWall]?.id);
+      // It may not end in another creature's space: back along the path to where it may (§16.5 step 6).
+      if (spaces) {
+        const clear = lastClearPoint(path, me, crowd);
+        if (!clear) throw new GloamError("BLOCKED", "There's no room to end the move there.");
+        if (clear.points.length !== path.length || dist(clear.at, path[path.length - 1] as P) > 1e-6) {
+          path = clear.points;
+          cost = pathCost(world, path, { rc, crawl }).cost;
+        }
+      }
     }
     // Flying: the 3D length, climbs and dives included (§16.4); from the token's own height.
     if (p.mode === "fly" && p.elevations && !bumped)
@@ -114,6 +177,14 @@ export const moveCommit: CommandDef<z.infer<typeof MoveCommit>, MoveResult> = {
     if (light && patch.pos) ops.push(...setOps("light", light, { pos: patch.pos }));
     if (ops.length)
       ops.push({ k: "set", e: "token", id: t.id, path: ["updatedAt"], value: ctx.now, prev: t.updatedAt });
+    // The turn's bookkeeping (§16.5 step 7): what it spent, and the move as a segment (undo refunds it).
+    if (combat && d?.turn?.tokenId === t.id && budget !== null && patch.pos) {
+      for (const op of [
+        setPathOp("combat", combat, ["data", "turn", "usedFt"], d.turn.usedFt + cost),
+        setPathOp("combat", combat, ["data", "turn", "segments"], [...d.turn.segments, { cost }]),
+      ])
+        if (op) ops.push(op);
+    }
     const durationMs = moveDurationMs(pathLength(path));
     const events: RoomEvent[] = [];
     if (patch.pos)
@@ -147,6 +218,29 @@ export const moveCommit: CommandDef<z.infer<typeof MoveCommit>, MoveResult> = {
     };
   },
 };
+
+/** A creature as creature spaces see it (§16.5 step 6). */
+function spaceOf(ctx: Parameters<CommandDef["plan"]>[0], t: TokenEntity): SpaceCreature {
+  const actor = t.actorId ? ctx.model.get("actor", t.actorId) : undefined;
+  const { stats, status } = effectiveTokenState(t, actor && actor.deletedAt === null ? actor : undefined);
+  const size: Size = (SIZES as readonly string[]).includes(stats.size) ? stats.size : "medium";
+  return {
+    id: t.id,
+    pos: t.pos,
+    sizeFt: t.sizeFt,
+    size,
+    disposition: t.disposition,
+    incapacitated: incapacitates(status.conditions.map((x) => x.id as string)),
+  };
+}
+
+/** The other creatures on the scene (every one — the true set, hidden ones too, as for walls). */
+function creaturesAround(ctx: Parameters<CommandDef["plan"]>[0], t: TokenEntity): SpaceCreature[] {
+  return ctx.model
+    .inScene("token", t.sceneId)
+    .filter((o) => o.id !== t.id)
+    .map((o) => spaceOf(ctx, o));
+}
 
 /** Is this wall (or impassable zone) something players aren't shown? */
 function hiddenFromPlayers(model: Parameters<typeof moveWorldOf>[0], id: string | undefined): boolean {

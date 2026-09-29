@@ -109,10 +109,17 @@ export async function rollFromSheet(
   formula: string,
   label: string,
   mode: RollMode,
+  purpose?: "attack",
 ): Promise<void> {
   try {
     makeRoomForDice();
-    await rollDice({ formula: withMode(formula, mode), label, visibility: "public", actorId: actor.id });
+    await rollDice({
+      formula: withMode(formula, mode),
+      label,
+      visibility: "public",
+      actorId: actor.id,
+      ...(purpose ? { purpose } : {}),
+    });
   } catch (e) {
     toast.danger("Couldn't roll", (e as Error).message);
   }

@@ -196,6 +196,28 @@ export const TokenUpdate = z.strictObject({
   dmNote: z.string().max(20_000).optional(),
   /** Vision sharing (SPEC §8.8): players who also see what this token sees (DM). */
   shareVisionWith: z.array(Id).max(20).optional(),
+  /**
+   * Per-token overrides (SPEC §8.19, DM): a speed override; bonus movement for this turn, N rounds or until removed
+   * (§19.4, never doubled by Dash); free movement in combat; movement locked; condition speed effects ignored; a DM's
+   * move counted against the budget. null clears one.
+   */
+  overrides: z
+    .strictObject({
+      speedOverride: Ft.max(1000).nullable().optional(),
+      bonusMove: z
+        .strictObject({
+          ft: Ft.max(1000),
+          until: z.enum(["turn", "rounds", "removed"]),
+          rounds: z.number().int().min(1).max(100).optional(),
+        })
+        .nullable()
+        .optional(),
+      freeMovement: z.boolean().optional(),
+      lockMovement: z.boolean().optional(),
+      ignoreConditionSpeed: z.boolean().optional(),
+      countAsMovement: z.boolean().optional(),
+    })
+    .optional(),
 });
 
 export const TokenPlace = z.strictObject({
@@ -626,6 +648,8 @@ export const CombatPip = z.strictObject({
   pip: z.enum(["action", "bonus", "reaction", "object"]),
   used: z.boolean(),
 });
+/** `combat.rollRemaining` (DM, a message): the NPCs still without initiative rolled — the players' too if asked. */
+export const CombatRollRemaining = z.strictObject({ players: z.boolean().default(false) });
 /** `move.reset`, `move.dash`, `move.stand` (the active combatant's controller, or the DM). */
 export const MoveTurn = z.strictObject({ tokenId: Id });
 export type CombatStart = z.infer<typeof CombatStart>;

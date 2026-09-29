@@ -573,6 +573,27 @@ export class StateProjector {
         for (const t of m.all("token")) if (t.actorId === op.id) touch("tokens", t.id, t.sceneId);
         continue;
       }
+      // A combat changed: its combatants' turn numbers (budget, pips) in their controllers' views — theirs as it is
+      // now, and any that left it.
+      if (op.e === "combat") {
+        const now = m.get("combat", op.id);
+        const was = (op.k === "set" ? undefined : op.k === "delete" ? op.prev : op.value) as
+          | { sceneId: string; data?: { combatants?: { tokenId: string }[] } }
+          | undefined;
+        for (const x of [now, was]) {
+          if (!x) continue;
+          for (const e of (x.data as { combatants?: { tokenId: string }[] } | undefined)?.combatants ?? []) {
+            const t = m.get("token", e.tokenId);
+            if (t) touch("tokens", t.id, t.sceneId);
+          }
+        }
+        if (op.k === "set" && Array.isArray((op.prev as { combatants?: unknown })?.combatants))
+          for (const e of (op.prev as { combatants: { tokenId: string }[] }).combatants) {
+            const t = m.get("token", e.tokenId);
+            if (t) touch("tokens", t.id, t.sceneId);
+          }
+        continue;
+      }
       const c = KIND_TO_COLLECTION[op.e];
       if (!c) continue;
       const now = m.get(op.e, op.id) as { sceneId?: string } | undefined;

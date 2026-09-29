@@ -42,7 +42,10 @@ export function Rollable({
   // Its conditions' advantage or disadvantage (AC-DICE-11): a click rolls with it; Alt / Ctrl choose, and the menu
   // (right-click, or a long press) sets it aside with "Normal".
   const hint = hintFor(actor.sheet.core.conditions, test === undefined ? testOf(formula) : test);
-  const roll = (mode: RollMode) => void rollFromSheet(actor, formula, label, mode);
+  // An attack says so: in combat, on its creature's turn, it marks the Action (AC-CMB-08).
+  const kind = test === undefined ? testOf(formula)?.kind : test?.kind;
+  const roll = (mode: RollMode) =>
+    void rollFromSheet(actor, formula, label, mode, kind === "attack" ? "attack" : undefined);
   useEffect(() => {
     if (!menu) return;
     const off = (e: PointerEvent) => {

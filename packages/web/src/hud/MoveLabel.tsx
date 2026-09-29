@@ -13,9 +13,10 @@ const coarse = () => typeof matchMedia !== "undefined" && matchMedia("(pointer: 
 
 /**
  * The movement pill (SPEC §8.6 The path line): how far the planned move goes in the campaign's units (or the
- * viewer's override) — the number large, in the display face — with the difficult-terrain part, or "No path". It
- * sits beside the ghost at the end of the path, never over it or over a name plate. Budgets ("· 10 left", "· 5
- * over") join with combat.
+ * viewer's override) — the number large, in the display face — with the difficult-terrain part, or "No path"; in
+ * combat on its turn, what's left of its movement ("· 10 left", "· 5 over"); and each opportunity attack the path
+ * provokes ("Opportunity attack from Goblin 2", AC-MOV-15). It sits beside the ghost at the end of the path, never
+ * over it or over a name plate.
  */
 export function MoveLabel() {
   const screen = useMove((s) => s.screen);
@@ -67,6 +68,22 @@ export function MoveLabel() {
           No path
         </span>
       )}
+      {preview.ok && preview.budget !== undefined ? (
+        <span
+          className={`text-13 tabular ${preview.cost > preview.budget + 0.05 ? "text-[var(--ember-400)]" : "text-muted"}`}
+          data-testid="move-left"
+        >
+          {" · "}
+          {preview.cost > preview.budget + 0.05
+            ? `${formatDistanceValue(preview.cost - preview.budget, units)} over`
+            : `${formatDistanceValue(preview.budget - preview.cost, units)} left`}
+        </span>
+      ) : null}
+      {preview.oa?.length ? (
+        <span className="block text-12 text-[var(--ember-400)]" data-testid="move-oa">
+          {preview.oa.map((m) => `Opportunity attack from ${m.byName}`).join(" · ")}
+        </span>
+      ) : null}
       {waypoints ? (
         <span className="text-12 text-muted">
           {" · "}

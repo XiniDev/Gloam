@@ -154,6 +154,8 @@ export const MESSAGE_RATES = {
   "death.request": rate(2, 4),
   // The damage dialog previews as the amount is typed.
   "hp.preview": rate(8, 16),
+  // Combat (§8.12): the DM's "Roll NPCs" / "Roll the rest".
+  "combat.rollRemaining": rate(2, 4),
 } as const satisfies Record<string, RateSpec>;
 
 export * from "./combat.ts";

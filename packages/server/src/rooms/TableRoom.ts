@@ -1,6 +1,6 @@
 import { type AuthContext, type Client, Room, ServerError } from "@colyseus/core";
 import { StateView } from "@colyseus/schema";
-import { SKILLS, type SkillId } from "@gloam/shared";
+import { BOARD_COLORS, SKILLS, type SkillId } from "@gloam/shared";
 import { DiceError, isD20Test, parseFormula, withHint, withPenalty } from "@gloam/shared/dice";
 import type { P } from "@gloam/shared/geometry";
 import {
@@ -9,6 +9,7 @@ import {
   AdminUnban,
   CameraSpotlight,
   ClockSync,
+  CombatRollRemaining,
   DeathSaveRequest,
   DiceManual,
   DiceRoll,
@@ -74,6 +75,17 @@ import {
   type RoomEvent,
 } from "../engine/commandBus.ts";
 import { checkSheet, readSheet } from "../engine/commands/actor.ts";
+import {
+  COMBAT_COLLECT,
+  COMBAT_STOPPED,
+  COMBAT_TURN,
+  type CombatCollect,
+  type CombatStopped,
+  type CombatTurn,
+  combatOn,
+  dataOf,
+  movementOf,
+} from "../engine/commands/combat.ts";
 import { FOLLOWUPS, type Followups, hpApply, previewHp } from "../engine/commands/health.ts";
 import { SYSTEM_ACTOR } from "../engine/commands/party.ts";
 import { REST_FOLLOWUPS, type RestFollowups } from "../engine/commands/rest.ts";
@@ -82,6 +94,7 @@ import { ALL_COMMANDS, COMMAND_RATES, registerCommands } from "../engine/registr
 import { PromptService } from "../health/prompts.ts";
 import { type Proposal, ProposalService, proposalView } from "../sheets/proposals.ts";
 import { type MoveSeen, VisionService } from "../vision/visionService.ts";
+import { CombatFlow, type CombatViewer } from "./combat.ts";
 import {
   buildHandlers,
   type ClientAuth,
@@ -132,6 +145,7 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
   /** The DM's prompts (SPEC §8.11, §19.1) and the room's half of health (concentration and death saves). */
   prompts!: PromptService;
   health!: HealthFlow;
+  combat!: CombatFlow;
   /** DM connections viewing a non-active scene in prep (SPEC §13.7): client → scene id. */
   private readonly prepSubs = new Map<Client, string>();
   /** Test probe (AC-PER-01): runs right before Colyseus encodes and sends a state patch. */
@@ -292,6 +306,8 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
           ...(sheet ? { sheet } : {}),
         });
         this.deliverRoll(r, dm);
+        // An attack from the app (§8.12, AC-CMB-08): on its creature's turn, its Action is marked used.
+        if (p.purpose === "attack") this.markActionFor(token, actorId, auth);
         return { id: r.id };
       }),
       "dice.manual": def(DiceManual, MESSAGE_RATES["dice.manual"], ({ auth }, p) => {
@@ -512,6 +528,15 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
         hpApply.authorize(ctx, p);
         return previewHp(ctx, p);
       }),
+      // Combat (§8.12): the DM rolls the NPCs still without initiative ("Roll NPCs"), or everyone left.
+      "combat.rollRemaining": def(
+        CombatRollRemaining,
+        MESSAGE_RATES["combat.rollRemaining"],
+        ({ auth }, p) => {
+          this.requireDm(auth);
+          return { rolled: this.combat.rollRemaining(auth.userId, p.players) };
+        },
+      ),
       // Outside combat, the DM asks the dying for death saving throws.
       "death.request": def(DeathSaveRequest, MESSAGE_RATES["death.request"], ({ auth }, p) => {
         this.requireDm(auth);
@@ -700,6 +725,32 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
       ask: (r) => this.askForRules(r),
       sendRequest: (r) => this.sendRequest(r),
     });
+    this.combat = new CombatFlow({
+      campaignId: this.campaignId,
+      model: () => this.model,
+      bus: () => this.bus,
+      viewers: () => this.combatViewers(),
+      tokenView: (id) =>
+        this.state.tokens.get(id) as unknown as import("@gloam/shared/state").TokenView | undefined,
+      actorOf: (userId) => this.actorOfUser(userId),
+      toDms: (type, payload) => this.toDms(type, payload),
+      toUser: (userId, type, payload) => this.toUser(userId, type, payload),
+      ask: (r) => this.askForRules(r),
+      rollFor: (tokenId, formula, label) => this.rollForCombat(tokenId, formula, label),
+      requestDeathSaves: (ids) => {
+        const dm = [...this.clients]
+          .map((c) => c.auth as ClientAuth | undefined)
+          .find((a) => a && (a.role === "dm" || a.role === "admin"));
+        try {
+          this.health.requestDeathSaves(dm ? this.actorOfUser(dm.userId) : SYSTEM_ACTOR, ids);
+        } catch {
+          // none of them is dying after all
+        }
+      },
+      log: (kind, text, data) => {
+        roomCtx().campaigns.appendLog(this.campaignId, { kind, text, data });
+      },
+    });
     this.syncCampaign();
     this.views?.detachAll();
     this.projector = new StateProjector(this.state, this.projectionCtx());
@@ -860,6 +911,7 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
     if (!r.purpose) return;
     try {
       this.health.answered(r, t, res, roll);
+      this.combat.answered(r, t, res);
     } catch (err) {
       roomCtx().log.error({ err }, "health follow-up of a roll failed");
     }
@@ -962,7 +1014,103 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
     return {
       model: this.model,
       colorOf: (userId) => roomCtx().profiles.get(userId)?.color,
+      // A combatant's turn for its controllers (§16.5): its budget, what it used, its pips, where its turn began.
+      movementOf: (tokenId) => {
+        const t = this.model.get("token", tokenId);
+        if (!t) return undefined;
+        const c = combatOn(this.model, t.sceneId);
+        const m = movementOf(this.model, t);
+        if (!c || !m) return undefined;
+        const d = dataOf(c);
+        const turn = d.turn?.tokenId === t.id ? d.turn : null;
+        return {
+          budgetFt: m.budget,
+          usedFt: m.used,
+          dashes: m.dashes,
+          bonusMoveFt: m.bonus,
+          pips: d.pips[t.id] ?? 0,
+          segments: turn?.segments.length ?? 0,
+          turnStart: turn ? { x: turn.turnStart.x, y: turn.turnStart.y } : { x: t.pos.x, y: t.pos.y },
+          freeMovement: d.freeMovement || t.overrides.freeMovement === true,
+        };
+      },
     };
+  }
+
+  /** The state's public combat numbers (active, round, the turn's sequence) and the trackers, as they are now. */
+  private syncCombatState(): void {
+    const scene = this.model.activeScene;
+    const c = scene ? combatOn(this.model, scene.id) : undefined;
+    const cs = this.state.combat;
+    const active = Boolean(c);
+    const round = c ? c.round : 0;
+    const turn = c ? `${c.round}:${c.turnIndex}:${dataOf(c).begun}` : "";
+    if (cs.active !== active) cs.active = active;
+    if (cs.round !== round) cs.round = round;
+    if (turn !== this.lastTurn) {
+      this.lastTurn = turn;
+      cs.turnSeq = (cs.turnSeq + 1) % 4_000_000_000;
+    }
+    this.combat.sync();
+  }
+  private lastTurn = "";
+
+  /**
+   * An app-driven attack marks its creature's Action (AC-CMB-08) — the creature whose turn it is, rolled for by its
+   * token or its character's token on the scene — once (Extra Attack's second swing uses the same Action).
+   */
+  private markActionFor(token: TokenEntity | undefined, actorId: string | undefined, auth: ClientAuth): void {
+    const scene = this.model.activeScene;
+    const c = scene ? combatOn(this.model, scene.id) : undefined;
+    if (!c) return;
+    const d = dataOf(c);
+    const active = d.begun ? d.combatants[c.turnIndex]?.tokenId : undefined;
+    const t = active ? this.model.get("token", active) : undefined;
+    if (!t || !(token ? token.id === t.id : actorId && t.actorId === actorId && t.link === "linked")) return;
+    if (((d.pips[t.id] ?? 0) & 1) !== 0) return;
+    try {
+      this.bus.execute("combat.pip", { tokenId: t.id, pip: "action", used: true }, this.actorFor(auth));
+    } catch (err) {
+      roomCtx().log.warn({ err }, "marking the action failed");
+    }
+  }
+
+  /** Everyone at the table as the combat tracker sees them (§13.4): who they are and what they perceive. */
+  private combatViewers(): CombatViewer[] {
+    const out: CombatViewer[] = [];
+    for (const c of this.clients) {
+      const auth = c.auth as ClientAuth | undefined;
+      if (!auth) continue;
+      out.push({
+        key: c,
+        userId: auth.userId,
+        dm: auth.role === "admin" || auth.role === "dm",
+        spectator: auth.role === "spectator",
+        perceives: (id) => this.views.grantsOf(c)?.tokens.has(id) ?? false,
+        send: (type, payload) => c.send(type, payload),
+      });
+    }
+    return out;
+  }
+
+  /** The server rolls a creature's initiative (the NPCs, or everyone): a DM's roll, seen as the DM's rolls are. */
+  private rollForCombat(tokenId: string, formula: string, label: string): number {
+    const token = this.model.get("token", tokenId);
+    const dmAuth = [...this.clients]
+      .map((c) => c.auth as ClientAuth | undefined)
+      .find((a) => a && (a.role === "dm" || a.role === "admin"));
+    const roller = dmAuth
+      ? this.rollerOf(dmAuth)
+      : { userId: "system", name: "The DM", color: BOARD_COLORS.brass400, skin: DEFAULT_SKIN, dm: true };
+    const roll = this.dice.roll(this.campaignId, this.projector.activeSceneId || null, roller, {
+      formula,
+      visibility: "dm",
+      label,
+      purpose: "initiative",
+      ...(token ? { token } : {}),
+    });
+    this.deliverRoll(roll, true);
+    return roll.total;
   }
 
   private viewerOf(client: Client): Viewer | null {
@@ -975,6 +1123,8 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
       const v = this.viewerOf(c);
       if (v) this.views.sync(c, v, this.projector.activeSceneId);
     }
+    // What each person perceives changed: their tracker with it (§13.4 "Combat tracker").
+    this.combat?.sync();
   }
 
   private requireDm(auth: ClientAuth): void {
@@ -1024,6 +1174,10 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
     const nextActive = active && !active.deletedAt ? active.id : "";
     if (nextActive !== this.projector.activeSceneId) this.views.detachAll();
     const res = this.projector.apply(info.ops);
+    // Combat (§13.3): its public numbers in the state, and each person's tracker — after a change to it, or to a
+    // creature in it (a name, HP as its display shows it).
+    const combatTouched = info.ops.some((o) => o.k !== "fog" && o.k !== "sheet" && o.e === "combat");
+    if (combatTouched || res.activeChanged) this.syncCombatState();
     const seen = this.vision.onCommitted(info.ops);
     if (seen) this.syncSensed();
     // Carriers move and lights change without anyone's perception changing: the stand-ins follow every commit.
@@ -1033,6 +1187,12 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
       for (const [client, sceneId] of this.prepSubs) if (sceneId === nextActive) this.prepSubs.delete(client);
     }
     if (res.activeChanged || seen) this.syncAllViews();
+    else if (
+      this.state.combat.active &&
+      !combatTouched &&
+      info.ops.some((o) => o.k === "sheet" || (o.k !== "fog" && (o.e === "token" || o.e === "actor")))
+    )
+      this.combat.sync();
     this.vision.deliverFog();
     for (const [sceneId, patch] of res.prep) {
       for (const [client, sub] of this.prepSubs) if (sub === sceneId) client.send("prep.patch", patch);
@@ -1167,6 +1327,8 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
     this.sendOpenRequests(client, auth);
     if (auth.role === "admin" || auth.role === "dm")
       for (const p of this.health.list()) client.send("prompt.update", p);
+    const cv = this.combatViewers().find((v) => v.key === client);
+    if (cv) this.combat.join(cv);
     client.send("welcome", {
       userId: auth.userId,
       role: auth.role,
@@ -1398,6 +1560,18 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
           this.health.followups(e.payload as Followups, info?.entry?.id ?? null);
         } catch (err) {
           roomCtx().log.error({ err }, "health follow-ups failed");
+        }
+        continue;
+      }
+      // Combat's cues: initiative to find, a turn's processing, the summary when it stops.
+      if (e.name === COMBAT_COLLECT || e.name === COMBAT_TURN || e.name === COMBAT_STOPPED) {
+        try {
+          if (e.name === COMBAT_COLLECT)
+            this.combat.collect(e.payload as CombatCollect, info?.actor.userId ?? "system");
+          else if (e.name === COMBAT_TURN) this.combat.turn(e.payload as CombatTurn);
+          else this.combat.stopped(e.payload as CombatStopped);
+        } catch (err) {
+          roomCtx().log.error({ err, event: e.name }, "combat follow-up failed");
         }
         continue;
       }
