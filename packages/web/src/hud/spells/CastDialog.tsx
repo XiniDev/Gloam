@@ -11,7 +11,7 @@ import type { Spell, Spellcasting } from "@gloam/shared/schemas";
 import { useEffect, useMemo, useState } from "react";
 import type { z } from "zod";
 import { Button } from "../../ui/Button.tsx";
-import { Toggle } from "../../ui/controls.tsx";
+import { Segmented, Toggle } from "../../ui/controls.tsx";
 import { Dialog } from "../../ui/Dialog.tsx";
 import { toast } from "../../ui/Toast.tsx";
 import { beginCast } from "./casting.ts";
@@ -44,6 +44,7 @@ export function CastDialog({ req, onClose }: { req: CastRequest | null; onClose:
   const [mode, setMode] = useState<"slot" | "ritual" | "free">("slot");
   const [narrative, setNarrative] = useState(false);
   const [damageType, setDamageType] = useState<string | undefined>(undefined);
+  const [onto, setOnto] = useState<"carried" | "point">("carried");
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     if (!spell) return;
@@ -51,12 +52,15 @@ export function CastDialog({ req, onClose }: { req: CastRequest | null; onClose:
     setSlot(d);
     setMode(spell.level === 0 || d ? "slot" : spell.ritual ? "ritual" : "free");
     setNarrative(false);
+    setOnto("carried");
     setDamageType(spell.damage?.[0]?.typeOptions?.[0]);
   }, [spell, options]);
   if (!req || !spell) return <Dialog open={false} onClose={onClose} title="" />;
   const level = spell.level === 0 ? 0 : mode === "slot" ? (slot?.level ?? spell.level) : spell.level;
   const kind = targetingKind(spell);
   const onBoard = Boolean(req.casterTokenId);
+  // Cast on an object with no area of its own (Light): what it's put on.
+  const onObject = spell.effect?.attach === "object" && !spell.area;
   const canSlot = spell.level === 0 || options.length > 0;
   const needsSlot = spell.level > 0 && mode === "slot" && !slot;
   const go = async () => {
@@ -79,6 +83,7 @@ export function CastDialog({ req, onClose }: { req: CastRequest | null; onClose:
         narrative,
         max: targetCount(spell, level, req.casterLevel),
         repeat: repeatTargets(spell),
+        ...(onObject ? { onto } : {}),
       });
       onClose();
     } finally {
@@ -86,11 +91,13 @@ export function CastDialog({ req, onClose }: { req: CastRequest | null; onClose:
     }
   };
   const action =
-    narrative || kind === "self" || kind === "point"
-      ? "Cast"
-      : kind === "area"
-        ? "Place on the board"
-        : `Choose ${targetCount(spell, level, req.casterLevel) === 1 ? "the target" : "targets"}`;
+    onObject && !narrative && onto === "point"
+      ? "Place on the board"
+      : narrative || kind === "self" || kind === "point"
+        ? "Cast"
+        : kind === "area"
+          ? "Place on the board"
+          : `Choose ${targetCount(spell, level, req.casterLevel) === 1 ? "the target" : "targets"}`;
   return (
     <Dialog
       open
@@ -187,6 +194,20 @@ export function CastDialog({ req, onClose }: { req: CastRequest | null; onClose:
                 </button>
               ))}
             </div>
+          </section>
+        ) : null}
+        {onObject && !narrative ? (
+          <section className="flex flex-col gap-1.5">
+            <span className="caps text-12 text-fog">Cast on</span>
+            <Segmented
+              label="Cast on"
+              value={onto}
+              onChange={setOnto}
+              options={[
+                { value: "carried", label: `Something ${req.casterName} carries` },
+                { value: "point", label: "An object within reach" },
+              ]}
+            />
           </section>
         ) : null}
         <Toggle

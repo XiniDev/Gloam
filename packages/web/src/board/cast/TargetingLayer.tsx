@@ -10,14 +10,14 @@ import {
 } from "@gloam/shared/aoe";
 import { circlePolygon, type P } from "@gloam/shared/geometry";
 import { blocksMove, blocksSight } from "@gloam/shared/movement";
-import { areaAtSlot, castArea, targetingKind } from "@gloam/shared/rules";
+import { areaAtSlot, castArea } from "@gloam/shared/rules";
 import type { TokenView } from "@gloam/shared/state";
 import CameraControlsImpl from "camera-controls";
 import { useEffect, useMemo, useRef } from "react";
 import { DoubleSide, MeshBasicMaterial, Shape, ShapeGeometry } from "three";
 import { useTable } from "../../net/table.ts";
 import { boardData, useEntities } from "../../state/entities.ts";
-import { type Targeting, useTargeting } from "../../state/targeting.ts";
+import { aimKind, type Targeting, useTargeting } from "../../state/targeting.ts";
 import { provideTestHook } from "../../test/hooks.ts";
 import { cameraRig } from "../CameraRig.tsx";
 import { C } from "../colors.ts";
@@ -94,9 +94,10 @@ export function aimOf(
   const reach =
     spell.range.kind === "touch" ? 5 : spell.range.kind === "ranged" ? (spell.range.ft ?? null) : null;
   const ring = reach !== null ? circlePolygon(caster.pos, reach + caster.sizeFt / 2, 96, true) : null;
-  if (targetingKind(spell) !== "area") return { ...none, ring, ok: true };
-  // Where it strikes (Call Lightning's bolt under its cloud), else its area or the alternative form's.
-  const base = castArea(spell, t.alt);
+  if (aimKind(t) !== "area") return { ...none, ring, ok: true };
+  // Where it strikes (Call Lightning's bolt under its cloud), else its area or the alternative form's; an object put
+  // down at a point (Light on a stone): the object itself, a foot across.
+  const base = t.point ? ({ shape: "sphere", radius: 0.5 } as const) : castArea(spell, t.alt);
   if (!base) return { ...none, ring };
   const area = areaAtSlot(base, spell.level, t.level);
   const at = t.at ?? caster.pos;
@@ -277,7 +278,14 @@ export function TargetingLayer() {
           order={10}
         />
       ))}
-      <Dots points={marks(aim.inside)} kind="ring" px={30} color={color} />
+      <Dots
+        points={marks(aim.inside.filter((id) => !t.spare?.includes(id)))}
+        kind="ring"
+        px={30}
+        color={color}
+      />
+      {/* Those it spares (Spirit Guardians' designated creatures): a quiet ring of their own. */}
+      {t.spare?.length ? <Dots points={marks(t.spare)} kind="ring" px={30} color={C.verdigris400} /> : null}
       <Dots points={marks(aim.blocked)} kind="ring" px={22} color={C.fog400} />
       <Dots points={marks(picked)} kind="ring" px={30} color={VFX[t.spell.vfx].glow} />
       {t.points.length ? <Dots points={t.points} kind="diamond" px={14} color={C.brass300} /> : null}

@@ -1,9 +1,9 @@
-import { areaAtSlot, castArea, SPELL_LEVEL_NAMES, targetingKind } from "@gloam/shared/rules";
+import { areaAtSlot, castArea, SPELL_LEVEL_NAMES } from "@gloam/shared/rules";
 import { useMemo, useRef } from "react";
 import { aimOf, barriersOfView } from "../../board/cast/TargetingLayer.tsx";
 import { useTable } from "../../net/table.ts";
 import { boardData, useEntities } from "../../state/entities.ts";
-import { useTargeting } from "../../state/targeting.ts";
+import { aimKind, designates, useTargeting } from "../../state/targeting.ts";
 import { Button } from "../../ui/Button.tsx";
 import { Toggle } from "../../ui/controls.tsx";
 import { Dialog } from "../../ui/Dialog.tsx";
@@ -37,7 +37,7 @@ export function TargetingBar() {
   const ask = useConcentrationAsk((s) => s.ask);
   if (!t) return <ConcentrationAsk />;
   const spell = t.spell;
-  const kind = targetingKind(spell);
+  const kind = aimKind(t);
   const level = spell.level === 0 ? "cantrip" : `${SPELL_LEVEL_NAMES[t.level]} level`;
   const alt = t.alt !== undefined ? spell.areaAlternatives?.[t.alt] : undefined;
   const area = castArea(spell, t.alt);
@@ -49,11 +49,15 @@ export function TargetingBar() {
   const hint =
     kind === "creatures"
       ? `Click ${t.max === 1 ? "the creature" : "each creature"} it's aimed at${t.repeat ? " (again for another)" : ""} — ${picks} / ${t.max}`
-      : scaled?.shape === "emanation"
-        ? "It surrounds its caster — Cast to confirm"
-        : scaled?.shape === "wall"
-          ? "Click to lay the wall's points — Enter to finish"
-          : `Click where it goes${scaled && scaled.shape !== "sphere" && scaled.shape !== "cylinder" ? " — [ and ] or the wheel to turn it" : ""}`;
+      : t.point
+        ? "Click where the object lies — within reach"
+        : scaled?.shape === "emanation"
+          ? designates(t)
+            ? `It surrounds its caster — click creatures to spare them${t.spare?.length ? ` (${t.spare.length} spared)` : ""}, then Cast`
+            : "It surrounds its caster — Cast to confirm"
+          : scaled?.shape === "wall"
+            ? "Click to lay the wall's points — Enter to finish"
+            : `Click where it goes${scaled && scaled.shape !== "sphere" && scaled.shape !== "cylinder" ? " — [ and ] or the wheel to turn it" : ""}`;
   return (
     <>
       {/* Centred in the board's clear width — between the toolbar and the dock or its open page (the sheet it was
@@ -82,7 +86,7 @@ export function TargetingBar() {
               <span className="text-13 text-ember" data-testid="targeting-why">
                 {aim.why}
               </span>
-            ) : kind === "area" && aim ? (
+            ) : kind === "area" && aim && !t.point ? (
               <span className="text-13 text-muted" data-testid="targeting-count">
                 {aim.inside.length} {aim.inside.length === 1 ? "creature" : "creatures"} inside
                 {aim.blocked.length ? ` · ${aim.blocked.length} cut off by a wall` : ""}

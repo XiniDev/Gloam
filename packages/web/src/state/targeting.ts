@@ -4,6 +4,7 @@
  * (hud/spells/TargetingBar.tsx) says what's asked; a click on the board casts an area where it stands, a click on a
  * creature picks it (a single target casts at once; more once they're all picked, or Cast now).
  */
+import { targetingKind } from "@gloam/shared/rules";
 import type { Spell } from "@gloam/shared/schemas";
 import { create } from "zustand";
 import { useUi } from "./ui.ts";
@@ -41,6 +42,23 @@ export interface Targeting {
   attack?: { index: number } | undefined;
   /** Why the last creature clicked couldn't be picked (out of range, behind total cover) — the bar says so. */
   refusal?: string | null | undefined;
+  /**
+   * Cast on an object put down at a point (Light on a stone within reach): aimed as a small area — a click where the
+   * object lies, within the spell's reach.
+   */
+  point?: boolean | undefined;
+  /** Creatures the caster designates to be unaffected (Spirit Guardians: clicked while it's aimed). */
+  spare?: string[] | undefined;
+}
+
+/** Whether the caster designates creatures its effect leaves alone (Spirit Guardians, SRD p. 164). */
+export function designates(t: Pick<Targeting, "spell">): boolean {
+  return t.spell.effect?.props.speedHalved === true;
+}
+
+/** How a targeting is aimed: an area (or an object at a point, the same way), creatures, or nothing to aim. */
+export function aimKind(t: Pick<Targeting, "spell" | "point">): "area" | "creatures" | "self" | "point" {
+  return t.point ? "area" : targetingKind(t.spell);
 }
 
 interface TargetingStore {

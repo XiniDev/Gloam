@@ -680,6 +680,7 @@ function makeEffect(
   castId: string,
   on: string | null,
   chosenType?: DamageType,
+  spare: readonly string[] = [],
 ): EffectEntity | null {
   const tpl = spell.effect;
   if (!tpl) return null;
@@ -712,8 +713,8 @@ function makeEffect(
   if (tp.outline) props.outline = true;
   if (tp.speedHalved) {
     props.speedHalved = true;
-    // Spirit Guardians: its caster is never slowed by its own spirits (the DM designates others on the effect).
-    props.exempt = [caster.token.id];
+    // Spirit Guardians: its caster, and the creatures it designated, are left alone (the DM can change who).
+    props.exempt = [...new Set([caster.token.id, ...spare])];
   }
   if (tp.seeInvisible) props.seeInvisible = true;
   if (tpl.oncePerTurn) props.oncePerTurn = true;
@@ -1125,6 +1126,11 @@ export const spellCast: CommandDef<
     let targets: CastTargetData[] = [];
     // Where it strikes: its strike's area under a lasting one (Call Lightning's bolt), else its (alternative) area.
     const area = castArea(spell, p.placement?.alt) ?? null;
+    // Those it spares (Spirit Guardians' designated creatures): on its scene, and — a player's — ones they see.
+    const spare = [...new Set(p.spare ?? [])].filter((id) => {
+      const x = ctx.model.get("token", id);
+      return Boolean(x && x.sceneId === t.sceneId && (dm || !ctx.actor.sees || ctx.actor.sees(id)));
+    });
     // What it hangs on: the caster, a creature, an object (held, or put down at a point) — the holder checked.
     const attach = castAttach(spell, p.placement?.alt);
     const onto = castOnto(
@@ -1235,7 +1241,7 @@ export const spellCast: CommandDef<
           for (const old of ctx.model.all("effect"))
             if (old.source.contentId === spell.id && old.source.casterTokenId === t.id)
               ops.push(...endEffectOps(ctx, old));
-        effect = makeEffect(ctx, spell, level, at, caster, castId, onto, p.damageType);
+        effect = makeEffect(ctx, spell, level, at, caster, castId, onto, p.damageType, spare);
         if (effect) effects.push(effect);
       }
     }
@@ -2380,8 +2386,16 @@ export const effectUpdate: CommandDef<z.infer<typeof EffectUpdate>, { ok: true }
     const e = mustGet(ctx, "effect", p.effectId);
     const patch: Partial<EffectEntity> = {};
     if (p.visibility) patch.visibility = p.visibility;
+    if (p.exempt) {
+      // Its caster is always spared by its own spirits.
+      const caster = e.source.casterTokenId;
+      patch.props = {
+        ...(patch.props ?? e.props),
+        exempt: [...new Set([...(caster ? [caster] : []), ...p.exempt])],
+      } as EffectEntity["props"];
+    }
     if (p.props) {
-      const props: Record<string, unknown> = { ...e.props };
+      const props: Record<string, unknown> = { ...(patch.props ?? e.props) };
       for (const [k, v] of Object.entries(p.props)) {
         if (v === null || v === false) delete props[k];
         else props[k] = v;

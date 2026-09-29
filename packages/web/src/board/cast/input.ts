@@ -10,7 +10,7 @@ import { areaAtSlot, castArea, targetingKind } from "@gloam/shared/rules";
 import { commitCast } from "../../hud/spells/casting.ts";
 import { useTable } from "../../net/table.ts";
 import { boardData, useEntities } from "../../state/entities.ts";
-import { useTargeting } from "../../state/targeting.ts";
+import { aimKind, designates, useTargeting } from "../../state/targeting.ts";
 import { boardApi } from "../boardApi.ts";
 import { again } from "../frames.ts";
 import { barriersOfView } from "./TargetingLayer.tsx";
@@ -58,7 +58,7 @@ export function targetDown(clientX: number, clientY: number): boolean {
   if (!t || t.busy) return false;
   const p = boardApi.groundAt(clientX, clientY);
   if (!p) return true;
-  const kind = targetingKind(t.spell);
+  const kind = aimKind(t);
   if (kind !== "area") return true;
   const shape = areaShape();
   if (shape === "wall") {
@@ -87,11 +87,20 @@ export function targetDown(clientX: number, clientY: number): boolean {
 export function targetToken(tokenId: string): void {
   const t = useTargeting.getState().t;
   if (!t || t.busy) return;
-  const kind = targetingKind(t.spell);
+  const kind = aimKind(t);
   if (kind === "area") {
     const tok = boardData(useEntities.getState()).tokens.get(tokenId);
     if (!tok) return;
     const shape = areaShape();
+    // Spirit Guardians: a creature clicked is one it spares (or no longer spares) — its caster always is.
+    if (shape === "emanation" && designates(t) && tokenId !== t.casterTokenId) {
+      const spare = t.spare ?? [];
+      useTargeting
+        .getState()
+        .set({ spare: spare.includes(tokenId) ? spare.filter((x) => x !== tokenId) : [...spare, tokenId] });
+      again();
+      return;
+    }
     if (shape === "wall" || shape === "emanation") return;
     const next = { ...t, at: { ...tok.pos } };
     useTargeting.getState().set({ at: next.at });

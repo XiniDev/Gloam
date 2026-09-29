@@ -752,4 +752,31 @@ describe("P9 — spells never leak what a player can't perceive", () => {
       await place(lurker, { x: 70, y: 20 });
     });
   });
+
+  describe("Spirit Guardians' designated creatures", () => {
+    it("a player spares creatures she sees (an unseen one isn't taken); its caster always is; the DM changes who", async () => {
+      const toks = room().model.inScene("token", sceneId);
+      const mira = (toks.find((x) => x.name === "Mira") as { id: string }).id;
+      const goblin = (toks.find((x) => x.name === "Goblin") as { id: string }).id;
+      for (const c of room()
+        .model.all("cast")
+        .filter((x) => x.status === "open"))
+        await cmd(dm, "cast.close", { castId: c.id });
+      await place(lurker, { x: 16, y: 12 });
+      const sg = await cmd<{ effectId: string }>(anna.room, "spell.cast", {
+        casterTokenId: mira,
+        spellId: "spirit-guardians",
+        mode: "slot",
+        slot: { level: 3, kind: "slot" },
+        spare: [goblin, lurker],
+        endConcentration: true,
+      });
+      const e = () => room().model.get("effect", sg.effectId);
+      expect(e()?.props.exempt?.sort()).toEqual([goblin, mira].sort());
+      await cmd(dm, "effect.update", { effectId: sg.effectId, exempt: [lurker] });
+      expect(e()?.props.exempt?.sort()).toEqual([lurker, mira].sort());
+      await cmd(dm, "effect.remove", { effectId: sg.effectId });
+      await place(lurker, { x: 70, y: 20 });
+    });
+  });
 });

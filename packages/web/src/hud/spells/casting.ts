@@ -24,6 +24,17 @@ export function castPayload(t: Targeting, endConcentration: boolean) {
   const caster = boardData(useEntities.getState()).tokens.get(t.casterTokenId);
   const at = t.at ?? caster?.pos ?? { x: 0, y: 0 };
   const area = castArea(t.spell, t.alt);
+  // Cast on an object put down there (Light on a stone): its point.
+  if (t.point)
+    return {
+      casterTokenId: t.casterTokenId,
+      spellId: t.spell.id,
+      mode: t.mode,
+      ...(t.slot ? { slot: t.slot } : {}),
+      ...(t.mode !== "slot" ? { level: t.level } : {}),
+      placement: { origin: { x: at.x, y: at.y, z: 0 }, dirDeg: 0 },
+      endConcentration,
+    };
   return {
     casterTokenId: t.casterTokenId,
     spellId: t.spell.id,
@@ -43,6 +54,7 @@ export function castPayload(t: Targeting, endConcentration: boolean) {
     ...(kind === "creatures" ? { targets: t.picks } : {}),
     includeSelf: t.includeSelf,
     ...(t.damageType ? { damageType: t.damageType as never } : {}),
+    ...(t.spare?.length ? { spare: t.spare } : {}),
     endConcentration,
   };
 }
@@ -122,6 +134,8 @@ export async function beginCast(
     alt?: number;
     max: number;
     repeat: boolean;
+    /** A spell cast on an object (Light): on something the caster carries, or an object put down within reach. */
+    onto?: "carried" | "point";
   },
 ): Promise<void> {
   const base = {
@@ -136,6 +150,32 @@ export async function beginCast(
     repeat: opts.repeat,
   };
   const kind = targetingKind(spell);
+  // On an object put down within reach: aimed on the board as a point.
+  if (!opts.narrative && opts.onto === "point") {
+    useTargeting.getState().start({ ...base, point: true });
+    return;
+  }
+  // On something the caster carries: the caster holds it.
+  if (!opts.narrative && opts.onto === "carried") {
+    const c = boardData(useEntities.getState()).tokens.get(casterTokenId);
+    try {
+      await castSpell({
+        casterTokenId,
+        spellId: spell.id,
+        mode: opts.mode,
+        ...(opts.slot ? { slot: opts.slot } : {}),
+        ...(opts.mode !== "slot" ? { level: opts.level } : {}),
+        placement: {
+          origin: { x: c?.pos.x ?? 0, y: c?.pos.y ?? 0, z: 0 },
+          dirDeg: 0,
+          attachTo: casterTokenId,
+        },
+      });
+    } catch (e) {
+      toast.warning(`Couldn't cast ${spell.name}`, (e as Error).message);
+    }
+    return;
+  }
   if (opts.narrative || kind === "self" || kind === "point") {
     const t: Targeting = {
       ...base,

@@ -64,6 +64,11 @@ export const SpellCast = z.strictObject({
   damageType: z.enum(DAMAGE_TYPES).optional(),
   /** Casting a concentration spell while concentrating: yes, end the other one (§8.13 Concentration). */
   endConcentration: z.boolean().default(false),
+  /**
+   * Creatures the caster designates to be unaffected (Spirit Guardians, SRD p. 164: "any number of creatures you can
+   * see"): its slowing and its saves leave them alone.
+   */
+  spare: z.array(Id).max(40).optional(),
 });
 export type SpellCastIn = z.input<typeof SpellCast>;
 
@@ -165,6 +170,8 @@ export const EffectRemove = z.strictObject({ effectId: Id });
 export const EffectUpdate = z.strictObject({
   effectId: Id,
   visibility: z.enum(["everyone", "dm"]).optional(),
+  /** Who it spares (the DM's; its caster always is). */
+  exempt: z.array(Id).max(40).optional(),
   size: Ft.optional(),
   props: z
     .strictObject({
