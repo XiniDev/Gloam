@@ -1,3 +1,4 @@
+import type { CombatData } from "@gloam/shared/rules";
 import {
   type CampaignEntity,
   DEFAULT_SPEEDS,
@@ -35,7 +36,8 @@ export interface CombatEntity {
   active: boolean;
   round: number;
   turnIndex: number;
-  data: Record<string, unknown>;
+  /** The combatants in tracker order, the turn, pips and tally (rules/combat.ts; read with `dataOf`). */
+  data: CombatData;
   startedAt: number;
   endedAt: number | null;
 }
@@ -445,7 +447,8 @@ export const CODECS: { [K in EntityKind]: Codec<K> } = {
       active: Boolean(r.active),
       round: r.round as number,
       turnIndex: r.turnIndex as number,
-      data: p(r.dataJson, {}),
+      // As stored; commands read it through `dataOf`, which fills in what an older row lacks.
+      data: p(r.dataJson, {}) as CombatData,
       startedAt: r.startedAt as number,
       endedAt: (r.endedAt as number | null) ?? null,
     }),
