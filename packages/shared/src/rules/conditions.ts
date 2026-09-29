@@ -250,6 +250,46 @@ export function rollHints(
   return out;
 }
 
+/** An attack's hints: the attacker's and the target's, and whether a hit is a critical hit. */
+export interface AttackHints extends RollHints {
+  /** A hit is a critical hit — why (Paralyzed, Unconscious: a hit from within 5 ft, SRD 5.2.1 pp. 186, 191). */
+  critOnHit: string | null;
+}
+
+/**
+ * What an attack gets (SRD 5.2.1 §19.3; the card's attack rolls): the attacker's own conditions (Poisoned, Prone,
+ * Restrained, Blinded: disadvantage; Invisible: advantage) and Exhaustion's penalty; what the target's give attackers
+ * (Restrained, Stunned, Paralyzed, Blinded, Unconscious: advantage; Prone: advantage within 5 ft, else disadvantage;
+ * Invisible: disadvantage — unless it's outlined, Faerie Fire p. 129; Dodging: disadvantage; outlined: advantage); and
+ * a melee hit from within 5 ft on a Paralyzed or Unconscious creature is a critical hit. Each hint says why; the
+ * roller can take any of them away before rolling.
+ */
+export function attackHints(
+  attacker: { conditions: readonly string[]; exhaustion: number },
+  target: { conditions: readonly string[]; markers: readonly string[]; outlined: boolean },
+  at: { withinFt: number; melee: boolean },
+): AttackHints {
+  const out: AttackHints = {
+    ...rollHints(attacker.conditions, attacker.exhaustion, "attack"),
+    critOnHit: null,
+  };
+  const near = at.withinFt <= 5 + 1e-6;
+  for (const id of target.conditions) {
+    const info = (CONDITIONS as Record<string, ConditionInfo>)[id];
+    if (!info) continue;
+    const from = `target ${info.name}`;
+    if (info.against === "adv") out.adv.push({ from });
+    else if (info.against === "adv-within-5")
+      (near ? out.adv : out.dis).push({ from: `${from} (${near ? "within" : "beyond"} 5 ft)` });
+    else if (info.against === "dis" && !(id === "invisible" && target.outlined))
+      out.dis.push({ from, ...(info.note ? { note: info.note } : {}) });
+    if (info.critWithin5 && at.melee && near && !out.critOnHit) out.critOnHit = info.name;
+  }
+  if (target.markers.includes("dodging")) out.dis.push({ from: "target Dodging" });
+  if (target.outlined) out.adv.push({ from: "target outlined" });
+  return out;
+}
+
 /** The roll mode the hints add up to: advantage and disadvantage cancel (any of each), else whichever there is. */
 export function hintedMode(h: Pick<RollHints, "adv" | "dis">): "normal" | "adv" | "dis" {
   if (h.adv.length && h.dis.length) return "normal";

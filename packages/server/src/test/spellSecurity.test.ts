@@ -580,4 +580,126 @@ describe("P9 — spells never leak what a player can't perceive", () => {
       await cmd(dm, "combat.stop", {});
     });
   });
+
+  describe("M3 / M4 / L2 / L3, I3–I5: a card's rolls, saves and cancelling", () => {
+    let mira = "";
+    let goblin = "";
+    const anyCard = () =>
+      room()
+        .model.all("cast")
+        .filter((c) => c.status === "open");
+    const closeAll = async () => {
+      for (const c of anyCard()) await cmd(dm, "cast.close", { castId: c.id });
+    };
+    const annaViewOf = (castId: string) => {
+      const all = anna.msgs.flatMap((m) =>
+        m.type === "cast.views"
+          ? (m.payload as { id: string }[])
+          : m.type === "cast.view"
+            ? [m.payload as { id: string }]
+            : [],
+      );
+      return all.filter((v) => v.id === castId).at(-1) as
+        | { targets: { key: string; attackHints?: { mode: string; adv: string[] } }[] }
+        | undefined;
+    };
+    const rolls = () =>
+      anna.msgs
+        .filter((m) => m.type === "roll.result")
+        .map((m) => m.payload as { label?: string; formula: string });
+
+    beforeAll(async () => {
+      const toks = room().model.inScene("token", sceneId);
+      mira = (toks.find((x) => x.name === "Mira") as { id: string }).id;
+      goblin = (toks.find((x) => x.name === "Goblin") as { id: string }).id;
+      await place(mira, { x: 10, y: 10 });
+      await place(goblin, { x: 24, y: 10 });
+      await closeAll();
+    });
+
+    it("an attack's hints from the target (Restrained: advantage); a physical roll by its d20 (never a typed total), a 20 a critical hit; the roll's label names no creature; under \"max plus a roll\", the crit's damage is its dice plus their maximum; once rolled, the caster can't cancel", async () => {
+      await cmd(dm, "status.change", { tokenId: goblin, add: [{ id: "restrained" }] });
+      await cmd(dm, "campaign.update", { houseRules: { criticalDamage: "maxPlusRoll" } });
+      const fb = await cmd<{ castId: string }>(anna.room, "spell.cast", {
+        casterTokenId: mira,
+        spellId: "fire-bolt",
+        mode: "slot",
+        targets: [goblin],
+      });
+      await waitFor(() => annaViewOf(fb.castId)?.targets[0]?.attackHints?.mode === "adv");
+      expect(annaViewOf(fb.castId)?.targets[0]?.attackHints?.adv).toContain("target Restrained");
+      await expect(
+        cmd(anna.room, "cast.roll", { castId: fb.castId, what: "attack", targetId: goblin, entered: 25 }),
+      ).rejects.toThrow(/d20 you rolled/);
+      await cmd(anna.room, "cast.roll", {
+        castId: fb.castId,
+        what: "attack",
+        targetId: goblin,
+        dice: [20, 3],
+        adv: "adv",
+      });
+      const row = room().model.get("cast", fb.castId)?.data.targets[0];
+      expect(row?.attack).toMatchObject({ natural: 20, crit: true, hit: true, entered: true });
+      await waitFor(() => rolls().some((r) => r.label === "Fire Bolt · attack"));
+      expect(rolls().some((r) => (r.label ?? "").includes("Goblin"))).toBe(false);
+      await expect(cmd(anna.room, "cast.cancel", { castId: fb.castId })).rejects.toThrow(/rolled on/);
+      await cmd(anna.room, "cast.roll", { castId: fb.castId, what: "damage", targetId: goblin });
+      await waitFor(() => rolls().some((r) => r.label === "Fire Bolt · damage"));
+      // Mira is 5th level: Fire Bolt is 2d10 — a critical under the house rule: 2d10 + 20.
+      expect(rolls().find((r) => r.label === "Fire Bolt · damage")?.formula).toMatch(/^2d10 \+ 20/);
+      await cmd(dm, "campaign.update", { houseRules: { criticalDamage: "doubleDice" } });
+      await cmd(dm, "status.change", { tokenId: goblin, remove: ["restrained"] });
+      await closeAll();
+    });
+
+    it("a creature a player controls (a familiar) saves on its player's card, not the DM's NPC roll — and nobody's card shows a hidden DC; a row the caster doesn't perceive can't be rolled on", async () => {
+      const owl = (
+        await cmd<{ tokenId: string }>(dm, "token.create", {
+          sceneId,
+          name: "Owl",
+          pos: { x: 14, y: 14 },
+          ownerIds: [anna.id],
+        })
+      ).tokenId;
+      const mark = anna.msgs.length;
+      const fb = await cmd<{ castId: string }>(dm, "spell.cast", {
+        casterTokenId: cultist,
+        spellId: "fireball",
+        mode: "free",
+        level: 3,
+        placement: { origin: { x: 18, y: 18, z: 0 }, dirDeg: 0 },
+      });
+      // Anna's card for the owl; the DM's NPC roll leaves it to her.
+      await waitFor(() =>
+        anna.msgs
+          .slice(mark)
+          .some((m) => m.type === "request.card" && JSON.stringify(m.payload).includes(owl)),
+      );
+      const card = anna.msgs
+        .slice(mark)
+        .find((m) => m.type === "request.card" && JSON.stringify(m.payload).includes(owl));
+      expect((card?.payload as { dc?: number }).dc).toBeUndefined();
+      await cmd(dm, "cast.npcSaves", { castId: fb.castId });
+      const owlRow = room()
+        .model.get("cast", fb.castId)
+        ?.data.targets.find((t) => t.id === owl);
+      expect(owlRow?.save?.total).toBeUndefined();
+      await closeAll();
+      // The DM puts the (hidden) Lurker on Anna's Fire Bolt card: she can't roll at a row she doesn't perceive.
+      await place(lurker, { x: 20, y: 30 });
+      const bolt = await cmd<{ castId: string }>(anna.room, "spell.cast", {
+        casterTokenId: mira,
+        spellId: "fire-bolt",
+        mode: "slot",
+        targets: [goblin],
+      });
+      await cmd(dm, "cast.target", { castId: bolt.castId, targetId: lurker, include: true });
+      await expect(
+        cmd(anna.room, "cast.roll", { castId: bolt.castId, what: "attack", targetId: lurker }),
+      ).rejects.toThrow(/isn't on the card/);
+      await closeAll();
+      await cmd(dm, "token.delete", { tokenIds: [owl] });
+      await place(lurker, { x: 70, y: 20 });
+    });
+  });
 });

@@ -278,6 +278,10 @@ function TargetRow({
       ) : null
     ) : null;
   const atk = t.attack;
+  // An attack still to roll: the mode its hints add up to, until the roller sets it aside (§19.3).
+  const hints = t.attackHints;
+  const [picked, setPicked] = useState<"none" | "adv" | "dis" | null>(null);
+  const mode = picked ?? hints?.mode ?? "none";
   const attackChip = c.attack ? (
     atk?.total !== undefined ? (
       <span
@@ -287,16 +291,10 @@ function TargetRow({
         {atk.total}
         {atk.hit !== undefined && atk.hit !== null ? (atk.hit ? " hit" : " miss") : ""}
         {atk.crit ? " crit" : ""}
+        {dm && atk.entered ? <span className="font-normal text-muted"> (entered)</span> : null}
       </span>
     ) : c.can.roll && t.state === "in" ? (
-      <Button
-        size="S"
-        variant="secondary"
-        icon={<D20Icon size={13} />}
-        onClick={() => act(castRoll(c.id, "attack", { targetId: t.key }), "Couldn't roll it")}
-      >
-        Attack
-      </Button>
+      <AttackRoll c={c} t={t} mode={mode} />
     ) : null
   ) : null;
   if (t.state === "blocked" || t.state === "removed")
@@ -364,6 +362,9 @@ function TargetRow({
           </IconButton>
         ) : null}
       </div>
+      {hints && !atk && c.can.roll && t.state === "in" ? (
+        <AttackHintLine hints={hints} mode={mode} onMode={setPicked} />
+      ) : null}
       {dm && t.hp && !done ? (
         <span className="tabular pl-0.5 text-12 text-muted" data-testid="hp-change">
           {c.damage?.healing ? "HP" : t.outcome === "none" ? "no damage" : `takes ${t.outcome}`} · HP{" "}
@@ -372,6 +373,110 @@ function TargetRow({
       ) : null}
       {dm && open && !done ? <Details c={c} t={t} /> : null}
     </li>
+  );
+}
+
+/**
+ * An attack's hints under its row (§19.3): what gives advantage or disadvantage and why, Exhaustion's penalty, a hit
+ * that would be a critical hit — and the mode, set from them, which the roller can change before rolling.
+ */
+function AttackHintLine({
+  hints,
+  mode,
+  onMode,
+}: {
+  hints: NonNullable<CastTargetView["attackHints"]>;
+  mode: "none" | "adv" | "dis";
+  onMode: (m: "none" | "adv" | "dis") => void;
+}) {
+  const why = [
+    ...hints.adv.map((x) => `advantage: ${x}`),
+    ...hints.dis.map((x) => `disadvantage: ${x}`),
+    ...(hints.penalty ? [`${hints.penalty} Exhaustion`] : []),
+    ...(hints.critOnHit ? [`a hit is a critical hit (${hints.critOnHit})`] : []),
+  ];
+  return (
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 pl-0.5" data-testid="attack-hints">
+      <span role="group" aria-label="Roll with" className="inline-flex gap-1">
+        {(["none", "adv", "dis"] as const).map((m) => (
+          <button
+            key={m}
+            type="button"
+            aria-pressed={mode === m}
+            onClick={() => onMode(m)}
+            className={`min-h-[var(--touch-min)] rounded-[var(--radius-chip)] border px-2 text-12 font-bold ${mode === m ? "border-brass text-brass-bright" : "border-line text-muted"}`}
+          >
+            {m === "none" ? "Normal" : m === "adv" ? "Advantage" : "Disadvantage"}
+          </button>
+        ))}
+      </span>
+      {why.length ? <span className="text-12 text-muted">{why.join(" · ")}</span> : null}
+    </div>
+  );
+}
+
+/**
+ * Roll the attack — or enter the d20 rolled at the table (two with advantage or disadvantage): the die says whether
+ * it's a natural 20 or 1 (never a typed total, security review M3).
+ */
+function AttackRoll({ c, t, mode }: { c: CastView; t: CastTargetView; mode: "none" | "adv" | "dis" }) {
+  const [entering, setEntering] = useState(false);
+  const [dice, setDice] = useState<string[]>([]);
+  const first = useRef<HTMLInputElement>(null);
+  const count = mode === "none" ? 1 : 2;
+  useEffect(() => {
+    if (entering) first.current?.focus();
+  }, [entering]);
+  const faces = dice.slice(0, count).map(Number);
+  const ready = faces.length === count && faces.every((n) => Number.isInteger(n) && n >= 1 && n <= 20);
+  const send = () => {
+    if (!ready) return;
+    act(castRoll(c.id, "attack", { targetId: t.key, dice: faces, adv: mode }), "Couldn't enter it");
+    setEntering(false);
+    setDice([]);
+  };
+  if (entering)
+    return (
+      <span className="flex items-center gap-1">
+        {Array.from({ length: count }, (_, i) => (
+          <input
+            key={i}
+            ref={i === 0 ? first : undefined}
+            aria-label={i === 0 ? "d20 rolled" : "Second d20"}
+            placeholder="d20"
+            inputMode="numeric"
+            value={dice[i] ?? ""}
+            onChange={(e) => {
+              const next = [...dice];
+              next[i] = e.target.value.replace(/\D/g, "").slice(0, 2);
+              setDice(next);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") send();
+              if (e.key === "Escape") setEntering(false);
+            }}
+            className="tabular h-8 w-12 rounded-[var(--radius-control)] border border-line bg-ink-900 text-center text-14 text-bone placeholder:text-fog focus:border-brass focus:outline-none"
+          />
+        ))}
+        <Button size="S" variant="primary" disabled={!ready} onClick={send}>
+          Enter
+        </Button>
+      </span>
+    );
+  return (
+    <span className="flex items-center gap-1">
+      <Button
+        size="S"
+        variant="secondary"
+        icon={<D20Icon size={13} />}
+        onClick={() => act(castRoll(c.id, "attack", { targetId: t.key, adv: mode }), "Couldn't roll it")}
+      >
+        Attack
+      </Button>
+      <Button size="S" variant="ghost" onClick={() => setEntering(true)}>
+        Enter…
+      </Button>
+    </span>
   );
 }
 
@@ -420,6 +525,18 @@ function Details({ c, t }: { c: CastView; t: CastTargetView }) {
       className="flex flex-col gap-2 rounded-[var(--radius-control)] bg-raised/60 p-2 text-13"
       data-testid="cast-details"
     >
+      {t.attack?.total !== undefined ? (
+        // A critical hit by the DM's word (a feature, an entered total with no die to read, a house rule).
+        <label className="inline-flex min-h-[var(--touch-min)] items-center gap-1.5 text-bone">
+          <input
+            type="checkbox"
+            checked={Boolean(t.attack.crit)}
+            onChange={(e) => set({ crit: e.target.checked })}
+            className="h-4 w-4 accent-[var(--brass-400)]"
+          />
+          Critical hit
+        </label>
+      ) : null}
       {c.damage && !c.damage.healing ? (
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="caps text-12 text-fog">Takes</span>

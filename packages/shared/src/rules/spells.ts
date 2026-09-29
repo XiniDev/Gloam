@@ -85,6 +85,32 @@ export function critFormula(formula: string): string {
 }
 
 /**
+ * A critical hit's damage under the "maximum plus a roll" house rule (§19.6): the dice rolled as usual, plus their
+ * maximum as a number ("2d6 + 3" → "2d6 + 3 + 12"); a term with a computed count keeps the doubling (no maximum to
+ * know before it's rolled).
+ */
+export function critMaxFormula(formula: string): string {
+  const p = parseFormula(formula);
+  let max = 0;
+  let unknown = false;
+  const walk = (n: DiceNode, sign: number): void => {
+    if (n.k === "dice") {
+      if (n.count.k === "num") max += sign * n.count.v * n.sides;
+      else unknown = true;
+    } else if (n.k === "neg") walk(n.x, -sign);
+    else if (n.k === "group") walk(n.x, sign);
+    else if (n.k === "bin" && (n.op === "+" || n.op === "-")) {
+      walk(n.a, sign);
+      walk(n.b, n.op === "-" ? -sign : sign);
+    }
+  };
+  walk(p.expr, 1);
+  if (unknown) return critFormula(formula);
+  const body = formatNode(p.expr);
+  return `${body}${max > 0 ? ` + ${max}` : ""}${p.tag ? ` [${p.tag}]` : ""}`;
+}
+
+/**
  * A formula with another added `times` times, like dice merged ("8d6" + 2 × "1d6" → "10d6"; "2d8 + @spellmod" +
  * "2d8" → "4d8 + @spellmod"). Terms that can't merge are appended.
  */

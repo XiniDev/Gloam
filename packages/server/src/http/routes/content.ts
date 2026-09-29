@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { GloamError } from "@gloam/shared/protocol";
 import { applyPatch } from "@gloam/shared/rules";
 import { SpellSchema } from "@gloam/shared/schemas";
-import type { Express, Request, Response } from "express";
+import express, { type Express, type NextFunction, type Request, type Response } from "express";
 import { z } from "zod";
 import type { ServerContext } from "../../context.ts";
 import { CommandBus } from "../../engine/commandBus.ts";
@@ -61,21 +61,45 @@ export function contentRoutes(app: Express, ctx: ServerContext): void {
     strategy: z.enum(["skip", "overwrite", "rename"]).default("skip"),
     campaignId: z.string().min(3).max(40).optional(),
   });
+  /**
+   * Who may import (security review M1): the admin, into any campaign; otherwise the DM of the table that's open, as
+   * admitted to this sitting of it — never a pending, denied or kicked session, nor one from an earlier sitting.
+   * Checked before the body is read (it can be 4 MB), and again with it.
+   */
+  const importer = (req: Request): { a: ReturnType<typeof requireSession>; table: string | null } => {
+    const a = requireSession(req);
+    if (a.session.kind === "admin") return { a, table: null };
+    const t = ctx.table;
+    if (
+      !t.isOpen ||
+      !t.campaignId ||
+      a.session.status !== "admitted" ||
+      a.session.tableSessionNo !== t.sessionNo
+    )
+      throw new GloamError("TABLE_CLOSED");
+    if (ctx.campaigns.membership(t.campaignId, a.user.id) !== "dm")
+      throw new GloamError("FORBIDDEN", "Only the DM imports spells.");
+    return { a, table: t.campaignId };
+  };
   // Express reads ":import" as a parameter; the literal colon is escaped.
   app.post(
     "/api/v1/content/spells\\:import",
+    (req: Request, res: Response, next: NextFunction) =>
+      route(() => {
+        importer(req);
+        next();
+      })(req, res, next),
+    express.json({ limit: "4mb" }),
     route((req, res) => {
-      const a = requireSession(req);
+      const { a, table } = importer(req);
       const b = ImportBody.parse(req.body ?? {});
-      const t = ctx.table;
-      const campaignId = b.campaignId ?? t.campaignId ?? ctx.settings.get().selectedCampaignId;
+      if (table && b.campaignId && b.campaignId !== table)
+        throw new GloamError("FORBIDDEN", "Import into the campaign at the table.");
+      const campaignId =
+        table ?? b.campaignId ?? ctx.table.campaignId ?? ctx.settings.get().selectedCampaignId;
       if (!campaignId || !ctx.campaigns.get(campaignId))
         throw new GloamError("NOT_FOUND", "Choose a campaign first.");
-      const role =
-        a.session.kind === "admin"
-          ? "admin"
-          : (ctx.campaigns.membership(campaignId, a.user.id) as Role | null);
-      if (role !== "admin" && role !== "dm") throw new GloamError("FORBIDDEN", "Only the DM imports spells.");
+      const role: Role = a.session.kind === "admin" ? "admin" : "dm";
       const actor = { userId: a.user.id, role, name: a.user.displayName, actingAs: null };
       const room = ctx.rooms.table(campaignId);
       const bus = room?.bus ?? offlineBus(ctx, campaignId);

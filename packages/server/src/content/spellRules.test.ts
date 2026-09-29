@@ -5,6 +5,7 @@ import {
   attackRangeFt,
   castArea,
   critFormula,
+  critMaxFormula,
   defaultSlot,
   durationRounds,
   durationText,
@@ -70,6 +71,9 @@ describe("spells at the table (§8.13)", () => {
     expect(addDice("2d6 - 1", "1d8", 1)).toBe("2d6 + 1d8 - 1");
     expect(critFormula("2d6 + 3")).toBe("4d6 + 3");
     expect(critFormula("1d8 + 1d6 + @str")).toBe("2d8 + 2d6 + @str");
+    // The "maximum plus a roll" house rule (§19.6): the dice as rolled, plus their maximum.
+    expect(critMaxFormula("2d6 + 3")).toBe("2d6 + 3 + 12");
+    expect(critMaxFormula("1d8 + 1d6 [fire]")).toBe("1d8 + 1d6 + 14 [fire]");
   });
 
   it("targets per slot (Hold Person +1 a level), repeated picks for darts and rays, and the targeting each spell takes", () => {

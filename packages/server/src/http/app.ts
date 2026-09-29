@@ -120,14 +120,14 @@ export async function buildHttpApp(
     next();
   });
 
-  // A spell import carries whole spell texts (up to a thousand): its own body limit, read before the API's 256 kB one.
-  app.use("/api/v1/content/spells\\:import", express.json({ limit: "4mb" }));
-  app.use(
-    "/api",
-    express.json({
-      limit: "256kb",
-      type: ["application/json", "application/csp-report", "application/reports+json"],
-    }),
+  // Bodies up to 256 kB — except a spell import's (whole spell texts, up to a thousand): its route reads its own, up
+  // to 4 MB, and only once the rate limit, the CSRF check and who's asking have passed (never an anonymous caller's).
+  const json = express.json({
+    limit: "256kb",
+    type: ["application/json", "application/csp-report", "application/reports+json"],
+  });
+  app.use("/api", (req: Request, res: Response, next: NextFunction) =>
+    req.path === "/v1/content/spells:import" ? next() : json(req, res, next),
   );
   // REST per session (or per IP when anonymous): 60 per 10 s (SPEC §22.5).
   app.use("/api", (req: Request, res: Response, next: NextFunction) => {

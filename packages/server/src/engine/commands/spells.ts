@@ -36,12 +36,14 @@ import {
   addDice,
   applyToStatus,
   areaAtSlot,
+  attackRangeFt,
   CONDITIONS,
   castArea,
   castAttach,
   controlsToken,
   deriveSheet,
   durationRounds,
+  incapacitates,
   isDm,
   PIP,
   roundsFrom,
@@ -66,6 +68,7 @@ import type {
 } from "@gloam/shared/schemas";
 import { z } from "zod";
 import { newId } from "../../ids.ts";
+import { inSilence } from "../../vision/sources.ts";
 import type { ActorEntity, CastEntity } from "../codecs.ts";
 import type { CommandCtx, CommandDef, RoomEvent } from "../commandBus.ts";
 import type { Op } from "../ops.ts";
@@ -357,6 +360,14 @@ function castOnto(
       ? `${spell.name} goes on something ${caster.name} carries, or on an object put down within reach.`
       : `${spell.name} can't be put on a creature.`,
   );
+}
+
+/**
+ * Whether a row's save is its player's to roll (on their card): a PC, or any creature a player controls — a familiar,
+ * a summons, an unlinked PC token (security review M4) — never the DM's "Roll NPC saves".
+ */
+function playersRoll(ctx: CommandCtx, row: { id: string; pc: boolean }): boolean {
+  return row.pc || (ctx.model.get("token", row.id)?.ownerIds.length ?? 0) > 0;
 }
 
 /** A wall's drawn length (a ring's circumference). */
@@ -942,8 +953,15 @@ export const spellCast: CommandDef<
         d.combatants[cb.turnIndex]?.tokenId !== t.id
       )
         throw new GloamError("NOT_YOUR_TURN", `It isn't ${t.name}'s turn — only a reaction can be cast now.`);
-      if (spell.components.v && silencedAt(ctx, t))
-        throw new GloamError("FORBIDDEN", `${t.name} is inside Silence: no spell with a Verbal component.`);
+      const hush = spell.components.v ? silencedAt(ctx, t) : undefined;
+      if (hush)
+        throw new GloamError(
+          "FORBIDDEN",
+          // A Silence the DM keeps hidden isn't named (the caster finds no sound comes out).
+          hush.visibility === "everyone"
+            ? `${t.name} is inside Silence: no spell with a Verbal component.`
+            : `${t.name} can't make a sound here: no spell with a Verbal component.`,
+        );
     }
   },
   plan(ctx, p) {
@@ -1211,7 +1229,9 @@ export const spellCast: CommandDef<
       ...(cast && spell.save
         ? {
             askSaves: [
-              ...new Set(cast.data.targets.filter((x) => x.state === "in" && x.pc).map((x) => x.id)),
+              ...new Set(
+                cast.data.targets.filter((x) => x.state === "in" && playersRoll(ctx, x)).map((x) => x.id),
+              ),
             ],
           }
         : {}),
@@ -1240,6 +1260,34 @@ export const attackStart: CommandDef<z.infer<typeof AttackStart>, { castId: stri
     const a = c.sheet?.core.attacks[p.attack];
     if (!a) throw new GloamError("NOT_FOUND", "That attack isn't on the sheet.");
     if (!a.attack && !a.damage) throw new GloamError("INVALID", `${a.name} has no attack or damage to roll.`);
+    if (isDm(ctx.actor.role)) return;
+    // A player's attack as the rules have one (security review L1, rules audit I12): on the scene in play, on its
+    // own turn in combat (an action), at most four swings (the Attack action's most, Extra Attack at its highest — the
+    // DM makes more), each at a creature they see, within its range (SRD p. 16), not behind total cover (p. 106).
+    if (t.sceneId !== ctx.model.campaign.activeSceneId)
+      throw new GloamError("FORBIDDEN", `${t.name} isn't on the scene in play.`);
+    if (p.targets.length > 4)
+      throw new GloamError("INVALID", "An Attack action is four attacks at most — the DM can add more.");
+    const cb = activeCombat(ctx);
+    const d = cb ? dataOf(cb) : null;
+    if (
+      cb &&
+      d?.begun &&
+      d.combatants.some((x) => x.tokenId === t.id) &&
+      d.combatants[cb.turnIndex]?.tokenId !== t.id
+    )
+      throw new GloamError("NOT_YOUR_TURN", `It isn't ${t.name}'s turn.`);
+    const reach = attackRangeFt(a.range);
+    const walls = barriersOf(ctx, t.sceneId, { known: true });
+    for (const id of new Set(p.targets)) {
+      const x = ctx.model.get("token", id);
+      if (!x || x.sceneId !== t.sceneId || (ctx.actor.sees && !ctx.actor.sees(id)))
+        throw new GloamError("NOT_FOUND", "That creature isn't here.");
+      const gap = Math.hypot(x.pos.x - t.pos.x, x.pos.y - t.pos.y) - x.sizeFt / 2 - t.sizeFt / 2;
+      if (gap > reach + 0.5) throw new GloamError("INVALID", `${x.name} is out of range (${reach} ft).`);
+      if (coverHint(t.pos, { pos: x.pos, r: x.sizeFt / 2 }, walls, []).cover === "total")
+        throw new GloamError("BLOCKED", `${x.name} is behind total cover.`);
+    }
   },
   plan(ctx, p) {
     const caster = casterOf(ctx, p.tokenId);
@@ -1356,7 +1404,7 @@ export const castTarget: CommandDef<z.infer<typeof CastTarget>, { state: string 
         "in",
       );
       const full = c.data.save
-        ? { ...row, save: row.pc ? { pending: true, by: "player" as const } : {} }
+        ? { ...row, save: playersRoll(ctx, row) ? { pending: true, by: "player" as const } : {} }
         : row;
       if (c.data.save && row.pc) events.push(ask(row.id));
       return {
@@ -1410,6 +1458,15 @@ export const castSet: CommandDef<z.infer<typeof CastSet>, { ok: true }> = {
         }),
       );
     if (p.hit !== undefined && row.attack) ops.push(...castPathOp(c, ["targets", i, "attack", "hit"], p.hit));
+    if (p.crit !== undefined && row.attack)
+      ops.push(
+        ...castPathOp(c, ["targets", i, "attack"], {
+          ...row.attack,
+          crit: p.crit,
+          // A critical hit hits (SRD p. 16).
+          ...(p.crit ? { hit: true } : {}),
+        }),
+      );
     if (p.outcome) ops.push(...castPathOp(c, ["targets", i, "outcome"], p.outcome));
     if (p.ignore) ops.push(...castPathOp(c, ["targets", i, "ignore"], { ...row.ignore, ...p.ignore }));
     if (p.conditions) ops.push(...castPathOp(c, ["targets", i, "conditions"], p.conditions));
@@ -1467,6 +1524,36 @@ export function adjusted(h: Holder, ignore: CastTargetData["ignore"]): Holder {
       ? { ...h.status, conditions: h.status.conditions.filter((x) => x.id !== "petrified") }
       : h.status,
   };
+}
+
+/**
+ * A creature entirely inside a Silence is immune to Thunder damage (SRD p. 162; rules audit I6) — as the DM sees
+ * it, whoever else is shown the Silence.
+ */
+export function silenced(ctx: CommandCtx, h: Holder): Holder {
+  if (!h.token || h.stats.immune.includes("thunder") || !inSilence(ctx.model, h.token)) return h;
+  return { ...h, stats: { ...h.stats, immune: [...h.stats.immune, "thunder"] } };
+}
+
+/**
+ * A row's damage as the SRD counts instances (p. 17): one per attack or ray (a row), and one per dart of a row
+ * picked more than once (Magic Missile's darts at one creature, p. 146) — its total shared among them as evenly as it
+ * goes (the first takes what's left), each type likewise.
+ */
+export function rowInstances(
+  c: CastData,
+  t: CastTargetData,
+): { amount: number; type: DamageType | "untyped" }[][] {
+  const x = rowParts(c, t);
+  if (!x) return [];
+  const n = Math.max(1, t.times ?? 1);
+  if (n === 1) return [x.parts];
+  return Array.from({ length: n }, (_, i) =>
+    x.parts.map((p) => {
+      const each = Math.floor(p.amount / n);
+      return { type: p.type, amount: i === 0 ? p.amount - each * (n - 1) : each };
+    }),
+  );
 }
 
 /** The conditions a row's hit (or failed save) lands (the DM's choice, else the spell's). */
@@ -1558,48 +1645,68 @@ export const castApply: CommandDef<z.infer<typeof CastApply>, { applied: number 
           lines.push(o.line);
         }
       } else if (d.damage) {
-        const parts = mine.flatMap(({ row }) => rowParts(d, row)?.parts ?? []).filter((x) => x.amount > 0);
-        if (parts.length) {
-          const crit = mine.some(({ row }) => row.attack?.crit && outcomeOf(d, row) !== "none");
+        // Each attack, ray or dart is damage of its own (rules audit B1, SRD pp. 17, 146, 179): applied one after
+        // another, its HP carried on — a death-save failure each at 0 HP, a massive-damage check each, a
+        // Concentration save each — not one lump from all of them.
+        const instances = mine.flatMap(({ row }) =>
+          rowInstances(d, row).map((parts) => ({ row, parts: parts.filter((x) => x.amount > 0) })),
+        );
+        const saves: NonNullable<Followups["concentration"]> = [];
+        const asked: ReturnType<typeof sortConsequences>["ask"] = [];
+        const details: string[] = [];
+        let cur: Holder = h;
+        for (const inst of instances) {
+          if (!inst.parts.length) continue;
+          const crit = Boolean(inst.row.attack?.crit && outcomeOf(d, inst.row) !== "none");
           const o = outcomeFor(
-            adjusted(h, ignore),
-            { kind: "damage", targets: [id], parts, halved: false, crit, tempChoice: "best" },
+            silenced(ctx, adjusted(cur, ignore)),
+            { kind: "damage", targets: [id], parts: inst.parts, halved: false, crit, tempChoice: "best" },
             id,
             true,
             cRules,
           );
           const { apply, ask } = sortConsequences(o.cons, rules.automation);
-          for (const { consequence, choice } of apply) status = applyToStatus(status, consequence, choice);
+          let st = cur.status;
+          for (const { consequence, choice } of apply) st = applyToStatus(st, consequence, choice);
           for (const { consequence: x } of apply)
             if (x.kind === "concentrationSave")
-              follow.concentration.push({
+              saves.push({
                 tokenId: id,
                 actorId: h.actor?.id ?? null,
                 name: h.name,
                 dc: x.dc,
                 ...(h.status.concentration?.spellName ? { spell: h.status.concentration.spellName } : {}),
               });
-          if (ask.length)
-            follow.prompts.push({
-              kind: "consequences",
-              tokenId: id,
-              actorId: h.actor?.id ?? null,
-              name: h.name,
-              title: promptTitle(h.name, ask),
-              detail: `${o.detail} (${d.name})`,
-              items: ask.map(itemOf),
-            });
-          hp = o.hp;
-          hpTemp = o.hpTemp;
+          asked.push(...ask);
+          details.push(o.detail);
+          for (const tid of tokensOf(ctx, h))
+            events.push({ name: "hp.fx", payload: { ...o.fx, tokenId: tid }, to: { viewersOf: tid } });
+          lines.push(o.line);
+          cur = { ...cur, hp: o.hp, hpTemp: o.hpTemp, status: st };
+        }
+        follow.concentration.push(...saves);
+        if (asked.length)
+          follow.prompts.push({
+            kind: "consequences",
+            tokenId: id,
+            actorId: h.actor?.id ?? null,
+            name: h.name,
+            title: promptTitle(h.name, asked),
+            detail: `${details.join("; ")} (${d.name})`,
+            items: asked.map(itemOf),
+          });
+        if (cur !== h) {
+          hp = cur.hp;
+          hpTemp = cur.hpTemp;
+          status = cur.status;
           const lost = Math.max(0, h.hp + h.hpTemp - (hp + hpTemp));
           for (const tid of tokensOf(ctx, h)) {
             hurt.taken.set(tid, (hurt.taken.get(tid) ?? 0) + lost);
             if (h.hp > 0 && hp <= 0) hurt.downed.push(tid);
-            events.push({ name: "hp.fx", payload: { ...o.fx, tokenId: tid }, to: { viewersOf: tid } });
           }
-          lines.push(o.line);
         }
       }
+      const incapacitatedBefore = incapacitates(status.conditions.map((x) => x.id));
       // Conditions (§8.13 "conditions to apply"): a concentration spell's end with it (castId).
       for (const { row } of mine)
         for (const cid of conditionsFor(d, row)) {
@@ -1614,7 +1721,8 @@ export const castApply: CommandDef<z.infer<typeof CastApply>, { applied: number 
                 id: cid,
                 source: d.name,
                 ...(d.caster.tokenId ? { sourceTokenId: d.caster.tokenId } : {}),
-                ...(d.concentration ? { castId: c.id } : {}),
+                // The spell's cast (a trigger card's: the cast that made its effect), so the condition ends with it.
+                ...(d.concentration || d.sourceCastId ? { castId: d.sourceCastId ?? c.id } : {}),
                 ...(rounds && cb ? { untilRound: cb.round + rounds } : {}),
                 // "Until the end of the current turn" — the turn it's in (its own, when a trigger at its start).
                 ...(spec?.endsTurn ? { endsWithTurnOf: activeTurnOf(ctx) ?? id } : {}),
@@ -1623,6 +1731,29 @@ export const castApply: CommandDef<z.infer<typeof CastApply>, { applied: number 
           };
           lines.push(`${h.name}: ${CONDITIONS[cid].name}`);
         }
+      // A condition that incapacitates ends its Concentration (SRD p. 179; rules audit I2): Hold Person on a caster
+      // holding a spell — as the DM's automation setting has it (at once, or asked).
+      if (status.concentration && !incapacitatedBefore && incapacitates(status.conditions.map((x) => x.id))) {
+        const cause =
+          status.conditions.find((x) => CONDITIONS[x.id as ConditionId]?.incapacitated)?.id ??
+          "incapacitated";
+        const { apply, ask } = sortConsequences(
+          [{ kind: "concentrationEnds", reason: CONDITIONS[cause as ConditionId]?.name ?? "Incapacitated" }],
+          rules.automation,
+        );
+        for (const { consequence, choice } of apply) status = applyToStatus(status, consequence, choice);
+        if (apply.length) lines.push(`${h.name} loses Concentration`);
+        if (ask.length)
+          follow.prompts.push({
+            kind: "consequences",
+            tokenId: id,
+            actorId: h.actor?.id ?? null,
+            name: h.name,
+            title: promptTitle(h.name, ask),
+            detail: `Became incapacitated (${d.name})`,
+            items: ask.map(itemOf),
+          });
+      }
       // A failed save that also ends Concentration (Sleet Storm): its spell's effects go with it (cleanup).
       if (
         d.breaksConcentration &&
@@ -1709,6 +1840,12 @@ export const castCancel: CommandDef<z.infer<typeof CastCancel>, { ok: true }> = 
     const c = openCast(ctx, p.castId);
     if (isDm(ctx.actor.role)) return;
     if (!castMayRoll(ctx, c)) throw new GloamError("FORBIDDEN", "That card isn't yours.");
+    // An effect's trigger card is the DM's to close (its save is owed); a card once rolled on stands — cancelling
+    // it then would be a free re-roll with the slot back (security review L2).
+    if (c.data.kind === "trigger") throw new GloamError("FORBIDDEN", "Only the DM closes this card.");
+    const d = c.data;
+    const rolled = d.damage?.roll || d.targets.some((t) => t.attack || t.roll || t.save?.total !== undefined);
+    if (rolled) throw new GloamError("CONFLICT", "It's been rolled on — ask the DM to cancel it.");
     if (c.data.targets.some((t) => t.state === "applied"))
       throw new GloamError("CONFLICT", "Part of it was applied already — ask the DM.");
   },
@@ -1776,9 +1913,11 @@ export const CastRecord = z.strictObject({
   attack: z
     .strictObject({
       total: z.number().int(),
-      natural: z.number().int(),
+      // Unknown for the DM's entered total (no die to read it from).
+      natural: z.number().int().nullable(),
       crit: z.boolean(),
       hit: z.boolean().nullable(),
+      entered: z.boolean().optional(),
     })
     .optional(),
   roll: z
@@ -2221,7 +2360,9 @@ function triggerCard(
   const from = origin ?? (casterTok ? casterTok.pos : null);
   const targets = tokens.map((t) => {
     const row = targetRow(ctx, t, from, barriers, all, "in");
-    return trig.save ? { ...row, save: row.pc ? { pending: true, by: "player" as const } : {} } : row;
+    return trig.save
+      ? { ...row, save: playersRoll(ctx, row) ? { pending: true, by: "player" as const } : {} }
+      : row;
   });
   const formula = trig.damage
     ? times > 1
@@ -2262,6 +2403,7 @@ function triggerCard(
     ...(trig.breaksConcentration ? { breaksConcentration: true } : {}),
     targets,
     effectId: e.id,
+    ...(e.source.castId ? { sourceCastId: e.source.castId } : {}),
     concentration: Boolean(e.concentrationTokenId),
     requestId: null,
     vfx: e.vfx,
@@ -2279,7 +2421,9 @@ function triggerCard(
   };
   const follow: CastFollowup = {
     castId,
-    ...(trig.save ? { askSaves: [...new Set(targets.filter((t) => t.pc).map((t) => t.id))] } : {}),
+    ...(trig.save
+      ? { askSaves: [...new Set(targets.filter((t) => playersRoll(ctx, t)).map((t) => t.id))] }
+      : {}),
   };
   return {
     ops: [createOp("cast", cast)],

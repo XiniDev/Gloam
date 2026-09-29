@@ -55,6 +55,11 @@ export interface CastData {
   targets: CastTargetData[];
   /** The persistent effect the cast made, if any. */
   effectId: string | null;
+  /**
+   * A trigger's card: the cast that made its effect — what the conditions it lands are stamped with, so they end with
+   * that spell (rules audit I1: Web's Restrained outlived the web).
+   */
+  sourceCastId?: string;
   /** Whether the caster concentrates on it. */
   concentration: boolean;
   /** The save cards sent to the players. */
@@ -98,7 +103,7 @@ export interface CastTargetData {
     by?: "npc" | "player" | "dm";
     autoFail?: boolean;
   };
-  attack?: { total: number; natural: number; crit: boolean; hit?: boolean | null };
+  attack?: { total: number; natural: number | null; crit: boolean; hit?: boolean | null; entered?: boolean };
   /** Its own damage (a spell attack's hit, a dart): rolled for it. */
   roll?: DamageRoll;
   /** The DM's override of full / half / none. */

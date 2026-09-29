@@ -97,9 +97,15 @@ export const CastRoll = z.strictObject({
   what: z.enum(["attack", "damage"]),
   /** Attacks and per-target damage (a spell attack's hit): whose row. */
   targetId: RowKey.optional(),
-  /** Entered instead of rolled (the DM, or a physical roll). */
+  /** A total entered instead of rolled: damage (a physical roll's sum), or the DM's own attack behind the screen. */
   entered: z.number().int().min(0).max(99_999).optional(),
-  adv: z.enum(["none", "adv", "dis"]).default("none"),
+  /**
+   * A physical roll by its dice (security review M3): an attack's d20 face (two, with advantage or disadvantage) —
+   * the natural 20 and 1 come from the die, not from a total anyone types.
+   */
+  dice: z.array(z.number().int().min(1).max(100)).min(1).max(40).optional(),
+  /** Advantage or disadvantage (absent: what the hints add up to — the card shows them). */
+  adv: z.enum(["none", "adv", "dis"]).optional(),
 });
 
 /** The DM's edits of one target's row: its save, what it takes, the adjustments, conditions, the final number. */
@@ -120,6 +126,8 @@ export const CastSet = z.strictObject({
   conditions: z.array(z.enum(CONDITION_IDS)).max(8).optional(),
   /** The final number, as the DM edits it (null: back to the computed one). */
   final: z.number().int().min(0).max(99_999).nullable().optional(),
+  /** A hit made (or unmade) a critical hit, the DM's call (§8.13; a feature, a house rule). */
+  crit: z.boolean().optional(),
 });
 
 /** Show the DC to the players (the save cards say it). */
@@ -193,7 +201,26 @@ export interface CastTargetView {
     by?: "npc" | "player" | "dm";
     autoFail?: boolean;
   };
-  attack?: { total?: number; natural?: number; hit?: boolean | null; crit?: boolean; ac?: number };
+  attack?: {
+    total?: number;
+    natural?: number;
+    hit?: boolean | null;
+    crit?: boolean;
+    ac?: number;
+    /** Entered by hand (its dice or, the DM's, a total). */
+    entered?: boolean;
+  };
+  /**
+   * Before its attack is rolled: what the attack gets and why (the attacker's and the target's conditions, Exhaustion's
+   * penalty), the mode they add up to, and whether a hit is a critical hit — the roller may set the mode aside.
+   */
+  attackHints?: {
+    adv: string[];
+    dis: string[];
+    penalty: number;
+    mode: "none" | "adv" | "dis";
+    critOnHit: string | null;
+  };
   /** Damage rolled for this target alone (a spell attack's hit). */
   roll?: { total: number; formula: string };
   outcome: CastOutcome;

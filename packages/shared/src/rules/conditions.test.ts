@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { CONDITION_IDS, MARKER_IDS } from "../constants.ts";
 import {
+  attackHints,
   CONDITIONS,
   effectiveSpeed,
   hintedMode,
@@ -89,5 +90,43 @@ describe("conditions and markers (SPEC §8.11, §19.3, §34.1)", () => {
     expect(effectiveSpeed(30, [], 2)).toBe(20);
     expect(effectiveSpeed(25, [], 6)).toBe(0);
     expect(effectiveSpeed(30, ["restrained"], 1, true)).toBe(25);
+  });
+});
+
+describe("attackHints (the card's attack rolls, SRD 5.2.1 §19.3)", () => {
+  const me = { conditions: [] as string[], exhaustion: 0 };
+  const them = (conditions: string[], markers: string[] = [], outlined = false) => ({
+    conditions,
+    markers,
+    outlined,
+  });
+  it("the target's conditions: Restrained, Stunned — advantage; Prone — advantage within 5 ft, disadvantage beyond", () => {
+    expect(hintedMode(attackHints(me, them(["restrained"]), { withinFt: 30, melee: false }))).toBe("adv");
+    expect(hintedMode(attackHints(me, them(["stunned"]), { withinFt: 30, melee: false }))).toBe("adv");
+    expect(hintedMode(attackHints(me, them(["prone"]), { withinFt: 5, melee: true }))).toBe("adv");
+    expect(hintedMode(attackHints(me, them(["prone"]), { withinFt: 30, melee: false }))).toBe("dis");
+  });
+  it("Invisible: disadvantage against it — none once it's outlined (Faerie Fire), which gives advantage; Dodging: disadvantage", () => {
+    expect(hintedMode(attackHints(me, them(["invisible"]), { withinFt: 10, melee: false }))).toBe("dis");
+    expect(hintedMode(attackHints(me, them(["invisible"], [], true), { withinFt: 10, melee: false }))).toBe(
+      "adv",
+    );
+    expect(hintedMode(attackHints(me, them([], ["dodging"]), { withinFt: 10, melee: false }))).toBe("dis");
+  });
+  it("the attacker's own: Poisoned — disadvantage; with the target Restrained, they cancel; Exhaustion 2 — −4", () => {
+    const h = attackHints({ conditions: ["poisoned"], exhaustion: 2 }, them(["restrained"]), {
+      withinFt: 5,
+      melee: true,
+    });
+    expect(hintedMode(h)).toBe("normal");
+    expect(h.penalty).toBe(-4);
+  });
+  it("a melee hit from within 5 ft on a Paralyzed or Unconscious creature is a critical hit; a ranged one, or from farther, isn't", () => {
+    expect(attackHints(me, them(["paralyzed"]), { withinFt: 5, melee: true }).critOnHit).toBe("Paralyzed");
+    expect(attackHints(me, them(["unconscious"]), { withinFt: 5, melee: true }).critOnHit).toBe(
+      "Unconscious",
+    );
+    expect(attackHints(me, them(["paralyzed"]), { withinFt: 5, melee: false }).critOnHit).toBeNull();
+    expect(attackHints(me, them(["paralyzed"]), { withinFt: 10, melee: true }).critOnHit).toBeNull();
   });
 });

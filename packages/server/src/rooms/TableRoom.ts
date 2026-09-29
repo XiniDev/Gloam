@@ -801,7 +801,8 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
         this.sendRequest(r);
       },
       roll: (userId, p) => this.rollFromCard(userId, p, null),
-      manual: (userId, p) => this.rollFromCard(userId, p, p.total),
+      manual: (userId, p) =>
+        this.rollFromCard(userId, p, p.values ? { values: p.values } : { total: p.total ?? 0 }),
     });
     this.effects = new EffectFlow({
       model: () => this.model,
@@ -1193,7 +1194,7 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
   private rollFromCard(
     userId: string,
     p: { formula: string; label: string; visibility: "public" | "dm"; tokenId?: string },
-    total: number | null,
+    entered: { total: number } | { values: number[] } | null,
   ): RollRecord {
     const roller = this.rollerFor(userId);
     const token = p.tokenId ? this.model.get("token", p.tokenId) : undefined;
@@ -1205,9 +1206,12 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
       ...(token ? { token } : {}),
     };
     const r =
-      total === null
+      entered === null
         ? this.dice.roll(this.campaignId, this.projector.activeSceneId || null, roller, opts)
-        : this.dice.manual(this.campaignId, this.projector.activeSceneId || null, roller, { ...opts, total });
+        : this.dice.manual(this.campaignId, this.projector.activeSceneId || null, roller, {
+            ...opts,
+            ...entered,
+          });
     this.deliverRoll(r, roller.dm);
     return r;
   }

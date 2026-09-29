@@ -98,9 +98,11 @@ export function effectSlow(
  * Whether a creature stands entirely inside a Silence (SRD p. 166: "creatures have the Deafened condition while
  * entirely inside it") — its whole space: the centre and its rim.
  */
-export function inSilence(model: CampaignModel, t: TokenEntity): boolean {
+export function inSilence(model: CampaignModel, t: TokenEntity, opts: { shown?: boolean } = {}): boolean {
   for (const e of model.inScene("effect", t.sceneId)) {
     if (!e.props.silence) continue;
+    // `shown`: only one the players are shown (a DM-only Silence puts nothing on the token everyone sees).
+    if (opts.shown && e.visibility !== "everyone") continue;
     const area = resolveArea(e.shape, (id) => {
       const o = model.get("token", id);
       return o ? { pos: o.pos, r: o.sizeFt / 2, z: o.elevation, height: Math.max(o.sizeFt, 2.5) } : null;

@@ -104,6 +104,7 @@ export const castSet = (
     outcome?: "full" | "half" | "none";
     ignore?: { resist?: boolean; vuln?: boolean; immune?: boolean };
     conditions?: string[];
+    crit?: boolean;
     final?: number | null;
   },
 ) => request("cast.set", { castId, targetId, ...p });
@@ -117,7 +118,7 @@ export const castClose = (castId: string) => request("cast.close", { castId });
 export const castRoll = (
   castId: string,
   what: "attack" | "damage",
-  opts: { targetId?: string; entered?: number; adv?: "none" | "adv" | "dis" } = {},
+  opts: { targetId?: string; entered?: number; dice?: number[]; adv?: "none" | "adv" | "dis" } = {},
 ) => request<{ total: number }>("cast.roll", { castId, what, ...opts });
 /** The DM rolls every NPC's save at once. */
 export const castNpcSaves = (castId: string) => request<{ rolled: number }>("cast.npcSaves", { castId });

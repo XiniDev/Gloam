@@ -7,8 +7,17 @@
  */
 import type { Ability, DamageType } from "@gloam/shared";
 import { COVER_BONUS, coverHint } from "@gloam/shared/aoe";
+import { withPenalty } from "@gloam/shared/dice";
 import { type CastTargetView, type CastView, GloamError } from "@gloam/shared/protocol";
-import { applyDamage, applyHealing, critFormula, isDm } from "@gloam/shared/rules";
+import {
+  applyDamage,
+  applyHealing,
+  attackHints,
+  critFormula,
+  critMaxFormula,
+  hintedMode,
+  isDm,
+} from "@gloam/shared/rules";
 import type { RequestResponse, RequestTarget, RollRequest } from "../dice/requests.ts";
 import type { RollRecord } from "../dice/service.ts";
 import type { CastEntity } from "../engine/codecs.ts";
@@ -25,7 +34,9 @@ import {
   conditionsFor,
   outcomeOf,
   rowFormula,
+  rowInstances,
   rowParts,
+  silenced,
 } from "../engine/commands/spells.ts";
 import type { CampaignModel } from "../engine/model.ts";
 import { roomCtx } from "./roomContext.ts";
@@ -71,9 +82,17 @@ export interface CastHost {
     userId: string,
     p: { formula: string; label: string; visibility: "public" | "dm"; tokenId?: string },
   ): RollRecord;
+  /** A physical roll: by its dice (one value a die), or its total. */
   manual(
     userId: string,
-    p: { formula: string; total: number; label: string; visibility: "public" | "dm"; tokenId?: string },
+    p: {
+      formula: string;
+      total?: number;
+      values?: number[];
+      label: string;
+      visibility: "public" | "dm";
+      tokenId?: string;
+    },
   ): RollRecord;
 }
 
@@ -205,7 +224,18 @@ export class CastFlow {
       ...(t.save
         ? { save: { ...base.save, ability: d.save?.ability ?? "dex", ...t.save } as CastTargetView["save"] }
         : {}),
-      ...(t.attack ? { attack: { ...t.attack, ...(h ? { ac: h.stats.ac } : {}) } } : {}),
+      ...(t.attack
+        ? {
+            attack: {
+              total: t.attack.total,
+              ...(t.attack.natural !== null ? { natural: t.attack.natural } : {}),
+              crit: t.attack.crit,
+              ...(t.attack.hit !== undefined ? { hit: t.attack.hit } : {}),
+              ...(t.attack.entered ? { entered: true } : {}),
+              ...(h ? { ac: h.stats.ac } : {}),
+            },
+          }
+        : {}),
     };
     if (!h) return row;
     const has = {
@@ -227,29 +257,84 @@ export class CastFlow {
         row.hp = { now: h.hp, max: h.hpMax, after: out.hp };
       }
     } else if (d.damage && parts) {
-      const a = adjusted(h, t.ignore);
-      const p = applyDamage(
-        {
-          hp: h.hp,
-          hpMax: h.hpMax,
-          hpTemp: h.hpTemp,
-          resistances: a.stats.resist,
-          immunities: a.stats.immune,
-          vulnerabilities: a.stats.vuln,
-          conditions: a.status.conditions.map((x) => x.id),
-          concentrating: Boolean(h.status.concentration),
-          isPC: h.isPC,
-        },
-        parts.parts,
-      );
-      row.computed = parts.final ? (t.final ?? p.total) : p.total;
-      row.hp = { now: h.hp, max: h.hpMax, after: p.hp };
+      // As Apply will: each instance (attack, ray, dart) in turn, its HP carried on; Thunder nothing inside Silence.
+      const a = silenced(ctx, adjusted(h, t.ignore));
+      let hp = h.hp;
+      let hpTemp = h.hpTemp;
+      let total = 0;
+      for (const inst of rowInstances(d, t)) {
+        const p = applyDamage(
+          {
+            hp,
+            hpMax: h.hpMax,
+            hpTemp,
+            resistances: a.stats.resist,
+            immunities: a.stats.immune,
+            vulnerabilities: a.stats.vuln,
+            conditions: a.status.conditions.map((x) => x.id),
+            concentrating: Boolean(h.status.concentration),
+            isPC: h.isPC,
+          },
+          inst,
+        );
+        hp = p.hp;
+        hpTemp = p.hpTemp;
+        total += p.total;
+      }
+      row.computed = parts.final ? (t.final ?? total) : total;
+      row.hp = { now: h.hp, max: h.hpMax, after: hp };
     } else if (d.damage && outcomeOf(d, t) === "none") {
       row.computed = 0;
       row.hp = { now: h.hp, max: h.hpMax, after: h.hp };
     }
     if (t.final !== undefined && t.final !== null) row.final = t.final;
     return row;
+  }
+
+  /**
+   * What an attack at a row gets (SRD 5.2.1 §19.3): the attacker's and the target's conditions (`attackHints`), the
+   * mode they add up to, Exhaustion's penalty, whether a hit is a critical hit (a melee one from within 5 ft on a
+   * Paralyzed or Unconscious creature). Distances edge to edge.
+   */
+  private hintsFor(
+    ctx: CommandCtx,
+    d: CastData,
+    t: CastTargetData,
+  ): NonNullable<CastTargetView["attackHints"]> {
+    const m = this.host.model();
+    const at = d.caster.tokenId ? m.get("token", d.caster.tokenId) : undefined;
+    const to = m.get("token", t.id);
+    const holder = (id: string | undefined) => {
+      try {
+        return id ? holderOf(ctx, { tokenId: id }) : null;
+      } catch {
+        return null;
+      }
+    };
+    const a = holder(at?.id);
+    const b = holder(to?.id);
+    const within =
+      at && to ? Math.hypot(to.pos.x - at.pos.x, to.pos.y - at.pos.y) - at.sizeFt / 2 - to.sizeFt / 2 : 999;
+    const h = attackHints(
+      {
+        conditions: a?.status.conditions.map((c) => c.id) ?? [],
+        exhaustion: a?.status.exhaustion ?? 0,
+      },
+      {
+        conditions: b?.status.conditions.map((c) => c.id) ?? [],
+        markers: b?.status.markers.map((x) => x.id) ?? [],
+        outlined: Boolean(b?.status.outlined),
+      },
+      { withinFt: Math.max(0, within), melee: d.attack?.kind === "melee" },
+    );
+    const mode = hintedMode(h);
+    return {
+      adv: h.adv.map((x) => x.from),
+      dis: h.dis.map((x) => x.from),
+      penalty: h.penalty,
+      mode: mode === "normal" ? "none" : mode,
+      critOnHit: h.critOnHit,
+    };
   }
 
   /** A row's cover from what a player perceives: creatures they perceive in the way, walls they know of. */
@@ -303,12 +388,14 @@ export class CastFlow {
         ? {
             attack: {
               total: t.attack.total,
-              natural: t.attack.natural,
+              ...(t.attack.natural !== null ? { natural: t.attack.natural } : {}),
               crit: t.attack.crit,
               ...(typeof t.attack.hit === "boolean" ? { hit: t.attack.hit } : {}),
             },
           }
-        : {}),
+        : d.attack && t.state === "in"
+          ? { attackHints: this.hintsFor(ctx, d, t) }
+          : {}),
       ...(t.roll ? { roll: { total: t.roll.total, formula: t.roll.formula } } : {}),
       outcome: outcomeOf(d, t),
       adjust: {
@@ -479,9 +566,15 @@ export class CastFlow {
     if (c?.status !== "open") throw new GloamError("NOT_FOUND", "That card is closed.");
     const d = c.data;
     if (!d.save) throw new GloamError("INVALID", `${d.name} has no save.`);
+    // The DM's creatures only: one a player controls (a familiar, a summons, an unlinked PC token) is asked on its
+    // player's card like a PC's (security review M4) — and a card never says the DC unless the DM showed it.
+    const model = this.host.model();
     const ids = [
       ...new Set(
-        d.targets.filter((t) => t.state === "in" && !t.pc && t.save?.total === undefined).map((t) => t.id),
+        d.targets
+          .filter((t) => t.state === "in" && !t.pc && t.save?.total === undefined)
+          .filter((t) => (model.get("token", t.id)?.ownerIds.length ?? 0) === 0)
+          .map((t) => t.id),
       ),
     ];
     if (!ids.length) return { rolled: 0 };
@@ -489,7 +582,7 @@ export class CastFlow {
       targets: ids,
       ability: d.save.ability,
       ...(d.dc !== null ? { dc: d.dc } : {}),
-      showDc: true,
+      showDc: d.dcRevealed,
       visibility: "dm",
       label: `${d.name} · ${ABILITY_SHORT[d.save.ability]} save`,
       castId: c.id,
@@ -511,7 +604,8 @@ export class CastFlow {
       what: "attack" | "damage";
       targetId?: string | undefined;
       entered?: number | undefined;
-      adv: "none" | "adv" | "dis";
+      dice?: number[] | undefined;
+      adv?: "none" | "adv" | "dis" | undefined;
     },
   ): { total: number } {
     const c = this.cast(p.castId);
@@ -521,7 +615,9 @@ export class CastFlow {
     if (!dm && !this.casterUsers(d).includes(actor.userId))
       throw new GloamError("FORBIDDEN", "Only the DM or the caster rolls on it.");
     const row = p.targetId ? d.targets.find((t) => t.key === p.targetId) : undefined;
-    if (p.targetId && !row) throw new GloamError("NOT_FOUND", "That creature isn't on the card.");
+    // A row the roller doesn't perceive is as good as not there (no name in an answer, security review L3).
+    if (p.targetId && (!row || (!dm && actor.sees && !actor.sees(row.id))))
+      throw new GloamError("NOT_FOUND", "That creature isn't on the card.");
     if (row && row.state !== "in") throw new GloamError("CONFLICT", `${row.name} is ${row.state}.`);
     const casterTok = d.caster.tokenId ? this.host.model().get("token", d.caster.tokenId) : undefined;
     const npcCaster = casterTok ? casterTok.ownerIds.length === 0 : true;
@@ -530,33 +626,38 @@ export class CastFlow {
     if (p.what === "attack") {
       if (!d.attack || !row) throw new GloamError("INVALID", "Nothing to attack with here.");
       if (row.attack) throw new GloamError("CONFLICT", `${row.name}'s attack is rolled.`);
-      const formula = `${d.attack.formula}${p.adv !== "none" ? ` ${p.adv}` : ""}`;
-      const roll =
-        p.entered !== undefined
-          ? this.host.manual(actor.userId, {
-              formula,
-              total: p.entered,
-              label: `${d.name} · attack · ${row.name}`,
-              visibility,
-              ...(tokenId ? { tokenId } : {}),
-            })
-          : this.host.roll(actor.userId, {
-              formula,
-              label: `${d.name} · attack · ${row.name}`,
-              visibility,
-              ...(tokenId ? { tokenId } : {}),
-            });
-      const natural = roll.natural ?? roll.total;
+      // What it gets (§19.3): the hints' mode unless the roller set it; Exhaustion's penalty on the roll.
+      const hints = this.hintsFor(this.ctx(), d, row);
+      const mode = p.adv ?? hints.mode;
+      const base = hints.penalty ? withPenalty(d.attack.formula, hints.penalty) : d.attack.formula;
+      const formula = `${base}${mode !== "none" ? ` ${mode}` : ""}`;
+      // A physical roll is entered by its dice — the d20 says whether it's a natural 20 or 1 (security review M3); a
+      // total is the DM's own roll behind the screen, its natural unknown (the DM marks a critical by hand).
+      if (p.entered !== undefined && !dm)
+        throw new GloamError("INVALID", "Enter the d20 you rolled (its face), not a total.");
+      // Public labels name no creature (the roll feed is everyone's).
+      const label = `${d.name} · attack`;
+      const where = { label, visibility, ...(tokenId ? { tokenId } : {}) };
+      const roll = p.dice
+        ? this.host.manual(actor.userId, { formula, values: p.dice, ...where })
+        : p.entered !== undefined
+          ? this.host.manual(actor.userId, { formula, total: p.entered, ...where })
+          : this.host.roll(actor.userId, { formula, ...where });
+      const natural = p.entered !== undefined ? null : (roll.natural ?? null);
       const target = holderOf(this.ctx(), { tokenId: row.id });
-      const crit = natural === 20;
-      const hit = crit ? true : natural === 1 ? false : roll.total >= target.stats.ac;
-      this.host
-        .bus()
-        .execute(
-          "cast.record",
-          { castId: c.id, targetId: row.key, attack: { total: roll.total, natural, crit, hit } },
-          SYSTEM_ACTOR,
-        );
+      const hit = natural === 20 ? true : natural === 1 ? false : roll.total >= target.stats.ac;
+      // A natural 20; or a hit that the target's state makes critical (a melee hit within 5 ft of the Paralyzed).
+      const crit = natural === 20 || (hit && hints.critOnHit !== null);
+      const entered = p.entered !== undefined || p.dice !== undefined;
+      this.host.bus().execute(
+        "cast.record",
+        {
+          castId: c.id,
+          targetId: row.key,
+          attack: { total: roll.total, natural, crit, hit, ...(entered ? { entered: true } : {}) },
+        },
+        SYSTEM_ACTOR,
+      );
       return { total: roll.total };
     }
     if (!d.damage) throw new GloamError("INVALID", `${d.name} has no damage to roll.`);
@@ -566,23 +667,32 @@ export class CastFlow {
     if (row?.roll) throw new GloamError("CONFLICT", `${row.name}'s damage is rolled.`);
     const crit = Boolean(row?.attack?.crit);
     const { parts } = rowFormula(d, d.damage.per === "target" ? (row ?? null) : null);
+    // A critical hit's dice: doubled, or rolled plus their maximum under that house rule (§19.6).
+    const maxPlus = this.host.model().campaign.houseRules.criticalDamage === "maxPlusRoll";
     const pieces = (parts?.parts ?? []).map((q) => ({
       ...q,
-      formula: crit ? critFormula(q.formula) : q.formula,
+      formula: crit ? (maxPlus ? critMaxFormula(q.formula) : critFormula(q.formula)) : q.formula,
     }));
     const formula = pieces.map((q) => `${q.formula}${d.damage?.healing ? "" : ` [${q.type}]`}`).join(" + ");
-    const label = `${d.name} · ${d.damage.healing ? "healing" : "damage"}${row ? ` · ${row.name}` : ""}`;
+    const label = `${d.name} · ${d.damage.healing ? "healing" : "damage"}`;
     let total: number;
     let byType: { amount: number; type: DamageType }[];
     let rollId: string | undefined;
+    let entered = p.entered !== undefined;
+    const where = { label, visibility, ...(tokenId ? { tokenId } : {}) };
     if (p.entered !== undefined) {
+      // A total with no dice: shared among the types as their dice would on average (rules audit m10 — Flame
+      // Strike's 30 is 15 fire and 15 radiant, not 30 of the first), the remainder to the first.
       total = p.entered;
-      const first = pieces[0]?.type ?? "force";
-      byType = [{ amount: total, type: first }];
-      this.host.manual(actor.userId, { formula, total, label, visibility, ...(tokenId ? { tokenId } : {}) });
+      byType = d.damage.healing ? [{ amount: total, type: "force" }] : splitByAverage(total, pieces);
+      this.host.manual(actor.userId, { formula, total, ...where });
     } else {
-      const r = this.host.roll(actor.userId, { formula, label, visibility, ...(tokenId ? { tokenId } : {}) });
+      // Rolled — or entered die by die (a physical roll): each die in its own type.
+      const r = p.dice
+        ? this.host.manual(actor.userId, { formula, values: p.dice, ...where })
+        : this.host.roll(actor.userId, { formula, ...where });
       total = r.total;
+      if (p.dice) entered = true;
       rollId = r.id;
       byType = d.damage.healing
         ? [{ amount: r.total, type: "force" }]
@@ -602,7 +712,7 @@ export class CastFlow {
           total,
           parts: byType,
           formula,
-          ...(p.entered !== undefined ? { entered: true } : {}),
+          ...(entered ? { entered: true } : {}),
           ...(rollId ? { rollId } : {}),
           ...(crit ? { crit: true } : {}),
         },
@@ -611,6 +721,30 @@ export class CastFlow {
     );
     return { total };
   }
+}
+
+/** A total shared among damage types as their formulas would on average (the remainder to the first). */
+function splitByAverage(
+  total: number,
+  pieces: readonly { formula: string; type: DamageType }[],
+): { amount: number; type: DamageType }[] {
+  if (pieces.length <= 1) return [{ amount: total, type: pieces[0]?.type ?? "force" }];
+  const avg = pieces.map((q) => {
+    // Each die's average ((sides + 1) / 2 a die) and every number — enough to weigh the types against each other.
+    let a = 0;
+    for (const m of q.formula.matchAll(/(\d*)d(\d+)/g)) a += Number(m[1] || 1) * ((Number(m[2]) + 1) / 2);
+    const bare = q.formula.replace(/\d*d\d+/g, "");
+    for (const m of bare.matchAll(/([+-])?\s*(\d+)/g)) a += (m[1] === "-" ? -1 : 1) * Number(m[2]);
+    return Math.max(0, a);
+  });
+  const sum = avg.reduce((s, x) => s + x, 0) || 1;
+  const out = pieces.map((q, i) => ({
+    amount: Math.floor((total * (avg[i] as number)) / sum),
+    type: q.type,
+  }));
+  const rest = total - out.reduce((s, x) => s + x.amount, 0);
+  if (out[0]) out[0].amount += rest;
+  return out.filter((x) => x.amount > 0);
 }
 
 /** The card's cover hint (§17.5, AC-SPL-13): the first creature behind cover, and what it's worth. */

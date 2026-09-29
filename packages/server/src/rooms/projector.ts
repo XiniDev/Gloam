@@ -65,7 +65,9 @@ export function tokenView(t: TokenEntity, ctx: ProjectionCtx): TokenView {
   const { stats, status } = effectiveTokenState(t, actor);
   const conditions = status.conditions.map((c) => c.id as string);
   // Deafened while entirely inside a Silence (derived from where it stands, never stored).
-  if (!conditions.includes("deafened") && inSilence(ctx.model, t)) conditions.push("deafened");
+  // (A DM-only Silence's Deafened is the DM's to say: the token's public conditions don't show it.)
+  if (!conditions.includes("deafened") && inSilence(ctx.model, t, { shown: true }))
+    conditions.push("deafened");
   const shown = t.hpDisplay === "exact" || t.hpDisplay === "bar";
   const max = Math.max(1, stats.hpMax);
   const light = t.lightId ? ctx.model.get("light", t.lightId) : undefined;

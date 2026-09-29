@@ -6,7 +6,7 @@ import { loadSrdPack } from "../content/packs.ts";
 import type { HomebrewEntry, ImportReport } from "../engine/commands/content.ts";
 import type { TableRoom } from "../rooms/TableRoom.ts";
 import {
-  type Agent,
+  Agent,
   createCampaign,
   joinAsNew,
   openTable,
@@ -235,5 +235,44 @@ describe("P9 — homebrew spells and imports (AC-SPL-10/11)", () => {
       dryRun: true,
     });
     expect(no.status).toBe(403);
+  });
+
+  it("M1/M6: only the admin, or an admitted DM at this sitting, imports — not a knock pending as a DM's profile; an anonymous 5 MB body is turned away unread", async () => {
+    const bo = players.Bo as (typeof players)[string];
+    // Bo is made a DM (a co-DM); someone else knocks as Bo's profile (it has no PIN) and waits, pending.
+    t.server.ctx.campaigns.setMembership(campaignId, bo.id, "dm");
+    try {
+      const stranger = new Agent(t.url);
+      expect((await stranger.post("/api/join/code", { code })).status).toBe(200);
+      expect(
+        (await stranger.post("/api/join/identity", { mode: "returning", profileId: bo.id })).status,
+      ).toBe(200);
+      const r = await stranger.post("/api/v1/content/spells:import", {
+        campaignId,
+        spells: [from(fireball, "squatter", "Squatter")],
+        dryRun: false,
+        strategy: "overwrite",
+      });
+      expect(r.json.error?.code).toBe("TABLE_CLOSED");
+      expect(
+        room()
+          .model.all("content")
+          .some((c) => c.slug === "squatter"),
+      ).toBe(false);
+      // Bo, admitted and now a DM, may (into the campaign at the table).
+      const ok = await bo.agent.post("/api/v1/content/spells:import", {
+        spells: [from(fireball, "bo-ball", "Bo Ball")],
+        dryRun: true,
+      });
+      expect(ok.status).toBe(200);
+      // Anonymous, 5 MB: refused before the body is read (not the 4 MB parser's 413).
+      const big = await new Agent(t.url).post("/api/v1/content/spells:import", {
+        spells: ["x".repeat(5_000_000)],
+      });
+      expect(big.status).not.toBe(413);
+      expect([401, 403]).toContain(big.status);
+    } finally {
+      t.server.ctx.campaigns.setMembership(campaignId, bo.id, "player");
+    }
   });
 });
