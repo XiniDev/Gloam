@@ -441,11 +441,14 @@ export class CastFlow {
         v.send("cast.view", view ?? { id: c.id, status: "done", targets: [] });
       }
     }
-    // The save cards say the DC once the DM shows it.
+    // The save cards say the DC once the DM shows it — and judge against the DC the DM sets (cast.setDc).
     for (const c of casts) {
       const r = c.data.requestId ? this.host.request(c.data.requestId) : undefined;
-      if (r && r.status === "open" && r.showDc !== c.data.dcRevealed) {
+      const dc = c.data.dc ?? undefined;
+      if (r && r.status === "open" && (r.showDc !== c.data.dcRevealed || r.dc !== dc)) {
         r.showDc = c.data.dcRevealed;
+        if (dc === undefined) delete r.dc;
+        else r.dc = dc;
         this.host.updateRequest(r);
       }
     }

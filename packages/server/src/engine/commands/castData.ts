@@ -108,6 +108,8 @@ export interface CastTargetData {
     pending?: boolean;
     by?: "npc" | "player" | "dm";
     autoFail?: boolean;
+    /** The DM's own verdict on it (cast.set): a later DC leaves it be. */
+    byHand?: boolean;
   };
   attack?: { total: number; natural: number | null; crit: boolean; hit?: boolean | null; entered?: boolean };
   /** Its own damage (a spell attack's hit, a dart): rolled for it. */

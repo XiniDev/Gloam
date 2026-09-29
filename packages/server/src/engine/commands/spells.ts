@@ -4,6 +4,7 @@ import {
   affected as areaAffected,
   type Barrier,
   type Body,
+  COVER_BONUS,
   canPlace,
   contains,
   coverHint,
@@ -24,6 +25,7 @@ import {
   CastClose,
   CastRevealDc,
   CastSet,
+  CastSetDc,
   CastSkip,
   CastTarget,
   EffectAct,
@@ -1638,6 +1640,7 @@ export const castSet: CommandDef<z.infer<typeof CastSet>, { ok: true }> = {
           success: p.saveSuccess,
           pending: false,
           by: row.save?.by ?? "dm",
+          byHand: true,
         }),
       );
     if (p.hit !== undefined && row.attack) ops.push(...castPathOp(c, ["targets", i, "attack", "hit"], p.hit));
@@ -1674,6 +1677,36 @@ export const castRevealDc: CommandDef<z.infer<typeof CastRevealDc>, { ok: true }
       summary: `${c.data.name}: DC ${p.reveal ? "shown" : "hidden"}`,
       result: { ok: true },
     };
+  },
+};
+
+/**
+ * `cast.setDc` (DM; critic P9 r2 B1): the card's save DC set or changed — an NPC with no sheet casts with none, and the
+ * DM had no way to say it. Saves already rolled are judged again against it (a Dexterity save with its cover bonus);
+ * a creature that fails automatically still fails; the DM's own verdict on a row (saveSuccess set by hand) is theirs.
+ */
+export const castSetDc: CommandDef<z.infer<typeof CastSetDc>, { ok: true }> = {
+  type: "cast.setDc",
+  schema: CastSetDc,
+  undoable: true,
+  authorize(ctx, p) {
+    requireDm(ctx);
+    openCast(ctx, p.castId);
+  },
+  plan(ctx, p) {
+    const c = openCast(ctx, p.castId);
+    if (!c.data.save) throw new GloamError("INVALID", "This card has no save.");
+    const ops: Op[] = [...castPathOp(c, ["dc"], p.dc)];
+    const dex = c.data.save.ability === "dex";
+    c.data.targets.forEach((t, i) => {
+      const s = t.save;
+      if (!s || s.total === undefined || s.autoFail || s.byHand) return;
+      const bonus = dex ? (COVER_BONUS[t.cover] ?? 0) : 0;
+      const success = s.total + bonus >= p.dc;
+      if (success !== s.success)
+        ops.push(...castPathOp(c, ["targets", String(i), "save", "success"], success));
+    });
+    return { ops, summary: `${c.data.name}: DC ${p.dc}`, result: { ok: true } };
   },
 };
 
@@ -2746,6 +2779,7 @@ export const SPELL_COMMANDS = [
   castTarget,
   castSet,
   castRevealDc,
+  castSetDc,
   castApply,
   castSkip,
   castCancel,

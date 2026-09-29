@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { frameDelta, setFrameDelta } from "../frames.ts";
-import { AUTO_COIN_PITCH, approach, CROSSFADE_S, crossfadeStep } from "./crossfade.ts";
+import { AUTO_COIN_PITCH, approach, CROSSFADE_S, crossfadeStep, fadeFrame } from "./crossfade.ts";
 
 describe("auto mode crossfade (AC-TOK-11)", () => {
   it("switches at 70° and crossfades linearly over 200 ms, whatever the frame rate", () => {
@@ -49,5 +49,23 @@ describe("auto mode crossfade (AC-TOK-11)", () => {
     expect(frameDelta()).toBe(0.05);
     setFrameDelta(3, true); // a very slow continuous frame is capped
     expect(frameDelta()).toBe(0.25);
+  });
+
+  it("a fade starts on the frame its target changes — the time before the change isn't spent on it", () => {
+    // A paced ambient frame 250 ms after the last one sees the camera tipped past 70°: the fade begins there (still 0),
+    // then runs over the next frames — before, it finished in that one frame and the crossfade was never drawn.
+    let f = fadeFrame({ w: 0, want: 0 }, 1, 0.25);
+    expect(f).toEqual({ w: 0, want: 1 });
+    f = fadeFrame(f, 1, 0.05);
+    expect(f.w).toBeCloseTo(0.25, 9);
+    f = fadeFrame(f, 1, 0.05);
+    expect(f.w).toBeCloseTo(0.5, 9);
+    // Reversed mid-fade: that frame holds where it is, then it heads back.
+    f = fadeFrame(f, 0, 0.25);
+    expect(f).toEqual({ w: 0.5, want: 0 });
+    f = fadeFrame(f, 0, 0.05);
+    expect(f.w).toBeCloseTo(0.25, 9);
+    // A steady target just steps.
+    expect(fadeFrame({ w: 1, want: 1 }, 1, 0.25)).toEqual({ w: 1, want: 1 });
   });
 });

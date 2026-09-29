@@ -137,6 +137,8 @@ export const CastSet = z.strictObject({
 
 /** Show the DC to the players (the save cards say it). */
 export const CastRevealDc = z.strictObject({ ...CastRef, reveal: z.boolean() });
+/** `cast.setDc` (DM): a card's save DC set or changed (a creature with no sheet casts with none). */
+export const CastSetDc = z.strictObject({ ...CastRef, dc: z.number().int().min(1).max(40) });
 
 /** Apply what the card says — to these targets, or every one still waiting (Apply all). */
 export const CastApply = z.strictObject({ ...CastRef, targets: z.array(RowKey).max(60).optional() });

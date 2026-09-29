@@ -12,3 +12,19 @@ export function approach(value: number, target: number, step: number): number {
 export function crossfadeStep(w: number, want: number, dt: number): number {
   return approach(w, want, dt / CROSSFADE_S);
 }
+
+/** A crossfade's state from frame to frame: its weight and the target it was last heading for. */
+export interface Fade {
+  w: number;
+  want: number;
+}
+
+/**
+ * One frame of a fade: toward `want` by `dt` — except on the frame its target changes, which starts the fade where it
+ * is: `dt` then is time that passed before the change (a paced ambient frame's up to 250 ms), and spent on the fade it
+ * finished a 200-ms fade in a single frame, the crossfade never seen.
+ */
+export function fadeFrame(f: Fade, want: number, dt: number): Fade {
+  if (want !== f.want) return { w: f.w, want };
+  return { w: crossfadeStep(f.w, want, dt), want };
+}

@@ -819,6 +819,14 @@ test.describe("P9 — spells (SPL)", () => {
     const counts = (await played()).map((p) => p.particles).sort((a, b) => b - a);
     expect((counts[0] ?? 0) + (counts[1] ?? 0)).toBeLessThanOrEqual(2 * 1600 * tier.particles + 16);
     await admin.screenshot({ path: `${SHOTS}/vfx-casts.png` });
+    // The Archmage has no sheet, so its Fireball has no DC: the DM sees "DC — set" and sets it on the card (critic P9
+    // r2 B1).
+    const fireCard = admin.getByTestId("resolution-card").filter({ hasText: "Fireball" }).first();
+    await expect(fireCard.getByTestId("cast-dc")).toHaveText("DC — set");
+    await fireCard.getByTestId("cast-dc").click();
+    await fireCard.getByLabel("Save DC").fill("15");
+    await fireCard.getByLabel("Save DC").press("Enter");
+    await expect(fireCard.getByTestId("cast-dc")).toHaveText("DC 15");
     for (const c of await admin.getByTestId("resolution-card").all())
       await c
         .getByRole("button", { name: "Close the card" })

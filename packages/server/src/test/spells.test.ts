@@ -242,6 +242,44 @@ describe("P9 — spells on the server (§8.13, §17)", () => {
     await waitFor(() => lastView(dmMsgs, castId)?.status === "done");
   });
 
+  it("a creature with no sheet casts with no DC: the DM sets it, and the saves already rolled are judged against it — the DM's own verdict kept (critic P9 r2 B1)", async () => {
+    const mage = await npc("Archmage", { x: 20, y: 60 });
+    const a = await npc("Kobold", { x: 40, y: 64 }, { saves: { dex: 0 } });
+    const b = await npc("Kobold 2", { x: 44, y: 60 }, { saves: { dex: 0 } });
+    const r = await cmd<{ castId: string }>(dm, "spell.cast", {
+      casterTokenId: mage,
+      spellId: "fireball",
+      mode: "free",
+      level: 3,
+      placement: { origin: { x: 42, y: 62, z: 0 }, dirDeg: 0 },
+    });
+    const card = () => castOf(r.castId);
+    expect(card()?.data.dc).toBeNull();
+    // Rolled with no DC: nobody can say who saved.
+    await cmd(dm, "cast.npcSaves", { castId: r.castId });
+    await waitFor(() =>
+      card()
+        ?.data.targets.filter((x) => x.state === "in")
+        .every((x) => x.save?.total !== undefined),
+    );
+    const rowOf = (id: string) => card()?.data.targets.find((x) => x.id === id);
+    expect(rowOf(a)?.save?.success ?? null).toBeNull();
+    // The DM calls Kobold 2's by hand; then sets the DC between the two rolls' totals (or above both).
+    await cmd(dm, "cast.set", { castId: r.castId, targetId: b, saveSuccess: true });
+    const total = rowOf(a)?.save?.total as number;
+    await cmd(dm, "cast.setDc", { castId: r.castId, dc: total + 1 });
+    expect(card()?.data.dc).toBe(total + 1);
+    expect(rowOf(a)?.save?.success).toBe(false);
+    expect(rowOf(b)?.save?.success).toBe(true);
+    // At the total, it saves; the DM's view shows the DC.
+    await cmd(dm, "cast.setDc", { castId: r.castId, dc: total });
+    expect(rowOf(a)?.save?.success).toBe(true);
+    await waitFor(() => lastView(dmMsgs, r.castId)?.save?.dc === total);
+    // Only a DM; and a card with no save has no DC to set.
+    await expect(cmd(anna().room, "cast.setDc", { castId: r.castId, dc: 12 })).rejects.toThrow(/FORBIDDEN/);
+    await cmd(dm, "cast.cancel", { castId: r.castId });
+  });
+
   it("cancel gives the slot back; undo of a cast gives it back too; a ritual spends none (AC-SPL-06)", async () => {
     const before = slotsOf(mageActor)?.slots.find((s) => s.level === 1)?.used ?? 0;
     const goblin = await npc("Imp", { x: 30, y: 40 });

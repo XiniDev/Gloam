@@ -42,7 +42,7 @@ import { pressToken } from "../move/input.ts";
 import { TIERS, useTier } from "../tiers.ts";
 import { withFog } from "../vision/fogMaterial.ts";
 import { alphaFromAlphaChannel } from "./alphaChannel.ts";
-import { AUTO_COIN_PITCH, approach, crossfadeStep } from "./crossfade.ts";
+import { AUTO_COIN_PITCH, approach, fadeFrame } from "./crossfade.ts";
 import {
   type BodyPart,
   leaderFor,
@@ -314,6 +314,8 @@ export const TokenObject = memo(function TokenObject({
   const body = useRef<Group>(null);
   const first = useRef(true);
   const coinW = useRef(mode === "coin" ? 1 : 0);
+  // The target the auto fade was last heading for (its first frame toward a new one starts it, and spends no time).
+  const coinWant = useRef<number | null>(null);
   const standeeGroup = useRef<Group>(null);
   const coinGroup = useRef<Group>(null);
   const miniGroup = useRef<Group>(null);
@@ -570,7 +572,11 @@ export const TokenObject = memo(function TokenObject({
     // Auto mode: coin above 70° pitch, standee below, crossfading over 200 ms (AC-TOK-11).
     const wantCoin =
       mode === "coin" ? 1 : mode === "auto" ? (cameraRig.pitchDeg() > AUTO_COIN_PITCH ? 1 : 0) : 0;
-    coinW.current = crossfadeStep(coinW.current, wantCoin, dt);
+    const fade = fadeFrame({ w: coinW.current, want: coinWant.current ?? wantCoin }, wantCoin, dt);
+    coinW.current = fade.w;
+    coinWant.current = fade.want;
+    // Frames keep coming while it fades (it drew only when something else did: on a still board, a jump).
+    if (mode === "auto" && fade.w !== wantCoin) again();
     const cw = mode === "auto" ? coinW.current : wantCoin;
     if (coinGroup.current) coinGroup.current.visible = mode !== "model" && cw > 0.001;
     if (standeeGroup.current) {
