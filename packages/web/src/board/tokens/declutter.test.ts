@@ -12,6 +12,7 @@ import {
   overlayOffset,
   registerOverlay,
   seenPart,
+  setBoardMarks,
   setOverlayBody,
   setOverlaySpots,
   without,
@@ -103,6 +104,17 @@ describe("overlay declutter", () => {
     const g = rect("goblin");
     expect(overlayClear("goblin")).toBe(1);
     expect(g && g.x0 < 150 && g.x1 > 125 && g.y0 < 80 && g.y1 > 55).toBe(false);
+  });
+
+  it("moves a plate off an effect's handle it would sit on (the board's marks count as bodies)", () => {
+    plate("south", 100, 60, 1);
+    // A handle (28 px square) right under the plate's own spot.
+    setBoardMarks("effect-handles", [{ x0: 86, y0: 46, x1: 114, y1: 74 }]);
+    layoutOverlays(camera, W, H);
+    setBoardMarks("effect-handles", []);
+    const r = rect("south");
+    expect(overlayClear("south")).toBe(1);
+    expect(r && r.x0 < 114 && r.x1 > 86 && r.y0 < 74 && r.y1 > 46).toBe(false);
   });
 
   it("moves a plate off a neighbour it would bury, but not off one whose edge it only clips", () => {

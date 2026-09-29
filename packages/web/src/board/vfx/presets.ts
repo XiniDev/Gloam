@@ -635,7 +635,8 @@ export function areaLoop(
         life: 1,
         core: gas.core,
         glow: gas.glow,
-        rough: 0.55,
+        // A gentle swell (a hard, folded silhouette read as a plastic sheet, not a cloud).
+        rough: 0.3,
         additive: false,
         opacity: 0.6 * thin,
         loop: true,

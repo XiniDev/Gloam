@@ -1,7 +1,7 @@
 import { type RefObject, useEffect, useLayoutEffect, useRef } from "react";
 import { boardApi, elementRect } from "../board/boardApi.ts";
 import { shownOverlayRects } from "../board/tokens/declutter.ts";
-import { useHudInsets } from "./insets.ts";
+import { useBoardCovers, useHudInsets, useHudObstacles } from "./insets.ts";
 
 export interface Rect {
   x0: number;
@@ -41,6 +41,13 @@ export function boardObstacles(): Rect[] {
     else out.push({ x0: vw - hud.right, y0: 0, x1: vw, y1: vh });
     if (hud.bottom > 0) out.push({ x0: 0, y0: vh - hud.bottom, x1: vw, y1: vh });
   }
+  // What floats over the board (the cards, the roll feed, the action bar…): a label beside something keeps off it —
+  // an effect's chip over a save card on a phone hid the card's header.
+  for (const r of [
+    ...Object.values(useHudObstacles.getState().rects),
+    ...Object.values(useBoardCovers.getState().rects),
+  ])
+    if (r) out.push({ x0: r.left, y0: r.top, x1: r.right, y1: r.bottom });
   return out;
 }
 

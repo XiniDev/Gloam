@@ -106,6 +106,16 @@ export function setOverlaySpots(id: string, full: Placed | null, compact: Placed
   else delete e.spots;
 }
 
+/**
+ * Small things on the board a plate mustn't sit on, as screen rects (px, y down) by who set them: the lasting
+ * effects' handles — a plate over one hides what the DM or its caster reaches for.
+ */
+const marks = new Map<string, readonly Placed[]>();
+export function setBoardMarks(key: string, rects: readonly Placed[]): void {
+  if (rects.length) marks.set(key, rects);
+  else marks.delete(key);
+}
+
 /** The overlay's target visibility (1 shown, 0 hidden by clutter). */
 export const overlayClear = (id: string): number => entries.get(id)?.clear ?? 1;
 
@@ -431,6 +441,11 @@ export function layoutOverlays(
   for (const [id, e] of entries) {
     if (e.group.parent && e.body)
       bodies.push({ id, r: e.body, parts: e.parts ?? [{ kind: "box", ...e.body }] });
+  }
+  // The board's marks (effects' handles) count as bodies: a plate steps aside from one as from a creature.
+  for (const [key, rects] of marks)
+    rects.forEach((r, i) => bodies.push({ id: `mark:${key}:${i}`, r, parts: [{ kind: "box", ...r }] }));
+  for (const [id, e] of entries) {
     if (!e.group.parent) continue;
     if (e.spots) {
       items.push({ id, e, r: e.spots.full, rc: e.spots.compact, p: e.priority(), d: -e.spots.full.y1 });

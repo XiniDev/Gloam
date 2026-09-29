@@ -1,7 +1,7 @@
 import { circlePolygon, type P } from "@gloam/shared/geometry";
 import { controlsToken } from "@gloam/shared/rules";
 import type { EffectControl, EffectView } from "@gloam/shared/state";
-import type { ThreeEvent } from "@react-three/fiber";
+import { type ThreeEvent, useFrame } from "@react-three/fiber";
 import { useEffect, useMemo, useState } from "react";
 import { actEffect, moveEffect } from "../../net/spells.ts";
 import { useTable } from "../../net/table.ts";
@@ -12,6 +12,7 @@ import { toast } from "../../ui/Toast.tsx";
 import { boardApi } from "../boardApi.ts";
 import { C } from "../colors.ts";
 import { again } from "../frames.ts";
+import { setBoardMarks } from "../tokens/declutter.ts";
 import { Segments } from "../tools/marks.tsx";
 import { whereOf } from "./presets.ts";
 
@@ -85,6 +86,9 @@ let current: Handle[] = [];
  * (its chip says what can be done). Aiming a strike: a ring under the pointer, green inside the effect, a click to
  * strike, Esc to stop.
  */
+/** A handle's half-size on screen, as the plates keep off it (its ring and a little room). */
+const HANDLE_PX = 14;
+
 export function EffectHandles() {
   const effects = useBoard((d) => d.effects);
   const tokens = useBoard((d) => d.tokens);
@@ -118,6 +122,22 @@ export function EffectHandles() {
       }),
     );
   }, []);
+  // Where the handles are on screen, for the name plates to keep off them (declutter's marks).
+  useFrame(() => {
+    const rects: { x0: number; y0: number; x1: number; y1: number }[] = [];
+    for (const h of current) {
+      const s = boardApi.project(h.mark.x, h.mark.y, 0.14);
+      if (s)
+        rects.push({
+          x0: s.sx - HANDLE_PX,
+          y0: s.sy - HANDLE_PX,
+          x1: s.sx + HANDLE_PX,
+          y1: s.sy + HANDLE_PX,
+        });
+    }
+    setBoardMarks("effect-handles", rects);
+  });
+  useEffect(() => () => setBoardMarks("effect-handles", []), []);
   // A picked effect that's gone (ended, or no longer this viewer's to handle): nothing picked.
   const selected = useEffectUi((s) => s.selected);
   useEffect(() => {

@@ -65,7 +65,7 @@ void main() {
   vec3 col = mix(uCore, uGlow, clamp(vFres + u * 0.6, 0.0, 1.0));
   // A shell's rim is its densest (a bubble of force, a fireball's skin); a cloud's is its thinnest — dense in the
   // middle, thinning to nothing at its edge, never a glassy outline.
-  float body = uSoft > 0.5 ? (1.0 - smoothstep(0.3, 1.0, vFres)) * (0.8 + 0.4 * (vN - 0.5)) : mix(0.35, 1.0, vFres);
+  float body = uSoft > 0.5 ? (1.0 - smoothstep(0.1, 0.8, vFres)) * (0.8 + 0.4 * (vN - 0.5)) : mix(0.35, 1.0, vFres);
   float a = (body + lattice) * fade * uOpacity;
   gl_FragColor = vec4(col, a);
   #include <colorspace_fragment>

@@ -146,6 +146,8 @@ test("P9 key screens", async ({ admin, browser, gloam, guardLog }, info) => {
             { level: 3, max: 2 },
           ],
           spells: [
+            { name: "Fire Bolt", level: 0, prepared: true },
+            { name: "Light", level: 0, prepared: true },
             { name: "Magic Missile", level: 1, prepared: true },
             { name: "Web", level: 2, prepared: true },
             { name: "Hold Person", level: 2, prepared: true },
@@ -356,6 +358,8 @@ test("P9 key screens", async ({ admin, browser, gloam, guardLog }, info) => {
   // The casts' bursts (a scorch lasts 5 s) and their toasts (5 s) gone: the lasting looks alone.
   await admin.waitForTimeout(6000);
   await step("09-lasting-effects", admin, async () => {
+    // The whole chapel and its casters round its edge.
+    await camera(admin, { pitchDeg: 62, frame: { minX: 0, minY: 0, maxX: 120, maxY: 70 } });
     await expect
       .poll(async () => (await hook<{ name: string }[]>(admin, "effectsDrawn")).length, { timeout: 20_000 })
       .toBeGreaterThanOrEqual(lasting.length);
@@ -407,6 +411,17 @@ test("P9 key screens", async ({ admin, browser, gloam, guardLog }, info) => {
     await dave.mouse.move(bolt.x, bolt.y, { steps: 3 });
   });
   await dave.keyboard.press("Escape");
+  await dave
+    .getByTestId("effect-chip")
+    .getByRole("button", { name: "Close" })
+    .click()
+    .catch(() => {});
+  // Mira was under the first bolt: her save's request, skipped (the next shots aren't about it).
+  await dave
+    .getByRole("button", { name: "Skip" })
+    .first()
+    .click()
+    .catch(() => {});
 
   // ── The homebrew builder (Fireball as a template) and the import report ──
   await step("12-homebrew-builder", admin, async () => {
@@ -453,6 +468,44 @@ test("P9 key screens", async ({ admin, browser, gloam, guardLog }, info) => {
     await admin.getByRole("button", { name: "Dry run" }).click();
     await expect(admin.getByTestId("import-report")).toContainText("of 3 valid");
   });
+
+  // ── Dave's Fire Bolt at a Restrained acolyte: the card's attack hints and the mode they set ──
+  await admin.keyboard.press("Escape");
+  await closeCards(admin);
+  await step("14-attack-hints", dave, async () => {
+    await req(admin, "status.change", { tokenId: g3, add: [{ id: "restrained" }] });
+    await closeDock(dave);
+    await paced(dave, "spell.cast", {
+      casterTokenId: mira.id,
+      spellId: "fire-bolt",
+      mode: "slot",
+      targets: [g3],
+    });
+    const card = dave.getByTestId("resolution-card").filter({ hasText: "Fire Bolt" });
+    // (A phone pages its cards: to the Fire Bolt's.)
+    for (let k = 0; k < 4 && !(await card.isVisible()); k++)
+      await dave
+        .getByRole("button", { name: "Next card" })
+        .click()
+        .catch(() => {});
+    await expect(card.getByTestId("attack-hints")).toContainText("target Restrained");
+    await dave.mouse.move(700, 600);
+  });
+  await closeCards(admin);
+  // ── Light: what it's cast on ──
+  await step("15-light-dialog", dave, async () => {
+    await openDock(dave, "Sheet");
+    const tab = await sheetTab(dave, "Spells");
+    await tab
+      .getByTestId("sheet-spell")
+      .filter({ hasText: "Light" })
+      .first()
+      .getByTestId("cast-spell")
+      .click();
+    const d = dave.getByRole("dialog", { name: /Cast Light/ });
+    await expect(d.getByText("Cast on").first()).toBeVisible();
+  });
+  await dave.keyboard.press("Escape");
 
   writeFileSync(join(dir, "_notes.txt"), notes.length ? notes.join("\n") : "all steps ran\n");
 });
