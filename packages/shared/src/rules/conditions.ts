@@ -237,6 +237,9 @@ export function rollHints(
     const hint = { from: info.name, ...(info.note ? { note: info.note } : {}) };
     if (own === "adv") out.adv.push(hint);
     if (own === "dis") out.dis.push(hint);
+    // A condition that includes Incapacitated (Stunned, Paralyzed, Petrified, Unconscious) brings its initiative
+    // disadvantage with it (SRD 5.2.1).
+    else if (kind === "initiative" && info.incapacitated && !own) out.dis.push({ from: info.name });
     if (kind === "save" && ability === "dex" && info.dexSave === "dis") out.dis.push({ from: info.name });
     if (kind === "save" && (ability === "str" || ability === "dex") && info.autoFailStrDex)
       out.autoFail.push(info.name);

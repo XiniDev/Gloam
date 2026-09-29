@@ -78,7 +78,8 @@ export function tokenRefs(t: TokenEntity | undefined): (path: readonly string[])
     if (!s) return undefined;
     const key = path.join(".");
     if (key === "dex") return s.dexMod;
-    if (key === "init") return s.initBonus;
+    // Its initiative modifier, as a sheet's `@init` is: Dex modifier plus any bonus (§19.5).
+    if (key === "init") return s.dexMod + s.initBonus;
     const save = key.match(/^(str|dex|con|int|wis|cha)\.save$/);
     if (save) return s.saves[save[1] as keyof typeof s.saves];
     return undefined;

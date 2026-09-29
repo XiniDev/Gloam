@@ -780,13 +780,21 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
         : p.type === "custom"
           ? p.purpose?.kind === "deathSave"
             ? "save"
-            : null
+            : p.purpose?.kind === "initiative"
+              ? "initiative"
+              : null
           : p.type;
+    // Initiative (§19.5): the surprised roll it with disadvantage (SRD 5.1 has none — its surprise loses a turn).
+    const surprised =
+      p.purpose?.kind === "initiative" && this.model.campaign.rulesPack !== "srd-5.1"
+        ? new Set(p.purpose.surprised)
+        : new Set<string>();
     const ability = p.type === "check" && p.skill ? SKILLS[p.skill as SkillId] : p.ability;
     const targets: RequestTarget[] = [...new Set(p.targets)].map((id) => {
       const x = this.requestTarget(id);
       const conds = x.status.conditions.map((c) => c.id as string);
       const h = rollHints(conds, x.status.exhaustion, kind ?? "check", ability);
+      if (surprised.has(id)) h.dis.push({ from: "Surprised" });
       // Exhaustion takes 2 × its level off every D20 Test (AC-HP-05), in the formula for everyone to see.
       const formula = withPenalty(targetFormula(base, creatureRefs(x.token, x.sheet), p.adv), h.penalty);
       try {
