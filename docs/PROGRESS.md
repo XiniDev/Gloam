@@ -378,3 +378,26 @@ P1 28/28 · P2 32/32 · P3 16/17 · P4 12/12 · P5 9/9 · P6 14/14 · P7 1/17 ·
   card clear of the plate, a custom marker's own atlas cell and ink glyph, the sheet's Exhaustion chip and the plate's notch.
 - `pnpm check`: 465 tests. p7-health (3 journeys) and p7-icons (2) pass.
 - Next: the visual critic, round 1 (running), its fixes; round 2; then P8 (walls & lights round 2 — AC-WAL-05 first).
+
+## 2026-09-29 — P7 visual critic, rounds 1 and 2; P8 server and groundwork
+
+- Critic round 1 (5/10): fixes committed (a7f7002; DECISIONS). Round 2 (5/10, the last for P7): the board's layout
+  rebuilt as one pass that knows every obstacle — plates in four strengths with a compact bar-only form, spots beside a
+  token at mid-height, leaders that cross nothing, the visible-fraction rule, toasts as HUD; the HP numbers beside a slim
+  bar in bone; floating numbers ≥ 24 px from other plates and ≤ 10 px from their own; one floating card stack (a phone's
+  paged, the feed out from behind it; two cards under 1200 px; at the board's foot when its top would bury the creatures
+  they're about); toasts under the cards; the hover card weighing plates; dialog scroll edges, "e.g." placeholders, the
+  sheet's effective speed, measured DM panel tabs, bevelled bases, the notch inside its badge, Hit Dice left, hyphenated
+  names kept whole, Exhaustion in search results, the Concentrate button's height. Two findings kept with reasons (#4,
+  #16). DECISIONS 2026-09-29.
+- Tests: declutter 21 unit tests (the critic's cases each: a neighbour's footprint, a standee behind a lying creature,
+  nearer another creature, a token mostly showing with its centre under the HUD, the compact forms, the geometry);
+  `keepHyphenated`; journeys: the P2 overlay layout (tier-0 plates and leaders against every token and plate, four
+  views), P6 cards over the board (phone pager and feed, two then more / fewer, a toast under the cards, top vs foot),
+  P7 number spacing rules, effective speed, Hit Dice left, Exhaustion in search. `pnpm check`: 512 tests.
+- P8 so far: combat rules (12 tests), creature spaces (5), opportunity marks (5), the movement range field (4), the
+  combat commands and the room's combat flow wired (e083d2d; 11 integration tests: CMB-01…09/11, MOV-04/05/07/09/16/18,
+  HP-08, WAL-05); the client's tracker, Start dialog, DM Combat section, turn controls and keys.
+- Next: commit; P8's range overlay (G), turn banner and chime, combat tally, the remaining server tests, the P8 journeys
+  and key screens, its critic (≤ 2 rounds), and its ACs marked with evidence.
+

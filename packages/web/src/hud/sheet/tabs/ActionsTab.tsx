@@ -108,7 +108,7 @@ export function ActionsTab({ ctx }: { ctx: SheetCtx }) {
               <TextField
                 label={`${a.name} attack formula`}
                 value={a.attack ?? ""}
-                placeholder="1d20 + @str + @prof"
+                placeholder="e.g. 1d20 + @str + @prof"
                 onCommit={(v) => set(i, "attack", v)}
                 className="mono text-13"
               />
@@ -116,7 +116,7 @@ export function ActionsTab({ ctx }: { ctx: SheetCtx }) {
               <TextField
                 label={`${a.name} damage formula`}
                 value={a.damage ?? ""}
-                placeholder="1d8 + @str [slashing]"
+                placeholder="e.g. 1d8 + @str [slashing]"
                 onCommit={(v) => set(i, "damage", v)}
                 className="mono text-13"
               />
@@ -124,14 +124,14 @@ export function ActionsTab({ ctx }: { ctx: SheetCtx }) {
               <TextField
                 label={`${a.name} range`}
                 value={a.range ?? ""}
-                placeholder="5 ft"
+                placeholder="e.g. 5 ft"
                 onCommit={(v) => set(i, "range", v)}
               />
               <span className="text-13 text-paper-muted">Properties</span>
               <TextField
                 label={`${a.name} properties`}
                 value={a.properties ?? ""}
-                placeholder="versatile, finesse"
+                placeholder="e.g. versatile, finesse"
                 onCommit={(v) => set(i, "properties", v)}
               />
             </div>

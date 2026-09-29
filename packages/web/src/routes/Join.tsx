@@ -297,7 +297,7 @@ function NewProfile({
         onChange={(e) => setName(e.target.value)}
         autoFocus
         error={name.length > 0 && !nameOk ? "2–24 letters, digits, spaces and - ' _ ." : null}
-        placeholder="Dave"
+        placeholder="e.g. Dave"
       />
       <p className="caps mb-2 mt-5 text-12 text-fog">Your colour</p>
       <ColorSwatchPicker value={color} onChange={setColor} />

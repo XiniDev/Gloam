@@ -407,6 +407,7 @@ export function Pips({
   label,
   tone = "wax",
   disabled = false,
+  filledMeans = "spent",
 }: {
   total: number;
   filled: number;
@@ -414,6 +415,8 @@ export function Pips({
   label: string;
   tone?: "wax" | "ink";
   disabled?: boolean;
+  /** What a filled pip is: one spent (slots used), or one left (Hit Dice, as the rest cards count them). */
+  filledMeans?: "spent" | "left";
 }) {
   return (
     <span
@@ -428,7 +431,7 @@ export function Pips({
             key={i}
             type="button"
             disabled={disabled}
-            aria-label={`${label} ${i + 1}${on ? " (spent)" : ""}`}
+            aria-label={`${label} ${i + 1}${on ? ` (${filledMeans})` : ""}`}
             aria-pressed={on}
             onClick={() => onSet(on && i === filled - 1 ? i : i + 1)}
             className="grid h-6 min-h-[var(--touch-min)] w-6 min-w-[var(--touch-min)] place-items-center disabled:opacity-50"

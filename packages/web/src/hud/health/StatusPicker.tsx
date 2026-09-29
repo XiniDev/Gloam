@@ -3,7 +3,7 @@ import { STATUS_ICONS } from "@gloam/shared/icons";
 import { statusName, statusSummary } from "@gloam/shared/rules";
 import { parseCustomMarkers } from "@gloam/shared/state";
 import { Search } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { StatusIcon } from "../../icons/status.tsx";
 import { changeStatus, type StatusDraft } from "../../net/health.ts";
 import { useSheets } from "../../net/sheets.ts";
@@ -85,6 +85,10 @@ export function StatusPicker() {
     return !t || statusName(id).toLowerCase().includes(t) || statusSummary(id).toLowerCase().includes(t);
   };
   const conds = CONDITION_IDS.filter((c) => c !== "exhaustion").filter(match);
+  // Exhaustion is set by its level below, not toggled — but a search it answers ("speed", "d20") lists it too, a
+  // tile that takes you to its levels (critic P7 r2 #18).
+  const exhaustionHit = q.trim() !== "" && match("exhaustion");
+  const levels = useRef<HTMLDivElement>(null);
   const marks = token ? HAND_MARKERS.filter(match) : [];
   const shownCustoms = customs.filter(
     (c) => !q.trim() || `${c.label} ${c.description}`.toLowerCase().includes(q.trim().toLowerCase()),
@@ -92,7 +96,12 @@ export function StatusPicker() {
   // The summary under the grid: of the tile hovered or focused while it's still in the grid (a search can take it
   // away); a custom marker's is its own description.
   const focused =
-    focus && [...conds, ...marks, ...shownCustoms.map((c) => c.id)].includes(focus) ? focus : null;
+    focus &&
+    [...conds, ...(exhaustionHit ? ["exhaustion"] : []), ...marks, ...shownCustoms.map((c) => c.id)].includes(
+      focus,
+    )
+      ? focus
+      : null;
   const focusedCustom = focused ? customs.find((c) => c.id === focused) : undefined;
   const shownName = focusedCustom
     ? focusedCustom.label || statusName(focusedCustom.id)
@@ -165,9 +174,33 @@ export function StatusPicker() {
         </label>
         <section aria-label="Conditions" className="flex flex-col gap-1.5">
           <h3 className="caps text-12 text-fog">Conditions</h3>
-          {conds.length ? (
+          {conds.length || exhaustionHit ? (
             <ul className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
               {conds.map((id) => tile(id, conditions.includes(id)))}
+              {exhaustionHit ? (
+                <li key="exhaustion">
+                  <button
+                    type="button"
+                    title={statusSummary("exhaustion")}
+                    onClick={() => {
+                      const el = levels.current;
+                      el?.scrollIntoView({ block: "center", behavior: "smooth" });
+                      el?.querySelector<HTMLElement>('[role="radio"][aria-checked="true"]')?.focus();
+                    }}
+                    onFocus={() => setFocus("exhaustion")}
+                    onMouseEnter={() => setFocus("exhaustion")}
+                    data-status="exhaustion"
+                    className={`flex min-h-[var(--touch-min)] w-full items-center gap-2 rounded-[var(--radius-control)] border px-2 py-1.5 text-left text-13 transition-[border-color,box-shadow,background-color] duration-[var(--dur-fast)] ${
+                      exhaustion
+                        ? "border-brass bg-[var(--glow-brass-soft)] text-bone shadow-[0_0_0_2px_var(--glow-brass-soft)]"
+                        : "border-line text-muted hover:border-line-strong hover:text-bone"
+                    }`}
+                  >
+                    <StatusIcon id="exhaustion" size={24} badge label="" level={exhaustion || undefined} />
+                    <span className="min-w-0 truncate">Exhaustion — its level below</span>
+                  </button>
+                </li>
+              ) : null}
             </ul>
           ) : (
             <p className="text-13 text-muted">No condition matches.</p>
@@ -199,7 +232,7 @@ export function StatusPicker() {
             <input
               value={source}
               maxLength={80}
-              placeholder="Dragon's Frightful Presence"
+              placeholder="e.g. Dragon's Frightful Presence"
               onChange={(e) => setSource(e.target.value)}
               className="h-10 rounded-[var(--radius-control)] border border-line bg-ink-900 px-3 text-14 text-bone placeholder:text-faint focus:border-brass focus:outline-none"
             />
@@ -215,7 +248,7 @@ export function StatusPicker() {
             />
           </label>
         </div>
-        <div className="flex flex-col gap-1.5">
+        <div ref={levels} className="flex flex-col gap-1.5">
           <span className="caps text-12 text-fog">Exhaustion</span>
           {/* A phone: the seven levels across the width (one row), what they do under them. */}
           <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
@@ -251,7 +284,7 @@ export function StatusPicker() {
                 <input
                   value={custom.name}
                   maxLength={40}
-                  placeholder="Hexed"
+                  placeholder="e.g. Hexed"
                   onChange={(e) => setCustom((c) => ({ ...c, name: e.target.value }))}
                   className="h-10 rounded-[var(--radius-control)] border border-line bg-ink-900 px-3 text-14 text-bone focus:border-brass focus:outline-none"
                 />
@@ -261,7 +294,7 @@ export function StatusPicker() {
                 <input
                   value={custom.description}
                   maxLength={120}
-                  placeholder="Disadvantage on checks with the chosen ability"
+                  placeholder="e.g. Disadvantage on checks with the chosen ability"
                   onChange={(e) => setCustom((c) => ({ ...c, description: e.target.value }))}
                   className="h-10 rounded-[var(--radius-control)] border border-line bg-ink-900 px-3 text-14 text-bone placeholder:text-faint focus:border-brass focus:outline-none"
                 />
@@ -370,11 +403,12 @@ function ConcentrationRow({
             aria-label="Concentrating on"
             value={draft}
             maxLength={80}
-            placeholder="Bless"
+            placeholder="e.g. Bless"
             onChange={(e) => setDraft(e.target.value)}
             className="h-10 min-w-0 flex-1 rounded-[var(--radius-control)] border border-line bg-ink-900 px-3 text-14 text-bone focus:border-brass focus:outline-none"
           />
-          <Button size="S" variant="secondary" type="submit" disabled={!draft.trim()} loading={busy}>
+          {/* The input's height (40 px), side by side (critic P7 r2 #19). */}
+          <Button size="M" variant="secondary" type="submit" disabled={!draft.trim()} loading={busy}>
             Concentrate
           </Button>
         </form>

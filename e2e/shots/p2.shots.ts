@@ -6,6 +6,7 @@ import {
   boardSettled,
   camera,
   createScene,
+  dmSection,
   hook,
   introDone,
   req,
@@ -14,9 +15,7 @@ import {
 import { expect, knockAsNew, newPlayerContext, openTableAs, test } from "../fixtures/test.ts";
 
 async function dmPanel(page: Page, tab: "Scenes" | "Library" | "Approvals"): Promise<void> {
-  const tabs = page.getByRole("tablist", { name: "DM panel sections" });
-  if (!(await tabs.isVisible())) await page.getByRole("button", { name: /^DM panel/ }).click();
-  await page.getByRole("tab", { name: tab }).click();
+  await dmSection(page, tab);
 }
 
 /** Closes the dock's panel (as a player would before reaching for the toolbar or a token it covers). */

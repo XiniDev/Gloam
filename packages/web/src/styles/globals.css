@@ -146,6 +146,8 @@
   }
   /* Chrome panel: dark ink with a faint noise and an inner highlight. */
   .panel {
+    /* What a scrolling body fades into at its edges (Dialog). */
+    --surface: var(--panel);
     background-color: var(--panel);
     background-image: url("../assets/noise.png");
     background-blend-mode: soft-light;
@@ -160,6 +162,7 @@
   }
   /* Document surface: parchment laid on the table. */
   .parchment {
+    --surface: var(--parchment-100);
     background-color: var(--parchment-100);
     background-image:
       var(--parchment-fibre), radial-gradient(ellipse at 50% 40%, transparent 55%, var(--paper-shadow));

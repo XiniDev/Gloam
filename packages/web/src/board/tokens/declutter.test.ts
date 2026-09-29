@@ -1,12 +1,20 @@
 import { BoxGeometry, Group, Mesh, MeshBasicMaterial, OrthographicCamera, Scene } from "three";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  bodyDepth,
+  crosses,
   layoutOverlays,
+  leaderFor,
+  leaderSegment,
   overlayClear,
+  overlayCompact,
   overlayDiagnostics,
   overlayOffset,
   registerOverlay,
+  seenPart,
   setOverlayBody,
+  setOverlaySpots,
+  without,
 } from "./declutter.ts";
 
 // A 200 × 100 px screen over a top-down orthographic camera: one foot is one pixel, x right, z down.
@@ -197,22 +205,184 @@ describe("overlay declutter", () => {
     expect(rect("mira")?.y0).toBeCloseTo(66, 3);
   });
 
-  it("brings a visible token's plate down onto the free board when its own spot is off the top and under its base is taken", () => {
+  it("puts a plate beside its token at mid-height when its own spot and under its base are taken, before rows above (critic P7 r2 #1)", () => {
     // As above, with a bar along the bottom of the screen where the spot under her base would be.
     plate("mira", 100, -3, 2);
     setOverlayBody("mira", { x0: 70, y0: -20, x1: 130, y1: 60 });
+    layoutOverlays(camera, W, H, [{ x0: 0, y0: 62, x1: W, y1: H }]);
+    expect(overlayClear("mira")).toBe(1);
+    const r = rect("mira");
+    // Right of her, 8 px off, centred on the height of what shows of her (0–60).
+    expect(r?.x0).toBeCloseTo(138, 3);
+    expect(((r?.y0 ?? 0) + (r?.y1 ?? 0)) / 2).toBeCloseTo(30, 3);
+    // Its leader runs straight back to her.
+    const l = overlayDiagnostics().find((d) => d.id === "mira")?.leaderLine;
+    expect(l?.sx).toBeCloseTo(138, 3);
+    expect(l && l.ex < 130 && l.ex > 70).toBe(true);
+  });
+
+  it("brings a visible token's plate down onto the free board when its own spot is off the top and under and beside it are taken", () => {
+    // As above, with the HUD down both sides of her too.
+    plate("mira", 100, -3, 2);
+    setOverlayBody("mira", { x0: 70, y0: -20, x1: 130, y1: 60 });
     const bottom = { x0: 0, y0: 62, x1: W, y1: H };
-    layoutOverlays(camera, W, H, [bottom]);
+    const sides = [
+      { x0: 0, y0: 0, x1: 66, y1: H },
+      { x0: 134, y0: 0, x1: W, y1: H },
+    ];
+    layoutOverlays(camera, W, H, [bottom, ...sides]);
     expect(overlayClear("mira")).toBe(1);
     expect(rect("mira")?.y0).toBeCloseTo(4, 3);
     // With a top bar over its column: just under the bar.
-    layoutOverlays(camera, W, H, [{ x0: 0, y0: 0, x1: W, y1: 14 }, bottom]);
+    layoutOverlays(camera, W, H, [{ x0: 0, y0: 0, x1: W, y1: 14 }, bottom, ...sides]);
     expect(overlayClear("mira")).toBe(1);
     expect(rect("mira")?.y0).toBeCloseTo(17, 3);
     // Its token wholly above the free board: nothing to bring it down onto.
     setOverlayBody("mira", { x0: 70, y0: -40, x1: 130, y1: 12 });
     layoutOverlays(camera, W, H, [{ x0: 0, y0: 0, x1: W, y1: 14 }]);
     expect(overlayClear("mira")).toBe(0);
+  });
+
+  it("keeps a plate off a neighbour's footprint even where it would cover only a little of it (critic P7 r2 #1)", () => {
+    // The front token's own spot reaches 9 px into the corner of the one behind it: under a tenth of that token, but
+    // a plate on a creature reads as its.
+    plate("front", 100, 40, 1);
+    setOverlayBody("front", { x0: 85, y0: 46, x1: 115, y1: 70 });
+    bodyOnly("back");
+    setOverlayBody("back", { x0: 110, y0: 20, x1: 150, y1: 44 });
+    layoutOverlays(camera, W, H);
+    expect(overlayClear("front")).toBe(1);
+    // Under its base.
+    expect(rect("front")?.y0).toBeCloseTo(76, 3);
+    expect(overlayDiagnostics().find((x) => x.id === "front")?.tier).toBe(0);
+  });
+
+  it("a standee behind a lying creature: each plate by its own creature, none on the other, no leader across either (critic P7 r2 #1)", () => {
+    // Thorin lies in front; Mira's card stands behind him, its foot under his body. His own spot is on her card; hers
+    // is off the top of the screen, and under her base is his body.
+    plate("thorin", 100, 44, 3);
+    setOverlayBody("thorin", { x0: 60, y0: 50, x1: 140, y1: 80 });
+    plate("mira", 90, 4, 2);
+    setOverlayBody("mira", { x0: 70, y0: 10, x1: 110, y1: 55 });
+    layoutOverlays(camera, W, H);
+    const t = rect("thorin");
+    const m = rect("mira");
+    expect(overlayClear("thorin")).toBe(1);
+    expect(overlayClear("mira")).toBe(1);
+    // His under his base; hers beside her card — on neither creature.
+    expect(t?.y0).toBeCloseTo(86, 3);
+    expect(m?.x0).toBeCloseTo(118, 3);
+    const on = (a: typeof t, b: { x0: number; y0: number; x1: number; y1: number }) =>
+      !!a &&
+      Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0) > 4 &&
+      Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0) > 4;
+    expect(on(t, { x0: 70, y0: 10, x1: 110, y1: 55 })).toBe(false);
+    expect(on(m, { x0: 60, y0: 50, x1: 140, y1: 80 })).toBe(false);
+    // Her leader ends on the part of her card his body doesn't cover, and crosses neither him nor his plate.
+    const l = overlayDiagnostics().find((x) => x.id === "mira")?.leaderLine;
+    expect(l).toBeTruthy();
+    expect(l && Math.max(l.sy, l.ey) < 50).toBe(true);
+  });
+
+  it("never moves a plate to where it stands nearer another creature than its own", () => {
+    // Its own spot is under the HUD; under its base is 2 px above another creature (6 px under its own): it would
+    // read as that one's. Beside it instead.
+    plate("a", 100, 34, 1);
+    setOverlayBody("a", { x0: 80, y0: 40, x1: 120, y1: 60 });
+    bodyOnly("c");
+    setOverlayBody("c", { x0: 80, y0: 78, x1: 120, y1: 98 });
+    layoutOverlays(camera, W, H, [{ x0: 60, y0: 0, x1: 140, y1: 39 }]);
+    expect(overlayClear("a")).toBe(1);
+    expect(rect("a")?.x0).toBeCloseTo(128, 3);
+  });
+
+  it("keeps the plate of a token mostly on the free board though its centre is under the HUD, its leader to the part that shows (critic P7 r2 #6)", () => {
+    // 60 px wide, 25 of them left of a panel: 42 % of it shows; its centre (130) is under the panel.
+    plate("half", 130, 50, 1);
+    setOverlayBody("half", { x0: 100, y0: 55, x1: 160, y1: 75 });
+    // Hardly any of this one shows: 8 of 40 px.
+    plate("sliver", 60, 20, 1);
+    setOverlayBody("sliver", { x0: 32, y0: 25, x1: 72, y1: 45 });
+    const panel = { x0: 125, y0: 0, x1: W, y1: H };
+    const rail = { x0: 0, y0: 0, x1: 64, y1: H };
+    layoutOverlays(camera, W, H, [panel, rail]);
+    expect(overlayClear("half")).toBe(1);
+    expect(overlayClear("sliver")).toBe(0);
+    const r = rect("half");
+    expect(r && r.x1 <= 125).toBe(true);
+    // Its leader, drawn from where the plate is now, ends on the part left of the panel.
+    const l = leaderFor("half", r as NonNullable<typeof r>, { x0: 100, y0: 55, x1: 160, y1: 75 });
+    expect(l).toBeTruthy();
+    expect(l?.ex).toBeLessThan(125);
+  });
+
+  it("leader geometry: from the plate's nearest edge to a point well inside the token; a segment crossing a box", () => {
+    const l = leaderSegment({ x0: 0, y0: 0, x1: 40, y1: 10 }, { x0: 60, y0: 20, x1: 100, y1: 60 });
+    // Inset by 14 (0.35 × 40): the end at (74, 34), the start on the plate's edge nearest it.
+    expect(l).toEqual({ sx: 40, sy: 10, ex: 74, ey: 34 });
+    expect(crosses(l, { x0: 50, y0: 10, x1: 60, y1: 30 })).toBe(true);
+    expect(crosses(l, { x0: 0, y0: 30, x1: 30, y1: 60 })).toBe(false);
+    // The largest part of a box beside a cut, and what of a body shows.
+    expect(without({ x0: 0, y0: 0, x1: 100, y1: 40 }, { x0: 70, y0: -10, x1: 120, y1: 50 })).toEqual({
+      x0: 0,
+      y0: 0,
+      x1: 70,
+      y1: 40,
+    });
+    expect(
+      seenPart({ x0: -20, y0: 10, x1: 80, y1: 50 }, [{ x0: 60, y0: 0, x1: 200, y1: 100 }], 200, 100),
+    ).toEqual({ x0: 0, y0: 10, x1: 60, y1: 50 });
+  });
+
+  it("shows a compact plate — its bar alone — above its token, or low on its own face, before a full plate on another creature (critic P7 r2 #1)", () => {
+    // A goblin with another creature right behind it; the HUD takes the spots under and beside it.
+    plate("g", 100, 30, 1);
+    setOverlaySpots("g", { x0: 70, y0: 25, x1: 130, y1: 38 }, { x0: 88, y0: 32, x1: 112, y1: 38 });
+    setOverlayBody("g", { x0: 80, y0: 40, x1: 120, y1: 60 });
+    bodyOnly("n");
+    setOverlayBody("n", { x0: 60, y0: 10, x1: 140, y1: 35 });
+    const hud = [
+      { x0: 0, y0: 62, x1: W, y1: H },
+      { x0: 0, y0: 0, x1: 66, y1: H },
+      { x0: 134, y0: 0, x1: W, y1: H },
+    ];
+    layoutOverlays(camera, W, H, hud);
+    // The full plate has nowhere clear of the creature behind; the compact one fits above the goblin (its bottom 2 px
+    // into the gap, clear of the other's box).
+    expect(overlayClear("g")).toBe(1);
+    expect(overlayCompact("g")).toBe(true);
+    expect(rect("g")).toEqual({ x0: 88, y0: 32, x1: 112, y1: 38 });
+    // The creature behind reaches further down: above is taken too — onto its own face, low on it, with no leader.
+    setOverlayBody("n", { x0: 60, y0: 10, x1: 140, y1: 41 });
+    layoutOverlays(camera, W, H, hud);
+    expect(overlayCompact("g")).toBe(true);
+    const r = rect("g");
+    expect(r?.x0).toBeCloseTo(88, 3);
+    expect(((r?.y0 ?? 0) + (r?.y1 ?? 0)) / 2).toBeCloseTo(53, 3);
+    expect(overlayDiagnostics().find((d) => d.id === "g")?.leaderLine).toBeNull();
+    // With room again, the full plate comes back.
+    setOverlayBody("n", { x0: 60, y0: 0, x1: 140, y1: 10 });
+    layoutOverlays(camera, W, H, hud);
+    expect(overlayCompact("g")).toBe(false);
+    expect(rect("g")).toEqual({ x0: 70, y0: 25, x1: 130, y1: 38 });
+  });
+
+  it("measures a round token as the ellipse it is: a plate in the corner of its box (air) keeps its spot; the same corner of a card doesn't", () => {
+    // A goblin's plate reaching 10 px into the corner of the box round an ogre's coin, clear of the coin itself.
+    plate("gob", 100, 55, 1);
+    setOverlayBody("gob", { x0: 85, y0: 61, x1: 115, y1: 90 });
+    bodyOnly("ogre");
+    const box = { x0: 110, y0: 0, x1: 190, y1: 60 };
+    setOverlayBody("ogre", box, [{ kind: "ellipse", ...box }]);
+    layoutOverlays(camera, W, H);
+    expect(overlayOffset("gob")).toEqual({ dx: 0, dy: 0 });
+    expect(overlayDiagnostics().find((d) => d.id === "gob")?.tier).toBe(0);
+    // A standee's card there instead: that corner is card, and the plate moves off it.
+    setOverlayBody("ogre", box, [{ kind: "box", ...box }]);
+    layoutOverlays(camera, W, H);
+    expect(overlayOffset("gob")).not.toEqual({ dx: 0, dy: 0 });
+    expect(bodyDepth({ x0: 80, y0: 50, x1: 120, y1: 60 }, [{ kind: "ellipse", ...box }])).toBe(0);
+    expect(bodyDepth({ x0: 80, y0: 50, x1: 120, y1: 60 }, [{ kind: "box", ...box }])).toBe(10);
   });
 
   it("still shows a plate over a token when that's the only room left", () => {

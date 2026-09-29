@@ -11,11 +11,12 @@ export function visibleTabs(
   moreW: number,
   avail: number,
   active: number,
+  gap = TAB_GAP,
 ): number[] {
   const all = widths.map((_, k) => k);
-  const w = (k: number) => (widths[k] ?? 0) + TAB_GAP;
+  const w = (k: number) => (widths[k] ?? 0) + gap;
   if (all.reduce((a, k) => a + w(k), 0) <= avail) return all;
-  const room = avail - moreW - TAB_GAP;
+  const room = avail - moreW - gap;
   const shown: number[] = [];
   let used = 0;
   for (const k of all) {

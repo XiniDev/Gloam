@@ -121,7 +121,7 @@ export function SettingsPage() {
         <div className="grid gap-4 sm:grid-cols-[1fr_13rem] sm:items-end">
           <TextInput
             label="Public hostname"
-            placeholder="table.example.com"
+            placeholder="e.g. table.example.com"
             value={host}
             onChange={(e) => setHost(e.target.value.trim())}
             disabled={hostOnly}

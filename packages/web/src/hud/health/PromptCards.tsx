@@ -9,6 +9,7 @@ import { Button, IconButton } from "../../ui/Button.tsx";
 import { Segmented } from "../../ui/controls.tsx";
 import { WaxSeal } from "../../ui/ornaments.tsx";
 import { toast } from "../../ui/Toast.tsx";
+import { keepHyphenated } from "../../ui/text.tsx";
 import { PHONE_BOTTOM_BAND, useCover, useHudInsets, useIsPhone, useObstacle } from "../insets.ts";
 import { choiceOnly, type Decisions, PreviewRow } from "./HpDialog.tsx";
 
@@ -19,64 +20,33 @@ import { choiceOnly, type Decisions, PreviewRow } from "./HpDialog.tsx";
  * with the preview and what it takes editable. Over the free board like the players' roll cards; in a phone's open
  * panel, one-line strips.
  */
-export function PromptCards({ inline = false }: { inline?: boolean }) {
+export function PromptCards() {
+  const list = usePromptList();
+  if (!list.length) return null;
+  return (
+    <ol
+      aria-label="Decisions waiting for you"
+      className="pointer-events-none mx-auto flex w-full max-w-[380px] flex-col gap-2 px-2 pt-2"
+    >
+      {list.map((p) => (
+        <PromptCard key={p.id} p={p} compact />
+      ))}
+    </ol>
+  );
+}
+
+/** The DM's prompts waiting, oldest first (none for anyone else). */
+export function usePromptList(): DmPromptView[] {
   const me = useTable((s) => s.me);
   const dm = me?.role === "dm" || me?.role === "admin";
   const prompts = useHealth((s) => s.prompts);
-  const list = useMemo(() => [...prompts.values()].sort((a, b) => a.createdAt - b.createdAt), [prompts]);
-  const [all, setAll] = useState(false);
-  const top = useHudInsets((s) => s.top);
-  const banner = useHudInsets((s) => s.banner);
-  // Under the turn tracker once there is one (§8.12).
-  const tracker = useHudInsets((s) => s.tracker);
-  const left = useHudInsets((s) => s.left);
-  const right = useHudInsets((s) => s.right);
-  const phone = useIsPhone();
-  const bottom = useHudInsets((s) => s.bottom);
-  const dockOpen = useUi((s) => s.dock !== null);
-  const away = !inline && phone && dockOpen;
-  const ref = useRef<HTMLOListElement>(null);
-  const shown = dm && list.length > 0 && !away;
-  useObstacle("prompts", ref, shown && !inline);
-  useCover("prompts", ref, shown && !inline);
-  // A new prompt arrives with a soft chime (a decision is waiting) — once, from the floating stack.
-  useEffect(() => (inline ? undefined : promptArrived.on(() => void audio.play("chime"))), [inline]);
-  if (!shown) return null;
-  const max = all ? list.length : phone ? 1 : 2;
-  const cards = (
-    <ol
-      ref={ref}
-      aria-label="Decisions waiting for you"
-      className={`pointer-events-none flex w-full max-w-[380px] flex-col gap-2 ${inline ? "mx-auto px-2 pt-2" : ""}`}
-    >
-      {list.slice(0, max).map((p) => (
-        <PromptCard key={p.id} p={p} compact={inline} />
-      ))}
-      {list.length > max ? (
-        <li className="self-center">
-          <Button size="S" variant="secondary" className="pointer-events-auto" onClick={() => setAll(true)}>
-            Show {list.length - max} more
-          </Button>
-        </li>
-      ) : null}
-    </ol>
-  );
-  if (inline) return cards;
-  return (
-    <div
-      className="pointer-events-none absolute z-30 flex justify-center"
-      style={
-        phone
-          ? // A phone's cards stand above the dice button and the roll feed (under the top corners they hid the
-            // creature they're about — critic P7 r1), in thumb's reach.
-            { bottom: Math.max(bottom, PHONE_BOTTOM_BAND) + 8, left: 12, right: 12 }
-          : { top: top + banner + tracker + 8, left: left + 8, right: right + 8 }
-      }
-    >
-      {cards}
-    </div>
+  return useMemo(
+    () => (dm ? [...prompts.values()].sort((a, b) => a.createdAt - b.createdAt) : []),
+    [prompts, dm],
   );
 }
+
+export { PromptCard };
 
 function PromptCard({ p, compact }: { p: DmPromptView; compact: boolean }) {
   const [open, setOpen] = useState(!compact);
@@ -165,7 +135,7 @@ function PromptCard({ p, compact }: { p: DmPromptView; compact: boolean }) {
         <WaxSeal size={22} />
         <span className="min-w-0 flex-1">
           <span className="caps block text-12 text-brass">Your call</span>
-          <span className="block text-18 font-bold leading-tight text-bone">{p.title}</span>
+          <span className="block text-18 font-bold leading-tight text-bone">{keepHyphenated(p.title)}</span>
           {p.detail ? (
             <span className="block text-13 text-muted">
               {p.detail}

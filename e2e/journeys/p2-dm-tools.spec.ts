@@ -6,6 +6,7 @@ import {
   boardSettled,
   checkerPng,
   createScene,
+  dmSection,
   hook,
   introDone,
   req,
@@ -17,9 +18,7 @@ import { expect, test } from "../fixtures/test.ts";
 const VIEWPORT = { width: 1280, height: 800 };
 
 async function dmPanel(page: Page, tab: "Scenes" | "Library" | "Approvals"): Promise<void> {
-  const tabs = page.getByRole("tablist", { name: "DM panel sections" });
-  if (!(await tabs.isVisible())) await page.getByRole("button", { name: /^DM panel/ }).click();
-  await page.getByRole("tab", { name: tab }).click();
+  await dmSection(page, tab);
 }
 
 /** Screen point of an image pixel inside the calibration editor. */

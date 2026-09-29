@@ -7,6 +7,7 @@ import {
   boardSettled,
   camera,
   createScene,
+  dmSection,
   hook,
   introDone,
   req,
@@ -179,7 +180,7 @@ test.describe("P6 — character sheets (SHEET)", () => {
     // The DM approves it from the Approvals inbox (the rail's badge counts it)…
     await expect(admin.getByRole("button", { name: /^DM panel \(1 waiting for approval\)$/ })).toBeVisible();
     const dm = await openDock(admin, "DM panel");
-    await dm.getByRole("tab", { name: /^Approvals/ }).click();
+    await dmSection(admin, "Approvals");
     await dm.locator("[data-pending]").getByRole("button", { name: "Approve" }).click();
     // …and it becomes choosable while the picker is still open.
     const approved = picker.getByRole("button", { name: /^thorin/ });
@@ -712,7 +713,7 @@ ${JSON.stringify({ core: { name: "Wren", hp: { max: 9, current: 9 } } })}
     // The DM: the badge, the diff and the player's note; approving applies it.
     await expect(admin.getByRole("button", { name: /^DM panel \(1 waiting for approval\)$/ })).toBeVisible();
     const dmPanel = await openDock(admin, "DM panel");
-    await dmPanel.getByRole("tab", { name: /^Approvals/ }).click();
+    await dmSection(admin, "Approvals");
     const proposal = dmPanel.getByTestId("proposal");
     await expect(proposal).toHaveCount(1);
     await expect(proposal).toContainText("Mira Vell");

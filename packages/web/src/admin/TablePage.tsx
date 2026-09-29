@@ -635,7 +635,7 @@ function FirstCampaign({ onCreated }: { onCreated: () => void }) {
           label="Campaign name"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="The Lantern Crypt"
+          placeholder="e.g. The Lantern Crypt"
         />
         <Button type="submit" variant="primary" loading={busy} disabled={!name.trim()}>
           Create campaign

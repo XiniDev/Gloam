@@ -547,10 +547,10 @@
       "code": "MOV",
       "phase": "P8",
       "text": "Releasing beyond budget clamps the move to the max-reach point by default; with *Overlong moves: reject* the move is refused with an explanation.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/combat.test.ts › 'in combat a player moves only on their creature's turn, within its budget: clamped by default, refused when the house rule says reject' (20 ft then 20 more with 10 left → clamped at the max reach, cost 10; Reset move → back to the turn's start, used 0; Overlong moves: reject → refused 'That move is 40 ft; 30 ft of movement left'; the DM's move ignores the budget)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-29T04:04:36.592Z"
     },
     {
       "id": "AC-MOV-05",
@@ -558,10 +558,10 @@
       "code": "MOV",
       "phase": "P8",
       "text": "**Reset move** returns the token to its turn-start position and restores the full budget; allowed any time during the owner's turn under the default rule.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/combat.test.ts › 'in combat a player moves only on their creature's turn, within its budget: clamped by default, refused when the house rule says reject' (20 ft then 20 more with 10 left → clamped at the max reach, cost 10; Reset move → back to the turn's start, used 0; Overlong moves: reject → refused 'That move is 40 ft; 30 ft of movement left'; the DM's move ignores the budget)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-29T04:04:36.592Z"
     },
     {
       "id": "AC-MOV-06",
@@ -602,10 +602,10 @@
       "code": "MOV",
       "phase": "P8",
       "text": "Dash adds the current speed to the budget; Stand up costs half speed; crawling while prone doubles cost; speed-zero conditions block movement with a message.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/combat.test.ts › 'Dash adds its speed; standing up costs half; Prone crawls at double; a Speed-0 condition refuses the move with why' (budget 30 → 60 and the Action used; Stand up costs 15; 5 ft crawled costs 10; Grappled → refused 'Grappled (speed 0)')",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-29T04:04:36.776Z"
     },
     {
       "id": "AC-MOV-10",
@@ -679,10 +679,10 @@
       "code": "MOV",
       "phase": "P8",
       "text": "Creature-space rules are enforced for players when *Enforce creature spaces* is on (ending overlap blocked; allies passable; passable non-ally spaces cost double; other non-allies block), and ignored for DM moves.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/combat.test.ts › 'creature spaces: a player's move stops at a foe, never inside its space; the DM's ignores it'; packages/shared/src/movement/creatures.test.ts (sides; allies passed freely; non-allies block unless Tiny, Incapacitated or two sizes apart — then double cost; SRD 5.1's rule; no ending overlapped by more than half the smaller base)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-29T04:04:36.880Z"
     },
     {
       "id": "AC-MOV-17",
@@ -756,10 +756,10 @@
       "code": "WAL",
       "phase": "P3",
       "text": "Zones of each kind behave as specified; hazard triggers create DM prompts at the right moments.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p3-zones.spec.ts › 'AC-WAL-05: the DM draws every kind of zone … a hazard's trigger prompts the DM when a creature walks in'; packages/server/src/test/combat.test.ts › 'a turn's start: … the hazards it stands in to the DM, at its end too' (start- and end-of-turn triggers prompt the DM, never the player)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-29T04:04:37.661Z"
     },
     {
       "id": "AC-WAL-06",
@@ -1273,10 +1273,10 @@
       "code": "HP",
       "phase": "P8",
       "text": "A PC at 0 HP goes Unconscious and gets death save prompts at the start of each of its turns; natural 20, natural 1, 3 successes and 3 failures behave as specified.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/combat.test.ts › 'a dying character's death saving throw comes at the start of each of its turns' (DC 10 card to its player; its answer tallied); packages/shared/src/rules/consequences.test.ts › 'DC 10; a natural 20 is back with 1 HP; a 1 is two failures; three of either decides'; e2e/journeys/p7-health.spec.ts › 'players: … dropping to 0 and a death save's natural 20' (Unconscious at 0, the card, back at 1 HP)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-29T04:04:37.572Z"
     },
     {
       "id": "AC-HP-09",
@@ -1361,10 +1361,10 @@
       "code": "CMB",
       "phase": "P8",
       "text": "Identical NPCs can share one initiative roll.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/combat.test.ts › 'quick start: everyone not hidden, players' cards, the NPCs rolled at once — one roll for identical ones' (two identical goblins share one initiative); packages/shared/src/rules/combat.test.ts (groupIdentical)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-29T04:04:37.030Z"
     },
     {
       "id": "AC-CMB-04",
@@ -1405,10 +1405,10 @@
       "code": "CMB",
       "phase": "P8",
       "text": "Stop combat returns to exploration and logs a combat summary.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/combat.test.ts › 'stop: back to free movement, the summary in the campaign log and to everyone' (combat.stop → no combat, 'Combat ended after N rounds' in the campaign log, combat.stopped to the players, moves free again)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-29T04:04:37.110Z"
     },
     {
       "id": "AC-CMB-08",
@@ -1427,10 +1427,10 @@
       "code": "CMB",
       "phase": "P8",
       "text": "Effect durations tick in rounds relative to their creator's turn and expire with a notification.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/combat.test.ts › 'what lasts until a round runs out as that round comes round, and the DM and its player are told' (Frightened until round r+1 removed as that round comes round; combat.expired to the player); packages/shared/src/rules/combat.test.ts (durations from their creator's turn)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-29T04:04:37.313Z"
     },
     {
       "id": "AC-CMB-10",
@@ -1438,10 +1438,10 @@
       "code": "CMB",
       "phase": "P8",
       "text": "Ties are broken by Dex modifier, then PCs before NPCs, then name, unless a house rule says otherwise.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/shared/src/rules/combat.test.ts › 'initiative descending; ties by Dex modifier, then PCs before NPCs, then name; the unrolled last by Dex' and 'with ties left to the DM, tied creatures keep the order the DM gave them'",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-29T04:04:37.449Z"
     },
     {
       "id": "AC-CMB-11",

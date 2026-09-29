@@ -7,11 +7,11 @@ import { DiceTray } from "../hud/DiceTray.tsx";
 import { Dock } from "../hud/Dock.tsx";
 import { MapToolsPanel } from "../hud/dm/MapToolsPanel.tsx";
 import { NewSceneWizard } from "../hud/dm/NewSceneWizard.tsx";
+import { FloatingCards } from "../hud/FloatingCards.tsx";
 import { FogPanel } from "../hud/FogPanel.tsx";
 import { HoverCard } from "../hud/HoverCard.tsx";
 import { HpNumbers } from "../hud/HpNumbers.tsx";
 import { HpDialog } from "../hud/health/HpDialog.tsx";
-import { PromptCards } from "../hud/health/PromptCards.tsx";
 import { StatusPicker } from "../hud/health/StatusPicker.tsx";
 import { Intro, useIntro } from "../hud/Intro.tsx";
 import { useHudInsets } from "../hud/insets.ts";
@@ -25,7 +25,6 @@ import { MoveLabel } from "../hud/MoveLabel.tsx";
 import { PrepBanner } from "../hud/PrepBanner.tsx";
 import { QuickUnitDialog } from "../hud/QuickUnitDialog.tsx";
 import { RadialMenu } from "../hud/RadialMenu.tsx";
-import { RequestCards } from "../hud/RequestCards.tsx";
 import { RollFeed } from "../hud/RollFeed.tsx";
 import { SceneTransition } from "../hud/SceneTransition.tsx";
 import { watchPendingArt } from "../hud/sheet/art.ts";
@@ -158,8 +157,7 @@ export default function TableRoute() {
       <ActionBar />
       <RollFeed />
       <TurnTracker />
-      <RequestCards />
-      <PromptCards />
+      <FloatingCards />
       <DiceTray />
       <HpDialog />
       <StatusPicker />

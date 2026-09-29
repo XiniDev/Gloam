@@ -174,6 +174,20 @@ describe("cross-cutting security (SEC)", () => {
     await other.room.leave();
   });
 
+  it("idle keep-alive connections outlive the tunnel's: the server never closes one as the other side reuses it", async () => {
+    // cloudflared keeps its origin connections idle up to 90 s: ours stay open longer (Node's default 5 s closed them
+    // under the tunnel's feet — a 502 — and under a busy test client's, "other side closed").
+    const header = await new Promise<string | undefined>((ok, fail) => {
+      const req = httpRequest(`${t.url}/api/health`, (res) => {
+        res.resume();
+        ok(res.headers["keep-alive"] as string | undefined);
+      });
+      req.on("error", fail);
+      req.end();
+    });
+    expect(header).toBe("timeout=95");
+  });
+
   it("AC-SEC-03 CSP and security headers on every response; cookie attributes as specified", async () => {
     const paths = ["/", "/api/me", "/api/does-not-exist", "/admin", "/join", "/api/health", "/setup"];
     for (const p of paths) {

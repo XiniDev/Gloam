@@ -109,6 +109,11 @@ export async function startServer(opts: StartOptions = {}): Promise<GloamServer>
   log.info({ spells: content.spells.length }, "SRD 5.2.1 pack loaded");
 
   const httpServer = createServer();
+  // Idle keep-alive connections outlive the tunnel's (cloudflared keeps its origin connections idle up to 90 s) and
+  // any browser's: the server never closes one just as the other side reuses it — a 502 through the tunnel, "other
+  // side closed" for a client mid-request. Headers still have to arrive within their own timeout.
+  httpServer.keepAliveTimeout = 95_000;
+  httpServer.headersTimeout = 96_000;
   const cfPath = settings.get().cloudflaredPath;
   const cloudflared = cfPath ? { file: cfPath, args: [] } : config.cloudflared;
   const ctxPartial = {

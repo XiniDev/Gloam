@@ -436,3 +436,22 @@ export async function boardColour(
   const min = Math.min(c.r, c.g, c.b);
   return { ...c, lum: 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b, sat: max > 0 ? (max - min) / max : 0 };
 }
+
+/**
+ * Opens a section of the DM panel as a person would: its tab, or — when the row has no room for it (the rest sit under
+ * "+n", critic P7 r2 #12) — from the More sections menu. Opens the panel first when it's closed.
+ */
+export async function dmSection(page: Page, name: string): Promise<void> {
+  const re = new RegExp(`^${name}`);
+  const panel = page.getByRole("region", { name: "DM panel", exact: true });
+  if (!(await panel.isVisible())) await page.getByRole("button", { name: /^DM panel/ }).click();
+  const tabs = panel.getByRole("tablist", { name: "DM panel sections" });
+  await expect(tabs).toBeVisible();
+  const tab = tabs.getByRole("tab", { name: re });
+  if (await tab.count()) await tab.click();
+  else {
+    await panel.getByRole("button", { name: "More sections" }).click();
+    await page.getByRole("menuitem", { name: re }).click();
+  }
+  await expect(tabs.getByRole("tab", { name: re, selected: true })).toBeVisible();
+}

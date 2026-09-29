@@ -159,9 +159,11 @@ const W = 240;
 const GAP = 12;
 
 /**
- * Where the card stands: beside the token and its plate (never over them — they say the same), on the side that
- * covers the least of the other tokens, their plates and the HUD (critic P7 r1: it hid the goblin); right, left, below,
- * above in that order when it's a tie. Kept on the screen, below the top bar.
+ * Where the card stands: beside the token and its plate (never over them — they say the same), where it covers least:
+ * another creature's plate worst (it names that creature; critic P7 r2 #8), then the HUD, then other tokens. Each side
+ * — right, left, below, above, preferred in that order — is tried at several spots along it (slid up or down beside
+ * the token, left or right under or over it), the nearer the better when it's a tie. Kept on the screen, below the
+ * top bar.
  */
 function placeCard(tokenId: string, at: Box, w: number, h: number): { left: number; top: number } {
   const vw = window.innerWidth;
@@ -169,32 +171,46 @@ function placeCard(tokenId: string, at: Box, w: number, h: number): { left: numb
   const clampX = (x: number) => Math.min(vw - w - GAP, Math.max(GAP, x));
   const clampY = (y: number) => Math.min(vh - h - GAP, Math.max(64, y));
   const midX = (at.x0 + at.x1) / 2 - w / 2;
-  const candidates = [
-    { left: at.x1 + GAP, top: clampY(at.y0) },
-    { left: at.x0 - GAP - w, top: clampY(at.y0) },
-    { left: clampX(midX), top: at.y1 + GAP },
-    { left: clampX(midX), top: at.y0 - GAP - h },
-  ];
-  const others = [
-    ...bodyRects().filter((b) => b.id !== tokenId),
-    ...plateRects().filter((p) => p.id !== tokenId),
-  ].map((x) => x.r);
+  const midY = (at.y0 + at.y1) / 2 - h / 2;
+  // Slides along a side: from level with the token's top, both ways, up to the card's own height.
+  const slidesY = [0, 0.25, -0.25, 0.5, -0.5, 0.75, -0.75, 1, -1].map((f) => f * h);
+  const slidesX = [0, 0.25, -0.25, 0.5, -0.5].map((f) => f * w);
+  const candidates: { left: number; top: number; rank: number; slide: number }[] = [];
+  for (const dy of slidesY) {
+    candidates.push({ left: at.x1 + GAP, top: clampY(at.y0 + dy), rank: 0, slide: Math.abs(dy) });
+    candidates.push({ left: at.x0 - GAP - w, top: clampY(at.y0 + dy), rank: 1, slide: Math.abs(dy) });
+  }
+  candidates.push({ left: at.x1 + GAP, top: clampY(midY), rank: 0, slide: Math.abs(midY - at.y0) });
+  candidates.push({ left: at.x0 - GAP - w, top: clampY(midY), rank: 1, slide: Math.abs(midY - at.y0) });
+  for (const dx of slidesX) {
+    candidates.push({ left: clampX(midX + dx), top: at.y1 + GAP, rank: 2, slide: Math.abs(dx) });
+    candidates.push({ left: clampX(midX + dx), top: at.y0 - GAP - h, rank: 3, slide: Math.abs(dx) });
+  }
+  const bodies = bodyRects()
+    .filter((b) => b.id !== tokenId)
+    .map((x) => x.r);
+  const plates = plateRects()
+    .filter((p) => p.id !== tokenId)
+    .map((x) => x.r);
   const hud = plateCovers();
   const area = (a: Box, b: Box) =>
     Math.max(0, Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0)) *
     Math.max(0, Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0));
-  let best = candidates[0] as { left: number; top: number };
+  let best = candidates[0] as (typeof candidates)[number];
   let bestCost = Number.POSITIVE_INFINITY;
   for (const c of candidates) {
     const box = { x0: c.left, y0: c.top, x1: c.left + w, y1: c.top + h };
     const offscreen = box.x0 < GAP || box.x1 > vw - GAP || box.y0 < 64 || box.y1 > vh - GAP;
     // Never over its own token and plate; off the screen only if nothing else is possible.
-    const cost =
+    const cover =
       (offscreen ? 1e9 : 0) +
       area(box, at) * 1e3 +
-      others.reduce((s, r) => s + area(box, r), 0) +
-      hud.reduce((s, r) => s + 2 * area(box, r), 0);
-    if (cost < bestCost - 1) {
+      plates.reduce((s, r) => s + 40 * area(box, r), 0) +
+      hud.reduce((s, r) => s + 8 * area(box, r), 0) +
+      bodies.reduce((s, r) => s + area(box, r), 0);
+    // A tie goes to the preferred side, then the nearer spot along it.
+    const cost = cover + c.rank * 2 + c.slide * 0.01;
+    if (cost < bestCost) {
       best = c;
       bestCost = cost;
     }

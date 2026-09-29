@@ -278,7 +278,7 @@ export function SpellsTab({ ctx }: { ctx: SheetCtx }) {
             <input
               aria-label="New spell name"
               value={newSpell.name}
-              placeholder="Shield"
+              placeholder="e.g. Shield"
               onChange={(e) => setNewSpell((x) => ({ ...x, name: e.target.value }))}
               onKeyDown={(e) => e.key === "Enter" && addSpell()}
               className="h-8 min-h-[var(--touch-min)] min-w-0 flex-1 rounded-[var(--radius-control)] border border-parchment-edge/60 bg-parchment/60 px-2 text-14 text-paper-ink placeholder:text-paper-muted/70 focus:border-brass-deep focus:shadow-[var(--ring-focus)] focus:outline-none"

@@ -29,36 +29,42 @@ const overlapArea = (a: Placed, b: Placed) =>
   Math.max(0, Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0));
 
 /**
- * Where a row of numbers `w` wide stands for a token, on one side: its centre x and its bottom before rising. Beside
- * the plate, it starts level with the plate's foot; under the base, just below it.
+ * Where a row of numbers `w` wide stands for a token, on one side: its centre x and its bottom before rising. Over or
+ * beside its plate it starts within 10 px of it (critic P7 r2 #3: at most 12), beside it level with the plate's foot;
+ * under the base, just below it.
  */
 function rowAt(side: Side, tokenId: string, w: number): { cx: number; bottom: number } | null {
   const plate = plateRectOf(tokenId);
   const body = bodyRectOf(tokenId);
   const top = plate ?? body;
   if (!top) return null;
-  const u = plate && body ? { x0: Math.min(plate.x0, body.x0), x1: Math.max(plate.x1, body.x1) } : top;
   switch (side) {
     case "above":
       return { cx: (top.x0 + top.x1) / 2, bottom: top.y0 - 8 };
     case "right":
-      return { cx: u.x1 + 10 + w / 2, bottom: top.y1 };
+      return { cx: top.x1 + 10 + w / 2, bottom: top.y1 };
     case "left":
-      return { cx: u.x0 - 10 - w / 2, bottom: top.y1 };
+      return { cx: top.x0 - 10 - w / 2, bottom: top.y1 };
     case "below":
       return body ? { cx: (body.x0 + body.x1) / 2, bottom: body.y1 + 8 + LINE } : null;
   }
 }
 
+/** How far a hit's numbers keep from any other creature's plate (px): nearer, they read as that creature's. */
+const CLEAR_OF_PLATES = 24;
+
 /**
- * The first side where the row's whole rise is clear — of other tokens and their plates (a number over the ogre read
- * as the ogre's), the HUD over the board and the toasts, and on the screen — else the least covered (critic P7 r1).
+ * The first side where the row's whole rise is clear (critic P7 r2 #3) — on the screen, off the HUD (the top bar's
+ * pills, the dock, cards and the toasts), off other tokens, and at least CLEAR_OF_PLATES from every other plate —
+ * else the one that breaks those least: a number under the HUD or beside another creature's plate worst.
  */
-function chooseSide(tokenId: string, w: number): Side {
-  const others = [
-    ...bodyRects().filter((b) => b.id !== tokenId),
-    ...plateRects().filter((p) => p.id !== tokenId),
-  ].map((x) => x.r);
+function chooseSide(tokenId: string, w: number): { side: Side; box: Placed; clear: boolean } {
+  const plates = plateRects()
+    .filter((p) => p.id !== tokenId)
+    .map((x) => x.r);
+  const bodies = bodyRects()
+    .filter((b) => b.id !== tokenId)
+    .map((x) => x.r);
   const hud = [
     ...plateCovers(),
     ...[...document.querySelectorAll<HTMLElement>("[data-toast]")].map((el) => {
@@ -66,28 +72,35 @@ function chooseSide(tokenId: string, w: number): Side {
       return { x0: r.left, y0: r.top, x1: r.right, y1: r.bottom };
     }),
   ];
-  let best: Side = "above";
+  let best: { side: Side; box: Placed; clear: boolean } | null = null;
   let bestCost = Number.POSITIVE_INFINITY;
   for (const side of SIDES) {
     const at = rowAt(side, tokenId, w);
     if (!at) continue;
     const box = { x0: at.cx - w / 2, x1: at.cx + w / 2, y0: at.bottom - LINE - RISE, y1: at.bottom };
+    const near = {
+      x0: box.x0 - CLEAR_OF_PLATES,
+      x1: box.x1 + CLEAR_OF_PLATES,
+      y0: box.y0 - CLEAR_OF_PLATES,
+      y1: box.y1 + CLEAR_OF_PLATES,
+    };
     const off =
       Math.max(0, -box.x0) +
       Math.max(0, box.x1 - window.innerWidth) +
       Math.max(0, -box.y0) +
       Math.max(0, box.y1 - window.innerHeight);
     const cost =
-      others.reduce((c, r) => c + overlapArea(box, r), 0) +
-      hud.reduce((c, r) => c + 4 * overlapArea(box, r), 0) +
-      off * LINE * 4;
+      plates.reduce((c, r) => c + 4 * overlapArea(near, r), 0) +
+      bodies.reduce((c, r) => c + overlapArea(box, r), 0) +
+      hud.reduce((c, r) => c + 8 * overlapArea(box, r), 0) +
+      off * LINE * 8;
+    if (cost === 0) return { side, box, clear: true };
     if (cost < bestCost - 1) {
-      best = side;
+      best = { side, box, clear: false };
       bestCost = cost;
     }
-    if (cost === 0) break;
   }
-  return best;
+  return best ?? { side: "above", box: { x0: 0, y0: 0, x1: 0, y1: 0 }, clear: false };
 }
 
 interface Floater {
@@ -119,6 +132,8 @@ export function numbersOf(f: HpFx): { text: string; color: string }[] {
 let seq = 0;
 /** The numbers shown (tests: what floated, in which colour). */
 const shownLog: { tokenId: string; text: string; color: string }[] = [];
+/** Each hit's row: the side it took, the box its rise sweeps, and whether that was clear (tests). */
+const rowLog: { tokenId: string; side: Side; box: Placed; clear: boolean }[] = [];
 
 /**
  * Floating HP numbers (SPEC §8.11 Feedback; AC-HP-11): coloured by damage type — healing verdigris with a "+" — rising
@@ -128,6 +143,7 @@ const shownLog: { tokenId: string; text: string; color: string }[] = [];
 export function HpNumbers() {
   const [floaters, setFloaters] = useState<Floater[]>([]);
   useEffect(() => provideTestHook("hpNumbers", () => shownLog.map((x) => ({ ...x }))), []);
+  useEffect(() => provideTestHook("hpNumberRows", () => rowLog.map((x) => ({ ...x }))), []);
   const els = useRef(new Map<number, HTMLSpanElement>());
   const sides = useRef(new Map<number, Side>());
   useEffect(
@@ -174,8 +190,11 @@ export function HpNumbers() {
           x += wi + NUMBER_GAP;
         });
         const first = row[0] as Floater;
-        if (!sides.current.has(group) && w > 0 && (plateRectOf(first.tokenId) || bodyRectOf(first.tokenId)))
-          sides.current.set(group, chooseSide(first.tokenId, w));
+        if (!sides.current.has(group) && w > 0 && (plateRectOf(first.tokenId) || bodyRectOf(first.tokenId))) {
+          const c = chooseSide(first.tokenId, w);
+          sides.current.set(group, c.side);
+          if (__GLOAM_TEST__) rowLog.push({ tokenId: first.tokenId, ...c });
+        }
       }
       for (const f of floaters) {
         const el = els.current.get(f.key);

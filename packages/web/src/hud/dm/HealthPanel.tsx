@@ -10,6 +10,7 @@ import { useBoard } from "../../state/entities.ts";
 import { useUi } from "../../state/ui.ts";
 import { Button } from "../../ui/Button.tsx";
 import { toast } from "../../ui/Toast.tsx";
+import { keepHyphenated } from "../../ui/text.tsx";
 import { RestDialog } from "../health/RestDialog.tsx";
 
 const dying = (t: TokenView) => t.markers.includes("deathsaves") && !t.markers.includes("stable") && !t.dead;
@@ -118,7 +119,7 @@ export function HealthPanel() {
               {/* Two lines, so a long name keeps its width and the HP and actions line up down the list. */}
               <div className="flex items-baseline gap-3">
                 <span className="min-w-0 flex-1 truncate text-14 text-bone">
-                  {t.name}
+                  {keepHyphenated(t.name)}
                   {t.dead ? <span className="caps ml-1.5 text-12 text-danger-text">dead</span> : null}
                 </span>
                 {/* HP on one track down the list: its bar (DMs see every creature's numbers) and the numbers. */}

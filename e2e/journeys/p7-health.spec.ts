@@ -188,6 +188,26 @@ test.describe("P7 — HP, conditions and death (§8.11)", () => {
         }),
       )
       .toBeGreaterThanOrEqual(8);
+    // Where the row rose: clear of the HUD and the other creatures, at least 24 px from any other plate (nearer, it
+    // reads as that one's hit), and starting within 12 px of its own plate (critic P7 r2 #3).
+    type Box = { x0: number; y0: number; x1: number; y1: number };
+    const rose = (
+      await hook<{ tokenId: string; side: string; box: Box; clear: boolean }[]>(dave, "hpNumberRows")
+    ).at(-1);
+    expect(rose?.tokenId).toBe(hero);
+    expect(rose?.clear).toBe(true);
+    const shown = (await hook<{ id: string; clear: number; rect?: Box }[]>(dave, "overlays")).filter(
+      (o) => o.clear === 1 && o.rect,
+    );
+    const gapOf = (a: Box, b: Box) =>
+      Math.hypot(Math.max(0, b.x0 - a.x1, a.x0 - b.x1), Math.max(0, b.y0 - a.y1, a.y0 - b.y1));
+    const box = rose?.box as Box;
+    for (const o of shown.filter((x) => x.id !== hero))
+      expect(gapOf(box, o.rect as Box), `from ${o.id}'s plate`).toBeGreaterThanOrEqual(24);
+    const own = shown.find((x) => x.id === hero)?.rect as Box;
+    // (Its start: the row's foot, before it rises.)
+    const start = { ...box, y0: box.y1 - 28 };
+    expect(gapOf(start, own)).toBeLessThanOrEqual(12);
     await req(admin, "hp.apply", { targets: [hero], kind: "heal", amount: 5 });
 
     // ── Conditions from the token menu (AC-HP-04): the picker's grid, each with its name and summary. ──
@@ -213,6 +233,8 @@ test.describe("P7 — HP, conditions and death (§8.11)", () => {
     await picker.getByLabel("Search conditions and markers").fill("speed");
     await expect(picker.getByRole("button", { name: "Grappled", exact: true })).toBeVisible();
     await expect(picker.getByRole("button", { name: "Poisoned", exact: true })).toHaveCount(0);
+    // …Exhaustion too (−5 ft a level): a tile that takes you to its levels (critic P7 r2 #18).
+    await expect(picker.locator('[data-status="exhaustion"]')).toBeVisible();
     await admin.screenshot({ path: `${SHOTS}/journey-condition-picker.png` });
     await admin.getByRole("dialog").getByRole("button", { name: "Done" }).click();
     await expect
@@ -304,6 +326,9 @@ test.describe("P7 — HP, conditions and death (§8.11)", () => {
     const onSheet = sheet.getByTestId("sheet-exhaustion");
     await expect(onSheet).toContainText("Exhaustion 2");
     await expect(onSheet.locator("[data-level]")).toHaveText("2");
+    // The sheet's Speed is the one it moves at, as the token and the hover card say — its base under it (P7 r2 #11).
+    await expect(sheet.getByTestId("sheet-speed")).toHaveText("20 ft");
+    await expect(sheet.getByTestId("sheet-speed-base")).toHaveText("base 30");
     await expect
       .poll(
         async () =>
@@ -630,5 +655,14 @@ test.describe("P7 — HP, conditions and death (§8.11)", () => {
     await dave.waitForTimeout(300);
     expect((await sheetOf()).hp.current).toBe(17);
     expect((await sheetOf()).hitDice[0]?.used).toBe(2);
+    // The sheet counts them as the cards do: the one left filled, "1 / 3" (critic P7 r2 #15).
+    await dave.getByRole("button", { name: "Sheet", exact: true }).click();
+    const sheet = dave.getByTestId("sheet");
+    await expect(sheet.getByTestId("hit-dice-left")).toHaveText("1");
+    await expect(sheet.getByRole("group", { name: "d10 hit dice left: 1 of 3" })).toBeVisible();
+    await expect(sheet.getByRole("button", { name: "d10 hit dice left 1 (left)" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
   });
 });

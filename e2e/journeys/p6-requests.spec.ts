@@ -235,4 +235,129 @@ test.describe("P6 — roll requests (DICE-06)", () => {
     await blind.getByRole("button", { name: "Close the request" }).click();
     await expect(cardFor(dave)).toHaveCount(0);
   });
+
+  test("the cards over the board (critic P7 r2 #2, #7): one at a time on a phone, paged, its roll feed out from behind them; two at once under 1200 px, then Show n more; a toast under the cards, never beside them; off the creatures they're about — at the board's foot or to a side — when its top would bury them", async ({
+    admin,
+    browser,
+    gloam,
+    guardLog,
+  }) => {
+    const code = await adminAtTable(admin);
+    await introDone(admin);
+    const sceneId = await createScene(admin, {
+      name: "Crossroads",
+      mapKind: "procedural",
+      floorStyle: "stone",
+      widthFt: 60,
+      heightFt: 40,
+    });
+    await boardSettled(admin, sceneId);
+    const pia = await admitPlayer(admin, browser, gloam, guardLog, code, "Pia", {
+      viewport: { width: 390, height: 844 },
+    });
+    const dave = await admitPlayer(admin, browser, gloam, guardLog, code, "Dave", {
+      viewport: { width: 1024, height: 768 },
+    });
+    const idOf = async (p: Page) => (await hook<{ userId: string }>(p, "me")).userId;
+    for (const [p, name] of [
+      [pia, "Wren"],
+      [dave, "Brin"],
+    ] as const)
+      await req(admin, "actor.quickCreate", {
+        name,
+        classLevel: "Fighter 1",
+        hpMax: 12,
+        ac: 15,
+        ownerUserId: await idOf(p),
+      });
+    await expect.poll(async () => (await tokens(admin)).length).toBe(2);
+    const all = await tokens(admin);
+    const wren = (all.find((t) => t.name === "Wren") as Token).id;
+    const brin = all.find((t) => t.name === "Brin") as Token;
+    for (const p of [pia, dave]) await boardSettled(p, sceneId);
+
+    // Pia rolls something of her own first: her feed has a card to show.
+    await req(pia, "dice.roll", { formula: "1d20" });
+    await expect(pia.getByTestId("roll-feed")).toBeVisible();
+
+    // Three requests, each for both.
+    for (const ability of ["str", "dex", "wis"])
+      await req(admin, "request.create", { targets: [wren, brin.id], type: "check", ability });
+
+    // A phone: one card at a time, oldest first, paged; the feed's pill steps back from behind it.
+    const groupFor = (p: Page) => p.getByTestId("request-group");
+    await expect(pia.getByTestId("card-page")).toHaveText("1 of 3");
+    await expect(groupFor(pia)).toHaveCount(1);
+    await expect(groupFor(pia)).toContainText("Strength check");
+    await pia.getByRole("button", { name: "Next card" }).click();
+    await expect(pia.getByTestId("card-page")).toHaveText("2 of 3");
+    await expect(groupFor(pia)).toContainText("Dexterity check");
+    await expect(pia.getByTestId("roll-feed")).toHaveCount(0);
+    await pia.screenshot({ path: `${SHOTS}/cards-phone.png` });
+    // Answered (the card shows how it went, then steps aside): the pager counts one fewer, the feed comes back when
+    // the last card goes.
+    await groupFor(pia).getByRole("button", { name: "Skip", exact: true }).click();
+    await expect(pia.getByTestId("card-page")).toHaveText(/of 2$/, { timeout: 15_000 });
+
+    // Under 1200 px: two at once, then "Show 1 more".
+    await expect(groupFor(dave)).toHaveCount(2);
+    await dave.getByRole("button", { name: "Show 1 more" }).click();
+    await expect(groupFor(dave)).toHaveCount(3);
+
+    // A toast while the cards stand at the top: under them, never in their band (critic P7 r2 #2).
+    const stack = dave.getByTestId("floating-cards").locator("ol");
+    await hook(dave, "toast", "Brin's rope is fraying");
+    const toastEl = dave.locator("[data-toast]").filter({ hasText: "fraying" });
+    await expect(toastEl).toBeVisible();
+    await dave.waitForTimeout(400);
+    const tb = (await toastEl.boundingBox()) as { x: number; y: number; width: number; height: number };
+    const cb = (await stack.boundingBox()) as { x: number; y: number; width: number; height: number };
+    const apart = tb.x >= cb.x + cb.width || tb.x + tb.width <= cb.x || tb.y >= cb.y + cb.height;
+    expect(apart, `toast ${JSON.stringify(tb)} · cards ${JSON.stringify(cb)}`).toBe(true);
+    await dave.screenshot({ path: `${SHOTS}/cards-toast.png` });
+
+    // Folded back to two.
+    await dave.getByRole("button", { name: "Show fewer" }).click();
+    await expect(groupFor(dave)).toHaveCount(2);
+    // Where the cards stand is worked out as they come and go: Brin framed low on Dave's board, the next card keeps
+    // the stack at the top; framed right under the top, where the cards stand, the next one takes the stack to the
+    // board's foot instead of burying him.
+    type R = { x0: number; y0: number; x1: number; y1: number };
+    const body = async () =>
+      ((await hook<{ id: string; token: R | null }[]>(dave, "overlays")).find((o) => o.id === brin.id)
+        ?.token ?? null) as R | null;
+    const frame = async (dy: number) => {
+      await camera(dave, { pitchDeg: 90, distance: 45, target: [brin.pos.x, brin.pos.y + dy], ms: 0 });
+      await expect.poll(async () => (await body())?.y0 ?? -1).toBeGreaterThan(0);
+      return (await body()) as R;
+    };
+    const low = await frame(-8);
+    expect(low.y0).toBeGreaterThan(768 / 2);
+    await req(admin, "request.create", { targets: [brin.id], type: "save", ability: "con" });
+    await expect(groupFor(dave).filter({ hasText: "Constitution save" })).toHaveCount(0);
+    await expect(dave.getByRole("button", { name: "Show 2 more" })).toBeVisible();
+    // (At the top, clear of him — centred or to a side, wherever it stood: it moves only for a clearly better place.)
+    await expect(dave.getByTestId("floating-cards")).toHaveAttribute("data-anchor", "top");
+    const atTop = (await stack.boundingBox()) as { x: number; y: number; width: number; height: number };
+    expect(atTop.y + atTop.height).toBeLessThan(low.y0);
+    const high = await frame(8);
+    expect(high.y1).toBeLessThan(768 / 2);
+    await req(admin, "request.create", { targets: [brin.id], type: "save", ability: "wis" });
+    await expect(dave.getByRole("button", { name: "Show 3 more" })).toBeVisible();
+    // Off him: to the board's foot or to a side of its top, whichever covers least.
+    await expect
+      .poll(async () => {
+        const c = dave.getByTestId("floating-cards");
+        return `${await c.getAttribute("data-anchor")}/${await c.getAttribute("data-align")}`;
+      })
+      .not.toBe("top/center");
+    const moved = (await stack.boundingBox()) as { x: number; y: number; width: number; height: number };
+    const clear =
+      moved.y > high.y1 ||
+      moved.y + moved.height < high.y0 ||
+      moved.x > high.x1 ||
+      moved.x + moved.width < high.x0;
+    expect(clear, `the stack ${JSON.stringify(moved)} clear of Brin ${JSON.stringify(high)}`).toBe(true);
+    await dave.screenshot({ path: `${SHOTS}/cards-moved.png` });
+  });
 });

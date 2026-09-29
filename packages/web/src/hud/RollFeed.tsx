@@ -17,6 +17,7 @@ import { IconButton } from "../ui/Button.tsx";
 import { WaxSeal } from "../ui/ornaments.tsx";
 import { Portrait } from "../ui/Portrait.tsx";
 import { D20Spinner } from "../ui/Spinner.tsx";
+import { useCardsAtBottom } from "./FloatingCards.tsx";
 import { useHudInsets, useIsPhone, useObstacle } from "./insets.ts";
 import { useAssetImage } from "./useAssetImage.ts";
 
@@ -38,7 +39,9 @@ export function RollFeed() {
   const phone = useIsPhone();
   // A phone's open panel is a page over the board: the feed waits under it (a roll from the panel closes it first).
   const panel = useUi((s) => s.dock !== null);
-  if (feed.length === 0 || (phone && panel)) return null;
+  // On a phone, cards holding the bottom band stand where its pill would peek out (critic P7 r2 #7).
+  const cards = useCardsAtBottom((s) => s.on);
+  if (feed.length === 0 || (phone && (panel || cards))) return null;
   return phone ? <PhoneFeed feed={feed} /> : <DesktopFeed feed={feed} />;
 }
 

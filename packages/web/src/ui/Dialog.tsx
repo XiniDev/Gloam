@@ -4,6 +4,7 @@ import { type ReactNode, type RefObject, useEffect, useId, useLayoutEffect, useR
 import { createPortal } from "react-dom";
 import { IconButton } from "./Button.tsx";
 import { Filigree } from "./ornaments.tsx";
+import { keepHyphenated } from "./text.tsx";
 
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -42,6 +43,9 @@ export function Dialog({
     if (!open) return;
     opener.current = document.activeElement;
     const t = window.setTimeout(() => {
+      // Never away from where the person already is in it (a busy frame can hold the timer back past their first
+      // click: focus pulled back to the first field sent their typing there — "12" then "9" read "129").
+      if (ref.current?.contains(document.activeElement)) return;
       const first =
         ref.current?.querySelector<HTMLElement>("[data-autofocus]") ??
         ref.current?.querySelector<HTMLElement>(FOCUSABLE);
@@ -176,7 +180,7 @@ function DialogCard({
       <div className="flex shrink-0 items-start justify-between gap-4 px-6 pt-6">
         <div className="min-w-0">
           <h2 id={titleId} className={`text-22 ${parchment ? "text-paper-ink" : "text-bone"}`}>
-            {title}
+            {keepHyphenated(title)}
           </h2>
           {description ? (
             <p id={descId} className={`mt-1.5 text-14 ${parchment ? "text-paper-muted" : "text-muted"}`}>
@@ -203,8 +207,8 @@ function DialogCard({
 }
 
 /**
- * A dialog's scrolling body: a soft shadow at an edge while there's more to scroll that way (a slider or field under
- * the fold is never a secret).
+ * A dialog's scrolling body: at an edge with more to scroll that way, a hairline and the content fading into the
+ * surface (a slider or field under the fold is never a secret, and never sliced).
  */
 function DialogBody({ children }: { children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -232,16 +236,24 @@ function DialogBody({ children }: { children: ReactNode }) {
       <div ref={ref} className="min-h-0 flex-1 overflow-y-auto px-6 pb-2 pt-4">
         {children}
       </div>
+      {/* Where the body scrolls under the title and the buttons: a hairline, and the content fading into the surface
+          over 16 px — never cut hard through a row (critic P7 r2 #9). */}
       <span
         aria-hidden
-        className={`pointer-events-none absolute inset-x-0 top-0 h-6 bg-gradient-to-b from-[var(--edge-shade)] to-transparent transition-opacity duration-[var(--dur-fast)] ${more.up ? "opacity-100" : "opacity-0"}`}
-      />
+        className={`pointer-events-none absolute inset-x-0 top-0 transition-opacity duration-[var(--dur-fast)] ${more.up ? "opacity-100" : "opacity-0"}`}
+      >
+        <span className="block h-px bg-[var(--border)]" />
+        <span className="block h-4 bg-gradient-to-b from-[var(--surface)] to-transparent" />
+      </span>
       <span
         aria-hidden
         data-testid="dialog-more-below"
         data-more={more.down}
-        className={`pointer-events-none absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-[var(--edge-shade)] to-transparent transition-opacity duration-[var(--dur-fast)] ${more.down ? "opacity-100" : "opacity-0"}`}
-      />
+        className={`pointer-events-none absolute inset-x-0 bottom-0 transition-opacity duration-[var(--dur-fast)] ${more.down ? "opacity-100" : "opacity-0"}`}
+      >
+        <span className="block h-4 bg-gradient-to-t from-[var(--surface)] to-transparent" />
+        <span className="block h-px bg-[var(--border)]" />
+      </span>
     </div>
   );
 }

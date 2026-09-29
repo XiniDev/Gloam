@@ -655,6 +655,10 @@ test.describe("P2 — tokens (TOK)", () => {
       offset: { dx: number; dy: number };
       leader: boolean;
       fade?: { clear: number; target: number; a: number };
+      tier: number;
+      compact: boolean;
+      parts: (R & { kind: "ellipse" | "box" })[] | null;
+      leaderLine: { sx: number; sy: number; ex: number; ey: number } | null;
     };
     const overlays = () => hook<O[]>(admin, "overlays");
     // Settled: frames have been drawn since the view changed and the board has gone idle again, every plate is laid
@@ -676,6 +680,69 @@ test.describe("P2 — tokens (TOK)", () => {
       return ready && same;
     };
     const overlap = (a: R, b: R) => a.x0 < b.x1 && a.x1 > b.x0 && a.y0 < b.y1 && a.y1 > b.y0;
+    // How deep two boxes overlap (the smaller side of their intersection).
+    const depth = (a: R, b: R) =>
+      Math.max(
+        0,
+        Math.min(Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0), Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0)),
+      );
+    type L = { sx: number; sy: number; ex: number; ey: number };
+    // Where a segment runs through a box's inside, as [enter, leave] along it, or null.
+    const clip = (l: L, r: R): [number, number] | null => {
+      if (r.x0 >= r.x1 || r.y0 >= r.y1) return null;
+      const dx = l.ex - l.sx;
+      const dy = l.ey - l.sy;
+      let t0 = 0;
+      let t1 = 1;
+      for (const [p, q] of [
+        [-dx, l.sx - r.x0],
+        [dx, r.x1 - l.sx],
+        [-dy, l.sy - r.y0],
+        [dy, r.y1 - l.sy],
+      ] as const) {
+        if (p === 0) {
+          if (q <= 0) return null;
+          continue;
+        }
+        const t = q / p;
+        if (p < 0) t0 = Math.max(t0, t);
+        else t1 = Math.min(t1, t);
+        if (t0 >= t1) return null;
+      }
+      return [t0, t1];
+    };
+    const shrink = (r: R, by: number): R => ({ x0: r.x0 + by, y0: r.y0 + by, x1: r.x1 - by, y1: r.y1 - by });
+    // A token's parts as the layout has them: a round rim is the ellipse its box holds (the box's corners are air).
+    type Part = R & { kind: "ellipse" | "box" };
+    const partDepth = (q: R, p: Part) => {
+      if (p.kind === "box") return depth(q, p);
+      const cx = (p.x0 + p.x1) / 2;
+      const cy = (p.y0 + p.y1) / 2;
+      const rx = (p.x1 - p.x0) / 2;
+      const ry = (p.y1 - p.y0) / 2;
+      const nx = Math.min(q.x1, Math.max(q.x0, cx));
+      const ny = Math.min(q.y1, Math.max(q.y0, cy));
+      const d = Math.hypot((nx - cx) / rx, (ny - cy) / ry);
+      return d >= 1 ? 0 : (1 - d) * Math.min(rx, ry);
+    };
+    const crossesPart = (l: L, p: Part, rim: number) => {
+      if (p.kind === "box") return clip(l, shrink(p, rim)) !== null;
+      const cx = (p.x0 + p.x1) / 2;
+      const cy = (p.y0 + p.y1) / 2;
+      const rx = (p.x1 - p.x0) / 2 - rim;
+      const ry = (p.y1 - p.y0) / 2 - rim;
+      if (rx <= 0 || ry <= 0) return false;
+      const ax = (l.sx - cx) / rx;
+      const ay = (l.sy - cy) / ry;
+      const dx = (l.ex - cx) / rx - ax;
+      const dy = (l.ey - cy) / ry - ay;
+      const t = Math.min(1, Math.max(0, -(ax * dx + ay * dy) / Math.max(1e-9, dx * dx + dy * dy)));
+      return Math.hypot(ax + t * dx, ay + t * dy) < 1;
+    };
+    // The layout lets a plate reach 4 px into another token's box (its corner is air); these boxes are the meshes'
+    // projected bounds, a few px off the silhouettes the layout measures — so 4 + 4 px of slack here.
+    const RIM = 8;
+    const tiers: string[] = [];
     for (const view of [
       { pitchDeg: 90, distance: 75 },
       { pitchDeg: 55, distance: 70 },
@@ -733,39 +800,94 @@ test.describe("P2 — tokens (TOK)", () => {
           Math.max(1, (b.x1 - b.x0) * (b.y1 - b.y0));
         const cxo = (own.x0 + own.x1) / 2;
         const cyo = (own.y0 + own.y1) / 2;
-        const sitsOn = all.some(
-          (b) =>
-            b.id !== o.id &&
-            b.token &&
-            (share(own, b.token) > 0.5 ||
-              (cxo > b.token.x0 && cxo < b.token.x1 && cyo > b.token.y0 && cyo < b.token.y1)),
-        );
+        // Its own spot sat on another token (reached into its footprint past the rim; P7 r2 #1), or across a leader
+        // placed before it.
+        const sitsOn = all.some((b) => b.id !== o.id && b.token && depth(own, b.token) > 1);
+        const onLeader = shown.some((b) => b.id !== o.id && b.leaderLine && clip(b.leaderLine, own));
         expect(
-          takenBy || offScreen || underHud || sitsOn,
+          takenBy || offScreen || underHud || sitsOn || onLeader,
           `${label}: moved though its own spot was free`,
         ).toBe(true);
         const pw = own.x1 - own.x0;
         const ph = own.y1 - own.y0 + pad;
-        expect(Math.abs(dx), label).toBeLessThanOrEqual(pw + 0.5);
+        // Beside its token at mid-height (8 px off its side as the layout measures it — these boxes are a few px off
+        // that, as under its base below), level with it.
+        const side =
+          ((plate.x0 >= tok.x1 - 3 && plate.x0 <= tok.x1 + 16) ||
+            (plate.x1 <= tok.x0 + 3 && plate.x1 >= tok.x0 - 16)) &&
+          (plate.y0 + plate.y1) / 2 > tok.y0 &&
+          (plate.y0 + plate.y1) / 2 < tok.y1;
+        // Otherwise no further aside than its width, or than keeps it over its token.
+        const overIt = Math.min(plate.x1, tok.x1) - Math.max(plate.x0, tok.x0) > 0;
+        expect(side || overIt || Math.abs(dx) <= pw + 0.5, `${label}: dx ${dx}`).toBe(true);
         expect(dy, label).toBeGreaterThanOrEqual(-2 * ph - 0.5);
         // Under its base: a few px below its token's lowest point (the layout's 6-px gap, measured from the token's
         // silhouette; this rectangle is the meshes' projected boxes, a couple of px off it) — nudged sideways at most
         // as far as the other spots (checked above).
         const below = plate.y0 >= tok.y1 - 3 && plate.y0 <= tok.y1 + 12;
         const broughtDown = (offScreen || underHud) && plate.y0 < tok.y1;
+        // Compact (its bar alone, the last resort before a plate on another creature): low on its own face.
+        const pcx = (plate.x0 + plate.x1) / 2;
+        const pcy = (plate.y0 + plate.y1) / 2;
+        const onFace = o.compact && pcx > tok.x0 && pcx < tok.x1 && pcy > tok.y0 && pcy < tok.y1;
         if (dy > 0.5)
           expect(
-            below || broughtDown,
-            `${label}: down only under its base, or onto its own token (plate ${JSON.stringify(plate)}, token ${JSON.stringify(tok)}, dx ${dx})`,
+            below || broughtDown || side || onFace,
+            `${label}: down only under its base, beside it, or onto its own token (plate ${JSON.stringify(plate)}, token ${JSON.stringify(tok)}, dx ${dx})`,
           ).toBe(true);
         const onItsToken = overlap(plate, tok);
         const endUnderHud = covers.some((c) => overlap(tok, c));
-        if (!onItsToken && !endUnderHud)
+        // Still just over its token (nudged a little sideways, across its middle): no leader needed to say whose.
+        const tcx = (tok.x0 + tok.x1) / 2;
+        const justOver =
+          plate.x0 <= tcx && plate.x1 >= tcx && plate.y1 <= tok.y0 + 4 && plate.y1 >= tok.y0 - 16;
+        if (!onItsToken && !endUnderHud && !justOver)
           expect(o.leader, `${label}: a moved plate points back to its token`).toBe(true);
       }
       for (const [i, a] of shown.entries())
         for (const b of shown.slice(i + 1))
           expect(overlap(a.rect as R, b.rect as R), `${JSON.stringify(view)} ${a.id} × ${b.id}`).toBe(false);
+      // Placed at the strictest tier (P7 r2 #1): on no other token, its leader through no other token — up to where it
+      // reaches its own, and all the way for one in front of it — and through no plate.
+      for (const o of shown) {
+        const tok = o.token as R;
+        const l = o.leaderLine;
+        if (l)
+          // (A plate placed anywhere free, tier 3, may lie over a leader: it had nowhere else.)
+          for (const b of shown)
+            if (b.id !== o.id && o.tier < 3 && b.tier < 3)
+              expect(
+                clip(l, shrink(b.rect as R, 1)),
+                `${JSON.stringify(view)} ${o.id}'s leader × ${b.id}'s plate`,
+              ).toBe(null);
+        if (o.tier !== 0) continue;
+        for (const b of all) {
+          if (b.id === o.id || !b.token) continue;
+          const parts = b.parts ?? [{ kind: "box" as const, ...b.token }];
+          expect(
+            Math.max(...parts.map((p) => partDepth(o.rect as R, p))),
+            `${JSON.stringify(view)} ${o.id}'s plate on ${b.id}`,
+          ).toBeLessThanOrEqual(RIM);
+          if (!l) continue;
+          const enters = clip(l, tok);
+          const inFront = b.token.y1 > tok.y1 + 1;
+          const reach =
+            !inFront && enters
+              ? { ...l, ex: l.sx + (l.ex - l.sx) * enters[0], ey: l.sy + (l.ey - l.sy) * enters[0] }
+              : l;
+          expect(
+            parts.some((p) => crossesPart(reach, p, RIM)),
+            `${JSON.stringify(view)} ${o.id}'s leader × ${b.id}`,
+          ).toBe(false);
+        }
+      }
+      tiers.push(
+        `${JSON.stringify(view)}: ${shown.map((o) => `${o.tier}${o.compact ? "c" : ""}`).join(" ")}`,
+      );
+      await test.info().attach(`view-${view.pitchDeg}-${view.distance}`, {
+        body: await admin.screenshot(),
+        contentType: "image/png",
+      });
       // Settled stays settled: a burst of ordinary redraws changes no verdict and moves no fade.
       await hook(admin, "redraw", 600);
       await admin.waitForTimeout(700);
@@ -777,5 +899,6 @@ test.describe("P2 — tokens (TOK)", () => {
         expect(o.fade?.a, o.id).toBe(before.fade?.a);
       }
     }
+    test.info().annotations.push({ type: "tiers", description: tiers.join(" · ") });
   });
 });

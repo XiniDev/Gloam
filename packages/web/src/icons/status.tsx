@@ -30,7 +30,7 @@ export function StatusIcon({
   id: string;
   size?: number;
   badge?: boolean;
-  /** Exhaustion's level: its digit in a notch over the badge's corner (Appendix G), reaching past it at 12 px. */
+  /** Exhaustion's level: its digit in a notch inside the badge's corner (Appendix G), rounded as the badge is. */
   level?: number | undefined;
   /** A DM's custom marker: the icon it borrows and its own badge colour. */
   glyph?: string | undefined;
@@ -51,12 +51,12 @@ export function StatusIcon({
     );
   const name = label ?? (id.startsWith("custom:") ? id.slice(7).replaceAll("-", " ") : src.name);
   const notched = badge && level !== undefined && level > 0;
-  const cls = `inline-grid shrink-0 place-items-center ${badge ? "rounded-chip text-bone" : ""} ${notched ? "relative mr-1" : ""} ${className}`;
+  const cls = `inline-grid shrink-0 place-items-center ${badge ? "rounded-chip text-bone" : ""} ${notched ? "relative overflow-hidden" : ""} ${className}`;
   const notch = notched ? (
     <span
       aria-hidden
       data-level={level}
-      className="tabular absolute -bottom-0.5 -right-1 grid h-[14px] min-w-3 place-items-center rounded-chip bg-ink-950 text-12 leading-none text-bone"
+      className="tabular absolute bottom-0 right-0 grid h-[14px] min-w-3 place-items-center rounded-tl-chip bg-ink-950 px-0.5 text-12 leading-none text-bone"
     >
       {level}
     </span>

@@ -3,20 +3,12 @@ import type { RequestCard } from "@gloam/shared/protocol";
 import { ArrowDown, ArrowUp, ChevronUp, Heart, SkipForward, Skull, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { create } from "zustand";
-import { audio } from "../audio/engine.ts";
 import { D20Icon, HandDieIcon } from "../icons/dice.tsx";
-import { requestArrived, respondRequest, useSheets } from "../net/sheets.ts";
-import { useUi } from "../state/ui.ts";
+import { respondRequest, useSheets } from "../net/sheets.ts";
 import { Button, IconButton } from "../ui/Button.tsx";
 import { toast } from "../ui/Toast.tsx";
-import {
-  makeRoomForDice,
-  PHONE_BOTTOM_BAND,
-  useCover,
-  useHudInsets,
-  useIsPhone,
-  useObstacle,
-} from "./insets.ts";
+import { keepHyphenated } from "../ui/text.tsx";
+import { makeRoomForDice } from "./insets.ts";
 
 /** An answered card stays this long to show its result, then steps aside (the request itself stays open). */
 const ANSWERED_MS = 6000;
@@ -211,7 +203,7 @@ function Card({ rows, compact }: { rows: RequestCard[]; compact: boolean }) {
   const heading = (
     <span className="min-w-0 flex-1">
       <span className="caps block text-12 text-brass">
-        The DM asks{rows.length === 1 ? ` · ${first.targetName}` : ""}
+        The DM asks{rows.length === 1 ? <> · {keepHyphenated(first.targetName)}</> : null}
       </span>
       <span className="block truncate text-18 font-bold text-bone">{first.label}</span>
     </span>
@@ -338,19 +330,11 @@ function answeredAt(key: string): number {
   return at;
 }
 
-/**
- * Roll-request cards (SPEC §8.9 Roll requests, AC-DICE-06): each request that asks creatures this person controls gets a
- * card — the label, the DC when shown — with a line per creature: its formula from the sheet, Roll, Enter physical
- * roll and Skip. Centred over the free board under the top bar, between the toolbar and the dock (never over a panel);
- * on a phone with a panel open, at the top of the panel itself as one-line strips (`inline`). One card on a phone,
- * three on a larger screen, then "Show n more".
- */
-export function RequestCards({ inline = false }: { inline?: boolean }) {
+/** The requests to answer, one group per request, in the order they came (answered and set-aside ones gone). */
+export function useRequestGroups(): RequestCard[][] {
   const cards = useSheets((s) => s.cards);
   const dismissed = useDismissed((s) => s.keys);
-  const [all, setAll] = useState(false);
-  // Grouped by request, in the order they came.
-  const shown = useMemo(() => {
+  return useMemo(() => {
     const groups = new Map<string, RequestCard[]>();
     for (const c of cards.values()) {
       if (!c.open || dismissed.has(`${c.requestId}|${c.targetId}`)) continue;
@@ -360,55 +344,26 @@ export function RequestCards({ inline = false }: { inline?: boolean }) {
     }
     return [...groups.values()];
   }, [cards, dismissed]);
-  const top = useHudInsets((s) => s.top);
-  const banner = useHudInsets((s) => s.banner);
-  // Under the turn tracker once there is one (§8.12).
-  const tracker = useHudInsets((s) => s.tracker);
-  const left = useHudInsets((s) => s.left);
-  const right = useHudInsets((s) => s.right);
-  const phone = useIsPhone();
-  const bottom = useHudInsets((s) => s.bottom);
-  const dockOpen = useUi((s) => s.dock !== null);
-  // A phone's open panel takes these in; the floating stack steps back.
-  const away = !inline && phone && dockOpen;
-  const ref = useRef<HTMLOListElement>(null);
-  useObstacle("requests", ref, shown.length > 0 && !inline && !away);
-  useCover("requests", ref, shown.length > 0 && !inline && !away);
-  // A new card arrives with a soft chime (the DM is waiting on it) — once, from the floating stack.
-  useEffect(() => (inline ? undefined : requestArrived.on(() => void audio.play("chime"))), [inline]);
-  if (!shown.length || away) return null;
-  const max = all ? shown.length : phone ? 1 : 3;
-  const list = (
-    <ol
-      ref={ref}
-      aria-label="Rolls the DM asked for"
-      className={`pointer-events-none flex w-full max-w-[340px] flex-col gap-2 ${inline ? "mx-auto px-2 pt-2" : ""}`}
-    >
-      {shown.slice(0, max).map((rows) => (
-        <Card key={(rows[0] as RequestCard).requestId} rows={rows} compact={inline} />
-      ))}
-      {shown.length > max ? (
-        <li className="self-center">
-          <Button size="S" variant="secondary" className="pointer-events-auto" onClick={() => setAll(true)}>
-            Show {shown.length - max} more
-          </Button>
-        </li>
-      ) : null}
-    </ol>
-  );
-  if (inline) return list;
+}
+
+export { Card as RequestGroupCard };
+
+/**
+ * Roll-request cards (SPEC §8.9 Roll requests, AC-DICE-06) in a phone's open panel: at its top, as one-line strips
+ * that open on a tap (the page underneath keeps its room). Over the board they float with the DM's prompts
+ * (FloatingCards).
+ */
+export function RequestCards() {
+  const shown = useRequestGroups();
+  if (!shown.length) return null;
   return (
-    <div
-      className="pointer-events-none absolute z-30 flex justify-center"
-      style={
-        phone
-          ? // A phone's cards stand above the dice button and the roll feed (under the top corners they hid the
-            // creature they're about — critic P7 r1), in thumb's reach.
-            { bottom: Math.max(bottom, PHONE_BOTTOM_BAND) + 8, left: 12, right: 12 }
-          : { top: top + banner + tracker + 8, left: left + 8, right: right + 8 }
-      }
+    <ol
+      aria-label="Rolls the DM asked for"
+      className="pointer-events-none mx-auto flex w-full max-w-[340px] flex-col gap-2 px-2 pt-2"
     >
-      {list}
-    </div>
+      {shown.map((rows) => (
+        <Card key={(rows[0] as RequestCard).requestId} rows={rows} compact />
+      ))}
+    </ol>
   );
 }

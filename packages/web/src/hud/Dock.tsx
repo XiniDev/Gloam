@@ -128,8 +128,8 @@ export function Dock() {
               </IconButton>
             </nav>
           ) : null}
-          {page ? <RequestCards inline /> : null}
-          {page ? <PromptCards inline /> : null}
+          {page ? <RequestCards /> : null}
+          {page ? <PromptCards /> : null}
           {/* Resize handle on the panel's left edge. */}
           <div
             hidden={page}

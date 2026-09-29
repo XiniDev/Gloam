@@ -1,5 +1,5 @@
 import type { ActorView } from "@gloam/shared/protocol";
-import { statusName, statusSummary } from "@gloam/shared/rules";
+import { effectiveSpeed, statusName, statusSummary } from "@gloam/shared/rules";
 import { parseCustomMarkers } from "@gloam/shared/state";
 import {
   ChevronDown,
@@ -493,7 +493,7 @@ function SheetHeader({ ctx, onImport }: { ctx: SheetCtx; onImport: (m: "json" | 
           </Rollable>
         </Stat>
         <Stat label="Speed">
-          <span className="tabular text-16 font-bold">{c.speeds.walk} ft</span>
+          <SpeedValue core={c} />
         </Stat>
         <Stat label="Prof">
           <span className="tabular text-16 font-bold">{signed(d.proficiencyBonus)}</span>
@@ -540,6 +540,35 @@ function Stat({ label, children }: { label: string; children: React.ReactNode })
       <dt className="caps text-12 text-paper-muted">{label}</dt>
       <dd className="flex min-h-8 items-center justify-center text-paper-ink">{children}</dd>
     </div>
+  );
+}
+
+/**
+ * Its walking speed as it moves now — after its conditions (Speed 0) and Exhaustion (−5 ft a level; §19.4, AC-HP-05),
+ * as its token and hover card say (critic P7 r2 #11) — with its base speed under it when they differ.
+ */
+function SpeedValue({ core: c }: { core: SheetCtx["sheet"]["core"] }) {
+  const now = effectiveSpeed(c.speeds.walk, c.conditions, c.exhaustion);
+  const why = [
+    ...c.conditions
+      .filter((id) => effectiveSpeed(30, [id], 0) === 0)
+      .map((id) => `${statusName(id)}: Speed 0`),
+    ...(c.exhaustion > 0 ? [`Exhaustion ${c.exhaustion}: −${5 * c.exhaustion} ft`] : []),
+  ].join(" · ");
+  return (
+    <span
+      className="flex flex-col items-center leading-tight"
+      title={now !== c.speeds.walk ? why : undefined}
+    >
+      <span className="tabular text-16 font-bold" data-testid="sheet-speed">
+        {now} ft
+      </span>
+      {now !== c.speeds.walk ? (
+        <span className="tabular text-12 text-paper-muted" data-testid="sheet-speed-base">
+          base {c.speeds.walk}
+        </span>
+      ) : null}
+    </span>
   );
 }
 

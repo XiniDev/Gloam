@@ -42,15 +42,27 @@ import { withFog } from "../vision/fogMaterial.ts";
 import { alphaFromAlphaChannel } from "./alphaChannel.ts";
 import { AUTO_COIN_PITCH, approach, crossfadeStep } from "./crossfade.ts";
 import {
+  type BodyPart,
+  leaderFor,
   overlayClear,
+  overlayCompact,
   overlayOffset,
   PRIORITY,
   registerOverlay,
   setOverlayBody,
-  underCover,
+  setOverlaySpots,
 } from "./declutter.ts";
 import { canRaise, heightLabel } from "./elevation.ts";
-import { CARD_T, cardEdge, cylinder, plane, standeeFoot, torus } from "./geometries.ts";
+import {
+  baseTop,
+  baseTopTexture,
+  CARD_T,
+  cardEdge,
+  cylinder,
+  plane,
+  standeeFoot,
+  torus,
+} from "./geometries.ts";
 import { hiddenBadgeTexture, initialsTexture } from "./glyphs.ts";
 import { type MiniInstance, useAssetMeta, useAssetTexture, useMini } from "./hooks.ts";
 import {
@@ -67,10 +79,14 @@ import { atlasCell, customCell, statusAtlas } from "./statusAtlas.ts";
 
 /** Pitch above which Auto mode shows the coin (SPEC §8.5, AC-TOK-11) and the crossfade time. */
 
+/** A base's side band, and its top's bevel over it: 0.2 ft in all, as thick as a coin. */
 const BASE_H = 0.14;
-/** A standee's foot: its depth (front to back) and height, ft. */
-const FOOT_D = 0.9;
-const FOOT_H = 0.14;
+const BEVEL_H = 0.06;
+/** Where what stands on a base stands (a mini's feet, a standee's foot): the top of its flat middle. */
+const BASE_TOP = BASE_H + BEVEL_H;
+/** A standee's foot: its depth (front to back) and height, ft (≥ 2–3 px from a table's usual height; P7 r2 #13). */
+const FOOT_D = 0.8;
+const FOOT_H = 0.22;
 const COIN_H = 0.2;
 /**
  * A plate leader's pieces, shared by every token: a unit strip along x (scaled to its length and to a few screen
@@ -131,12 +147,24 @@ const ORIGIN: [number, number, number] = [0, 0, 0];
 const PLATE_GAP = 0.2;
 
 /** A token's silhouette on screen (normalised device coordinates). */
-interface Silhouette {
+interface Extent {
   top: number;
   bottom: number;
   left: number;
   right: number;
 }
+interface Silhouette extends Extent {
+  /** Its round parts (the base's and coin's rims) and the rest (a standee's card, a mini's box), each on its own. */
+  round: Extent;
+  rest: Extent;
+}
+const emptyExtent = (): Extent => ({ top: 0, bottom: 0, left: 0, right: 0 });
+const clearExtent = (e: Extent) => {
+  e.top = Number.NEGATIVE_INFINITY;
+  e.bottom = Number.POSITIVE_INFINITY;
+  e.left = Number.POSITIVE_INFINITY;
+  e.right = Number.NEGATIVE_INFINITY;
+};
 
 /** Diagnostics (test hooks): each overlay's fade factors this frame. */
 export const overlayFade = new Map<string, { far: number; clear: number; target: number; a: number }>();
@@ -155,8 +183,18 @@ const PLATE_PX_MAX_PHONE = 21;
 const NAME_SIZE = 0.7;
 const NUM_SIZE = 0.66;
 const WORD_SIZE = 0.66;
-const BAR_H = 0.84;
+/**
+ * The HP bar: a slim strip (≈ 8 px) with its numbers beside it in bone, never over it — digits laid over the fill
+ * had to change ink at the fill's edge and read poorly on every fill colour (critic P7 r2; DECISIONS). The bar fills
+ * the plate's width, at least BAR_W alone and BAR_W_BESIDE next to its numbers.
+ */
+const BAR_H = 0.36;
 const BAR_W = 3.4;
+const BAR_W_BESIDE = 2.4;
+/** The bar's row when it carries text: the numbers beside the bar, or a descriptor word in its place. */
+const TEXT_ROW_H = 0.8;
+/** Between the bar and its numbers. */
+const NUM_GAP = 0.26;
 const NAME_GAP = 0.14;
 const CHIP_PAD_X = 0.34;
 const CHIP_PAD_Y = 0.2;
@@ -178,16 +216,23 @@ const ICON = 0.9;
 const ICON_GAP = 0.1;
 const ICON_ROW_GAP = 0.14;
 /**
- * Exhaustion's level (Appendix G: "the level digit in a corner notch"): an ink notch over the badge's bottom-right
- * corner, reaching past it so the digit keeps the numbers' size (≥ 12 px, §27.3) — the row leaves room for the reach.
+ * Exhaustion's level (Appendix G: "the level digit in a corner notch"): an ink notch inside the badge's bottom-right
+ * corner, rounded as the badge is (critic P7 r2 #14: reaching past it, it hung off like a subscript), its digit the
+ * numbers' size (≥ 12 px, §27.3).
  */
 const NOTCH_H = 0.6;
 const NOTCH_PAD = 0.08;
-/** How far past the badge's right and bottom edges it reaches: it overlaps only the corner, clear of the glyph. */
-const NOTCH_REACH = 0.34;
-const NOTCH_DROP = 0.28;
-/** Between the bar and the temporary HP beside it. */
+/** The badges' corner radius (the atlas draws them 10 px round in a 60-px cell). */
+const NOTCH_R = ICON * (10 / 60);
+/** Between the numbers and the temporary HP after them. */
 const TEMP_GAP = 0.18;
+/**
+ * The compact plate (critic P7 r2 #1: the last resort before a plate on another creature): the HP bar alone, as wide
+ * as its token on screen within these limits (px), in a snug chip (plate units).
+ */
+const COMPACT_MIN_PX = 28;
+const COMPACT_MAX_PX = 68;
+const COMPACT_PAD = 0.14;
 
 export const hpBarState = new Map<
   string,
@@ -262,8 +307,9 @@ export const TokenObject = memo(function TokenObject({
   const selRing = useRef<Mesh>(null);
 
   // ── materials (per token, so hidden opacity never touches shared ones) ───────────────────────────────
+  // A base's top: lacquered slate, lit in the middle and darker toward its rim (geometries.ts `baseTopTexture`).
   const baseMat = useTransparentMaterial(
-    () => new MeshStandardMaterial({ color: C.baseInk, roughness: 0.42, metalness: 0.15 }),
+    () => new MeshStandardMaterial({ map: baseTopTexture(), roughness: 0.38, metalness: 0.1 }),
     [],
     gradeAt,
   );
@@ -389,15 +435,15 @@ export const TokenObject = memo(function TokenObject({
       }
     return { offset: [-(x0 + x1) / 2, -y0, 0] as [number, number, number], height: y1 - y0 };
   }, [mini]);
-  const flatScale = Math.min(1, (R * 1.92) / (BASE_H + standeeH));
+  const flatScale = Math.min(1, (R * 1.92) / (BASE_TOP + standeeH));
   const topY =
     mode === "model" && mini
       ? (lying ? tipped.height : mini.localBox.max.y - mini.localBox.min.y) * miniScale + miniLift
       : mode === "coin"
         ? COIN_H
         : lying
-          ? BASE_H + 0.06
-          : standeeH + BASE_H;
+          ? BASE_TOP + 0.06
+          : standeeH + BASE_TOP;
 
   /**
    * The token's silhouette on screen (normalised device coordinates): its highest point and horizontal extent over
@@ -411,21 +457,22 @@ export const TokenObject = memo(function TokenObject({
     const rt = root.current;
     if (!rt) return false;
     origin.setFromMatrixPosition(rt.matrixWorld);
-    out.top = Number.NEGATIVE_INFINITY;
-    out.bottom = Number.POSITIVE_INFINITY;
-    out.left = Number.POSITIVE_INFINITY;
-    out.right = Number.NEGATIVE_INFINITY;
-    const take = (v: Vector3) => {
+    clearExtent(out);
+    clearExtent(out.round);
+    clearExtent(out.rest);
+    const take = (v: Vector3, part: Extent = out.rest) => {
       v.project(cam);
-      if (v.y > out.top) out.top = v.y;
-      if (v.y < out.bottom) out.bottom = v.y;
-      if (v.x < out.left) out.left = v.x;
-      if (v.x > out.right) out.right = v.x;
+      for (const e of [out, part]) {
+        if (v.y > e.top) e.top = v.y;
+        if (v.y < e.bottom) e.bottom = v.y;
+        if (v.x < e.left) e.left = v.x;
+        if (v.x > e.right) e.right = v.x;
+      }
     };
     const rim = (y: number) => {
       for (let k = 0; k < RIM_SAMPLES; k++) {
         const a = (k / RIM_SAMPLES) * Math.PI * 2;
-        take(corner.set(origin.x + Math.cos(a) * R, origin.y + y, origin.z + Math.sin(a) * R));
+        take(corner.set(origin.x + Math.cos(a) * R, origin.y + y, origin.z + Math.sin(a) * R), out.round);
       }
     };
     if (mode !== "coin") rim(BASE_H);
@@ -433,7 +480,8 @@ export const TokenObject = memo(function TokenObject({
     const card = standeeCard.current;
     if (standeeGroup.current?.visible && card)
       for (const x of [-standeeW / 2, standeeW / 2])
-        for (const y of [BASE_H, BASE_H + standeeH]) take(corner.set(x, y, 0).applyMatrix4(card.matrixWorld));
+        for (const y of [BASE_TOP, BASE_TOP + standeeH])
+          take(corner.set(x, y, 0).applyMatrix4(card.matrixWorld));
     const mg = miniGroup.current;
     if (mode === "model" && mini && mg) {
       const b = mini.localBox;
@@ -449,7 +497,7 @@ export const TokenObject = memo(function TokenObject({
 
   /** The top's height now: in auto mode, the coin's or the standee's, whichever is showing. */
   const topNow = () =>
-    mode === "auto" ? (coinW.current > 0.5 ? COIN_H : standeeH + BASE_H) : Math.max(topY, 0.3);
+    mode === "auto" ? (coinW.current > 0.5 ? COIN_H : standeeH + BASE_TOP) : Math.max(topY, 0.3);
 
   // Where it first stands (the frames glide it from there): set at mount, so nothing that looks before its first frame
   // (a click's raycast, a probe) finds it at the board's origin.
@@ -553,9 +601,9 @@ export const TokenObject = memo(function TokenObject({
     if (standeeCard.current) {
       standeeCard.current.rotation.x = (-Math.PI / 2) * e;
       // Lying on top of the base, above its rim (under it, the rim cut the card to a circle — critic P7 r1).
-      const rimTop = BASE_H + Math.max(0.05, R * 0.045);
+      const rimTop = Math.max(BASE_TOP, BASE_H + Math.max(0.05, R * 0.05));
       const lift = rimTop + (CARD_T / 2) * flatScale + 0.02;
-      standeeCard.current.position.set(0, lift * e, (BASE_H + standeeH / 2) * flatScale * e);
+      standeeCard.current.position.set(0, lift * e, (BASE_TOP + standeeH / 2) * flatScale * e);
       standeeCard.current.scale.setScalar(1 + (flatScale - 1) * e);
     }
     // A hit's shake and red flash; a heal's glow (hpFx.tsx starts them).
@@ -694,9 +742,11 @@ export const TokenObject = memo(function TokenObject({
         {/* Part geometries are shared per size (geometries.ts); dispose={null} keeps unmounts from freeing them. */}
         {mode !== "coin" ? (
           <group userData={{ part: "base", diameter: R * 2 }}>
+            {/* As a coin is made: its side band in the ring's colour, a rim, and a top bevelled up from the rim to
+                a flat middle of lacquered slate (critic P7 r2 #13: a flat, unlit disc read as a hole). */}
             <mesh
               position-y={BASE_H / 2}
-              material={baseMat}
+              material={[rimMat, baseMat, baseMat]}
               geometry={cylinder(R * 0.97, R, BASE_H)}
               castShadow
               receiveShadow
@@ -704,9 +754,16 @@ export const TokenObject = memo(function TokenObject({
             />
             <mesh
               position-y={BASE_H}
+              material={baseMat}
+              geometry={baseTop(R * 0.97, R * 0.16, BEVEL_H)}
+              receiveShadow
+              dispose={null}
+            />
+            <mesh
+              position-y={BASE_H}
               rotation-x={Math.PI / 2}
               material={rimMat}
-              geometry={torus(R * 0.97, Math.max(0.05, R * 0.045))}
+              geometry={torus(R * 0.97, Math.max(0.05, R * 0.05))}
               userData={{ rim: true }}
               dispose={null}
             />
@@ -715,7 +772,7 @@ export const TokenObject = memo(function TokenObject({
         {mode === "model" && mini ? (
           <group
             userData={{ part: "mini" }}
-            position-y={BASE_H + miniLift}
+            position-y={BASE_TOP + miniLift}
             rotation-y={((ov.rotationYDeg ?? 0) * Math.PI) / 180}
             scale={miniScale}
           >
@@ -753,7 +810,7 @@ export const TokenObject = memo(function TokenObject({
               {/* Its foot (§8.5 "a small base"): the card stands in it, a cardboard line between card and base. */}
               <mesh
                 ref={standeeFootRef}
-                position={[0, BASE_H + FOOT_H / 2, 0]}
+                position={[0, BASE_TOP + FOOT_H / 2, 0]}
                 material={standeeFootMat}
                 geometry={standeeFoot(standeeW * 0.62, FOOT_D, FOOT_H)}
                 castShadow
@@ -761,20 +818,20 @@ export const TokenObject = memo(function TokenObject({
               />
               <group ref={standeeCard}>
                 <mesh
-                  position={[0, BASE_H + standeeH / 2, CARD_T / 2]}
+                  position={[0, BASE_TOP + standeeH / 2, CARD_T / 2]}
                   material={standeeFront}
                   geometry={plane(standeeW, standeeH)}
                   castShadow
                   dispose={null}
                 />
                 <mesh
-                  position={[0, BASE_H + standeeH / 2, 0]}
+                  position={[0, BASE_TOP + standeeH / 2, 0]}
                   material={standeeEdge}
                   geometry={cardEdge(standeeW, standeeH)}
                   dispose={null}
                 />
                 <mesh
-                  position={[0, BASE_H + standeeH / 2, -CARD_T / 2]}
+                  position={[0, BASE_TOP + standeeH / 2, -CARD_T / 2]}
                   rotation-y={Math.PI}
                   material={standeeBack}
                   geometry={plane(standeeW, standeeH)}
@@ -969,16 +1026,12 @@ function Overlay({
   const anchor = useRef<Group>(null);
   const nameText = useRef<TroikaText>(null);
   const numText = useRef<TroikaText>(null);
-  /** The numbers again in ink, shown only over the bar's fill (the bone ones only over its empty track). */
-  const numInk = useRef<TroikaText>(null);
   const tempText = useRef<TroikaText>(null);
-  const barWidth = useRef(BAR_W);
   const wordText = useRef<TroikaText>(null);
   const badge = useRef<SpriteMaterial>(null);
   const bar = useMemo(() => createHpBarMaterial(), []);
   useEffect(() => () => disposeLater(bar), [bar]);
   const ghost = useRef(new HpGhost());
-  const textSpan = useRef<readonly [number, number] | null>(null);
   // The leader: a 2-px brass stroke on a dark halo (it reads on stone, wood and water alike; a bone one read as a
   // scratch on the map) ending in a dot on the token — shared unit strip and disc, placed per token.
   const leader = useMemo(() => {
@@ -1017,6 +1070,8 @@ function Overlay({
     !showBar && token.hpDisplay === "descriptor" && token.hpBand !== HP_BAND_HIDDEN
       ? (HP_BAND_LABELS[token.hpBand as 0 | 1 | 2 | 3 | 4] ?? null)
       : null;
+  // The row under the name, centred on the plate's origin: the bar (with its numbers), a descriptor word, or nothing.
+  const rowH = (showBar && showNumbers) || descriptor ? TEXT_ROW_H : showBar ? BAR_H : 0;
   const pinKey = JSON.stringify(token.pinnedBars.slice(0, PIN_MAX));
   const pins = useMemo(
     () =>
@@ -1098,10 +1153,14 @@ function Overlay({
   const moreText = useRef<TroikaText>(null);
   const levelText = useRef<TroikaText>(null);
   const levelNotch = useRef<Mesh>(null);
-  const notchMat = useMemo(
-    () => new MeshBasicMaterial({ color: C.ink950, transparent: true, depthTest: false, depthWrite: false }),
-    [],
-  );
+  const notchMat = useMemo(() => {
+    const m = createChipMaterial();
+    const u = m.uniforms as Record<string, { value: unknown }>;
+    (u.uEdgeW as { value: number }).value = 0;
+    (u.uRadius as { value: number }).value = NOTCH_R;
+    return m;
+  }, []);
+  const notchW = useRef(NOTCH_H);
   useEffect(() => () => disposeLater(notchMat), [notchMat]);
   const shownIcons = statuses.slice(0, ICON_MAX);
   const moreIcons = statuses.length - shownIcons.length;
@@ -1127,9 +1186,8 @@ function Overlay({
   useEffect(() => () => disposeLater(chip), [chip]);
   const chipMesh = useRef<Mesh>(null);
   const barMesh = useRef<Mesh>(null);
-  const shape = useRef<Silhouette>({ top: 0, bottom: 0, left: 0, right: 0 });
-  /** The plate's lowest edge below its origin (plate units), from the last layout. */
-  const lowest = useRef(-BAR_H / 2 - CHIP_PAD_Y);
+  const details = useRef<Group>(null);
+  const shape = useRef<Silhouette>({ ...emptyExtent(), round: emptyExtent(), rest: emptyExtent() });
   /** The plate's chip in its own units (half its width, its top and bottom): where a leader leaves it. */
   const plateExt = useRef({ halfW: 1, top: 1, bottom: -BAR_H / 2 - CHIP_PAD_Y });
 
@@ -1163,96 +1221,129 @@ function Overlay({
     const plate = pxPerPlate / pxPerWorld;
     g.scale.setScalar(plate);
     layoutPlate();
-    // The numbers read on either part of the bar: ink over the light part (the fill — verdigris, brass, ember — temp
-    // cyan and the pale damage ghost while it drains; bone there was ~1.7:1), bone over the dark track; the split
-    // follows the light part's edge.
-    if (numText.current || numInk.current) {
-      const w = barWidth.current;
-      const lit = Math.max(0, frac) + Math.max(0, temp);
-      const light = Math.max(lit, ghost.current.value(performance.now()));
-      const edge = -w / 2 + w * Math.min(1, light / Math.max(1, lit));
-      const setClip = (t: TroikaText | null, r: [number, number, number, number]) => {
-        if (!t) return;
-        const c = t.clipRect as number[] | null;
-        if (!c || Math.abs((c[0] as number) - r[0]) > 1e-4 || Math.abs((c[2] as number) - r[2]) > 1e-4) {
-          t.clipRect = r;
-          t.sync();
-        }
-      };
-      setClip(numText.current, [edge, -10, 10, 10]);
-      setClip(numInk.current, [-10, -10, edge, 10]);
-    }
     // Sit a fixed gap above the token's highest point on screen, centred over its silhouette, at any pitch, pose or
     // perspective: find the spot in screen space, then put the anchor there at the depth of the token's top.
-    // Moved aside by the declutter layout when its own spot is taken (a leader line then points back to the token).
+    // Moved aside by the declutter layout when its own spot is taken (a leader line then points back to the token);
+    // shown compact — its bar alone — when even that finds no room clear of other creatures.
     const off = overlayOffset(token.id);
     const seen = a0 && rt && screenTop(cam, shape.current);
-    // Its body on screen: other plates moved aside keep off it (declutter.ts).
+    const W = state.size.width;
+    const H = state.size.height;
+    const s = shape.current;
+    const body = {
+      x0: ((s.left + 1) / 2) * W,
+      x1: ((s.right + 1) / 2) * W,
+      y0: ((1 - s.top) / 2) * H,
+      y1: ((1 - s.bottom) / 2) * H,
+    };
+    const compact = showBar && overlayCompact(token.id);
+    // The compact form: the bar as wide as its token on screen (within limits) in a snug chip.
+    const compactW = Math.min(COMPACT_MAX_PX, Math.max(COMPACT_MIN_PX, body.x1 - body.x0)) / pxPerPlate;
+    const compactExt = {
+      halfW: compactW / 2 + COMPACT_PAD,
+      top: BAR_H / 2 + COMPACT_PAD,
+      bottom: -BAR_H / 2 - COMPACT_PAD,
+    };
+    // Its body on screen: other plates moved aside keep off it; and where its plate stands in its own spot, full and
+    // compact — both with their bottom edge a fixed gap above the token (declutter.ts).
     if (seen) {
-      const s = shape.current;
-      const W = state.size.width;
-      const H = state.size.height;
-      setOverlayBody(token.id, {
-        x0: ((s.left + 1) / 2) * W,
-        x1: ((s.right + 1) / 2) * W,
-        y0: ((1 - s.top) / 2) * H,
-        y1: ((1 - s.bottom) / 2) * H,
+      // Its parts, as the layout measures a plate or leader against them: a round rim is an ellipse (the corners of
+      // its box are air), a card or a mini a box.
+      const px = (e: Extent) => ({
+        x0: ((e.left + 1) / 2) * W,
+        x1: ((e.right + 1) / 2) * W,
+        y0: ((1 - e.top) / 2) * H,
+        y1: ((1 - e.bottom) / 2) * H,
       });
-    } else setOverlayBody(token.id, null);
+      const parts: BodyPart[] = [];
+      if (Number.isFinite(s.round.top)) parts.push({ kind: "ellipse", ...px(s.round) });
+      if (Number.isFinite(s.rest.top)) parts.push({ kind: "box", ...px(s.rest) });
+      setOverlayBody(token.id, body, parts);
+      const cx = (body.x0 + body.x1) / 2;
+      const base = body.y0 - PLATE_GAP * pxPerPlate;
+      const pe = plateExt.current;
+      setOverlaySpots(
+        token.id,
+        {
+          x0: cx - pe.halfW * pxPerPlate,
+          x1: cx + pe.halfW * pxPerPlate,
+          y0: base - (pe.top - pe.bottom) * pxPerPlate,
+          y1: base,
+        },
+        showBar
+          ? {
+              x0: cx - compactExt.halfW * pxPerPlate,
+              x1: cx + compactExt.halfW * pxPerPlate,
+              y0: base - (compactExt.top - compactExt.bottom) * pxPerPlate,
+              y1: base,
+            }
+          : null,
+      );
+    } else {
+      setOverlayBody(token.id, null);
+      setOverlaySpots(token.id, null, null);
+    }
+    // Drawn compact: the chip round the bar alone, everything else put away.
+    if (details.current) details.current.visible = !compact;
+    if (compact) {
+      barMesh.current?.scale.set(compactW, BAR_H, 1);
+      barMesh.current?.position.setX(0);
+      chipMesh.current?.scale.set(2 * compactExt.halfW, compactExt.top - compactExt.bottom, 1);
+      chipMesh.current?.position.set(0, 0, -0.01);
+    }
+    const ext = compact ? compactExt : plateExt.current;
+    const liftPx = (PLATE_GAP - ext.bottom) * pxPerPlate;
     if (a0 && rt && seen) {
-      const liftPx = (PLATE_GAP - lowest.current) * pxPerPlate;
-      at.x = (shape.current.left + shape.current.right) / 2 + (off.dx * 2) / state.size.width;
-      at.y = shape.current.top + (liftPx * 2) / state.size.height - (off.dy * 2) / state.size.height;
+      at.x = (s.left + s.right) / 2 + (off.dx * 2) / W;
+      at.y = s.top + (liftPx * 2) / H - (off.dy * 2) / H;
       at.unproject(cam).sub(probe.setFromMatrixPosition(rt.matrixWorld));
       // Still settling (a pose or view change reaches the plate a frame later): draw once more.
       if (at.distanceToSquared(a0.position) > 1e-6) again();
       a0.position.copy(at);
     }
-    // The leader, when the plate sits aside: from the plate's edge nearest its token to a dot well inside the token's
-    // art (never along the plate's edge like a gauge, never on a rim or the seam with a neighbour); none when that end
-    // is under the HUD.
+    // The leader, when the plate sits aside: from the plate's edge nearest its token to a dot well inside the part of
+    // the token that shows (never along the plate's edge like a gauge, never on a rim, under the HUD or on a creature
+    // in front of it) — the same line the layout checked for crossings (declutter.ts).
     const moved = Math.abs(off.dx) > 0.5 || Math.abs(off.dy) > 0.5;
     let drawLeader = false;
     if (moved && seen) {
-      const s = shape.current;
-      const W = state.size.width;
-      const H = state.size.height;
-      const px = 1 / pxPerPlate;
-      // The token's body in the plate's own units (origin at its anchor, y up).
-      const bw = ((s.right - s.left) / 2) * W;
-      const bh = ((s.top - s.bottom) / 2) * H;
-      const top = off.dy * px + lowest.current - PLATE_GAP;
-      const bottom = top - bh * px;
-      const left = -off.dx * px - (bw / 2) * px;
-      const right = -off.dx * px + (bw / 2) * px;
-      const inset = Math.min(40, 0.35 * Math.min(bw, bh)) * px;
-      const pe = plateExt.current;
-      const into = (v: number, lo: number, hi: number) =>
-        lo > hi ? (lo + hi) / 2 : Math.min(hi, Math.max(lo, v));
-      const ex = into(0, left + inset, right - inset);
-      const ey = into((pe.top + pe.bottom) / 2, bottom + inset, top - inset);
-      const sx = Math.min(pe.halfW, Math.max(-pe.halfW, ex));
-      const sy = Math.min(pe.top, Math.max(pe.bottom, ey));
-      const len = Math.hypot(ex - sx, ey - sy);
-      // Where the dot lands on screen (px, y down).
-      const liftPx = (PLATE_GAP - lowest.current) * pxPerPlate;
-      const endX = (((s.left + s.right) / 2 + 1) / 2) * W + off.dx + ex * pxPerPlate;
-      const endY = ((1 - s.top) / 2) * H - liftPx + off.dy - ey * pxPerPlate;
-      drawLeader = len > 4 * px && !underCover(endX, endY);
-      const rot = Math.atan2(ey - sy, ex - sx);
-      for (const [m, across] of [
-        [leader.halo, 4],
-        [leader.line, 2],
-      ] as const) {
-        m.position.set(sx, sy, 0);
-        m.rotation.z = rot;
-        m.scale.set(len, across * px, 1);
+      // The plate's origin on screen (px, y down), and its chip round it.
+      const ox = (body.x0 + body.x1) / 2 + off.dx;
+      const oy = body.y0 - liftPx + off.dy;
+      const seg = leaderFor(
+        token.id,
+        {
+          x0: ox - ext.halfW * pxPerPlate,
+          x1: ox + ext.halfW * pxPerPlate,
+          y0: oy - ext.top * pxPerPlate,
+          y1: oy - ext.bottom * pxPerPlate,
+        },
+        body,
+      );
+      if (seg) {
+        drawLeader = true;
+        const px = 1 / pxPerPlate;
+        // Into the plate's own units (origin at its anchor, y up).
+        const sx = (seg.sx - ox) * px;
+        const sy = -(seg.sy - oy) * px;
+        const ex = (seg.ex - ox) * px;
+        const ey = -(seg.ey - oy) * px;
+        const len = Math.hypot(ex - sx, ey - sy);
+        const rot = Math.atan2(ey - sy, ex - sx);
+        for (const [m, across] of [
+          [leader.halo, 4],
+          [leader.line, 2],
+        ] as const) {
+          m.position.set(sx, sy, 0);
+          m.rotation.z = rot;
+          m.scale.set(len, across * px, 1);
+        }
+        // A dot on the token end: 2.5 px, on a 4-px halo, whatever the zoom.
+        leader.dot.position.set(ex, ey, 0);
+        leader.dot.scale.setScalar(2.5 * px);
+        leader.dotHalo.position.set(ex, ey, 0);
+        leader.dotHalo.scale.setScalar(4 * px);
       }
-      // A dot on the token end: 2.5 px, on a 4-px halo, whatever the zoom.
-      leader.dot.position.set(ex, ey, 0);
-      leader.dot.scale.setScalar(2.5 * px);
-      leader.dotHalo.position.set(ex, ey, 0);
-      leader.dotHalo.scale.setScalar(4 * px);
     }
     leader.group.visible = drawLeader;
     // Overlays always read on top of other tokens and the map (troika re-derives its materials — an array of
@@ -1273,14 +1364,14 @@ function Overlay({
     const fade = far * clear.current;
     g.visible = fade > 0.02;
     const a = fade * opacity;
-    for (const t of [nameText.current, numText.current, numInk.current, tempText.current, wordText.current])
+    for (const t of [nameText.current, numText.current, tempText.current, wordText.current])
       if (t && (t.fillOpacity !== a || t.outlineOpacity !== a)) {
         t.fillOpacity = a;
         t.outlineOpacity = a;
       }
     if (badge.current) badge.current.opacity = fade;
     iconMat.opacity = a;
-    notchMat.opacity = a;
+    setChip(notchMat, notchW.current, NOTCH_H, a);
     for (const t of [moreText.current, levelText.current])
       if (t && (t.fillOpacity !== a || t.outlineOpacity !== a)) {
         t.fillOpacity = a;
@@ -1309,7 +1400,6 @@ function Overlay({
           temp: Math.max(0, temp),
           ghost: gv,
           opacity: a,
-          textSpan: textSpan.current,
         },
         colorBlind,
       );
@@ -1329,17 +1419,17 @@ function Overlay({
   useEffect(() => () => void hpBarState.delete(token.id), [token.id]);
 
   /**
-   * Sizes the chip, the bar and the name around the text as troika has laid it out: the bar at the origin (as wide
-   * as its numbers need, at least BAR_W), the name above it, the chip behind both with even padding.
+   * Sizes the chip, the bar and the name around the text as troika has laid it out: the bar's row at the origin (the
+   * bar, then its numbers and any temporary HP, spanning the chip's inner width), the name above it, the status
+   * icons and pinned counters under it, the chip behind them all with even padding.
    */
   const layoutPlate = () => {
     const nameB = nameText.current?.textRenderInfo?.blockBounds;
     const numB = numText.current?.textRenderInfo?.blockBounds;
     const wordB = wordText.current?.textRenderInfo?.blockBounds;
     const nameW = nameB ? nameB[2] - nameB[0] : 0;
-    const nameTop = BAR_H / 2 + NAME_GAP + (nameB ? nameB[3] - nameB[1] : NAME_SIZE * 1.2);
-    // Pinned counters stack under the bar: label left, numbers right, over a gauge. The HP bar and the gauges share
-    // one width — the widest of the bar's numbers and the counters' text.
+    const nameTop = rowH / 2 + NAME_GAP + (nameB ? nameB[3] - nameB[1] : NAME_SIZE * 1.2);
+    // Pinned counters stack under the icons: label left, numbers right, over a gauge as wide as the plate's inside.
     let pinW = 0;
     for (let i = 0; i < pins.length; i++) {
       const r = pinRows.current[i];
@@ -1347,21 +1437,14 @@ function Overlay({
       const vb = r?.value?.textRenderInfo?.blockBounds;
       pinW = Math.max(pinW, (lb ? lb[2] - lb[0] : 0) + (vb ? vb[2] - vb[0] : 0) + 0.6);
     }
-    const barW = showBar ? Math.max(BAR_W, numB ? numB[2] - numB[0] + 0.7 : 0, pinW) : 0;
-    barWidth.current = barW;
-    // The numbers' span across the bar (the tick steps aside there), with a little room each side.
-    textSpan.current =
-      numB && showBar && barW > 0
-        ? [Math.max(0, (numB[0] - 0.12 + barW / 2) / barW), Math.min(1, (numB[2] + 0.12 + barW / 2) / barW)]
-        : null;
-    // Temporary HP stand just right of the bar.
+    // What follows the bar on its row: "30 / 44", then "+5" temporary HP in ice.
+    const numW = showBar && numB ? numB[2] - numB[0] : 0;
     const tempB = tempText.current?.textRenderInfo?.blockBounds;
-    const tempW = tempB && showBar ? tempB[2] - tempB[0] + TEMP_GAP : 0;
-    tempText.current?.position.setX(barW / 2 + TEMP_GAP);
+    const tempW = numW && tempB ? tempB[2] - tempB[0] : 0;
+    const trail = numW ? NUM_GAP + numW + (tempW ? TEMP_GAP + tempW : 0) : 0;
+    const rowW = showBar ? (numW ? BAR_W_BESIDE : BAR_W) + trail : 0;
     const wordW = wordB ? wordB[2] - wordB[0] : 0;
-    const bm = barMesh.current;
-    if (bm) bm.scale.set(barW, BAR_H, 1);
-    let bottom = showBar || descriptor ? -BAR_H / 2 : BAR_H / 2 + NAME_GAP;
+    let bottom = rowH ? -rowH / 2 : NAME_GAP;
     // The status icons, a row under the bar.
     let iconsW = 0;
     if (shownIcons.length) {
@@ -1370,10 +1453,10 @@ function Overlay({
       // Exhaustion's notch: as wide as its digit needs, reaching past the badge's corner (room left after it).
       const exhausted = shownIcons.includes("exhaustion");
       const levelB = exhausted ? levelText.current?.textRenderInfo?.blockBounds : null;
-      const notchW = levelB ? Math.max(NOTCH_H * 0.8, levelB[2] - levelB[0] + 2 * NOTCH_PAD) : 0;
+      const nw = levelB ? Math.max(NOTCH_H * 0.8, levelB[2] - levelB[0] + 2 * NOTCH_PAD) : 0;
+      notchW.current = nw;
       // (Its digit is the numbers' size, NUM_SIZE: ≥ 12 px at the plates' smallest scale.)
-      const reach = exhausted ? NOTCH_REACH : 0;
-      iconsW = shownIcons.length * ICON + (shownIcons.length - 1) * ICON_GAP + moreW + reach;
+      iconsW = shownIcons.length * ICON + (shownIcons.length - 1) * ICON_GAP + moreW;
       const y = bottom - ICON_ROW_GAP - ICON / 2;
       let x = -iconsW / 2 + ICON / 2;
       for (let i = 0; i < shownIcons.length; i++) {
@@ -1383,39 +1466,48 @@ function Overlay({
           m.scale.set(ICON, ICON, 1);
         }
         if (shownIcons[i] === "exhaustion") {
-          const cx = x + ICON / 2 + NOTCH_REACH - notchW / 2;
-          const cy = y - ICON / 2 - NOTCH_DROP + NOTCH_H / 2;
+          const cx = x + ICON / 2 - nw / 2;
+          const cy = y - ICON / 2 + NOTCH_H / 2;
           levelNotch.current?.position.set(cx, cy, 0.008);
-          levelNotch.current?.scale.set(Math.max(0.01, notchW), NOTCH_H, 1);
+          levelNotch.current?.scale.set(Math.max(0.01, nw), NOTCH_H, 1);
           levelText.current?.position.set(cx, cy, 0.012);
-          x += NOTCH_REACH;
         }
         x += ICON + ICON_GAP;
       }
       moreText.current?.position.set(x - ICON / 2, y, 0.01);
-      bottom = y - ICON / 2 - (exhausted ? NOTCH_DROP : 0);
+      bottom = y - ICON / 2;
     }
-    const gaugeW = pins.length ? Math.max(barW || BAR_W, pinW) : 0;
+    const inner = Math.max(nameW, rowW, wordW, iconsW, pins.length ? Math.max(BAR_W, pinW) : 0);
+    // The bar takes the row's width its numbers leave; they follow it, left-aligned, so the row ends at the chip's
+    // inner edge whatever the digits.
+    const barW = showBar ? inner - trail : 0;
+    const bm = barMesh.current;
+    if (bm) {
+      bm.scale.set(Math.max(0.01, barW), BAR_H, 1);
+      bm.position.setX(-inner / 2 + barW / 2);
+    }
+    const numX = -inner / 2 + barW + NUM_GAP;
+    numText.current?.position.setX(numX);
+    tempText.current?.position.setX(numX + numW + TEMP_GAP);
     for (let i = 0; i < pins.length; i++) {
       const r = pinRows.current[i];
       const textY = bottom - PIN_ROW_GAP - PIN_LINE / 2;
       const barY = textY - PIN_LINE / 2 - PIN_BAR_GAP - PIN_BAR_H / 2;
-      r?.label?.position.set(-gaugeW / 2, textY, 0);
-      r?.value?.position.set(gaugeW / 2, textY, 0);
+      r?.label?.position.set(-inner / 2, textY, 0);
+      r?.value?.position.set(inner / 2, textY, 0);
       if (r?.bar) {
         r.bar.position.set(0, barY, 0);
-        r.bar.scale.set(gaugeW, PIN_BAR_H, 1);
+        r.bar.scale.set(inner, PIN_BAR_H, 1);
       }
       bottom = barY - PIN_BAR_H / 2;
     }
-    const w = Math.max(nameW, barW + 2 * tempW, wordW, gaugeW, iconsW) + 2 * CHIP_PAD_X;
+    const w = inner + 2 * CHIP_PAD_X;
     const h = nameTop - bottom + 2 * CHIP_PAD_Y;
     const cm = chipMesh.current;
     if (cm) {
       cm.scale.set(w, h, 1);
       cm.position.set(0, (nameTop + bottom) / 2, -0.01);
     }
-    lowest.current = bottom - CHIP_PAD_Y;
     plateExt.current = { halfW: w / 2, top: nameTop + CHIP_PAD_Y, bottom: bottom - CHIP_PAD_Y };
   };
 
@@ -1433,30 +1525,6 @@ function Overlay({
             dispose={null}
             userData={{ part: "plateChip" }}
           />
-          <BoardText
-            ref={nameText}
-            font={CAPS_FONT}
-            fontSize={NAME_SIZE}
-            letterSpacing={0.08}
-            color={C.bone100}
-            outlineWidth={0.02}
-            outlineColor={C.ink950}
-            anchorY="bottom"
-            position={[0, BAR_H / 2 + NAME_GAP, 0]}
-            raycast={() => null}
-          >
-            {token.name}
-          </BoardText>
-          {hidden ? (
-            <sprite
-              position={[0, BAR_H / 2 + 1.55, 0]}
-              scale={[0.7, 0.7, 0.7]}
-              raycast={() => null}
-              userData={{ part: "hiddenBadge" }}
-            >
-              <spriteMaterial ref={badge} map={hiddenBadgeTexture()} depthTest={false} transparent />
-            </sprite>
-          ) : null}
           {showBar ? (
             <mesh
               ref={barMesh}
@@ -1464,181 +1532,197 @@ function Overlay({
               geometry={CHIP_GEOMETRY}
               scale={[BAR_W, BAR_H, 1]}
               renderOrder={20}
+              userData={{ part: "hpBar" }}
               raycast={() => null}
               dispose={null}
             />
           ) : null}
-          {showNumbers && nums ? (
-            // On the bar, never beside it: the plate is never wider than its name or its bar (the bar grows to fit;
-            // DECISIONS). Set off by a thin, soft shadow — a heavy outline swelled the figures into blobs.
+          {/* All but the chip and the bar: put away while the plate shows compact. */}
+          <group ref={details}>
             <BoardText
-              ref={numText}
-              font={NUMBER_FONT}
-              fontSize={NUM_SIZE}
-              color={C.bone100}
-              outlineWidth={0.022}
-              outlineBlur={0.12}
-              outlineOpacity={0.9}
-              outlineColor={C.ink950}
-              anchorX="center"
-              anchorY="middle"
-              position={[0, -0.02, 0.01]}
-              raycast={() => null}
-            >
-              {`${nums.hp} / ${nums.hpMax}`}
-            </BoardText>
-          ) : null}
-          {showNumbers && nums ? (
-            <BoardText
-              ref={numInk}
-              font={NUMBER_FONT}
-              fontSize={NUM_SIZE}
-              color={C.ink950}
-              anchorX="center"
-              anchorY="middle"
-              position={[0, -0.02, 0.011]}
-              raycast={() => null}
-            >
-              {`${nums.hp} / ${nums.hpMax}`}
-            </BoardText>
-          ) : null}
-          {showNumbers && nums?.hpTemp ? (
-            // Temporary HP beside the bar in their own colour (inside it, "+5" straddled the fill's edge).
-            <BoardText
-              ref={tempText}
-              font={NUMBER_FONT}
-              fontSize={NUM_SIZE}
-              color={C.ice300}
-              outlineWidth={0.022}
-              outlineBlur={0.12}
-              outlineOpacity={0.9}
-              outlineColor={C.ink950}
-              anchorX="left"
-              anchorY="middle"
-              position={[BAR_W / 2 + TEMP_GAP, -0.02, 0.01]}
-              raycast={() => null}
-            >
-              {`+${nums.hpTemp}`}
-            </BoardText>
-          ) : null}
-          {descriptor ? (
-            <BoardText
-              ref={wordText}
+              ref={nameText}
               font={CAPS_FONT}
-              fontSize={WORD_SIZE}
+              fontSize={NAME_SIZE}
               letterSpacing={0.08}
-              color={C.brass300}
+              color={C.bone100}
               outlineWidth={0.02}
               outlineColor={C.ink950}
-              anchorX="center"
-              anchorY="middle"
-              position={[0, 0, 0]}
+              anchorY="bottom"
+              position={[0, rowH / 2 + NAME_GAP, 0]}
               raycast={() => null}
             >
-              {descriptor}
+              {token.name}
             </BoardText>
-          ) : null}
-          {shownIcons.map((id, i) => (
-            <mesh
-              // Slots are positional: each slot's UVs follow its icon.
-              key={i}
-              ref={(m) => {
-                iconMeshes.current[i] = m;
-              }}
-              geometry={iconGeos[i]}
-              material={iconMat}
-              renderOrder={20}
-              raycast={() => null}
-              dispose={null}
-              userData={{ part: `status:${i}`, status: id }}
-            />
-          ))}
-          {shownIcons.includes("exhaustion") ? (
-            <>
-              <mesh
-                ref={levelNotch}
-                geometry={UNIT_PLANE}
-                material={notchMat}
+            {hidden ? (
+              <sprite
+                position={[0, rowH / 2 + 1.55, 0]}
+                scale={[0.7, 0.7, 0.7]}
                 raycast={() => null}
-                dispose={null}
-                userData={{ part: "level:exhaustion" }}
-              />
+                userData={{ part: "hiddenBadge" }}
+              >
+                <spriteMaterial ref={badge} map={hiddenBadgeTexture()} depthTest={false} transparent />
+              </sprite>
+            ) : null}
+            {showBar && showNumbers && nums ? (
+              // Beside the bar in bone on the ink chip (≈ 15:1 on any fill; placed by layoutPlate). Set off by a thin,
+              // soft shadow for plates over bright ground — a heavy outline swelled the figures into blobs.
               <BoardText
-                ref={levelText}
+                ref={numText}
                 font={NUMBER_FONT}
                 fontSize={NUM_SIZE}
-                color={C.bone100}
-                anchorX="center"
-                anchorY="middle"
-                raycast={() => null}
-              >
-                {String(token.exhaustion)}
-              </BoardText>
-            </>
-          ) : null}
-          {moreIcons > 0 ? (
-            <BoardText
-              ref={moreText}
-              userData={{ part: "status:more", status: `+${moreIcons}` }}
-              font={NUMBER_FONT}
-              fontSize={NUM_SIZE}
-              color={C.bone100}
-              outlineWidth={0.022}
-              outlineColor={C.ink950}
-              anchorX="left"
-              anchorY="middle"
-              raycast={() => null}
-            >
-              {`+${moreIcons}`}
-            </BoardText>
-          ) : null}
-          {pins.map((p, i) => (
-            <group key={i} userData={{ part: `pinned:${i}`, pin: p }}>
-              <BoardText
-                ref={(t) => {
-                  pinRow(i).label = t as TroikaText | null;
-                }}
-                font={CAPS_FONT}
-                fontSize={PIN_TEXT}
-                letterSpacing={0.06}
-                color={C.fog300}
-                outlineWidth={0.02}
-                outlineColor={C.ink950}
-                anchorX="left"
-                anchorY="middle"
-                raycast={() => null}
-              >
-                {p.label}
-              </BoardText>
-              <BoardText
-                ref={(t) => {
-                  pinRow(i).value = t as TroikaText | null;
-                }}
-                font={NUMBER_FONT}
-                fontSize={PIN_TEXT}
                 color={C.bone100}
                 outlineWidth={0.022}
                 outlineBlur={0.12}
                 outlineOpacity={0.9}
                 outlineColor={C.ink950}
-                anchorX="right"
+                anchorX="left"
                 anchorY="middle"
+                position={[0, -0.02, 0.01]}
+                raycast={() => null}
+                userData={{ part: "hpNumbers" }}
+              >
+                {`${nums.hp} / ${nums.hpMax}`}
+              </BoardText>
+            ) : null}
+            {showBar && showNumbers && nums?.hpTemp ? (
+              // Temporary HP after the numbers, in their own colour.
+              <BoardText
+                ref={tempText}
+                font={NUMBER_FONT}
+                fontSize={NUM_SIZE}
+                color={C.ice300}
+                outlineWidth={0.022}
+                outlineBlur={0.12}
+                outlineOpacity={0.9}
+                outlineColor={C.ink950}
+                anchorX="left"
+                anchorY="middle"
+                position={[0, -0.02, 0.01]}
+                raycast={() => null}
+                userData={{ part: "hpTemp" }}
+              >
+                {`+${nums.hpTemp}`}
+              </BoardText>
+            ) : null}
+            {descriptor ? (
+              <BoardText
+                ref={wordText}
+                font={CAPS_FONT}
+                fontSize={WORD_SIZE}
+                letterSpacing={0.08}
+                color={C.brass300}
+                outlineWidth={0.02}
+                outlineColor={C.ink950}
+                anchorX="center"
+                anchorY="middle"
+                position={[0, 0, 0]}
                 raycast={() => null}
               >
-                {`${p.value}/${p.max}`}
+                {descriptor}
               </BoardText>
+            ) : null}
+            {shownIcons.map((id, i) => (
               <mesh
+                // Slots are positional: each slot's UVs follow its icon.
+                key={i}
                 ref={(m) => {
-                  pinRow(i).bar = m;
+                  iconMeshes.current[i] = m;
                 }}
-                material={pinMats[i] as ShaderMaterial}
-                geometry={CHIP_GEOMETRY}
+                geometry={iconGeos[i]}
+                material={iconMat}
                 renderOrder={20}
                 raycast={() => null}
                 dispose={null}
+                userData={{ part: `status:${i}`, status: id }}
               />
-            </group>
-          ))}
+            ))}
+            {shownIcons.includes("exhaustion") ? (
+              <>
+                <mesh
+                  ref={levelNotch}
+                  geometry={CHIP_GEOMETRY}
+                  material={notchMat}
+                  raycast={() => null}
+                  dispose={null}
+                  userData={{ part: "level:exhaustion" }}
+                />
+                <BoardText
+                  ref={levelText}
+                  font={NUMBER_FONT}
+                  fontSize={NUM_SIZE}
+                  color={C.bone100}
+                  anchorX="center"
+                  anchorY="middle"
+                  raycast={() => null}
+                >
+                  {String(token.exhaustion)}
+                </BoardText>
+              </>
+            ) : null}
+            {moreIcons > 0 ? (
+              <BoardText
+                ref={moreText}
+                userData={{ part: "status:more", status: `+${moreIcons}` }}
+                font={NUMBER_FONT}
+                fontSize={NUM_SIZE}
+                color={C.bone100}
+                outlineWidth={0.022}
+                outlineColor={C.ink950}
+                anchorX="left"
+                anchorY="middle"
+                raycast={() => null}
+              >
+                {`+${moreIcons}`}
+              </BoardText>
+            ) : null}
+            {pins.map((p, i) => (
+              <group key={i} userData={{ part: `pinned:${i}`, pin: p }}>
+                <BoardText
+                  ref={(t) => {
+                    pinRow(i).label = t as TroikaText | null;
+                  }}
+                  font={CAPS_FONT}
+                  fontSize={PIN_TEXT}
+                  letterSpacing={0.06}
+                  color={C.fog300}
+                  outlineWidth={0.02}
+                  outlineColor={C.ink950}
+                  anchorX="left"
+                  anchorY="middle"
+                  raycast={() => null}
+                >
+                  {p.label}
+                </BoardText>
+                <BoardText
+                  ref={(t) => {
+                    pinRow(i).value = t as TroikaText | null;
+                  }}
+                  font={NUMBER_FONT}
+                  fontSize={PIN_TEXT}
+                  color={C.bone100}
+                  outlineWidth={0.022}
+                  outlineBlur={0.12}
+                  outlineOpacity={0.9}
+                  outlineColor={C.ink950}
+                  anchorX="right"
+                  anchorY="middle"
+                  raycast={() => null}
+                >
+                  {`${p.value}/${p.max}`}
+                </BoardText>
+                <mesh
+                  ref={(m) => {
+                    pinRow(i).bar = m;
+                  }}
+                  material={pinMats[i] as ShaderMaterial}
+                  geometry={CHIP_GEOMETRY}
+                  renderOrder={20}
+                  raycast={() => null}
+                  dispose={null}
+                />
+              </group>
+            ))}
+          </group>
         </group>
       </Billboard>
     </group>

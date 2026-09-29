@@ -21,6 +21,7 @@ import { Toggle } from "../../ui/controls.tsx";
 import { EmptyState } from "../../ui/EmptyState.tsx";
 import { Menu } from "../../ui/Menu.tsx";
 import { toast } from "../../ui/Toast.tsx";
+import { keepHyphenated } from "../../ui/text.tsx";
 import { StartCombatDialog } from "../combat/StartCombatDialog.tsx";
 
 const act = (p: Promise<unknown>, what: string) => void p.catch((e: Error) => toast.danger(what, e.message));
@@ -150,7 +151,7 @@ function Row({ e, active, others }: { e: CombatViewEntry; active: boolean; other
         className="tabular h-8 w-12 shrink-0 rounded-[var(--radius-control)] border border-line bg-ink-900 text-center text-14 text-bone focus:border-brass focus:outline-none"
       />
       <span className="min-w-0 flex-1 truncate text-14">
-        {e.name}
+        {keepHyphenated(e.name)}
         {e.surprised ? <span className="caps ml-1.5 text-12 text-fog">surprised</span> : null}
       </span>
       {others.length ? (

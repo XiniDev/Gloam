@@ -8,6 +8,7 @@ import {
   boardSettled,
   camera,
   createScene,
+  dmSection,
   hook,
   introDone,
   req,
@@ -363,7 +364,7 @@ test("P6 key screens", async ({ admin, browser, gloam, guardLog }, info) => {
     .catch(() => {});
   await step("14-dm-approvals", admin, async () => {
     const panel = await openDock(admin, "DM panel");
-    await panel.getByRole("tab", { name: /^Approvals/ }).click();
+    await dmSection(admin, "Approvals");
     await expect(panel.getByTestId("proposal")).toBeVisible();
   });
 

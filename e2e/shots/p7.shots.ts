@@ -217,8 +217,24 @@ test("P7 key screens", async ({ admin, browser, gloam, guardLog }, info) => {
     .getByRole("button", { name: "Apply damage" })
     .click()
     .catch(() => {});
-  // The numbers float for a moment: taken at once, no settling.
-  await step("02-floating-numbers", dave, () => dave.waitForTimeout(250), false);
+  // The numbers float for a moment: taken as soon as they show (mid-rise), no settling.
+  await step(
+    "02-floating-numbers",
+    dave,
+    () =>
+      expect
+        .poll(
+          () =>
+            dave.evaluate(() =>
+              [...document.querySelectorAll<HTMLElement>('[data-testid="hp-number"]')].some(
+                (e) => Number(e.style.opacity) > 0.9,
+              ),
+            ),
+          { intervals: [30], timeout: 5000 },
+        )
+        .toBe(true),
+    false,
+  );
   await step("03-ogre-resisted-preview", admin, async () => {
     await admin.waitForTimeout(600);
     await radial(admin, ogre, "HP", "Damage…");
@@ -363,11 +379,15 @@ test("P7 key screens", async ({ admin, browser, gloam, guardLog }, info) => {
   await closeDialogs(admin);
   await step("16-hit-die-card", dave, async () => {
     await req(admin, "rest.apply", { kind: "short", actors: { [thorin]: ["hitDiceCards", "features"] } });
-    // A phone stacks the cards: the new one behind "Show 1 more".
-    const more = dave.getByRole("button", { name: /^Show \d+ more/ });
+    // A phone shows one card at a time: paged to the new one. A narrower screen, two, then "Show n more".
     await dave.waitForTimeout(500);
-    if (await more.isVisible()) await more.click();
-    await expect(dave.getByTestId("request-group").filter({ hasText: "Spend a Hit Die" })).toBeVisible();
+    const hitDie = dave.getByTestId("request-group").filter({ hasText: "Spend a Hit Die" });
+    const next = dave.getByRole("button", { name: "Next card" });
+    for (let i = 0; i < 4 && !(await hitDie.isVisible()) && (await next.isEnabled().catch(() => false)); i++)
+      await next.click();
+    const more = dave.getByRole("button", { name: /^Show \d+ more/ });
+    if (!(await hitDie.isVisible()) && (await more.isVisible())) await more.click();
+    await expect(hitDie).toBeVisible();
   });
   await step("17-temp-hp-choice", admin, async () => {
     await closeDock(admin);

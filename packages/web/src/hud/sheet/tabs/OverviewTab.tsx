@@ -135,14 +135,19 @@ export function OverviewTab({ ctx }: { ctx: SheetCtx }) {
           >
             {h.die}
           </Rollable>
+          {/* The dice left filled, "3 / 5" — as a short rest's cards count them ("d10, 3 left"; critic P7 r2 #15). */}
           <Pips
-            label={`${h.die} hit dice spent`}
+            label={`${h.die} hit dice left`}
             total={h.total}
-            filled={h.used}
+            filled={Math.max(0, h.total - h.used)}
+            filledMeans="left"
             disabled={ro}
-            onSet={(n) => void ctx.set(["core", "hitDice", i, "used"], n)}
+            onSet={(n) => void ctx.set(["core", "hitDice", i, "used"], Math.max(0, h.total - n))}
           />
-          <span className="text-paper-muted">of</span>
+          <span className="tabular font-bold text-paper-ink" data-testid="hit-dice-left">
+            {Math.max(0, h.total - h.used)}
+          </span>
+          <span className="text-paper-muted">/</span>
           <NumberField
             label={`${h.die} hit dice`}
             value={h.total}
@@ -307,7 +312,7 @@ export function OverviewTab({ ctx }: { ctx: SheetCtx }) {
       <TextField
         label="Languages"
         value={c.languages.join(", ")}
-        placeholder="Common, Dwarvish"
+        placeholder="e.g. Common, Dwarvish"
         disabled={ro}
         onCommit={(v) => void ctx.set(["core", "languages"], splitList(v))}
       />
@@ -315,7 +320,7 @@ export function OverviewTab({ ctx }: { ctx: SheetCtx }) {
         <TextField
           label="Other proficiencies"
           value={c.proficiencies.join(", ")}
-          placeholder="Smith's tools, light armour"
+          placeholder="e.g. Smith's tools, light armour"
           disabled={ro}
           onCommit={(v) => void ctx.set(["core", "proficiencies"], splitList(v))}
         />

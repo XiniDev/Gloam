@@ -4,6 +4,7 @@ import {
   admitPlayer,
   boardSettled,
   createScene,
+  dmSection,
   hook,
   introDone,
   req,
@@ -59,8 +60,7 @@ async function picture(canvas: Locator) {
 /** The DM approves the one upload waiting in Approvals. */
 async function approveUpload(admin: Page) {
   const panel = admin.getByRole("region", { name: "DM panel", exact: true });
-  if (!(await panel.isVisible())) await admin.getByRole("button", { name: /^DM panel/ }).click();
-  await panel.getByRole("tab", { name: /^Approvals/ }).click();
+  await dmSection(admin, "Approvals");
   const item = panel.locator("[data-pending]");
   await expect(item).toHaveCount(1);
   await item.getByRole("button", { name: "Approve" }).click();

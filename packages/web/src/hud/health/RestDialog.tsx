@@ -7,6 +7,7 @@ import { useUi } from "../../state/ui.ts";
 import { Button } from "../../ui/Button.tsx";
 import { Dialog } from "../../ui/Dialog.tsx";
 import { toast } from "../../ui/Toast.tsx";
+import { keepHyphenated } from "../../ui/text.tsx";
 
 /**
  * Short and long rests (SPEC §8.11 Rests; AC-HP-13): the characters resting — the selection's, else the whole party —
@@ -115,7 +116,7 @@ export function RestDialog({
                   }
                   className="h-4 w-4 accent-[var(--brass-400)]"
                 />
-                {a.sheet.core.name}
+                {keepHyphenated(a.sheet.core.name)}
               </label>
               {plan.blocked ? (
                 <p className="pl-6 text-13 text-muted">{plan.blocked}.</p>
@@ -126,8 +127,10 @@ export function RestDialog({
                   {plan.items.map((i) => {
                     const kept = !(off[a.id] ?? []).includes(i.key);
                     return (
-                      <li key={i.key}>
-                        <label className="inline-flex min-h-8 items-center gap-2 text-13 text-bone pointer-coarse:min-h-[var(--touch-min)]">
+                      <li key={i.key} className="flex items-center">
+                        <label
+                          className={`inline-flex min-h-8 items-center gap-2 text-13 pointer-coarse:min-h-[var(--touch-min)] ${kept ? "text-bone" : "text-muted"}`}
+                        >
                           <input
                             type="checkbox"
                             checked={kept}
@@ -144,6 +147,12 @@ export function RestDialog({
                           />
                           {i.label}
                         </label>
+                        {/* Unticked, it says so (critic P7 r2 #16: an unticked line read as unexplained). */}
+                        {kept ? null : (
+                          <span aria-hidden className="pl-1.5 text-12 text-faint">
+                            left out
+                          </span>
+                        )}
                       </li>
                     );
                   })}

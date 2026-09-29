@@ -11,6 +11,7 @@ import { Button, IconButton } from "../../ui/Button.tsx";
 import { Segmented, Toggle } from "../../ui/controls.tsx";
 import { Dialog } from "../../ui/Dialog.tsx";
 import { toast, useToasts } from "../../ui/Toast.tsx";
+import { keepHyphenated } from "../../ui/text.tsx";
 
 type Kind = "damage" | "heal" | "temp";
 interface Part {
@@ -349,7 +350,7 @@ export function PreviewRow({
         data-testid="hp-preview-row"
         data-token={r.tokenId}
       >
-        <span className="font-bold text-bone">{r.name}</span>
+        <span className="font-bold text-bone">{keepHyphenated(r.name)}</span>
         <span className="text-13 text-muted">{r.viaDm ? "The DM confirms it" : "Applied at once"}</span>
       </li>
     );
@@ -360,7 +361,7 @@ export function PreviewRow({
   return (
     <li className="flex flex-col gap-2 px-3 py-2.5" data-testid="hp-preview-row" data-token={r.tokenId}>
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-14">
-        <span className="font-bold text-bone">{r.name}</span>
+        <span className="font-bold text-bone">{keepHyphenated(r.name)}</span>
         {kind === "damage" && dmg ? (
           <span className="text-muted">
             takes{" "}

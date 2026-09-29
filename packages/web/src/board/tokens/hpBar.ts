@@ -1,4 +1,4 @@
-import { Color, DoubleSide, ShaderMaterial, Vector2 } from "three";
+import { Color, DoubleSide, ShaderMaterial } from "three";
 import { C, col, hpColor } from "../colors.ts";
 
 export const GHOST_HOLD_MS = 400;
@@ -52,7 +52,6 @@ void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(
 const FRAG = /* glsl */ `
 uniform float uFrac; uniform float uTemp; uniform float uGhost; uniform float uOpacity; uniform float uStripe;
 uniform vec3 uFill; uniform vec3 uTempC; uniform vec3 uGhostC; uniform vec3 uBg; uniform vec3 uEdge;
-uniform vec2 uText;
 varying vec2 vUv;
 void main() {
   // The bar spans max(hpMax, hp + temp): temp HP is its own segment after the fill.
@@ -69,8 +68,6 @@ void main() {
   } else if (x < t) c = uTempC;
   else if (x < g) c = uGhostC;
   float tick = 1.0 - smoothstep(0.0, 0.007, abs(x - 0.5 / denom));
-  // Behind the numbers (Exact) the tick steps aside: the digits say where the HP stand (it ran through the "/").
-  tick *= 1.0 - step(uText.x, x) * step(x, uText.y);
   c = mix(c, uEdge, tick * 0.85);
   float border = max(max(step(vUv.y, 0.14), step(0.86, vUv.y)), max(step(x, 0.012), step(0.988, x)));
   c = mix(c, uEdge, border * 0.9);
@@ -97,7 +94,6 @@ export function createHpBarMaterial(): ShaderMaterial {
       uGhostC: { value: col(C.hpGhost) },
       uBg: { value: col(C.hpTrack) },
       uEdge: { value: col(C.ink950) },
-      uText: { value: new Vector2(2, 2) },
     },
   });
 }
@@ -158,13 +154,10 @@ export function setHpBar(
     temp: number;
     ghost: number;
     opacity: number;
-    /** Where the numbers stand across the bar (0–1), when it shows them. */
-    textSpan?: readonly [number, number] | null;
   },
   colorBlind: boolean,
 ): void {
   const u = m.uniforms as Record<string, { value: unknown }>;
-  (u.uText as { value: Vector2 }).value.set(v.textSpan?.[0] ?? 2, v.textSpan?.[1] ?? 2);
   (u.uFrac as { value: number }).value = v.frac;
   (u.uTemp as { value: number }).value = v.temp;
   (u.uGhost as { value: number }).value = v.ghost;
