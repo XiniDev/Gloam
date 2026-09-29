@@ -96,7 +96,12 @@ export interface CommitInfo {
 export interface RoomEvent {
   name: string;
   payload: unknown;
-  to: { viewersOf: string; except?: string } | { users: string[] } | { dms: true } | { all: true };
+  to:
+    | { viewersOf: string; except?: string }
+    | { users: string[] }
+    | { dms: true }
+    /** Everyone at the table — but those listed (who have it already). */
+    | { all: true; exceptUsers?: string[] };
 }
 
 /** Applies one op to a working set of entities (clones), returning which entities changed. */

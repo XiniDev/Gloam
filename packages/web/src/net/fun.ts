@@ -6,6 +6,12 @@ import { boardData, useEntities } from "../state/entities.ts";
 import { provideTestHook } from "../test/hooks.ts";
 import { request, tableEvents, useTable } from "./table.ts";
 
+/** The reveal put away: the next waiting one unfurls. */
+export function nextReveal(): void {
+  const [next, ...rest] = useFun.getState().queue;
+  useFun.getState().set({ reveal: next ?? null, queue: rest });
+}
+
 /** How long an emote shows (SPEC §8.18: 2.5 s), and how long it stays in the feed. */
 export const EMOTE_MS = 2500;
 const FEED_MS = 8000;
@@ -23,6 +29,8 @@ interface FunStore {
   handouts: HandoutView[];
   /** A handout or note just given to this person: the parchment unfurls (until they put it away). */
   reveal: HandoutView | null;
+  /** Those that came while one was open: each unfurls in turn as the one before is put away. */
+  queue: HandoutView[];
   /** The campaign log as this person may read it, oldest first. */
   log: LogEntryView[];
   logLoaded: boolean;
@@ -35,6 +43,7 @@ export const useFun = create<FunStore>((set) => ({
   emotes: [],
   handouts: [],
   reveal: null,
+  queue: [],
   log: [],
   logLoaded: false,
   unread: 0,
@@ -70,7 +79,15 @@ function onMessage(type: string, payload: unknown): void {
     case "handout":
     case "note": {
       const h = payload as HandoutView;
-      s.set({ handouts: upsert(s.handouts, h), reveal: h, unread: s.unread + 1 });
+      // A DM showing it to everyone gets it too: they wrote it — their list has it; no reveal for them.
+      const role = useTable.getState().me?.role;
+      if (role === "dm" || role === "admin") return;
+      // One at a time: a second waits for the first to be put away (never two parchments over each other).
+      s.set({
+        handouts: upsert(s.handouts, h),
+        ...(s.reveal ? { queue: [...s.queue, h] } : { reveal: h }),
+        unread: s.unread + 1,
+      });
       audio.play("handoutReveal");
       return;
     }
@@ -87,9 +104,10 @@ function onMessage(type: string, payload: unknown): void {
     }
     case "handout.gone": {
       const id = (payload as { id: string }).id;
+      const queue = s.queue.filter((x) => x.id !== id);
       s.set({
         handouts: s.handouts.filter((x) => x.id !== id),
-        reveal: s.reveal?.id === id ? null : s.reveal,
+        ...(s.reveal?.id === id ? { reveal: queue[0] ?? null, queue: queue.slice(1) } : { queue }),
       });
       return;
     }
@@ -132,7 +150,9 @@ export function watchFun(): () => void {
     offMsg();
     offConn();
     loadedFor = "";
-    useFun.getState().set({ emotes: [], handouts: [], reveal: null, log: [], logLoaded: false, unread: 0 });
+    useFun
+      .getState()
+      .set({ emotes: [], handouts: [], reveal: null, queue: [], log: [], logLoaded: false, unread: 0 });
   };
 }
 

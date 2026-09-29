@@ -181,8 +181,23 @@ test.describe("P11 — table flavour (FUN)", () => {
     await panel.getByRole("button", { name: "Send the note" }).click();
     await expect(erin.getByTestId("handout-reveal")).toContainText("Only you notice the glyph glowing.");
     await erin.screenshot({ path: `${SHOTS}/secret-note.png` });
+    // The map shown to everyone while her note is still open: it waits its turn — never two parchments at once.
+    await row.getByRole("button", { name: "Show A torn map" }).click();
+    await admin.getByRole("menuitem", { name: "To everyone" }).click();
+    await expect(row).toContainText("Shown to everyone");
+    await erin.waitForTimeout(600);
+    await expect(erin.getByTestId("handout-reveal")).toHaveCount(1);
+    await expect(erin.getByTestId("handout-reveal")).toContainText("glyph");
     await erin.getByTestId("handout-reveal").getByRole("button", { name: "Keep it" }).click();
-    await expect(erin.getByTestId("handouts-list").getByTestId("handout-card")).toHaveCount(1);
+    await expect(
+      erin.getByTestId("handout-reveal").getByRole("heading", { name: "A torn map" }),
+    ).toBeVisible();
+    await expect(erin.getByTestId("handout-reveal")).toHaveCount(1);
+    await erin.getByTestId("handout-reveal").getByRole("button", { name: "Keep it" }).click();
+    await expect(erin.getByTestId("handout-reveal")).toBeHidden();
+    await expect(erin.getByTestId("handouts-list").getByTestId("handout-card")).toHaveCount(2);
+    // (Dave has it already: his list keeps one of it, no second unfurling of the same map.)
+    await expect(dave.getByTestId("handouts-list").getByTestId("handout-card")).toHaveCount(1);
     await dave.waitForTimeout(500);
     expect(JSON.stringify(await hook(dave, "handouts"))).not.toContain("glyph");
     await expect(dave.getByTestId("handout-reveal")).toBeHidden();
@@ -200,7 +215,9 @@ test.describe("P11 — table flavour (FUN)", () => {
     await expect(erin.getByTestId("campaign-log")).toContainText("We found the second stair.");
     // The targeted handout's line is Dave's (and the DM's), not Erin's.
     await expect(log).toContainText('showed the handout "A torn map" to a player');
-    await expect(erin.getByTestId("campaign-log")).not.toContainText("A torn map");
+    await expect(erin.getByTestId("campaign-log")).not.toContainText("to a player");
+    // (Shown to everyone afterwards: that line is everyone's.)
+    await expect(erin.getByTestId("campaign-log")).toContainText('The DM showed the handout "A torn map".');
     // Search narrows it.
     await log.getByLabel("Search the log").fill("stair");
     await expect(log.getByTestId("log-entry")).toHaveCount(1);

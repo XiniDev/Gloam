@@ -869,6 +869,16 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
         }
       },
       log: (kind, text, data) => this.fun.append(kind, text, { data }),
+      closeAsked: (combatId) => {
+        for (const r of this.requests.open(this.campaignId)) {
+          const p = r.purpose as { kind?: string; combatId?: string } | undefined;
+          if (p?.kind !== "initiative" || p.combatId !== combatId) continue;
+          r.status = "closed";
+          r.closedAt = Date.now();
+          this.requests.save(r);
+          this.sendRequest(r);
+        }
+      },
     });
     this.fun = new FunFlow({
       campaignId: this.campaignId,
@@ -2028,7 +2038,9 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
       }
       if ("viewersOf" in e.to) this.toViewersOf(e.to.viewersOf, e.name, e.payload);
       else if ("all" in e.to) {
-        this.broadcastAll(e.name, e.payload);
+        const skip = new Set(e.to.exceptUsers ?? []);
+        for (const c of this.clients)
+          if (!skip.has((c.auth as ClientAuth | undefined)?.userId ?? "")) c.send(e.name, e.payload);
         if (e.name === AUDIO_SYNC) this.audioTimer.changed();
       } else if ("users" in e.to)
         for (const u of e.to.users)

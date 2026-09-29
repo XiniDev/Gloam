@@ -1,13 +1,13 @@
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
-import { useFun } from "../../net/fun.ts";
+import { nextReveal, useFun } from "../../net/fun.ts";
 import { prefersReducedMotion } from "../../state/settings.ts";
 import { useUi } from "../../state/ui.ts";
 import { Button } from "../../ui/Button.tsx";
 import { HandoutCard } from "./HandoutCard.tsx";
 
-const closeReveal = () => useFun.getState().set({ reveal: null });
+const closeReveal = nextReveal;
 
 /**
  * A handout or secret note arriving (SPEC §8.18; AC-FUN-04): the parchment unfurls from its top edge over the table
@@ -31,7 +31,8 @@ export function HandoutReveal() {
     };
   }, [h]);
   return createPortal(
-    <AnimatePresence>
+    // One leaves before the next comes (mode "wait"): never two parchments over each other.
+    <AnimatePresence mode="wait">
       {h ? (
         <motion.div
           key={h.id}

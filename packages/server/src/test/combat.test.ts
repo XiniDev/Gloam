@@ -501,4 +501,27 @@ describe("P8 — combat on the server (§8.12, §16.5)", () => {
     const v = await waitFor(() => lastView(anna().msgs));
     expect(v.active).toBe(false);
   });
+
+  it("stopping a combat still finding its initiative takes its players' cards back (nothing left to roll for)", async () => {
+    anna().msgs.length = 0;
+    await cmd(dm, "combat.quickStart", {});
+    const card = await waitFor(() =>
+      anna()
+        .msgs.filter((m) => m.type === "request.card")
+        .map((m) => m.payload as RequestCard)
+        .find((c) => c.label.startsWith("Initiative") && c.open),
+    );
+    await cmd(dm, "combat.stop", {});
+    await waitFor(() =>
+      anna()
+        .msgs.filter((m) => m.type === "request.card")
+        .map((m) => m.payload as RequestCard)
+        .find((c) => c.requestId === card.requestId && !c.open),
+    );
+    expect(
+      t.server.ctx.sqlite.prepare("SELECT status FROM roll_requests WHERE id = ?").get(card.requestId),
+    ).toEqual({
+      status: "closed",
+    });
+  });
 });

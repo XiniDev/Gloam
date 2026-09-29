@@ -58,6 +58,8 @@ export interface CombatHost {
   requestDeathSaves(tokenIds: string[]): void;
   /** Appends to the campaign log (the combat's summary). */
   log(kind: string, text: string, data: Record<string, unknown>): void;
+  /** Closes the open requests this combat asked (its initiative cards), when it stops. */
+  closeAsked(combatId: string): void;
 }
 
 /** A combatant's players: its token's owners (a linked character's owner is among them). */
@@ -442,6 +444,8 @@ export class CombatFlow {
 
   /** Combat stopped (AC-CMB-07): its summary in the log, and everyone told. */
   stopped(e: CombatStopped): void {
+    // Initiative still being asked for: the cards go (there's nothing to roll it for now).
+    this.host.closeAsked(e.combatId);
     const parts = [`Combat ended after ${e.rounds} ${e.rounds === 1 ? "round" : "rounds"}.`];
     if (e.downed.length) parts.push(`Down: ${e.downed.join(", ")}.`);
     const hits = e.tally.filter((x) => x.dealt || x.taken);

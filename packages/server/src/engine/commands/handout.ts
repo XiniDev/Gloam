@@ -143,7 +143,19 @@ export const handoutShow: CommandDef<z.infer<typeof HandoutShow>, { recipients: 
     const recipients: string[] | "all" =
       p.to === "all" || h.recipients === "all" ? "all" : [...new Set([...h.recipients, ...p.to])];
     const view = handoutView(h, false);
-    const to = p.to === "all" ? { all: true as const } : { users: p.to };
+    // Unfurled for those it's new to (a second showing doesn't unroll it again for those who have it).
+    const had = h.recipients === "all" ? null : new Set(h.recipients);
+    const fresh = p.to === "all" ? null : p.to.filter((u) => !had || !had.has(u));
+    const reveal: RoomEvent[] =
+      h.recipients === "all" || (fresh && !fresh.length)
+        ? []
+        : [
+            {
+              name: "handout",
+              payload: view,
+              to: fresh ? { users: fresh } : { all: true, exceptUsers: had ? [...had] : [] },
+            },
+          ];
     return {
       ops: setOps("handout", h, { recipients }),
       summary: `Showed the handout "${h.title}" to ${p.to === "all" ? "everyone" : `${p.to.length} ${p.to.length === 1 ? "player" : "players"}`}`,
@@ -151,7 +163,7 @@ export const handoutShow: CommandDef<z.infer<typeof HandoutShow>, { recipients: 
       events: [
         toDms({ ...h, recipients }, h.id),
         // The reveal: a parchment card unfurling on each recipient's screen.
-        { name: "handout", payload: view, to },
+        ...reveal,
         {
           name: "log.append",
           payload: {

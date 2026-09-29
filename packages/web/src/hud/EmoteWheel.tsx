@@ -84,7 +84,9 @@ export function EmoteWheel() {
   // Kept on screen: the wheel and its phrases (≈ 340 px tall) where there's room.
   const w = Math.max(SIZE, 320);
   const left = Math.min(Math.max(12, at.x - w / 2), window.innerWidth - w - 12);
-  const top = Math.min(Math.max(64, at.y - SIZE / 2), window.innerHeight - SIZE - 150);
+  // (On a phone, below the dock's rail in the top-right corner: the wheel is wider than the room beside it.)
+  const minTop = window.innerWidth < 640 ? 236 : 64;
+  const top = Math.min(Math.max(minTop, at.y - SIZE / 2), window.innerHeight - SIZE - 150);
   const emote = (id: EmoteId) => {
     close();
     void sendEmote(id).catch(refused);

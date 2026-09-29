@@ -185,6 +185,9 @@ describe("P11 — table flavour on the server (FUN)", () => {
     await sleep(500);
     await rq(dm.room, "handout.show", { handoutId, to: "all" });
     await waitFor(() => of<HandoutView>(erin, "handout").length === 1);
+    // Dave has it already: it doesn't unroll for him again.
+    await sleep(300);
+    expect(of(dave, "handout").length).toBe(1);
     // A secret note to Erin: only Erin.
     await sleep(500);
     const { handoutId: noteId } = await rq<{ handoutId: string }>(dm.room, "note.secret", {
