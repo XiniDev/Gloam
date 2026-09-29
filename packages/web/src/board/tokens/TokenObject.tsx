@@ -39,6 +39,7 @@ import { moveAnimAt, moveAnimFade } from "../move/anims.ts";
 import { pressToken } from "../move/input.ts";
 import { TIERS, useTier } from "../tiers.ts";
 import { withFog } from "../vision/fogMaterial.ts";
+import { alphaFromAlphaChannel } from "./alphaChannel.ts";
 import { AUTO_COIN_PITCH, approach, crossfadeStep } from "./crossfade.ts";
 import {
   overlayClear,
@@ -278,13 +279,19 @@ export const TokenObject = memo(function TokenObject({
     gradeAt,
   );
   const standeeBack = useTransparentMaterial(
-    () => new MeshStandardMaterial({ color: C.cardboard, roughness: 0.95, alphaTest: 0.5 }),
+    () =>
+      alphaFromAlphaChannel(
+        new MeshStandardMaterial({ color: C.cardboard, roughness: 0.95, alphaTest: 0.5 }),
+      ),
     [],
     gradeAt,
   );
   // The card's cardboard edge (§8.5, §24): a shade darker than its back, so the top edge reads against it.
   const standeeEdge = useTransparentMaterial(
-    () => new MeshStandardMaterial({ color: C.cardboardEdge, roughness: 0.95, alphaTest: 0.5 }),
+    () =>
+      alphaFromAlphaChannel(
+        new MeshStandardMaterial({ color: C.cardboardEdge, roughness: 0.95, alphaTest: 0.5 }),
+      ),
     [],
     gradeAt,
   );
