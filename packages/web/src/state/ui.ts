@@ -13,6 +13,7 @@ export type DmSection =
   | "combat"
   | "spells"
   | "effects"
+  | "history"
   | "approvals";
 export type SheetTab =
   | "overview"

@@ -165,5 +165,6 @@ export const MESSAGE_RATES = {
 export * from "./combat.ts";
 export * from "./commands.ts";
 export * from "./health.ts";
+export * from "./history.ts";
 export * from "./sheets.ts";
 export * from "./spells.ts";

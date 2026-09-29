@@ -3,7 +3,7 @@ import { GloamError } from "@gloam/shared/protocol";
 import { applyPatch, controlsToken, lockedChanges } from "@gloam/shared/rules";
 import type { TokenEntity } from "@gloam/shared/schemas";
 import type { Raster } from "@gloam/shared/vision";
-import { and, desc, eq, gt, isNull } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, like, lt, ne } from "drizzle-orm";
 import type { z } from "zod";
 import type { ServerContext } from "../context.ts";
 import { history } from "../db/schema.ts";
@@ -207,7 +207,7 @@ export class CommandBus {
     const undoable = plan.undoable ?? def.undoable;
     const entry =
       plan.ops.length > 0
-        ? this.commit(type, plan.ops, plan.summary, undoable, actor, plan.sceneId ?? null)
+        ? this.commit(type, plan.ops, plan.summary, undoable, actor, plan.sceneId ?? this.sceneOf(plan.ops))
         : null;
     if (entry && undoable) this.pushUndo(actor.userId, entry.id, opts.undoGroup ?? null, opts.joinEntry);
     const info: CommitInfo = { entry, ops: plan.ops, actor, type };
@@ -399,6 +399,22 @@ export class CommandBus {
       }
     }
     return out;
+  }
+
+  /**
+   * The scene a command's changes are on, when its plan doesn't say (HP applied, a condition): the first scene-bound
+   * thing its ops touch — a token, wall, light, zone or effect, or a fog layer — so the History panel's Scene filter
+   * finds it. Null for campaign-wide changes (a sheet, the house rules).
+   */
+  private sceneOf(ops: readonly Op[]): string | null {
+    for (const o of ops) {
+      if (o.k === "fog") return o.sceneId;
+      if (o.k === "sheet") continue;
+      const ent = o.k === "create" ? o.value : o.k === "delete" ? o.prev : this.model.get(o.e as never, o.id);
+      const sid = (ent as { sceneId?: unknown } | null | undefined)?.sceneId;
+      if (typeof sid === "string") return sid;
+    }
+    return null;
   }
 
   private who(userId: string): string {
@@ -609,6 +625,59 @@ export class CommandBus {
     u.push({ ids: redone, group: step.group });
     this.undoStacks.set(actor.userId, u);
     return next as HistoryEntry;
+  }
+
+  /**
+   * The History panel's list (SPEC §8.14): this campaign's entries, newest first, before `before`, filtered by person,
+   * command family ("token" for token.*) and scene; `limit + 1` read to know there's more.
+   */
+  list(q: { userId?: string; family?: string; sceneId?: string; before?: number; limit: number }): {
+    rows: HistoryEntry[];
+    more: boolean;
+  } {
+    // (An undo's own record isn't listed: the entry it undid shows struck through, "undone by …".)
+    const where = [eq(history.campaignId, this.model.campaign.id), ne(history.type, "history.undo")];
+    if (q.userId) where.push(eq(history.userId, q.userId));
+    if (q.family) where.push(like(history.type, `${q.family}.%`));
+    if (q.sceneId) where.push(eq(history.sceneId, q.sceneId));
+    if (q.before) where.push(lt(history.id, q.before));
+    const rows = this.app.db
+      .select({ id: history.id })
+      .from(history)
+      .where(and(...where))
+      .orderBy(desc(history.id))
+      .limit(q.limit + 1)
+      .all();
+    const out = rows.slice(0, q.limit).flatMap((r) => this.entry(r.id) ?? []);
+    return { rows: out, more: rows.length > q.limit };
+  }
+
+  /** Who appears in this campaign's history (the Person filter). */
+  people(): string[] {
+    return this.app.db
+      .selectDistinct({ userId: history.userId })
+      .from(history)
+      .where(eq(history.campaignId, this.model.campaign.id))
+      .all()
+      .map((r) => r.userId);
+  }
+
+  /** The entries a Restore to here would revert: every later undoable one not undone, newest first. */
+  laterThan(id: number): HistoryEntry[] {
+    return this.app.db
+      .select({ id: history.id })
+      .from(history)
+      .where(
+        and(
+          eq(history.campaignId, this.model.campaign.id),
+          gt(history.id, id),
+          isNull(history.undoneAt),
+          eq(history.undoable, true),
+        ),
+      )
+      .orderBy(desc(history.id))
+      .all()
+      .flatMap((r) => this.entry(r.id) ?? []);
   }
 
   /** History panel Revert (DM): undo with force semantics. */

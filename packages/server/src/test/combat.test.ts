@@ -223,6 +223,25 @@ describe("P8 — combat on the server (§8.12, §16.5)", () => {
     await cmd(dm, "move.reset", { tokenId: hero });
   });
 
+  it("AC-MOV-06: Ctrl/Cmd+Z after a move undoes only its last segment and gives back what it cost", async () => {
+    await turnOf(hero);
+    const start = { ...(tokenOf(hero)?.pos as { x: number; y: number }) };
+    const dir = start.x < 40 ? 1 : -1;
+    // Two segments: 10 ft, then 15 more.
+    await move(anna().room, hero, { x: start.x + dir * 10, y: start.y });
+    await move(anna().room, hero, { x: start.x + dir * 25, y: start.y });
+    expect(data().turn?.usedFt).toBeCloseTo(25, 1);
+    // Undo: back to the end of the first, its 15 ft refunded — the first segment stands.
+    await cmd(anna().room, "history.undo", {});
+    expect(tokenOf(hero)?.pos.x).toBeCloseTo(start.x + dir * 10, 1);
+    expect(data().turn?.usedFt).toBeCloseTo(10, 1);
+    await waitFor(() => Math.abs((own(hero)?.usedFt ?? 0) - 10) < 0.1);
+    // Again: the first one too, the whole budget back.
+    await cmd(anna().room, "history.undo", {});
+    expect(tokenOf(hero)?.pos).toEqual(start);
+    expect(data().turn?.usedFt).toBeCloseTo(0, 1);
+  });
+
   it("an attack from the app marks the creature's Action, once; the pips can be toggled by hand (AC-CMB-08)", async () => {
     await turnOf(hero);
     expect(data().pips[hero] ?? 0).toBe(0);

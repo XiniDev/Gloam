@@ -507,7 +507,7 @@ test("P9 key screens", async ({ admin, browser, gloam, guardLog }, info) => {
         .getByRole("button", { name: "Next card" })
         .click()
         .catch(() => {});
-    await expect(card.getByTestId("attack-hints")).toContainText("target Restrained");
+    await expect(card.getByTestId("attack-hints")).toContainText(/Advantage — .+ is restrained/i);
     await dave.mouse.move(700, 600);
   });
   await closeCards(admin);

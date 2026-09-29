@@ -262,8 +262,9 @@ test.describe("P2 — DM tools: calibration, 3D maps, the Library (SCN-01, SCN-0
     // A card's menu in the scrolling list follows its button as the list scrolls, and closes once the button has
     // scrolled out of the list's view — never left adrift, never closed by the scroll that brought it into view.
     const items = admin.getByRole("list", { name: "Library items" });
-    // The last card's, with the list scrolled to its foot.
+    // A short list (held to 180 px here, as on a small screen) scrolled to its foot: the last card's menu.
     await items.evaluate((el) => {
+      el.style.maxHeight = "180px";
       el.scrollTop = el.scrollHeight;
     });
     const lastMore = (await items.evaluate((el) => {
@@ -287,6 +288,9 @@ test.describe("P2 — DM tools: calibration, 3D maps, the Library (SCN-01, SCN-0
       el.scrollTop = 0;
     });
     await expect(cardMenu).toBeHidden();
+    await items.evaluate((el) => {
+      el.style.maxHeight = "";
+    });
 
     // Drag onto the board: a token where it lands.
     const board = (await admin.getByTestId("board").boundingBox()) as {

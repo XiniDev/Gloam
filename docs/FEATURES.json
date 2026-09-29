@@ -569,10 +569,10 @@
       "code": "MOV",
       "phase": "P10",
       "text": "Ctrl/Cmd+Z after a move undoes only the last segment and refunds its cost.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/combat.test.ts › 'AC-MOV-06: Ctrl/Cmd+Z after a move undoes only its last segment and gives back what it cost' (two segments; one undo returns to the first's end with 10 of 25 ft used; a second undo the start, 0 used)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-29T15:30:00.640Z"
     },
     {
       "id": "AC-MOV-07",
@@ -1603,10 +1603,10 @@
       "code": "UNDO",
       "phase": "P10",
       "text": "Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z (or Ctrl+Y) undo and redo the user's own token moves, token edits, fog operations, wall edits, damage/healing applications, condition changes and sheet edits.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "Undo/redo by kind, server: movement.test.ts (moves) and combat.test.ts AC-MOV-06, board.test.ts (token edits, redo), vision.test.ts (fog), walls.test.ts (walls, redo), health.test.ts (damage/healing, conditions), sheets.test.ts (sheet edits); keys: e2e/journeys/p10-undo.spec.ts (Ctrl+Z, Ctrl+Shift+Z and Ctrl+Y on a deleted token; Ctrl+Z on a fog wipe) and p2-dm-tools.spec.ts (Ctrl+Z / Ctrl+Shift+Z); client: packages/web/src/hud/useUndoKeys.ts",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-29T15:44:09.422Z"
     },
     {
       "id": "AC-UNDO-02",
@@ -1614,10 +1614,10 @@
       "code": "UNDO",
       "phase": "P10",
       "text": "A conflicting undo is refused for players with an explanation; DMs can force it.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/history.test.ts › 'AC-UNDO-02: a player's undo over a later change is refused, saying who changed what; the DM may force it' (\"Can't undo: … changed this since (…)\"; the DM's CONFLICT then history.undo {force}); the client shows the reason and, to DMs, Undo anyway (useUndoKeys.ts)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-29T15:30:00.710Z"
     },
     {
       "id": "AC-UNDO-03",
@@ -1625,10 +1625,10 @@
       "code": "UNDO",
       "phase": "P10",
       "text": "The History panel lists and filters entries; Revert and Restore-to-here work with a confirmation summary.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p10-undo.spec.ts › 'AC-UNDO-03/04: the History panel lists and filters…' (rows newest first with who/scene/when, the Kind filter, Revert, Restore to here with its confirmation listing the reverted changes; artifacts/screens/p10/history-panel.png, history-restore.png) and packages/server/src/test/history.test.ts (list, person/kind filters, revert plans with conflicts refused without force, restore plan = what's reverted; players refused)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-29T15:44:09.283Z"
     },
     {
       "id": "AC-UNDO-04",
@@ -1636,10 +1636,10 @@
       "code": "UNDO",
       "phase": "P10",
       "text": "An accidental fog wipe, a deleted token and a doubly applied damage can each be restored in at most two clicks.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p10-undo.spec.ts › 'AC-UNDO-03/04…': a doubly applied Fireball damage reverted with one click on Revert in the History panel (HP back by one hit); a deleted token back with Ctrl+Z (zero clicks); a Hide all fog wipe restored with Ctrl+Z",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-29T15:44:09.353Z"
     },
     {
       "id": "AC-UNDO-05",
@@ -1650,7 +1650,7 @@
       "passes": false,
       "evidence": null,
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-29T15:30:23.354Z"
     },
     {
       "id": "AC-PER-01",

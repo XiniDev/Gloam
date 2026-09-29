@@ -480,3 +480,18 @@ P1 28/28 · P2 32/32 · P3 16/17 · P4 12/12 · P5 9/9 · P6 14/14 · P7 1/17 ·
 - Tests: spellSecurity (16), spellAudit (10), presets (7), homebrew (+2), conditions/aoe/spellRules units.
   `pnpm check`: 597 tests.
 - Next: the P9 journeys and key screens again, the visual critic (≤ 2 rounds); then P10.
+
+## 2026-09-29 — P9 visual critic, round 1 (5/10): fixes in (d6208d7)
+
+- Key screens: 15 steps × 3 viewports; the critic's 30 findings answered (DECISIONS 2026-09-29, "P9 critic round 1"
+  and the five entries after it). Its #1 (a leak) checked: not one — a new scene's fog is off; step 10 now runs under
+  dynamic fog as evidence.
+- Cards, the targeting bar (concentration asked inline, picks counter, ×N badges, touch wording), spell browser,
+  homebrew builder (status, VFX from the damage type), import report (Will import, outcomes, plain-words errors),
+  plates by zoom, leaders to the rim, VFX fading at the scene's edge, phones (aim framing, 30 % card sheet).
+- Found by the full E2E run (53/56 passed): menus closed when their panel scrolled as they opened — a P8 regression
+  (p2 Library Rename, p6 Sheet actions); menus now follow their button and close only once it's out of view. The P5
+  dice-rest check failed once under the full run's load and passes alone.
+- Tests: castHide, aimFrame, rimEntry, zoom-out plates, VFX edge fade (every material), import `spells[]`, the
+  Library menu follow/close journey step. `pnpm check`: 607 tests.
+- Next: P9 journeys and key screens again, visual critic round 2 (the last), the full E2E run and bench; then P10.

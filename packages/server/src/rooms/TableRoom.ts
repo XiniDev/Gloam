@@ -17,6 +17,9 @@ import {
   DiceRoll,
   GloamError,
   HandToggle,
+  type HistoryListEntry,
+  type HistoryListResult,
+  type HistoryRestorePlan,
   HpApply,
   LobbyDecide,
   MESSAGE_RATES,
@@ -74,6 +77,7 @@ import {
   CommandBus,
   type CommandCtx,
   type CommitInfo,
+  type HistoryEntry,
   type RoomEvent,
 } from "../engine/commandBus.ts";
 import { checkSheet, readSheet } from "../engine/commands/actor.ts";
@@ -680,6 +684,71 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
         const e = this.bus.redo(this.actorFor(auth));
         return { entryId: e.id, summary: e.summary };
       }),
+      // The History panel (SPEC §8.14; DM): the list, Revert (with what it would override) and Restore to here (with
+      // what it would revert) — each a dry run first when the panel asks for one.
+      "history.list": def(
+        z.strictObject({
+          userId: z.string().min(1).max(64).optional(),
+          family: z
+            .string()
+            .regex(/^[a-z]{1,24}$/)
+            .optional(),
+          sceneId: z.string().min(1).max(64).optional(),
+          before: z.number().int().positive().optional(),
+          limit: z.number().int().min(1).max(100).default(50),
+        }),
+        { capacity: 10, perSecond: 4 },
+        ({ auth }, p): HistoryListResult => {
+          this.requireDm(auth);
+          const { rows, more } = this.bus.list(p);
+          return {
+            entries: rows.map((e) => this.historyView(e)),
+            more,
+            people: this.bus.people().map((id) => ({ id, name: this.nameOf(id) })),
+            scenes: this.model.all("scene").map((s) => ({ id: s.id, name: s.name })),
+          };
+        },
+      ),
+      "history.revert": def(
+        z.strictObject({
+          id: z.number().int().positive(),
+          dryRun: z.boolean().optional(),
+          force: z.boolean().optional(),
+        }),
+        { capacity: 5, perSecond: 5 },
+        ({ auth }, p) => {
+          this.requireDm(auth);
+          const e = this.bus.entry(p.id);
+          if (!e) throw new GloamError("NOT_FOUND", "That change isn't in this table's history.");
+          if (!e.undoable)
+            throw new GloamError("INVALID", "That can't be reverted: it's a fact of the table.");
+          if (e.undoneAt !== null) throw new GloamError("CONFLICT", "That change has already been undone.");
+          const conflicts = this.bus.conflicts(e).map((x) => this.historyView(x));
+          if (p.dryRun) return { changes: [this.historyView(e)], conflicts } satisfies HistoryRestorePlan;
+          if (conflicts.length && !p.force)
+            throw new GloamError(
+              "CONFLICT",
+              `${conflicts.length} later change${conflicts.length === 1 ? "" : "s"} touched the same things.`,
+            );
+          const r = this.bus.revert(p.id, this.actorFor(auth));
+          return { entryId: r.id, summary: e.summary };
+        },
+      ),
+      "history.restore": def(
+        z.strictObject({ id: z.number().int().positive(), dryRun: z.boolean().optional() }),
+        { capacity: 3, perSecond: 1 },
+        ({ auth }, p) => {
+          this.requireDm(auth);
+          if (!this.bus.entry(p.id))
+            throw new GloamError("NOT_FOUND", "That change isn't in this table's history.");
+          if (p.dryRun)
+            return {
+              changes: this.bus.laterThan(p.id).map((x) => this.historyView(x)),
+              conflicts: [],
+            } satisfies HistoryRestorePlan;
+          return { reverted: this.bus.restoreTo(p.id, this.actorFor(auth)) };
+        },
+      ),
     },
     roomCtx().log,
     (client, type) => {
@@ -1339,7 +1408,40 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
   }
 
   /** Post-commit (§14.1 step 5–6): mirror changed entities into the Colyseus state. */
+  /** An entry as the History panel shows it: names for its person, its scene and who undid it. */
+  private historyView(e: HistoryEntry): HistoryListEntry {
+    const scene = e.sceneId ? this.model.get("scene", e.sceneId) : null;
+    return {
+      id: e.id,
+      at: e.createdAt,
+      userId: e.userId,
+      userName: this.nameOf(e.userId),
+      type: e.type,
+      summary: e.summary,
+      sceneId: e.sceneId,
+      sceneName: scene?.name ?? null,
+      undoable: e.undoable,
+      undoneAt: e.undoneAt,
+      undoneByName: e.undoneBy ? this.nameOf(e.undoneBy) : null,
+    };
+  }
+
+  private nameOf(userId: string): string {
+    return roomCtx().profiles.get(userId)?.displayName ?? "someone";
+  }
+
+  /** The DMs' History panels hear that it changed (at most every 400 ms: a batch of commands is one refresh). */
+  private historyPing: ReturnType<typeof setTimeout> | null = null;
+  private historyChanged(): void {
+    if (this.historyPing) return;
+    this.historyPing = setTimeout(() => {
+      this.historyPing = null;
+      this.toDms("history.changed", {});
+    }, 400);
+  }
+
   private onCommitted(info: CommitInfo): void {
+    this.historyChanged();
     if (info.ops.some((o) => (o.k === "set" || o.k === "create") && o.e === "campaign")) this.syncCampaign();
     const active = this.model.activeScene;
     const nextActive = active && !active.deletedAt ? active.id : "";
