@@ -17,6 +17,8 @@ export interface HudInsets {
   right: number;
   /** The prep banner's height (+ gap), when it shows. */
   banner: number;
+  /** The turn tracker's height (+ gap) under the top bar and banner, while a combat shows one (§8.12). */
+  tracker: number;
   /** The roll feed's width (+ gap) along the bottom-left, when it shows: tool option bars start past it. */
   feed: number;
   /**
@@ -37,6 +39,7 @@ export const useHudInsets = create<HudInsets & { set(p: Partial<HudInsets>): voi
   left: 76,
   right: 76,
   banner: 0,
+  tracker: 0,
   feed: 0,
   cornerLeft: 0,
   cornerRight: 0,
@@ -51,7 +54,7 @@ const GAP = 8;
 export const PHONE_BOTTOM_BAND = 80;
 
 /** Bands that only exist while an element claims them (the others keep their last value). */
-const TRANSIENT = new Set<keyof HudInsets>(["banner", "cornerLeft", "cornerRight", "bottom"]);
+const TRANSIENT = new Set<keyof HudInsets>(["banner", "tracker", "cornerLeft", "cornerRight", "bottom"]);
 /** Each element's claim on each inset: the inset is the largest (a sheet over the action bar, both along the bottom). */
 const claims = new Map<keyof HudInsets, Map<object, number>>();
 function settle(key: keyof HudInsets): void {
@@ -102,6 +105,7 @@ export const insetMeasures = {
   left: (r: DOMRect) => r.right + GAP,
   right: (r: DOMRect) => window.innerWidth - r.left + GAP,
   banner: (r: DOMRect) => r.height + GAP,
+  tracker: (r: DOMRect) => r.height + GAP,
   corner: (r: DOMRect) => r.bottom + GAP,
   bottom: (r: DOMRect) => window.innerHeight - r.top + GAP,
 };
@@ -125,10 +129,10 @@ export function clearArea(hud: HudInsets, W: number, H: number, phone: boolean):
     return {
       left: 12,
       right: W - 12,
-      top: Math.max(hud.top + hud.banner, hud.cornerLeft, hud.cornerRight),
+      top: Math.max(hud.top + hud.banner + hud.tracker, hud.cornerLeft, hud.cornerRight),
       bottom,
     };
-  return { left: hud.left, top: hud.top + hud.banner, right: W - hud.right, bottom };
+  return { left: hud.left, top: hud.top + hud.banner + hud.tracker, right: W - hud.right, bottom };
 }
 
 /**

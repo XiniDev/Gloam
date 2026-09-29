@@ -1,6 +1,8 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router";
 import { ActionBar } from "../hud/ActionBar.tsx";
+import { TurnTracker } from "../hud/combat/TurnTracker.tsx";
+import { useCombatKeys } from "../hud/combat/useCombatKeys.ts";
 import { DiceTray } from "../hud/DiceTray.tsx";
 import { Dock } from "../hud/Dock.tsx";
 import { MapToolsPanel } from "../hud/dm/MapToolsPanel.tsx";
@@ -34,6 +36,7 @@ import { WallChips } from "../hud/WallChips.tsx";
 import { WallsPanel } from "../hud/WallsPanel.tsx";
 import { ZoneEditor, ZonesPanel } from "../hud/ZonesPanel.tsx";
 import { joinErrorCode } from "../net/colyseus.ts";
+import { watchCombat } from "../net/combat.ts";
 import { watchDice } from "../net/dice.ts";
 import { watchFog } from "../net/fog.ts";
 import { watchHealth } from "../net/health.ts";
@@ -54,6 +57,7 @@ export default function TableRoute() {
   const me = useTable((s) => s.me);
   const introPhase = useIntro((s) => s.phase);
   useUndoKeys();
+  useCombatKeys();
   const introReduced = useIntro((s) => s.reduced);
   // While the table is up, overlays that float over the HUD (toasts) keep clear of the dock.
   useEffect(() => {
@@ -65,6 +69,7 @@ export default function TableRoute() {
   useEffect(() => watchDice(), []);
   useEffect(() => watchSheets(), []);
   useEffect(() => watchHealth(), []);
+  useEffect(() => watchCombat(), []);
   useEffect(() => watchPendingArt(), []);
   useEffect(() => {
     let cancelled = false;
@@ -152,6 +157,7 @@ export default function TableRoute() {
       <MeasureLabels />
       <ActionBar />
       <RollFeed />
+      <TurnTracker />
       <RequestCards />
       <PromptCards />
       <DiceTray />

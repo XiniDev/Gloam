@@ -362,6 +362,8 @@ export function RequestCards({ inline = false }: { inline?: boolean }) {
   }, [cards, dismissed]);
   const top = useHudInsets((s) => s.top);
   const banner = useHudInsets((s) => s.banner);
+  // Under the turn tracker once there is one (§8.12).
+  const tracker = useHudInsets((s) => s.tracker);
   const left = useHudInsets((s) => s.left);
   const right = useHudInsets((s) => s.right);
   const phone = useIsPhone();
@@ -403,7 +405,7 @@ export function RequestCards({ inline = false }: { inline?: boolean }) {
           ? // A phone's cards stand above the dice button and the roll feed (under the top corners they hid the
             // creature they're about — critic P7 r1), in thumb's reach.
             { bottom: Math.max(bottom, PHONE_BOTTOM_BAND) + 8, left: 12, right: 12 }
-          : { top: top + banner + 8, left: left + 8, right: right + 8 }
+          : { top: top + banner + tracker + 8, left: left + 8, right: right + 8 }
       }
     >
       {list}
