@@ -479,6 +479,7 @@ function withStatus(
         ...(add.untilRound ? { untilRound: add.untilRound } : {}),
         ...(add.color ? { color: add.color } : {}),
         ...(add.glyph ? { glyph: add.glyph } : {}),
+        ...(add.description ? { description: add.description } : {}),
       },
     ],
   };

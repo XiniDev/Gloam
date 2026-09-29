@@ -60,6 +60,9 @@ describe("what damage brings (SPEC §8.11; AC-HP-06/07/09/10)", () => {
     const dead = applyToStatus(status(), { kind: "npcAtZero", choice: "dead" });
     expect(dead.markers.map((m) => m.id)).toContain("dead");
     expect(applyToStatus(status(), { kind: "npcAtZero", choice: "dead" }, "keep")).toEqual(status());
+    // Left unconscious, it is Prone too (SRD 5.2.1), as a character going down is.
+    const out = applyToStatus(status(), { kind: "npcAtZero", choice: "unconscious" });
+    expect(out.conditions.map((c) => c.id)).toEqual(["unconscious", "prone"]);
   });
 
   it("massive damage asks the DM: instant death?", () => {

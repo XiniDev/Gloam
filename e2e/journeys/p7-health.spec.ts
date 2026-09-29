@@ -131,7 +131,9 @@ test.describe("P7 — HP, conditions and death (§8.11)", () => {
     await expect(row).toContainText("overflow 2");
     // An NPC at 0: Dead / Unconscious / Keep at 0, Dead preselected (the house rule).
     const follows = row.getByTestId("hp-follows");
-    await expect(follows.getByRole("checkbox", { name: "At 0 HP" })).toBeChecked();
+    // Decided by its choice alone — no checkbox beside it (two controls for one decision; critic P7 r1).
+    await expect(follows).toContainText("At 0 HP");
+    await expect(follows.getByRole("checkbox", { name: "At 0 HP" })).toHaveCount(0);
     const choice = follows.getByRole("radiogroup", { name: "At 0 HP" });
     await expect(choice.getByRole("radio", { name: "Dead" })).toHaveAttribute("aria-checked", "true");
     await choice.getByRole("radio", { name: "Unconscious" }).click();
@@ -145,7 +147,10 @@ test.describe("P7 — HP, conditions and death (§8.11)", () => {
           (await hook<{ tokenId: string; text: string; color: string }[]>(p, "hpNumbers")).at(-1),
         )
         .toEqual({ tokenId: goblin, text: "−9", color: "var(--dmg-slashing)" });
-    await expect.poll(async () => (await tokenOf(admin, goblin))?.conditions).toEqual(["unconscious"]);
+    // Unconscious is Prone too (SRD 5.2.1) — for an NPC left at 0 as for a character going down.
+    await expect
+      .poll(async () => (await tokenOf(admin, goblin))?.conditions)
+      .toEqual(["unconscious", "prone"]);
     expect((await tokenOf(admin, goblin))?.dead).toBe(false);
     // Everyone who can see it gets the feedback: the typed number (the damage it took), for the DM and for Dave
     // (AC-HP-11).
@@ -160,7 +165,7 @@ test.describe("P7 — HP, conditions and death (§8.11)", () => {
         .toEqual({ tokenId: goblin, kind: "hit" });
     // It falls (unconscious: it lies down, animated), its icon under the plate (AC-TOK-04).
     await expect.poll(async () => (await tokenState(dave, goblin))?.lie).toBeCloseTo(1, 2);
-    await expect.poll(() => statusIcons(dave, goblin)).toEqual(["unconscious"]);
+    await expect.poll(() => statusIcons(dave, goblin)).toEqual(["unconscious", "prone"]);
     // A hit of two types: its two numbers side by side and apart, never run together ("−3−2"; critic P7 r1).
     await dave.bringToFront();
     await req(admin, "hp.apply", {
@@ -202,7 +207,7 @@ test.describe("P7 — HP, conditions and death (§8.11)", () => {
     );
     await expect
       .poll(async () => (await tokenOf(admin, goblin))?.conditions)
-      .toEqual(["unconscious", "poisoned"]);
+      .toEqual(["unconscious", "prone", "poisoned"]);
     await expect.poll(async () => (await tokenOf(admin, goblin))?.markers).toEqual(["blessed"]);
     // Search narrows the grid.
     await picker.getByLabel("Search conditions and markers").fill("speed");
@@ -210,7 +215,9 @@ test.describe("P7 — HP, conditions and death (§8.11)", () => {
     await expect(picker.getByRole("button", { name: "Poisoned", exact: true })).toHaveCount(0);
     await admin.screenshot({ path: `${SHOTS}/journey-condition-picker.png` });
     await admin.getByRole("dialog").getByRole("button", { name: "Done" }).click();
-    await expect.poll(() => statusIcons(dave, goblin)).toEqual(["unconscious", "poisoned", "blessed"]);
+    await expect
+      .poll(() => statusIcons(dave, goblin))
+      .toEqual(["unconscious", "prone", "poisoned", "blessed"]);
     // Six at most under the plate, then "+n" (AC-TOK-04).
     await req(admin, "status.change", {
       tokenId: goblin,
@@ -219,13 +226,13 @@ test.describe("P7 — HP, conditions and death (§8.11)", () => {
     await expect.poll(async () => (await statusIcons(dave, goblin)).length).toBe(7);
     expect((await statusIcons(dave, goblin)).slice(0, 6)).toEqual([
       "unconscious",
+      "prone",
       "poisoned",
       "blinded",
       "charmed",
       "deafened",
-      "frightened",
     ]);
-    expect((await statusIcons(dave, goblin)).at(-1)).toBe("+2");
+    expect((await statusIcons(dave, goblin)).at(-1)).toBe("+3");
     await req(admin, "status.change", {
       tokenId: goblin,
       remove: ["blinded", "charmed", "deafened", "frightened", "grappled"],
@@ -323,6 +330,12 @@ test.describe("P7 — HP, conditions and death (§8.11)", () => {
     await admin.getByRole("dialog").getByRole("button", { name: "Done" }).click();
     const prompt = admin.getByTestId("dm-prompt");
     await expect(prompt).toContainText("Dead? (Exhaustion 6)");
+    // One control for the one decision: the choice, preselected Dead; no checkbox beside it.
+    await expect(prompt.getByRole("checkbox")).toHaveCount(0);
+    await expect(prompt.getByRole("radio", { name: "Dead", exact: true })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
     await admin.screenshot({ path: `${SHOTS}/journey-dm-prompt.png` });
     await prompt.getByRole("button", { name: "Skip" }).click();
     await expect(prompt).toHaveCount(0);

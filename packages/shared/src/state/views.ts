@@ -96,7 +96,7 @@ export interface TokenView {
   locked: boolean;
   moveSeq: number;
   pinnedBars: string[];
-  /** The DM's custom markers on it: "id|label|#colour|glyph" (§8.11). */
+  /** The DM's custom markers on it: "id|label|#colour|glyph|description" (§8.11; `parseCustomMarkers`). */
   customMarkers: string[];
   hp?: TokenHpView;
   own?: TokenOwnerView;
@@ -208,3 +208,20 @@ export interface PrepPatch {
 
 export type CollectionName = keyof SceneCollections;
 export const COLLECTIONS: CollectionName[] = ["tokens", "walls", "lights", "zones", "effects"];
+
+/** A DM's custom marker as a token carries it (§8.11). */
+export interface CustomMarkerView {
+  id: string;
+  label: string;
+  color: string;
+  glyph: string;
+  description: string;
+}
+
+/** A token's `customMarkers` ("id|label|#colour|glyph|description"), read. */
+export function parseCustomMarkers(xs: readonly string[]): CustomMarkerView[] {
+  return xs.map((s) => {
+    const [id = "", label = "", color = "", glyph = "", description = ""] = s.split("|");
+    return { id, label, color, glyph, description };
+  });
+}

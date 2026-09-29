@@ -7,8 +7,11 @@ import type { DamageType } from "@gloam/shared";
 import type { DmPromptView, HpFx, HpPreviewRow } from "@gloam/shared/protocol";
 import { create } from "zustand";
 import { provideTestHook } from "../test/hooks.ts";
-import { toast } from "../ui/Toast.tsx";
+import { toast, useToasts } from "../ui/Toast.tsx";
 import { request, tableEvents, useTable } from "./table.ts";
+
+/** The toast a player sees while their damage waits on the DM (the DM's answer replaces it). */
+export const PLAYER_DAMAGE_SENT = "player-damage";
 
 interface HealthStore {
   /** DMs: the open prompts, oldest first. */
@@ -65,8 +68,15 @@ function onMessage(type: string, payload: unknown): void {
     }
     case "prompt.decided": {
       const d = payload as { title: string; applied: boolean; name: string };
-      if (d.applied) toast.success(`The DM applied your damage to ${d.name}`);
-      else toast.info(`The DM set aside your damage to ${d.name}`);
+      // The DM's answer takes the place of "Sent to the DM to confirm" (one toast per target, not a stack).
+      useToasts.getState().dismissKey(PLAYER_DAMAGE_SENT);
+      useToasts.getState().push({
+        kind: d.applied ? "success" : "info",
+        title: d.applied
+          ? `The DM applied your damage to ${d.name}`
+          : `The DM set aside your damage to ${d.name}`,
+        key: `${PLAYER_DAMAGE_SENT}:${d.name}`,
+      });
       return;
     }
     case "health.notice": {
@@ -142,6 +152,7 @@ export interface StatusDraft {
     label?: string;
     color?: string;
     glyph?: string;
+    description?: string;
   }[];
   remove?: string[];
   exhaustion?: number;

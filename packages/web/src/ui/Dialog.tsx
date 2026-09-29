@@ -234,13 +234,13 @@ function DialogBody({ children }: { children: ReactNode }) {
       </div>
       <span
         aria-hidden
-        className={`pointer-events-none absolute inset-x-0 top-0 h-3 bg-gradient-to-b from-[var(--edge-shade)] to-transparent transition-opacity duration-[var(--dur-fast)] ${more.up ? "opacity-100" : "opacity-0"}`}
+        className={`pointer-events-none absolute inset-x-0 top-0 h-6 bg-gradient-to-b from-[var(--edge-shade)] to-transparent transition-opacity duration-[var(--dur-fast)] ${more.up ? "opacity-100" : "opacity-0"}`}
       />
       <span
         aria-hidden
         data-testid="dialog-more-below"
         data-more={more.down}
-        className={`pointer-events-none absolute inset-x-0 bottom-0 h-4 bg-gradient-to-t from-[var(--edge-shade)] to-transparent transition-opacity duration-[var(--dur-fast)] ${more.down ? "opacity-100" : "opacity-0"}`}
+        className={`pointer-events-none absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-[var(--edge-shade)] to-transparent transition-opacity duration-[var(--dur-fast)] ${more.down ? "opacity-100" : "opacity-0"}`}
       />
     </div>
   );

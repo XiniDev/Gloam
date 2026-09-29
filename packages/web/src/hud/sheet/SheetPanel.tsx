@@ -1,5 +1,6 @@
 import type { ActorView } from "@gloam/shared/protocol";
 import { statusName, statusSummary } from "@gloam/shared/rules";
+import { parseCustomMarkers } from "@gloam/shared/state";
 import {
   ChevronDown,
   FileDown,
@@ -622,12 +623,7 @@ function Conditions({ ctx }: { ctx: SheetCtx }) {
   const c = ctx.sheet.core;
   const target = useSheetTarget(ctx.actor.id);
   const token = useBoard((d) => (target.tokenId ? d.tokens.get(target.tokenId) : undefined));
-  const customs = new Map(
-    (token?.customMarkers ?? []).map((s) => {
-      const [id, label, color, glyph] = s.split("|") as [string, string, string, string];
-      return [id, { label, color, glyph }] as const;
-    }),
-  );
+  const customs = new Map(parseCustomMarkers(token?.customMarkers ?? []).map((m) => [m.id, m] as const));
   const markers = (token?.markers ?? []).filter((m) => m !== "concentrating");
   const picker = () => useUi.getState().set({ statusPicker: target });
   // Through the conditions command (§8.11): what follows (concentration ending on Incapacitated) follows.
@@ -688,7 +684,11 @@ function Conditions({ ctx }: { ctx: SheetCtx }) {
         const custom = customs.get(id);
         const name = custom?.label || statusName(id);
         return (
-          <span key={id} title={custom ? undefined : statusSummary(id)} className={CHIP}>
+          <span
+            key={id}
+            title={custom ? custom.description || undefined : statusSummary(id)}
+            className={CHIP}
+          >
             <StatusIcon id={id} size={22} badge label="" glyph={custom?.glyph} color={custom?.color} />
             {name}
             {removable(id, name)}

@@ -56,7 +56,7 @@ export function StatusIcon({
     <span
       aria-hidden
       data-level={level}
-      className="tabular absolute -bottom-1 -right-1 grid h-[14px] min-w-3 place-items-center rounded-chip bg-ink-950 text-12 leading-none text-bone"
+      className="tabular absolute -bottom-0.5 -right-1 grid h-[14px] min-w-3 place-items-center rounded-chip bg-ink-950 text-12 leading-none text-bone"
     >
       {level}
     </span>

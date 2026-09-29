@@ -167,6 +167,8 @@ export interface TokenStatusT {
     untilRound?: number;
     color?: string;
     glyph?: string;
+    /** A custom marker's one line: what it means (its summary). */
+    description?: string;
   }[];
   exhaustion: 0 | 1 | 2 | 3 | 4 | 5 | 6;
   concentration?: { effectId?: string; spellId?: string; spellName?: string } | undefined;

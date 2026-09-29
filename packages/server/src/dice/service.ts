@@ -9,6 +9,7 @@ import {
   DiceError,
   type DiceSkin,
   type MaskedRoll,
+  normalizeFormula,
   type ParsedFormula,
   parseFormula,
   type Roller,
@@ -132,7 +133,16 @@ export class DiceService {
     campaignId: string,
     sceneId: string | null,
     roller: Roller,
-    p: { formula: string; values?: number[]; total?: number; label?: string; visibility: RollVisibility },
+    p: {
+      formula: string;
+      values?: number[];
+      total?: number;
+      label?: string;
+      visibility: RollVisibility;
+      purpose?: string;
+      /** The creature it was rolled for (the feed shows its portrait, as for an app roll). */
+      token?: TokenEntity;
+    },
   ): RollRecord {
     let outcome: RollOutcome;
     try {
@@ -153,7 +163,8 @@ export class DiceService {
       } else if (p.total !== undefined && Number.isInteger(p.total)) {
         outcome = {
           formula: p.formula,
-          normalized: p.formula,
+          // As it was rolled at the table ("2d20kl1 - 4" for "1d20 - 4 dis").
+          normalized: normalizedOr(p.formula),
           terms: [],
           total: p.total,
           byTag: { untyped: p.total },
@@ -236,5 +247,14 @@ export class DiceService {
       if (out.length >= limit) break;
     }
     return out;
+  }
+}
+
+/** A formula as it rolls, or as written when it can't be read. */
+function normalizedOr(formula: string): string {
+  try {
+    return normalizeFormula(formula);
+  } catch {
+    return formula;
   }
 }

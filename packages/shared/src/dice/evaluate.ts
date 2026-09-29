@@ -26,10 +26,26 @@ export interface RolledDie {
   rerolledFrom?: number[];
 }
 
+/**
+ * One term of a roll as rolled. `sign: -1` marks a term the formula subtracts ("1d20 - 4": the 4; "1d20 - 1d4": the
+ * d4) — its value is as written, its contribution the opposite.
+ */
 export type RollTerm =
-  | { kind: "dice"; count: number; sides: number; tag?: string; dice: RolledDie[]; subtotal: number }
-  | { kind: "const"; value: number }
-  | { kind: "ref"; ref: string; value: number };
+  | {
+      kind: "dice";
+      count: number;
+      sides: number;
+      tag?: string;
+      dice: RolledDie[];
+      subtotal: number;
+      sign?: -1;
+    }
+  | { kind: "const"; value: number; sign?: -1 }
+  | { kind: "ref"; ref: string; value: number; sign?: -1 };
+
+/** What a term adds to the total (its value, with the formula's sign). */
+export const termContribution = (t: RollTerm): number =>
+  (t.kind === "dice" ? t.subtotal : t.value) * (t.sign === -1 ? -1 : 1);
 
 export interface RollOutcome {
   formula: string;
@@ -115,8 +131,14 @@ class Ctx {
   readonly terms: RollTerm[] = [];
   /** Each node's value (for the damage-type split). */
   readonly values = new Map<DiceNode, number>();
+  /** Whether what's being evaluated is subtracted (a "-" or a negation above it; two cancel). */
+  sign: 1 | -1 = 1;
   constructor(input: RollInput) {
     this.input = input;
+  }
+
+  signed(): { sign?: -1 } {
+    return this.sign === -1 ? { sign: -1 } : {};
   }
 
   die(sides: number, at: number, end: number): number {
@@ -140,23 +162,30 @@ class Ctx {
   evalInner(n: DiceNode): number {
     switch (n.k) {
       case "num":
-        this.terms.push({ kind: "const", value: n.v });
+        this.terms.push({ kind: "const", value: n.v, ...this.signed() });
         return n.v;
       case "ref": {
         const v = this.input.resolve?.(n.path);
         const name = `@${n.path.join(".")}`;
         if (v === undefined || !Number.isFinite(v))
           throw new DiceError(`${name} isn't something this roller has.`, n.at, n.end);
-        this.terms.push({ kind: "ref", ref: name, value: v });
+        this.terms.push({ kind: "ref", ref: name, value: v, ...this.signed() });
         return v;
       }
-      case "neg":
-        return -this.eval(n.x);
+      case "neg": {
+        this.sign = this.sign === 1 ? -1 : 1;
+        const v = -this.eval(n.x);
+        this.sign = this.sign === 1 ? -1 : 1;
+        return v;
+      }
       case "group":
         return this.eval(n.x);
       case "bin": {
         const a = this.eval(n.a);
+        // What's subtracted is recorded with its sign (the feed shows "1d20 − 4", not "+4").
+        if (n.op === "-") this.sign = this.sign === 1 ? -1 : 1;
         const b = this.eval(n.b);
+        if (n.op === "-") this.sign = this.sign === 1 ? -1 : 1;
         switch (n.op) {
           case "+":
             return a + b;
@@ -235,6 +264,7 @@ class Ctx {
       sides,
       dice: dice.map(({ raw: _raw, ...d }) => d),
       subtotal,
+      ...this.signed(),
     };
     if (n.tag) term.tag = n.tag;
     this.terms.push(term);

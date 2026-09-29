@@ -1,5 +1,6 @@
 import { HP_BAND_HIDDEN, HP_BAND_LABELS, statusName } from "@gloam/shared/rules";
 import type { TokenView } from "@gloam/shared/state";
+import { parseCustomMarkers } from "@gloam/shared/state";
 import { HeartPulse } from "lucide-react";
 import { useMemo, useState } from "react";
 import { StatusIcon } from "../../icons/status.tsx";
@@ -59,10 +60,10 @@ export function HealthPanel() {
       {party.length ? (
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="caps text-12 text-fog">Rest</span>
-          <Button size="S" variant="ghost" onClick={() => setResting("short")}>
+          <Button size="S" variant="secondary" onClick={() => setResting("short")}>
             Short rest…
           </Button>
-          <Button size="S" variant="ghost" onClick={() => setResting("long")}>
+          <Button size="S" variant="secondary" onClick={() => setResting("long")}>
             Long rest…
           </Button>
         </div>
@@ -102,8 +103,11 @@ export function HealthPanel() {
             ...(t.concentrating && !t.markers.includes("concentrating") ? ["concentrating"] : []),
             ...t.markers.filter((m) => !m.startsWith("custom:")),
           ];
+          const customs = parseCustomMarkers(t.customMarkers);
           const named = (id: string) =>
             id === "exhaustion" ? `${statusName(id)} ${t.exhaustion}` : statusName(id);
+          const icons = statuses.length + customs.length;
+          const frac = t.hp ? Math.max(0, Math.min(1, t.hp.hp / Math.max(1, t.hp.hpMax))) : null;
           return (
             <li
               key={t.id}
@@ -117,13 +121,26 @@ export function HealthPanel() {
                   {t.name}
                   {t.dead ? <span className="caps ml-1.5 text-12 text-danger-text">dead</span> : null}
                 </span>
-                <span className="tabular shrink-0 text-13 text-fog">{hp}</span>
+                {/* HP on one track down the list: its bar (DMs see every creature's numbers) and the numbers. */}
+                <span className="flex shrink-0 items-center gap-2">
+                  {frac !== null ? (
+                    <span className="block h-1.5 w-16 overflow-hidden rounded-chip bg-ink-950" aria-hidden>
+                      <span
+                        className={`block h-full ${frac > 0.5 ? "bg-[var(--verdigris-400)]" : frac > 0.25 ? "bg-[var(--brass-400)]" : "bg-[var(--ember-400)]"}`}
+                        style={{ width: `${frac * 100}%` }}
+                      />
+                    </span>
+                  ) : null}
+                  <span className="tabular w-12 text-right text-13 text-bone">{hp}</span>
+                </span>
               </div>
               <div className="flex items-center gap-2">
                 <span
                   role="img"
                   className="flex min-w-0 flex-1 items-center gap-0.5"
-                  aria-label={statuses.map(named).join(", ") || "No conditions"}
+                  aria-label={
+                    [...statuses.map(named), ...customs.map((c) => c.label)].join(", ") || "No conditions"
+                  }
                 >
                   {statuses.slice(0, 6).map((id) => (
                     <StatusIcon
@@ -135,11 +152,26 @@ export function HealthPanel() {
                       level={id === "exhaustion" ? t.exhaustion : undefined}
                     />
                   ))}
-                  {statuses.length > 6 ? (
-                    <span className="tabular ml-0.5 text-12 text-fog">+{statuses.length - 6}</span>
-                  ) : null}
+                  {customs.slice(0, Math.max(0, 6 - statuses.length)).map((c) => (
+                    <StatusIcon
+                      key={c.id}
+                      id={c.id}
+                      size={16}
+                      badge
+                      label=""
+                      glyph={c.glyph}
+                      color={c.color}
+                    />
+                  ))}
+                  {icons > 6 ? <span className="tabular ml-0.5 text-12 text-fog">+{icons - 6}</span> : null}
                 </span>
+                {/* The dying's Death save comes first, so Damage / Heal and Conditions keep their places down the list. */}
                 <span className="-mr-2 flex shrink-0 items-center">
+                  {dying(t) ? (
+                    <Button size="S" variant="ghost" onClick={() => void deathSaves([t.id])}>
+                      Death save
+                    </Button>
+                  ) : null}
                   <Button
                     size="S"
                     variant="ghost"
@@ -147,7 +179,7 @@ export function HealthPanel() {
                     aria-label={`${t.name}: damage or heal`}
                     onClick={() => hpFor([t.id], "damage")}
                   >
-                    HP
+                    Damage / Heal
                   </Button>
                   <Button
                     size="S"
@@ -157,11 +189,6 @@ export function HealthPanel() {
                   >
                     Conditions
                   </Button>
-                  {dying(t) ? (
-                    <Button size="S" variant="ghost" onClick={() => void deathSaves([t.id])}>
-                      Death save
-                    </Button>
-                  ) : null}
                 </span>
               </div>
             </li>

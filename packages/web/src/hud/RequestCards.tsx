@@ -9,7 +9,14 @@ import { requestArrived, respondRequest, useSheets } from "../net/sheets.ts";
 import { useUi } from "../state/ui.ts";
 import { Button, IconButton } from "../ui/Button.tsx";
 import { toast } from "../ui/Toast.tsx";
-import { makeRoomForDice, useCover, useHudInsets, useIsPhone, useObstacle } from "./insets.ts";
+import {
+  makeRoomForDice,
+  PHONE_BOTTOM_BAND,
+  useCover,
+  useHudInsets,
+  useIsPhone,
+  useObstacle,
+} from "./insets.ts";
 
 /** An answered card stays this long to show its result, then steps aside (the request itself stays open). */
 const ANSWERED_MS = 6000;
@@ -273,29 +280,39 @@ function Card({ rows, compact }: { rows: RequestCard[]; compact: boolean }) {
 
 /** A death saving throw's tally so far: three hearts for successes, three skulls for failures (§8.11). */
 function DeathSavePips({ successes, failures }: { successes: number; failures: number }) {
+  // The card's whole point: 20-px pips, each group captioned; a success a verdigris heart, a failure a blood skull,
+  // one still to come a quiet outline (critic P7 r1: 15-px faint outlines were the weakest thing on the card).
   return (
     <div
-      className="flex items-center gap-3 text-13"
+      className="flex flex-wrap items-center gap-x-4 gap-y-1"
       role="img"
       aria-label={`${successes} of 3 successes, ${failures} of 3 failures`}
       data-testid="death-save-pips"
     >
-      <span className="flex items-center gap-0.5">
+      <span className="flex items-center gap-1.5">
+        <span className="caps text-12 text-fog">Successes</span>
         {[0, 1, 2].map((i) => (
           <Heart
             key={i}
-            size={15}
-            className={i < successes ? "fill-current text-success" : "text-fog-dim"}
+            size={20}
+            strokeWidth={1.75}
+            data-filled={i < successes ? "" : undefined}
+            className={
+              i < successes ? "fill-[var(--verdigris-400)] text-[var(--verdigris-400)]" : "text-faint"
+            }
             aria-hidden
           />
         ))}
       </span>
-      <span className="flex items-center gap-0.5">
+      <span className="flex items-center gap-1.5">
+        <span className="caps text-12 text-fog">Failures</span>
         {[0, 1, 2].map((i) => (
           <Skull
             key={i}
-            size={15}
-            className={i < failures ? "text-danger-text" : "text-fog-dim"}
+            size={20}
+            strokeWidth={1.75}
+            data-filled={i < failures ? "" : undefined}
+            className={i < failures ? "fill-[var(--blood-500)] text-[var(--ink-950)]" : "text-faint"}
             aria-hidden
           />
         ))}
@@ -347,8 +364,8 @@ export function RequestCards({ inline = false }: { inline?: boolean }) {
   const banner = useHudInsets((s) => s.banner);
   const left = useHudInsets((s) => s.left);
   const right = useHudInsets((s) => s.right);
-  const corners = useHudInsets((s) => Math.max(s.cornerLeft, s.cornerRight));
   const phone = useIsPhone();
+  const bottom = useHudInsets((s) => s.bottom);
   const dockOpen = useUi((s) => s.dock !== null);
   // A phone's open panel takes these in; the floating stack steps back.
   const away = !inline && phone && dockOpen;
@@ -383,7 +400,9 @@ export function RequestCards({ inline = false }: { inline?: boolean }) {
       className="pointer-events-none absolute z-30 flex justify-center"
       style={
         phone
-          ? { top: Math.max(top, corners) + banner + 8, left: 12, right: 12 }
+          ? // A phone's cards stand above the dice button and the roll feed (under the top corners they hid the
+            // creature they're about — critic P7 r1), in thumb's reach.
+            { bottom: Math.max(bottom, PHONE_BOTTOM_BAND) + 8, left: 12, right: 12 }
           : { top: top + banner + 8, left: left + 8, right: right + 8 }
       }
     >

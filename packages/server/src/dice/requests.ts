@@ -35,6 +35,8 @@ export interface RequestTarget {
 export interface RequestResponse {
   state: ResponseState;
   rollId?: string;
+  /** The formula as it was rolled (a hint taken or set aside): the answered card shows it. */
+  formula?: string;
   total?: number;
   success?: boolean;
   by?: string;
@@ -204,7 +206,7 @@ export function cardFor(r: RollRequest, t: RequestTarget, extra: Partial<Request
     targetId: t.id,
     targetName: t.name,
     label: r.label,
-    formula: t.formula,
+    formula: res.formula ?? t.formula,
     ...(r.showDc && r.dc !== undefined ? { dc: r.dc } : {}),
     adv: r.adv,
     visibility: r.visibility,

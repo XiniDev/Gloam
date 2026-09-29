@@ -18,6 +18,8 @@ export interface StatusIconSource {
   category: IconCategory;
   /** A 24 × 24 glyph in currentColor; mask ids are prefixed "gx-". */
   svg: string;
+  /** Redrawn at 16 px over the spec's drawing (icons.refined.json, with why). */
+  refined?: boolean;
 }
 
 export const STATUS_ICONS: readonly StatusIconSource[] = [
@@ -127,7 +129,8 @@ export const STATUS_ICONS: readonly StatusIconSource[] = [
     "id": "deathsaves",
     "name": "Death saves",
     "category": "vital",
-    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" width=\"24\" height=\"24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 20.2 C12 20.2 4.2 15.6 4.2 9.9 A4.1 4.1 0 0 1 12 8 A4.1 4.1 0 0 1 19.8 9.9 C19.8 15.6 12 20.2 12 20.2 Z\"/><path d=\"M12 8.1l-1.4 3.2 2.4 1.8-2 3 .9 2.2\" stroke-width=\"1.5\"/></svg>"
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" width=\"24\" height=\"24\" fill=\"currentColor\" stroke=\"none\"><path d=\"M11.2 20.2 C11.2 20.2 3.4 15.6 3.4 9.9 A4.1 4.1 0 0 1 11.2 8 L9.8 11.2 L12.2 13 L10.2 16 Z\"/><path d=\"M12.8 8 A4.1 4.1 0 0 1 20.6 9.9 C20.6 15.6 12.8 20.2 12.8 20.2 L11.8 16 L13.8 13 L11.4 11.2 Z\"/></svg>",
+    "refined": true
   },
   {
     "id": "stable",
@@ -151,7 +154,8 @@ export const STATUS_ICONS: readonly StatusIconSource[] = [
     "id": "surprised",
     "name": "Surprised",
     "category": "tactical",
-    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" width=\"24\" height=\"24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 2.6 L14.19 5.99 L18.04 4.8 L17.54 8.8 L21.26 10.37 L18.3 13.11 L20.14 16.7 L16.11 16.9 L15.21 20.83 L12 18.4 L8.79 20.83 L7.89 16.9 L3.86 16.7 L5.7 13.11 L2.74 10.37 L6.46 8.8 L5.96 4.8 L9.81 5.99 Z\" stroke-width=\"1.5\"/><path d=\"M12 7.6v5.4\" stroke-width=\"2.2\"/><circle cx=\"12\" cy=\"16.2\" r=\"1.15\" fill=\"currentColor\" stroke=\"none\"/></svg>"
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" width=\"24\" height=\"24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 2.3 L14.3 7.52 L19.82 6.07 L17.17 11.12 L21.75 14.53 L16.14 15.6 L16.34 21.31 L12 17.6 L7.66 21.31 L7.86 15.6 L2.25 14.53 L6.83 11.12 L4.18 6.07 L9.7 7.52 Z\" stroke-width=\"1.5\"/><path d=\"M12 8.7v4.3\" stroke-width=\"2.4\"/><circle cx=\"12\" cy=\"15.5\" r=\"1.25\" fill=\"currentColor\" stroke=\"none\"/></svg>",
+    "refined": true
   },
   {
     "id": "dodging",

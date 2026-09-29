@@ -47,6 +47,9 @@ export const useHudInsets = create<HudInsets & { set(p: Partial<HudInsets>): voi
 
 const GAP = 8;
 
+/** A phone's bottom band (the dice button and the roll feed's pill, with their margin): what cards stand above. */
+export const PHONE_BOTTOM_BAND = 80;
+
 /** Bands that only exist while an element claims them (the others keep their last value). */
 const TRANSIENT = new Set<keyof HudInsets>(["banner", "cornerLeft", "cornerRight", "bottom"]);
 /** Each element's claim on each inset: the inset is the largest (a sheet over the action bar, both along the bottom). */

@@ -169,10 +169,10 @@ function LightEditor() {
                 className="group grid min-h-[var(--touch-min)] min-w-[var(--touch-min)] place-items-center"
               >
                 <span
-                  className={`grid h-7 w-7 place-items-center rounded-full border-2 ${active ? "border-bone" : "border-transparent group-hover:border-line-strong"}`}
+                  className={`grid h-7 w-7 place-items-center rounded-[var(--radius-control)] border-2 ${active ? "border-bone" : "border-transparent group-hover:border-line-strong"}`}
                   aria-hidden
                 >
-                  <span className="block h-5 w-5 rounded-full" style={{ background: c.hex }} />
+                  <span className="block h-5 w-5 rounded-chip" style={{ background: c.hex }} />
                 </span>
               </button>
             );

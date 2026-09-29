@@ -1,6 +1,6 @@
 import { SIZE_MINI_HEIGHT_FT, type Size } from "@gloam/shared";
 import { HP_BAND_HIDDEN, HP_BAND_LABELS } from "@gloam/shared/rules";
-import type { TokenView } from "@gloam/shared/state";
+import { type CustomMarkerView, parseCustomMarkers, type TokenView } from "@gloam/shared/state";
 import { Billboard, Html } from "@react-three/drei";
 import { type ThreeEvent, useFrame } from "@react-three/fiber";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
@@ -49,7 +49,7 @@ import {
   underCover,
 } from "./declutter.ts";
 import { canRaise, heightLabel } from "./elevation.ts";
-import { cylinder, plane, torus } from "./geometries.ts";
+import { CARD_T, cardEdge, cylinder, plane, torus } from "./geometries.ts";
 import { hiddenBadgeTexture, initialsTexture } from "./glyphs.ts";
 import { type MiniInstance, useAssetMeta, useAssetTexture, useMini } from "./hooks.ts";
 import {
@@ -151,7 +151,7 @@ const PLATE_PX_MAX_PHONE = 21;
 const NAME_SIZE = 0.7;
 const NUM_SIZE = 0.66;
 const WORD_SIZE = 0.66;
-const BAR_H = 0.74;
+const BAR_H = 0.84;
 const BAR_W = 3.4;
 const NAME_GAP = 0.14;
 const CHIP_PAD_X = 0.34;
@@ -177,10 +177,11 @@ const ICON_ROW_GAP = 0.14;
  * Exhaustion's level (Appendix G: "the level digit in a corner notch"): an ink notch over the badge's bottom-right
  * corner, reaching past it so the digit keeps the numbers' size (≥ 12 px, §27.3) — the row leaves room for the reach.
  */
-const NOTCH_H = 0.72;
-const NOTCH_PAD = 0.1;
-const NOTCH_REACH = 0.24;
-const NOTCH_DROP = 0.1;
+const NOTCH_H = 0.6;
+const NOTCH_PAD = 0.08;
+/** How far past the badge's right and bottom edges it reaches: it overlaps only the corner, clear of the glyph. */
+const NOTCH_REACH = 0.34;
+const NOTCH_DROP = 0.28;
 /** Between the bar and the temporary HP beside it. */
 const TEMP_GAP = 0.18;
 
@@ -281,6 +282,12 @@ export const TokenObject = memo(function TokenObject({
     [],
     gradeAt,
   );
+  // The card's cardboard edge (§8.5, §24): a shade darker than its back, so the top edge reads against it.
+  const standeeEdge = useTransparentMaterial(
+    () => new MeshStandardMaterial({ color: C.cardboardEdge, roughness: 0.95, alphaTest: 0.5 }),
+    [],
+    gradeAt,
+  );
   // The selection's brass ring (§8.5): unlit and outside tone mapping — a lit, emissive ring came out bone-white.
   const selMat = useMemo(() => new MeshBasicMaterial({ color: C.brass400, toneMapped: false }), []);
   useEffect(() => () => disposeLater(selMat), [selMat]);
@@ -318,10 +325,12 @@ export const TokenObject = memo(function TokenObject({
     coinFaceMat.map = face;
     standeeFront.map = face;
     standeeBack.alphaMap = face;
+    standeeEdge.alphaMap = face;
     coinFaceMat.needsUpdate = true;
     standeeFront.needsUpdate = true;
     standeeBack.needsUpdate = true;
-  }, [face, coinFaceMat, standeeFront, standeeBack]);
+    standeeEdge.needsUpdate = true;
+  }, [face, coinFaceMat, standeeFront, standeeBack, standeeEdge]);
 
   // Standee proportions follow the image, within the size category's height.
   const aspect = (() => {
@@ -490,6 +499,7 @@ export const TokenObject = memo(function TokenObject({
     setOpacity(coinFaceMat, o * cw);
     setOpacity(standeeFront, o * (1 - cw));
     setOpacity(standeeBack, o * (1 - cw));
+    setOpacity(standeeEdge, o * (1 - cw));
     setOpacity(baseMat, o);
     setOpacity(rimMat, o);
     boardDiag.tokenModes.set(token.id, {
@@ -519,7 +529,10 @@ export const TokenObject = memo(function TokenObject({
     }
     if (standeeCard.current) {
       standeeCard.current.rotation.x = (-Math.PI / 2) * e;
-      standeeCard.current.position.set(0, (BASE_H + 0.05) * e, (BASE_H + standeeH / 2) * flatScale * e);
+      // Lying on top of the base, above its rim (under it, the rim cut the card to a circle — critic P7 r1).
+      const rimTop = BASE_H + Math.max(0.05, R * 0.045);
+      const lift = rimTop + (CARD_T / 2) * flatScale + 0.02;
+      standeeCard.current.position.set(0, lift * e, (BASE_H + standeeH / 2) * flatScale * e);
       standeeCard.current.scale.setScalar(1 + (flatScale - 1) * e);
     }
     // A hit's shake and red flash; a heal's glow (hpFx.tsx starts them).
@@ -716,14 +729,20 @@ export const TokenObject = memo(function TokenObject({
                   no longer than the base is wide. Nested so the tip happens before the camera-facing turn. */}
               <group ref={standeeCard}>
                 <mesh
-                  position={[0, BASE_H + standeeH / 2, 0.03]}
+                  position={[0, BASE_H + standeeH / 2, CARD_T / 2]}
                   material={standeeFront}
                   geometry={plane(standeeW, standeeH)}
                   castShadow
                   dispose={null}
                 />
                 <mesh
-                  position={[0, BASE_H + standeeH / 2, -0.03]}
+                  position={[0, BASE_H + standeeH / 2, 0]}
+                  material={standeeEdge}
+                  geometry={cardEdge(standeeW, standeeH)}
+                  dispose={null}
+                />
+                <mesh
+                  position={[0, BASE_H + standeeH / 2, -CARD_T / 2]}
                   rotation-y={Math.PI}
                   material={standeeBack}
                   geometry={plane(standeeW, standeeH)}
@@ -927,6 +946,7 @@ function Overlay({
   const bar = useMemo(() => createHpBarMaterial(), []);
   useEffect(() => () => disposeLater(bar), [bar]);
   const ghost = useRef(new HpGhost());
+  const textSpan = useRef<readonly [number, number] | null>(null);
   // The leader: a 2-px brass stroke on a dark halo (it reads on stone, wood and water alike; a bone one read as a
   // scratch on the map) ending in a dot on the token — shared unit strip and disc, placed per token.
   const leader = useMemo(() => {
@@ -1017,8 +1037,8 @@ function Overlay({
     () =>
       new Map(
         (customKey ? customKey.split("\n") : []).map((s) => {
-          const [id, , color, glyph] = s.split("|") as [string, string, string, string];
-          return [id, { color, glyph }] as const;
+          const [m] = parseCustomMarkers([s]) as [CustomMarkerView];
+          return [m.id, { color: m.color, glyph: m.glyph }] as const;
         }),
       ),
     [customKey],
@@ -1250,7 +1270,17 @@ function Overlay({
     const now = performance.now();
     const gv = showBar ? ghost.current.update(Math.max(0, frac), now) : 0;
     if (showBar) {
-      setHpBar(bar, { frac: Math.max(0, frac), temp: Math.max(0, temp), ghost: gv, opacity: a }, colorBlind);
+      setHpBar(
+        bar,
+        {
+          frac: Math.max(0, frac),
+          temp: Math.max(0, temp),
+          ghost: gv,
+          opacity: a,
+          textSpan: textSpan.current,
+        },
+        colorBlind,
+      );
       hpBarState.set(token.id, {
         frac: Math.max(0, frac),
         temp: Math.max(0, temp),
@@ -1287,6 +1317,11 @@ function Overlay({
     }
     const barW = showBar ? Math.max(BAR_W, numB ? numB[2] - numB[0] + 0.7 : 0, pinW) : 0;
     barWidth.current = barW;
+    // The numbers' span across the bar (the tick steps aside there), with a little room each side.
+    textSpan.current =
+      numB && showBar && barW > 0
+        ? [Math.max(0, (numB[0] - 0.12 + barW / 2) / barW), Math.min(1, (numB[2] + 0.12 + barW / 2) / barW)]
+        : null;
     // Temporary HP stand just right of the bar.
     const tempB = tempText.current?.textRenderInfo?.blockBounds;
     const tempW = tempB && showBar ? tempB[2] - tempB[0] + TEMP_GAP : 0;
@@ -1304,6 +1339,7 @@ function Overlay({
       const exhausted = shownIcons.includes("exhaustion");
       const levelB = exhausted ? levelText.current?.textRenderInfo?.blockBounds : null;
       const notchW = levelB ? Math.max(NOTCH_H * 0.8, levelB[2] - levelB[0] + 2 * NOTCH_PAD) : 0;
+      // (Its digit is the numbers' size, NUM_SIZE: ≥ 12 px at the plates' smallest scale.)
       const reach = exhausted ? NOTCH_REACH : 0;
       iconsW = shownIcons.length * ICON + (shownIcons.length - 1) * ICON_GAP + moreW + reach;
       const y = bottom - ICON_ROW_GAP - ICON / 2;

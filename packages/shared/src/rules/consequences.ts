@@ -138,10 +138,15 @@ export function applyToStatus(s: TokenStatusT, c: Consequence, decision?: string
     case "npcAtZero": {
       const choice = decision ?? c.choice;
       if (choice === "keep") return s;
-      if (choice === "unconscious")
-        return s.conditions.some((x) => x.id === "unconscious")
-          ? s
-          : { ...s, conditions: [...s.conditions, { id: "unconscious", source: AT_ZERO_SOURCE }] };
+      // Unconscious is Prone too (SRD 5.2.1), as for a character going down.
+      if (choice === "unconscious") {
+        const add = (["unconscious", "prone"] as const).filter(
+          (id) => !s.conditions.some((x) => x.id === id),
+        );
+        return add.length
+          ? { ...s, conditions: [...s.conditions, ...add.map((id) => ({ id, source: AT_ZERO_SOURCE }))] }
+          : s;
+      }
       return withMarker(
         {
           ...s,

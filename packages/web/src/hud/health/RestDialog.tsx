@@ -91,13 +91,21 @@ export function RestDialog({
         {plans.map(({ a, plan }) => {
           const on = who.includes(a.id);
           return (
+            // A character who can't rest now reads as out of it: dashed, dimmed, its box greyed.
             <li
               key={a.id}
-              className="flex flex-col gap-1.5 rounded-[var(--radius-control)] border border-line px-3 py-2"
+              className={`flex flex-col gap-1.5 rounded-[var(--radius-control)] border px-3 py-2 ${
+                plan.blocked ? "border-dashed border-line/70 bg-ink-950/40" : "border-line"
+              }`}
               data-testid="rest-character"
               data-actor={a.id}
+              aria-disabled={plan.blocked ? true : undefined}
             >
-              <label className="inline-flex min-h-[var(--touch-min)] items-center gap-2 text-14 font-bold text-bone">
+              <label
+                className={`inline-flex min-h-[var(--touch-min)] items-center gap-2 text-14 font-bold ${
+                  plan.blocked ? "text-muted" : "text-bone"
+                }`}
+              >
                 <input
                   type="checkbox"
                   checked={on && !plan.blocked}

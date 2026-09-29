@@ -86,7 +86,7 @@ const ASIDE = 0.25;
 /** How close to the screen's edge a slid plate comes (px). */
 const EDGE_PX = 4;
 
-interface Placed {
+export interface Placed {
   x0: number;
   y0: number;
   x1: number;
@@ -357,6 +357,20 @@ export function plateRectOf(id: string): Placed | null {
 
 /** Where a token's body is on screen now (canvas px), when known. */
 export const bodyRectOf = (id: string): Placed | null => entries.get(id)?.body ?? null;
+
+/** Every token's body on screen now (canvas px): what HUD numbers and cards keep off. */
+export function bodyRects(): { id: string; r: Placed }[] {
+  const out: { id: string; r: Placed }[] = [];
+  for (const [id, e] of entries) if (e.body && e.group.parent) out.push({ id, r: e.body });
+  return out;
+}
+
+/** The overlays (plates) showing now, by token, in canvas px. */
+export function plateRects(): { id: string; r: Placed }[] {
+  const out: { id: string; r: Placed }[] = [];
+  for (const [id, e] of entries) if (e.clear === 1 && e.rect && e.group.parent) out.push({ id, r: e.rect });
+  return out;
+}
 
 /** Overlay priorities (higher wins a spot on screen). */
 export const PRIORITY = { hovered: 5, selected: 4, own: 3, party: 2, other: 1 } as const;

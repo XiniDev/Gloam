@@ -133,6 +133,8 @@ export const BOARD_COLORS = {
   hex400: "#B07FE0",
   ice300: "#9FDCF0",
   hpGhost: "#F4E9D8",
+  /** The HP bar's empty track: ink-700, so a bar at 0 still reads as a bar (ink-900 on the plate was a hole). */
+  hpTrack: "#243041",
   hemiSky: "#1A2230",
   hemiGround: "#0A0C10",
   keyLight: "#FFD9A8",
@@ -148,8 +150,10 @@ export const BOARD_COLORS = {
   flameBlue: "#6E8CFF",
   /** Table wood grain (the oak table the maps lie on). */
   oakLight: "#7A5234",
-  /** Standee card edge. */
+  /** Standee card back. */
   cardboard: "#B59A72",
+  /** Standee card edge (a shade darker than the back, so the top edge reads). */
+  cardboardEdge: "#8C7352",
   /** Token base top. */
   baseInk: "#243041", // ink-700: a lacquered slate base (near-black read as a hole in the floor)
   selectGlow: "#E6C98B",

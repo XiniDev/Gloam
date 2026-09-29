@@ -8,6 +8,7 @@ export function Toggle({
   description,
   disabled = false,
   compact = false,
+  inline = false,
 }: {
   checked: boolean;
   onChange: (v: boolean) => void;
@@ -16,13 +17,15 @@ export function Toggle({
   disabled?: boolean;
   /** A small caps label beside the switch (a panel header), not a settings row. */
   compact?: boolean;
+  /** The switch right after its label (options in a row, as in a dialog), not at the far end of a settings row. */
+  inline?: boolean;
 }) {
   const id = useId();
   return (
     // The switch centres on a one-line label; beside a description it centres on the label's line (its hit area
     // reaching above, not pushing the switch down).
     <div
-      className={`flex justify-between ${compact ? "items-center gap-2" : description ? "items-start gap-4" : "items-center gap-4"}`}
+      className={`${inline ? "inline-flex" : "flex justify-between"} ${compact ? "items-center gap-2" : description ? "items-start gap-4" : inline ? "items-center gap-3" : "items-center gap-4"}`}
     >
       <div className="min-w-0">
         <label

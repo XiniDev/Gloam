@@ -30,7 +30,8 @@ export default function DmPanel() {
       <div
         role="tablist"
         aria-label="DM panel sections"
-        className="flex shrink-0 gap-1 overflow-x-auto border-b border-line px-3 [scrollbar-width:none]"
+        // (A scrolling row drops its end padding: the trailing spacer keeps the last tab off the panel's edge.)
+        className="flex shrink-0 gap-1 overflow-x-auto border-b border-line px-3 [scrollbar-width:none] after:block after:w-3 after:shrink-0 after:content-['']"
       >
         {SECTIONS.map((s) => {
           const active = s.id === section;

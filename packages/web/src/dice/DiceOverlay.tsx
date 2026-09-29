@@ -20,6 +20,7 @@ import type { SfxName } from "../audio/recipes.ts";
 import { again } from "../board/frames.ts";
 import { frameBounds } from "../board/framing.ts";
 import type { TierSpec } from "../board/tiers.ts";
+import { bodyRects } from "../board/tokens/declutter.ts";
 import { clearArea, isPhoneNow, largestClear, useHudInsets, useHudObstacles } from "../hud/insets.ts";
 import { useTable } from "../net/table.ts";
 import { prefersReducedMotion } from "../state/settings.ts";
@@ -85,6 +86,8 @@ interface Throw {
   done: boolean;
   /** The dice camera has taken this throw in (it jumps to a new throw's arc once). */
   framed?: boolean;
+  /** Framed clear of the tokens on the board too (decided once per throw: see `clearOfTokens`). */
+  avoidTokens?: boolean;
 }
 
 /** What the dice showed (test hooks): per throw, each die's kind and the face on top when it came to rest. */
@@ -611,7 +614,17 @@ function frameDice(
   const area = clearArea(useHudInsets.getState(), W, H, isPhoneNow());
   const shape = throws[throws.length - 1]?.tray ?? TRAY_MAX;
   const aspect = shape.w / (shape.d * Math.sin((DICE_PITCH * Math.PI) / 180));
-  const visible = largestClear(area, Object.values(useHudObstacles.getState().rects), aspect);
+  // Clear of the tokens as well — dice resting on a token read as sitting on it (critic P7 r1) — unless that would
+  // leave them much less room than the HUD alone does (a crowded board). Decided once per throw: no jumping mid-roll.
+  const hud = Object.values(useHudObstacles.getState().rects);
+  const latest = throws[throws.length - 1];
+  if (latest && latest.avoidTokens === undefined) {
+    const fit = (r: typeof area) => Math.min((r.right - r.left) / aspect, r.bottom - r.top);
+    latest.avoidTokens =
+      fit(largestClear(area, [...hud, ...tokenAreas()], aspect)) >=
+      0.6 * fit(largestClear(area, hud, aspect));
+  }
+  const visible = largestClear(area, latest?.avoidTokens ? [...hud, ...tokenAreas()] : hud, aspect);
   // A phone keeps less margin round the dice (its screen is the tightest); obstacles already carry their own gap.
   const margin = isPhoneNow() ? 12 : 24;
   const short = Math.max(
@@ -689,4 +702,9 @@ function hashId(id: string): number {
   let h = 2166136261;
   for (let i = 0; i < id.length; i++) h = Math.imul(h ^ id.charCodeAt(i), 16777619) >>> 0;
   return h;
+}
+
+/** The tokens on the board as screen areas (with a little room round them), for the dice to keep off. */
+function tokenAreas(): { left: number; top: number; right: number; bottom: number }[] {
+  return bodyRects().map(({ r }) => ({ left: r.x0 - 8, top: r.y0 - 8, right: r.x1 + 8, bottom: r.y1 + 8 }));
 }

@@ -2,19 +2,30 @@ import { DAMAGE_TYPES } from "@gloam/shared";
 import type { HpPreviewRow } from "@gloam/shared/protocol";
 import { Plus, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { applyHp, type DamageTypeIn, type HpDraft, previewHp } from "../../net/health.ts";
+import { applyHp, type DamageTypeIn, type HpDraft, PLAYER_DAMAGE_SENT, previewHp } from "../../net/health.ts";
+import { useSheets } from "../../net/sheets.ts";
 import { useTable } from "../../net/table.ts";
+import { useBoard } from "../../state/entities.ts";
 import { type UiStore, useUi } from "../../state/ui.ts";
 import { Button, IconButton } from "../../ui/Button.tsx";
 import { Segmented, Toggle } from "../../ui/controls.tsx";
 import { Dialog } from "../../ui/Dialog.tsx";
-import { toast } from "../../ui/Toast.tsx";
+import { toast, useToasts } from "../../ui/Toast.tsx";
 
 type Kind = "damage" | "heal" | "temp";
 interface Part {
   amount: string;
   type: DamageTypeIn;
 }
+/** The choice that changes nothing ("Not dead", "Keep dying", "Keep at 0"). */
+export const KEEP_CHOICE = "keep";
+/**
+ * An item decided by its choice alone — one of its choices changes nothing — shows no checkbox beside it (two
+ * controls for one decision: critic P7 r1).
+ */
+export const choiceOnly = (i: { choices?: { id: string }[] }): boolean =>
+  Boolean(i.choices?.some((c) => c.id === KEEP_CHOICE));
+
 /** The DM's decisions about what follows, per target: the consequences kept and the choices made. */
 export type Decisions = Record<string, { keep: string[]; choices: Record<string, string>; seen: string[] }>;
 
@@ -44,6 +55,13 @@ function HpForm({ d, open }: { d: NonNullable<UiStore["hpDialog"]>; open: boolea
   const me = useTable((s) => s.me);
   const automation = useTable((s) => s.houseRules.automation);
   const dm = me?.role === "dm" || me?.role === "admin";
+  // One creature: its name on the board (or its character's), until the preview names it.
+  const boardName = useBoard((b) =>
+    d.targets.length === 1 ? b.tokens.get(d.targets[0] as string)?.name : undefined,
+  );
+  const sheetName = useSheets((s) =>
+    d.targets.length === 1 ? s.actors.get(d.targets[0] as string)?.sheet.core.name : undefined,
+  );
   const [kind, setKind] = useState<Kind>(d.kind);
   const [parts, setParts] = useState<Part[]>([{ amount: d.amount ? String(d.amount) : "", type: "untyped" }]);
   const [amount, setAmount] = useState(d.amount ? String(d.amount) : "");
@@ -94,14 +112,21 @@ function HpForm({ d, open }: { d: NonNullable<UiStore["hpDialog"]>; open: boolea
               const was = prev[row.tokenId];
               const items = row.items ?? [];
               const known = (k: string) => was?.seen.includes(k) ?? false;
+              // An item decided by its choice (one of which changes nothing) is always sent with it; a death starts
+              // on its no-change choice here — the DM opts into it (their prompt preselects by the house rule).
               next[row.tokenId] = {
                 keep: items
-                  .filter((i) => (known(i.key) ? was?.keep.includes(i.key) : i.key !== "dying"))
+                  .filter(
+                    (i) => choiceOnly(i) || (known(i.key) ? was?.keep.includes(i.key) : i.key !== "dying"),
+                  )
                   .map((i) => i.key),
                 choices: Object.fromEntries(
                   items
                     .filter((i) => i.choice)
-                    .map((i) => [i.key, was?.choices[i.key] ?? (i.choice as string)]),
+                    .map((i) => [
+                      i.key,
+                      was?.choices[i.key] ?? (i.key === "dying" ? KEEP_CHOICE : (i.choice as string)),
+                    ]),
                 ),
                 seen: items.map((i) => i.key),
               };
@@ -133,8 +158,13 @@ function HpForm({ d, open }: { d: NonNullable<UiStore["hpDialog"]>; open: boolea
             decide[row.tokenId] = { keep: dec?.keep ?? [], choices: dec?.choices ?? {} };
           }
       const r = await applyHp({ ...draft, ...(Object.keys(decide).length ? { decide } : {}) });
+      // Waiting on the DM — replaced by the DM's answer when it comes (net/health.ts).
       if (r.sent)
-        toast.info(r.sent === 1 ? "Sent to the DM to confirm" : `${r.sent} sent to the DM to confirm`);
+        useToasts.getState().push({
+          kind: "info",
+          title: r.sent === 1 ? "Sent to the DM to confirm" : `${r.sent} sent to the DM to confirm`,
+          key: PLAYER_DAMAGE_SENT,
+        });
       close();
     } catch (e) {
       toast.danger("Couldn't apply that", (e as Error).message);
@@ -146,7 +176,9 @@ function HpForm({ d, open }: { d: NonNullable<UiStore["hpDialog"]>; open: boolea
   const allHidden = rows !== null && rows.length > 0 && rows.every((r) => r.hidden);
   const toDm = rows?.some((r) => r.hidden && r.viaDm);
   const verb = kind === "damage" ? "Apply damage" : kind === "heal" ? "Heal" : "Give temporary HP";
-  const title = { damage: "Damage", heal: "Healing", temp: "Temporary HP" }[kind];
+  // Named for whom it's for, as the condition picker is ("Damage — Goblin"); a group by its count.
+  const who = d.targets.length === 1 ? (rows?.[0]?.name ?? boardName ?? sheetName ?? null) : null;
+  const title = `${{ damage: "Damage", heal: "Healing", temp: "Temporary HP" }[kind]}${who ? ` — ${who}` : ""}`;
   return (
     <Dialog
       open={open}
@@ -239,9 +271,9 @@ function HpForm({ d, open }: { d: NonNullable<UiStore["hpDialog"]>; open: boolea
                 Another type
               </Button>
             </div>
-            <div className="grid gap-x-8 gap-y-1 sm:grid-cols-2">
-              <Toggle checked={halved} onChange={setHalved} label="Half (a successful save)" />
-              <Toggle checked={crit} onChange={setCrit} label="Critical hit" />
+            <div className="flex flex-wrap items-center gap-x-8 gap-y-1">
+              <Toggle inline checked={halved} onChange={setHalved} label="Half (a successful save)" />
+              <Toggle inline checked={crit} onChange={setCrit} label="Critical hit" />
             </div>
           </fieldset>
         ) : (
@@ -388,7 +420,9 @@ export function PreviewRow({
             const choice = decision?.choices[i.key] ?? i.choice;
             return (
               <div key={i.key} className="flex flex-wrap items-center gap-2 text-14">
-                {deciding ? (
+                {deciding && choiceOnly(i) ? (
+                  <span className="text-bone">{i.label}</span>
+                ) : deciding ? (
                   <label className="inline-flex min-h-[var(--touch-min)] items-center gap-2 text-bone">
                     <input
                       type="checkbox"
@@ -412,7 +446,7 @@ export function PreviewRow({
                     {r.asked?.includes(i.key) ? <span className="text-muted"> — the DM decides</span> : null}
                   </span>
                 )}
-                {deciding && i.choices && kept ? (
+                {deciding && i.choices && (kept || choiceOnly(i)) ? (
                   <Segmented
                     label={i.label}
                     size="S"

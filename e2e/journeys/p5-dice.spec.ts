@@ -48,6 +48,8 @@ async function openTray(p: Page) {
 }
 
 test.describe("P5 — dice (DICE)", () => {
+  // Three players' pages and many throws: 1.5 min alone, well over 2 under a full suite's load.
+  test.setTimeout(240_000);
   test.use({ viewport: VIEWPORT });
 
   test("AC-DICE-01 / AC-DICE-03 / AC-DICE-08: the tray checks a formula as it's typed; every die from d4 to d100 lands on the server's number, alike for everyone; each clack is a simulated contact, as loud as its hit", async ({

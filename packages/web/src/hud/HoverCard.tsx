@@ -1,11 +1,14 @@
-import { HP_BAND_HIDDEN, HP_BAND_LABELS, statusName } from "@gloam/shared/rules";
+import { HP_BAND_HIDDEN, HP_BAND_LABELS, statusName, statusSummary } from "@gloam/shared/rules";
+import { parseCustomMarkers } from "@gloam/shared/state";
 import { useEffect, useRef, useState } from "react";
 import { boardApi } from "../board/boardApi.ts";
-import { bodyRectOf, plateRectOf } from "../board/tokens/declutter.ts";
+import { bodyRectOf, bodyRects, plateCovers, plateRectOf, plateRects } from "../board/tokens/declutter.ts";
 import { StatusIcon } from "../icons/status.tsx";
 import { useBoard } from "../state/entities.ts";
 import { useUi } from "../state/ui.ts";
+import { Portrait } from "../ui/Portrait.tsx";
 import { useIsPhone } from "./insets.ts";
+import { useAssetImage } from "./useAssetImage.ts";
 
 /** How long the pointer rests on a token before its card shows (AC-TOK-12). */
 export const HOVER_CARD_MS = 400;
@@ -34,6 +37,7 @@ export function HoverCard() {
     return () => window.clearTimeout(t);
   }, [hover]);
   const token = useBoard((d) => (shown ? d.tokens.get(shown) : undefined));
+  const portrait = useAssetImage(token ? token.portraitAssetId || token.assetId : null, 96);
   // What the card keeps beside: the token on screen and its plate (never over either — the plate says the same).
   const [at, setAt] = useState<Box | null>(null);
   useEffect(() => {
@@ -67,23 +71,8 @@ export function HoverCard() {
         ? HP_BAND_LABELS[token.hpBand]
         : null;
   const statuses = [...token.conditions, ...token.markers.filter((m) => !m.startsWith("custom:"))];
-  const customs = token.customMarkers.map((s) => {
-    const [id, label, color, glyph] = s.split("|") as [string, string, string, string];
-    return { id, label, color, glyph };
-  });
-  // Right of the token and its plate, else left of them, else (no room either side) as near as fits; level with the
-  // top of them, kept on the screen below the top bar.
-  const W = 240;
-  const GAP = 12;
-  const h = card.current?.offsetHeight ?? 200;
-  const vw = window.innerWidth;
-  const left =
-    at.x1 + GAP + W <= vw - GAP
-      ? at.x1 + GAP
-      : at.x0 - GAP - W >= GAP
-        ? at.x0 - GAP - W
-        : Math.min(vw - W - GAP, Math.max(GAP, at.x1 + GAP));
-  const top = Math.min(window.innerHeight - h - GAP, Math.max(64, at.y0));
+  const customs = parseCustomMarkers(token.customMarkers);
+  const { left, top } = placeCard(token.id, at, W, card.current?.offsetHeight ?? 200);
   return (
     <div
       ref={card}
@@ -94,7 +83,11 @@ export function HoverCard() {
       className="panel pointer-events-none absolute z-40 flex flex-col gap-1.5 p-3 shadow-[var(--shadow-float)] motion-safe:animate-[rise-in_var(--dur-fast)_var(--ease-out)_both]"
       style={{ left, top, width: W }}
     >
-      <span className="display truncate text-18 text-bone">{token.name}</span>
+      {/* §8.5: portrait, name, HP (per mode), AC (DM / owner), speeds, conditions with their one-line summaries. */}
+      <div className="flex items-center gap-2.5">
+        <Portrait name={token.name} color={token.ringColor || "var(--line)"} size={40} src={portrait} />
+        <span className="display min-w-0 flex-1 truncate text-18 text-bone">{token.name}</span>
+      </div>
       <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-13">
         {hp ? (
           <>
@@ -116,29 +109,97 @@ export function HoverCard() {
         ) : null}
       </dl>
       {statuses.length || customs.length || token.exhaustion ? (
-        <ul className="flex flex-col gap-1" aria-label="Conditions and markers">
+        <ul
+          className="flex flex-col gap-1.5 border-t border-line/60 pt-2"
+          aria-label="Conditions and markers"
+        >
           {token.exhaustion ? (
-            <li className="flex items-center gap-1.5 text-13 text-bone">
-              <StatusIcon id="exhaustion" size={18} badge label="" />
-              Exhaustion {token.exhaustion}
-            </li>
+            <Condition
+              icon={<StatusIcon id="exhaustion" size={18} badge label="" level={token.exhaustion} />}
+              name={`Exhaustion ${token.exhaustion}`}
+              summary={statusSummary("exhaustion")}
+            />
           ) : null}
           {statuses.slice(0, 8).map((id) => (
-            <li key={id} className="flex items-center gap-1.5 text-13 text-bone">
-              <StatusIcon id={id} size={18} badge label="" />
-              {statusName(id)}
-            </li>
+            <Condition
+              key={id}
+              icon={<StatusIcon id={id} size={18} badge label="" />}
+              name={statusName(id)}
+              summary={statusSummary(id)}
+            />
           ))}
           {customs.map((c) => (
-            <li key={c.id} className="flex items-center gap-1.5 text-13 text-bone">
-              <StatusIcon id={c.id} size={18} badge label="" glyph={c.glyph} color={c.color} />
-              {c.label}
-            </li>
+            <Condition
+              key={c.id}
+              icon={<StatusIcon id={c.id} size={18} badge label="" glyph={c.glyph} color={c.color} />}
+              name={c.label}
+              summary={c.description}
+            />
           ))}
         </ul>
       ) : null}
     </div>
   );
+}
+
+/** A condition or marker: its badge and name, its one-line summary under them. */
+function Condition({ icon, name, summary }: { icon: React.ReactNode; name: string; summary?: string }) {
+  return (
+    <li className="grid grid-cols-[18px_1fr] items-start gap-x-2 text-13 text-bone">
+      <span className="mt-px">{icon}</span>
+      <span className="min-w-0">
+        {name}
+        {summary ? <span className="block text-12 leading-snug text-muted">{summary}</span> : null}
+      </span>
+    </li>
+  );
+}
+
+const W = 240;
+const GAP = 12;
+
+/**
+ * Where the card stands: beside the token and its plate (never over them — they say the same), on the side that
+ * covers the least of the other tokens, their plates and the HUD (critic P7 r1: it hid the goblin); right, left, below,
+ * above in that order when it's a tie. Kept on the screen, below the top bar.
+ */
+function placeCard(tokenId: string, at: Box, w: number, h: number): { left: number; top: number } {
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const clampX = (x: number) => Math.min(vw - w - GAP, Math.max(GAP, x));
+  const clampY = (y: number) => Math.min(vh - h - GAP, Math.max(64, y));
+  const midX = (at.x0 + at.x1) / 2 - w / 2;
+  const candidates = [
+    { left: at.x1 + GAP, top: clampY(at.y0) },
+    { left: at.x0 - GAP - w, top: clampY(at.y0) },
+    { left: clampX(midX), top: at.y1 + GAP },
+    { left: clampX(midX), top: at.y0 - GAP - h },
+  ];
+  const others = [
+    ...bodyRects().filter((b) => b.id !== tokenId),
+    ...plateRects().filter((p) => p.id !== tokenId),
+  ].map((x) => x.r);
+  const hud = plateCovers();
+  const area = (a: Box, b: Box) =>
+    Math.max(0, Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0)) *
+    Math.max(0, Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0));
+  let best = candidates[0] as { left: number; top: number };
+  let bestCost = Number.POSITIVE_INFINITY;
+  for (const c of candidates) {
+    const box = { x0: c.left, y0: c.top, x1: c.left + w, y1: c.top + h };
+    const offscreen = box.x0 < GAP || box.x1 > vw - GAP || box.y0 < 64 || box.y1 > vh - GAP;
+    // Never over its own token and plate; off the screen only if nothing else is possible.
+    const cost =
+      (offscreen ? 1e9 : 0) +
+      area(box, at) * 1e3 +
+      others.reduce((s, r) => s + area(box, r), 0) +
+      hud.reduce((s, r) => s + 2 * area(box, r), 0);
+    if (cost < bestCost - 1) {
+      best = c;
+      bestCost = cost;
+    }
+  }
+  return { left: clampX(best.left), top: clampY(best.top) };
 }
 
 interface Box {

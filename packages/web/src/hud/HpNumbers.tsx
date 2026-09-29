@@ -1,7 +1,14 @@
 import type { DamageType } from "@gloam/shared";
 import type { HpFx } from "@gloam/shared/protocol";
 import { useEffect, useRef, useState } from "react";
-import { bodyRectOf, plateRectOf } from "../board/tokens/declutter.ts";
+import {
+  bodyRectOf,
+  bodyRects,
+  type Placed,
+  plateCovers,
+  plateRectOf,
+  plateRects,
+} from "../board/tokens/declutter.ts";
 import { hpFx } from "../net/health.ts";
 import { prefersReducedMotion } from "../state/settings.ts";
 import { provideTestHook } from "../test/hooks.ts";
@@ -10,6 +17,78 @@ import { provideTestHook } from "../test/hooks.ts";
 const FLOAT_MS = 1300;
 /** The space between one hit's numbers (px), e.g. "−6" slashing and "−4" fire. */
 const NUMBER_GAP = 14;
+/** How far a number rises (px), and its line's height. */
+const RISE = 42;
+const LINE = 28;
+/** Where a hit's numbers stand, in order of preference: over the plate, beside it (either side), under the base. */
+type Side = "above" | "right" | "left" | "below";
+const SIDES: Side[] = ["above", "right", "left", "below"];
+
+const overlapArea = (a: Placed, b: Placed) =>
+  Math.max(0, Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0)) *
+  Math.max(0, Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0));
+
+/**
+ * Where a row of numbers `w` wide stands for a token, on one side: its centre x and its bottom before rising. Beside
+ * the plate, it starts level with the plate's foot; under the base, just below it.
+ */
+function rowAt(side: Side, tokenId: string, w: number): { cx: number; bottom: number } | null {
+  const plate = plateRectOf(tokenId);
+  const body = bodyRectOf(tokenId);
+  const top = plate ?? body;
+  if (!top) return null;
+  const u = plate && body ? { x0: Math.min(plate.x0, body.x0), x1: Math.max(plate.x1, body.x1) } : top;
+  switch (side) {
+    case "above":
+      return { cx: (top.x0 + top.x1) / 2, bottom: top.y0 - 8 };
+    case "right":
+      return { cx: u.x1 + 10 + w / 2, bottom: top.y1 };
+    case "left":
+      return { cx: u.x0 - 10 - w / 2, bottom: top.y1 };
+    case "below":
+      return body ? { cx: (body.x0 + body.x1) / 2, bottom: body.y1 + 8 + LINE } : null;
+  }
+}
+
+/**
+ * The first side where the row's whole rise is clear — of other tokens and their plates (a number over the ogre read
+ * as the ogre's), the HUD over the board and the toasts, and on the screen — else the least covered (critic P7 r1).
+ */
+function chooseSide(tokenId: string, w: number): Side {
+  const others = [
+    ...bodyRects().filter((b) => b.id !== tokenId),
+    ...plateRects().filter((p) => p.id !== tokenId),
+  ].map((x) => x.r);
+  const hud = [
+    ...plateCovers(),
+    ...[...document.querySelectorAll<HTMLElement>("[data-toast]")].map((el) => {
+      const r = el.getBoundingClientRect();
+      return { x0: r.left, y0: r.top, x1: r.right, y1: r.bottom };
+    }),
+  ];
+  let best: Side = "above";
+  let bestCost = Number.POSITIVE_INFINITY;
+  for (const side of SIDES) {
+    const at = rowAt(side, tokenId, w);
+    if (!at) continue;
+    const box = { x0: at.cx - w / 2, x1: at.cx + w / 2, y0: at.bottom - LINE - RISE, y1: at.bottom };
+    const off =
+      Math.max(0, -box.x0) +
+      Math.max(0, box.x1 - window.innerWidth) +
+      Math.max(0, -box.y0) +
+      Math.max(0, box.y1 - window.innerHeight);
+    const cost =
+      others.reduce((c, r) => c + overlapArea(box, r), 0) +
+      hud.reduce((c, r) => c + 4 * overlapArea(box, r), 0) +
+      off * LINE * 4;
+    if (cost < bestCost - 1) {
+      best = side;
+      bestCost = cost;
+    }
+    if (cost === 0) break;
+  }
+  return best;
+}
 
 interface Floater {
   key: number;
@@ -50,6 +129,7 @@ export function HpNumbers() {
   const [floaters, setFloaters] = useState<Floater[]>([]);
   useEffect(() => provideTestHook("hpNumbers", () => shownLog.map((x) => ({ ...x }))), []);
   const els = useRef(new Map<number, HTMLSpanElement>());
+  const sides = useRef(new Map<number, Side>());
   useEffect(
     () =>
       hpFx.on((f) => {
@@ -77,18 +157,25 @@ export function HpNumbers() {
     const tick = () => {
       const now = performance.now();
       let done = false;
-      // Each group's numbers in a row: every number's centre offset from the row's centre.
+      // Each group's numbers in a row: every number's centre offset from the row's centre, and the row's side —
+      // chosen once, when its numbers are first measured, then kept for the whole rise.
       const dx = new Map<number, number>();
+      const rowW = new Map<number, number>();
       const rows = new Map<number, Floater[]>();
       for (const f of floaters) rows.set(f.group, [...(rows.get(f.group) ?? []), f]);
-      for (const row of rows.values()) {
+      for (const [group, row] of rows) {
         const widths = row.map((f) => els.current.get(f.key)?.offsetWidth ?? 0);
-        let x = -(widths.reduce((a, b) => a + b, 0) + NUMBER_GAP * (row.length - 1)) / 2;
+        const w = widths.reduce((a, b) => a + b, 0) + NUMBER_GAP * (row.length - 1);
+        rowW.set(group, w);
+        let x = -w / 2;
         row.forEach((f, i) => {
-          const w = widths[i] as number;
-          dx.set(f.key, x + w / 2);
-          x += w + NUMBER_GAP;
+          const wi = widths[i] as number;
+          dx.set(f.key, x + wi / 2);
+          x += wi + NUMBER_GAP;
         });
+        const first = row[0] as Floater;
+        if (!sides.current.has(group) && w > 0 && (plateRectOf(first.tokenId) || bodyRectOf(first.tokenId)))
+          sides.current.set(group, chooseSide(first.tokenId, w));
       }
       for (const f of floaters) {
         const el = els.current.get(f.key);
@@ -99,22 +186,21 @@ export function HpNumbers() {
           el.style.opacity = "0";
           continue;
         }
-        const plate = plateRectOf(f.tokenId);
-        const body = bodyRectOf(f.tokenId);
-        const anchor = plate ?? body;
-        if (!anchor || t < 0) {
+        const at = rowAt(sides.current.get(f.group) ?? "above", f.tokenId, rowW.get(f.group) ?? 0);
+        if (!at || t < 0) {
           el.style.opacity = "0";
           continue;
         }
-        const x = (anchor.x0 + anchor.x1) / 2 + (dx.get(f.key) ?? 0);
-        const rise = reduced ? 0 : 42 * (1 - (1 - t) ** 2);
-        el.style.transform = `translate(${x}px, ${anchor.y0 - 8 - rise}px) translate(-50%, -100%)`;
+        const x = at.cx + (dx.get(f.key) ?? 0);
+        const rise = reduced ? 0 : RISE * (1 - (1 - t) ** 2);
+        el.style.transform = `translate(${x}px, ${at.bottom - rise}px) translate(-50%, -100%)`;
         el.style.opacity = String(t < 0.7 ? 1 : 1 - (t - 0.7) / 0.3);
       }
       // A hit's numbers go together (so the last one doesn't jump as the row re-centres).
       if (done)
         setFloaters((fs) => {
           const live = new Set(fs.filter((f) => now - f.at <= FLOAT_MS).map((f) => f.group));
+          for (const g of sides.current.keys()) if (!live.has(g)) sides.current.delete(g);
           const next = fs.filter((f) => live.has(f.group));
           return next.length === fs.length ? fs : next;
         });

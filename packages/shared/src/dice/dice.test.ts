@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeFormula, roll } from "./evaluate.ts";
+import { normalizeFormula, roll, termContribution } from "./evaluate.ts";
 import { checkFormula, DICE_LIMITS, DiceError, parseFormula } from "./parse.ts";
 import { DEFAULT_SKIN, type RollRecord, type RollVisibility, viewOfRoll } from "./record.ts";
 import { seededDie, xoshiro128ss } from "./rng.ts";
@@ -109,6 +109,18 @@ describe("dice formulas (SPEC §18.1, AC-DICE-01)", () => {
     expect(d.normalized).toBe("2d20kl1 + 5");
     expect(err("2d6 adv").message).toMatch(/d20/);
     expect(checkFormula("1d8 adv")?.message).toMatch(/d20/);
+  });
+
+  it("a subtracted term keeps its sign: '1d20 - 4' records −4, '1d20 - 1d4' the d4 as subtracted, '-(-2)' as added", () => {
+    const a = r("1d20 - 4", 10);
+    expect(a.total).toBe(6);
+    expect(a.terms.map(termContribution)).toEqual([10, -4]);
+    const b = r("1d20 - 1d4 + @str", 12, 3);
+    expect(b.terms.map((t) => t.sign ?? 1)).toEqual([1, -1, 1]);
+    expect(b.terms.map(termContribution).reduce((x, y) => x + y, 0)).toBe(b.total);
+    const c = r("1d20 - (2 - 1d4)", 10, 3);
+    expect(c.terms.map(termContribution)).toEqual([10, -2, 3]);
+    expect(c.terms.map(termContribution).reduce((x, y) => x + y, 0)).toBe(c.total);
   });
 
   it("normalizeFormula: the formula as it will roll, without rolling — the same form as a roll's normalized", () => {

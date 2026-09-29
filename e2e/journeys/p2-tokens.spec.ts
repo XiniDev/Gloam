@@ -577,7 +577,13 @@ test.describe("P2 — tokens (TOK)", () => {
     px = await hook<number[][]>(admin, "renderHpBar", { frac: 0.4, temp: 0, ghost: 0.8 }, W);
     expect(near(px[Math.round(W * 0.2)] as number[], hex(BOARD_COLORS.brass400))).toBe(true);
     expect(near(px[Math.round(W * 0.65)] as number[], hex(BOARD_COLORS.hpGhost))).toBe(true);
-    expect(near(px[Math.round(W * 0.9)] as number[], hex(BOARD_COLORS.ink900))).toBe(true);
+    expect(near(px[Math.round(W * 0.9)] as number[], hex(BOARD_COLORS.hpTrack))).toBe(true);
+    // At 0: the track and the tick still show — a bar, not a hole (critic P7 r1).
+    px = await hook<number[][]>(admin, "renderHpBar", { frac: 0, temp: 0, ghost: 0 }, W);
+    expect(near(px[Math.round(W * 0.25)] as number[], hex(BOARD_COLORS.hpTrack))).toBe(true);
+    expect(lum(px[Math.round(W * 0.5)] as number[])).toBeLessThan(
+      lum(px[Math.round(W * 0.5) - 8] as number[]) * 0.8,
+    );
   });
 
   test("overlay layout (§8.5): every plate sits just above its own token at any pitch and pose, shown plates never overlap, and settled fades stay settled", async ({

@@ -9,8 +9,8 @@ import { Button, IconButton } from "../../ui/Button.tsx";
 import { Segmented } from "../../ui/controls.tsx";
 import { WaxSeal } from "../../ui/ornaments.tsx";
 import { toast } from "../../ui/Toast.tsx";
-import { useCover, useHudInsets, useIsPhone, useObstacle } from "../insets.ts";
-import { type Decisions, PreviewRow } from "./HpDialog.tsx";
+import { PHONE_BOTTOM_BAND, useCover, useHudInsets, useIsPhone, useObstacle } from "../insets.ts";
+import { choiceOnly, type Decisions, PreviewRow } from "./HpDialog.tsx";
 
 /**
  * The DM's prompts (SPEC §8.11, §19.1; AC-HP-12): what follows from damage or a condition — going down, a death-save
@@ -29,8 +29,8 @@ export function PromptCards({ inline = false }: { inline?: boolean }) {
   const banner = useHudInsets((s) => s.banner);
   const left = useHudInsets((s) => s.left);
   const right = useHudInsets((s) => s.right);
-  const corners = useHudInsets((s) => Math.max(s.cornerLeft, s.cornerRight));
   const phone = useIsPhone();
+  const bottom = useHudInsets((s) => s.bottom);
   const dockOpen = useUi((s) => s.dock !== null);
   const away = !inline && phone && dockOpen;
   const ref = useRef<HTMLOListElement>(null);
@@ -65,7 +65,9 @@ export function PromptCards({ inline = false }: { inline?: boolean }) {
       className="pointer-events-none absolute z-30 flex justify-center"
       style={
         phone
-          ? { top: Math.max(top, corners) + banner + 8, left: 12, right: 12 }
+          ? // A phone's cards stand above the dice button and the roll feed (under the top corners they hid the
+            // creature they're about — critic P7 r1), in thumb's reach.
+            { bottom: Math.max(bottom, PHONE_BOTTOM_BAND) + 8, left: 12, right: 12 }
           : { top: top + banner + 8, left: left + 8, right: right + 8 }
       }
     >
@@ -201,18 +203,24 @@ function PromptCard({ p, compact }: { p: DmPromptView; compact: boolean }) {
             const kept = keep.includes(i.key);
             return (
               <li key={i.key} className="flex flex-wrap items-center gap-2 text-14">
-                <label className="inline-flex min-h-[var(--touch-min)] items-center gap-2 text-bone">
-                  <input
-                    type="checkbox"
-                    checked={kept}
-                    onChange={(e) =>
-                      setKeep((k) => (e.target.checked ? [...k, i.key] : k.filter((x) => x !== i.key)))
-                    }
-                    className="h-4 w-4 accent-[var(--brass-400)]"
-                  />
-                  {i.label}
-                </label>
-                {i.choices && kept ? (
+                {choiceOnly(i) ? (
+                  <span className="inline-flex min-h-[var(--touch-min)] items-center text-bone">
+                    {i.label}
+                  </span>
+                ) : (
+                  <label className="inline-flex min-h-[var(--touch-min)] items-center gap-2 text-bone">
+                    <input
+                      type="checkbox"
+                      checked={kept}
+                      onChange={(e) =>
+                        setKeep((k) => (e.target.checked ? [...k, i.key] : k.filter((x) => x !== i.key)))
+                      }
+                      className="h-4 w-4 accent-[var(--brass-400)]"
+                    />
+                    {i.label}
+                  </label>
+                )}
+                {i.choices && (kept || choiceOnly(i)) ? (
                   <Segmented
                     label={i.label}
                     size="S"

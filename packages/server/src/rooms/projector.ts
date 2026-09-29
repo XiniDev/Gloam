@@ -115,7 +115,9 @@ export function tokenView(t: TokenEntity, ctx: ProjectionCtx): TokenView {
     customMarkers: status.markers
       .filter((m) => m.id.startsWith("custom:"))
       .map((m) =>
-        [m.id, m.label ?? "", m.color ?? "", m.glyph ?? ""].map((x) => x.replaceAll("|", "/")).join("|"),
+        [m.id, m.label ?? "", m.color ?? "", m.glyph ?? "", m.description ?? ""]
+          .map((x) => x.replaceAll("|", "/"))
+          .join("|"),
       ),
     hp: { hp: stats.hp, hpMax: stats.hpMax, hpTemp: stats.hpTemp },
     own: {

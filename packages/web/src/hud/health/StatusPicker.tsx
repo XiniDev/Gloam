@@ -1,6 +1,7 @@
 import { CONDITION_IDS, MARKER_IDS, PLAYER_COLORS } from "@gloam/shared";
 import { STATUS_ICONS } from "@gloam/shared/icons";
 import { statusName, statusSummary } from "@gloam/shared/rules";
+import { parseCustomMarkers } from "@gloam/shared/state";
 import { Search } from "lucide-react";
 import { useState } from "react";
 import { StatusIcon } from "../../icons/status.tsx";
@@ -14,6 +15,7 @@ import { ColorSwatchPicker } from "../../ui/ColorSwatchPicker.tsx";
 import { Segmented } from "../../ui/controls.tsx";
 import { Dialog } from "../../ui/Dialog.tsx";
 import { toast } from "../../ui/Toast.tsx";
+import { useIsPhone } from "../insets.ts";
 
 /** Markers a person sets by hand (Bloodied and the death-save states follow HP; the DM may still set them). */
 const HAND_MARKERS = MARKER_IDS.filter((m) => m !== "bloodied" && m !== "deathsaves");
@@ -34,12 +36,13 @@ export function StatusPicker() {
     const id = target?.actorId ?? token?.actorId;
     return id ? s.actors.get(id) : undefined;
   });
+  const phone = useIsPhone();
   const [q, setQ] = useState("");
   const [focus, setFocus] = useState<string | null>(null);
   const [source, setSource] = useState("");
   const [rounds, setRounds] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
-  const [custom, setCustom] = useState({ name: "", color: "orchid", glyph: "custom", rounds: "" });
+  const [custom, setCustom] = useState({ name: "", color: "orchid", glyph: "custom", description: "" });
   const close = () => {
     useUi.getState().set({ statusPicker: null });
     setQ("");
@@ -52,10 +55,7 @@ export function StatusPicker() {
   const exhaustion = token ? token.exhaustion : (actor?.sheet.core.exhaustion ?? 0);
   const concentration = actor?.sheet.core.concentration ?? "";
   const concentrating = token ? token.concentrating : Boolean(concentration);
-  const customs = (token?.customMarkers ?? []).map((s) => {
-    const [id, label, color, glyph] = s.split("|") as [string, string, string, string];
-    return { id, label, color, glyph };
-  });
+  const customs = parseCustomMarkers(token?.customMarkers ?? []);
 
   const ref = target?.tokenId
     ? { tokenId: target.tokenId }
@@ -86,7 +86,24 @@ export function StatusPicker() {
   };
   const conds = CONDITION_IDS.filter((c) => c !== "exhaustion").filter(match);
   const marks = token ? HAND_MARKERS.filter(match) : [];
-  const shownSummary = focus ? statusSummary(focus) : null;
+  const shownCustoms = customs.filter(
+    (c) => !q.trim() || `${c.label} ${c.description}`.toLowerCase().includes(q.trim().toLowerCase()),
+  );
+  // The summary under the grid: of the tile hovered or focused while it's still in the grid (a search can take it
+  // away); a custom marker's is its own description.
+  const focused =
+    focus && [...conds, ...marks, ...shownCustoms.map((c) => c.id)].includes(focus) ? focus : null;
+  const focusedCustom = focused ? customs.find((c) => c.id === focused) : undefined;
+  const shownName = focusedCustom
+    ? focusedCustom.label || statusName(focusedCustom.id)
+    : focused
+      ? statusName(focused)
+      : "";
+  const shownSummary = focusedCustom
+    ? focusedCustom.description || null
+    : focused
+      ? statusSummary(focused)
+      : null;
 
   const tile = (
     id: string,
@@ -161,7 +178,7 @@ export function StatusPicker() {
             <h3 className="caps text-12 text-fog">Markers</h3>
             <ul className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
               {marks.map((id) => tile(id, markers.includes(id)))}
-              {customs.map((c) =>
+              {shownCustoms.map((c) =>
                 tile(c.id, true, c.label || statusName(c.id), { glyph: c.glyph, color: c.color }),
               )}
             </ul>
@@ -170,7 +187,7 @@ export function StatusPicker() {
         <p className="min-h-10 text-13 text-muted" aria-live="polite" data-testid="status-summary">
           {shownSummary ? (
             <>
-              <strong className="text-bone">{focus ? statusName(focus) : ""}</strong> — {shownSummary}
+              <strong className="text-bone">{shownName}</strong> — {shownSummary}
             </>
           ) : (
             "Hover or focus one to read what it does."
@@ -200,10 +217,12 @@ export function StatusPicker() {
         </div>
         <div className="flex flex-col gap-1.5">
           <span className="caps text-12 text-fog">Exhaustion</span>
-          <div className="flex flex-wrap items-center gap-3">
+          {/* A phone: the seven levels across the width (one row), what they do under them. */}
+          <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
             <Segmented
               label="Exhaustion level"
               size="S"
+              fill={phone}
               value={String(exhaustion)}
               onChange={(v) => void send({ exhaustion: Number(v) }, "exhaustion")}
               options={[0, 1, 2, 3, 4, 5, 6].map((n) => ({ value: String(n), label: String(n) }))}
@@ -235,6 +254,16 @@ export function StatusPicker() {
                   placeholder="Hexed"
                   onChange={(e) => setCustom((c) => ({ ...c, name: e.target.value }))}
                   className="h-10 rounded-[var(--radius-control)] border border-line bg-ink-900 px-3 text-14 text-bone focus:border-brass focus:outline-none"
+                />
+              </label>
+              <label className="flex flex-col gap-1.5">
+                <span className="caps text-12 text-fog">What it means (optional)</span>
+                <input
+                  value={custom.description}
+                  maxLength={120}
+                  placeholder="Disadvantage on checks with the chosen ability"
+                  onChange={(e) => setCustom((c) => ({ ...c, description: e.target.value }))}
+                  className="h-10 rounded-[var(--radius-control)] border border-line bg-ink-900 px-3 text-14 text-bone placeholder:text-faint focus:border-brass focus:outline-none"
                 />
               </label>
               <ColorSwatchPicker
@@ -286,12 +315,13 @@ export function StatusPicker() {
                           label: custom.name.trim(),
                           color: hex,
                           glyph: custom.glyph,
+                          ...(custom.description.trim() ? { description: custom.description.trim() } : {}),
                           ...extra(),
                         },
                       ],
                     },
                     "custom",
-                  ).then(() => setCustom((c) => ({ ...c, name: "" })));
+                  ).then(() => setCustom((c) => ({ ...c, name: "", description: "" })));
                 }}
               >
                 Add the marker

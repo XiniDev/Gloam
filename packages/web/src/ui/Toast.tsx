@@ -86,11 +86,22 @@ export function Toaster() {
   // take the DM's panels away until dismissed).
   const table = useHudInsets((s) => s.active);
   const right = useHudInsets((s) => s.right);
+  // A phone's top corners are taken (the tools button, the dock's rail): the stack stands under the tools button,
+  // left of the rail — never over the one tool button (critic P7 r1).
+  const cornerLeft = useHudInsets((s) => s.cornerLeft);
+  const phoneTable = table && cornerLeft > 0;
   return (
     <div
       aria-live="polite"
       className="pointer-events-none fixed right-3 top-[calc(64px+env(safe-area-inset-top))] z-[950] flex w-[min(380px,calc(100vw-24px))] flex-col gap-2 sm:right-4 sm:top-[72px]"
-      style={table ? { right, width: `min(380px, calc(100vw - ${right + 12}px))` } : undefined}
+      style={
+        phoneTable
+          ? // (With a page of the dock open across the phone, the stack takes the width, over the page.)
+            { top: cornerLeft, left: 12, right: right < window.innerWidth / 2 ? right : 12, width: "auto" }
+          : table
+            ? { right, width: `min(380px, calc(100vw - ${right + 12}px))` }
+            : undefined
+      }
     >
       <AnimatePresence initial={false}>
         {items.map((t) => (
@@ -104,6 +115,7 @@ export function Toaster() {
             transition={{ type: "spring", stiffness: 520, damping: 34 }}
             className="panel pointer-events-auto relative overflow-hidden pl-4 pr-2 py-3"
             data-kind={t.kind}
+            data-toast
           >
             <span
               className="absolute inset-y-0 left-0 w-[3px]"

@@ -116,6 +116,17 @@ export default function IconSheet() {
           ))}
         </tbody>
       </table>
+      <h2 className="mt-8 mb-2 text-22">Exhaustion's level in its corner notch</h2>
+      <div className="flex flex-wrap items-end gap-6" data-testid="exhaustion-levels">
+        {SIZES.map((s) => (
+          <div key={s} className="flex items-end gap-3">
+            {[1, 2, 3, 4, 5, 6].map((level) => (
+              <StatusIcon key={level} id="exhaustion" size={s} badge level={level} />
+            ))}
+            <span className="text-12 text-muted">{s} px</span>
+          </div>
+        ))}
+      </div>
       <h2 className="mt-8 mb-2 text-22">The atlas (64-px cells)</h2>
       <div ref={atlasHost} />
     </main>

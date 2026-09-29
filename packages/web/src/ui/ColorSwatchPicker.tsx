@@ -14,7 +14,12 @@ export function ColorSwatchPicker({
   label?: string;
 }) {
   return (
-    <div role="radiogroup" aria-label={label} className="grid grid-cols-3 gap-1.5 sm:grid-cols-4">
+    // As many columns as fit with the longest name whole ("Periwinkle"): two on a phone's narrow dialog.
+    <div
+      role="radiogroup"
+      aria-label={label}
+      className="grid grid-cols-[repeat(auto-fill,minmax(8.5rem,1fr))] gap-1.5"
+    >
       {PLAYER_COLORS.map((c) => {
         const active = c.id === value;
         const used = taken.includes(c.hex);
@@ -32,7 +37,7 @@ export function ColorSwatchPicker({
             }`}
           >
             <span
-              className="grid h-5 w-5 shrink-0 place-items-center rounded-full shadow-[inset_0_0_0_1px_var(--line-soft)]"
+              className="grid h-5 w-5 shrink-0 place-items-center rounded-chip shadow-[inset_0_0_0_1px_var(--line-soft)]"
               style={{ background: `var(--player-${c.id})` }}
               aria-hidden
             >

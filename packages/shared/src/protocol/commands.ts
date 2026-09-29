@@ -502,8 +502,9 @@ export const StatusChange = z
           id: StatusId,
           source: z.string().trim().max(80).optional(),
           untilRound: z.number().int().min(1).max(100_000).optional(),
-          /** Custom markers: what they're called, their colour and glyph. */
+          /** Custom markers: what they're called, their colour, glyph and what they mean (§8.11). */
           label: z.string().trim().max(40).optional(),
+          description: z.string().trim().max(120).optional(),
           color: z
             .string()
             .regex(/^#[0-9A-Fa-f]{6}$/)

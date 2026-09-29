@@ -406,6 +406,8 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
                 })
               : this.dice.manual(this.campaignId, this.projector.activeSceneId || null, this.rollerOf(auth), {
                   ...opts,
+                  purpose: "request",
+                  ...(x.token ? { token: x.token } : {}),
                   ...(p.values ? { values: p.values } : {}),
                   ...(p.total !== undefined ? { total: p.total } : {}),
                 });
@@ -413,6 +415,7 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
           res = {
             state: p.action === "roll" ? "rolled" : "manual",
             rollId: roll.id,
+            formula: roll.normalized || roll.formula,
             total: roll.total,
             by: auth.userId,
             ...(r.dc !== undefined ? { success: roll.total >= r.dc } : {}),
@@ -457,6 +460,7 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
           res = {
             state: "dm",
             rollId: dmRoll.id,
+            formula: dmRoll.normalized || dmRoll.formula,
             total: dmRoll.total,
             by: auth.userId,
             ...(r.dc !== undefined ? { success: dmRoll.total >= r.dc } : {}),

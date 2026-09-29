@@ -1,4 +1,10 @@
-import type { MaskedRoll, RollRecord, RollTerm, RollVisibility } from "@gloam/shared/dice";
+import {
+  type MaskedRoll,
+  type RollRecord,
+  type RollTerm,
+  type RollVisibility,
+  termContribution,
+} from "@gloam/shared/dice";
 import { ChevronDown, ChevronUp, EyeOff, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { type FeedRoll, isMasked, useRolls } from "../dice/state.ts";
@@ -373,17 +379,18 @@ function Breakdown({ roll }: { roll: RollRecord }) {
         {roll.terms.map((t, i) => (
           <li key={`${roll.id}-b${i}`} className="contents">
             <span className="mono truncate text-12 text-muted">
+              {t.sign === -1 ? "− " : ""}
               {t.kind === "dice"
                 ? `${t.count}d${t.sides}${t.tag ? ` ${t.tag}` : ""}`
                 : t.kind === "ref"
-                  ? `@${t.ref}`
+                  ? t.ref
                   : "modifier"}
             </span>
             <span className="flex min-w-0 flex-wrap items-center gap-1">
               {t.kind === "dice" ? <TermChips term={t} settled showRerolls /> : null}
             </span>
             <span className="tabular text-right text-13 font-bold text-bone">
-              {t.kind === "dice" ? t.subtotal : signed(t.value)}
+              {t.kind === "dice" && t.sign !== -1 ? t.subtotal : signed(termContribution(t))}
             </span>
           </li>
         ))}
@@ -411,14 +418,13 @@ function TermChips({
   /** The faces a die rolled before its reroll, struck through before it (the breakdown). */
   showRerolls?: boolean;
 }) {
+  // A modifier with the formula's own sign ("1d20 − 4" shows −4).
   if (term.kind === "const")
-    return (
-      <span className="tabular text-12 text-muted">{term.value >= 0 ? `+${term.value}` : term.value}</span>
-    );
+    return <span className="tabular text-12 text-muted">{signed(termContribution(term))}</span>;
   if (term.kind === "ref")
     return (
       <span className="tabular text-12 text-muted" title={term.ref}>
-        {term.value >= 0 ? `+${term.value}` : term.value}
+        {signed(termContribution(term))}
       </span>
     );
   // Still tumbling: an empty chip per die (the dice show the numbers first).
