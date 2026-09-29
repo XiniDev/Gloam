@@ -18,6 +18,7 @@ import { useCombat } from "../../net/combat.ts";
 import { request, send, useTable } from "../../net/table.ts";
 import { boardData, useEntities } from "../../state/entities.ts";
 import { useToasts } from "../../ui/Toast.tsx";
+import { playOnBoard } from "../boardSound.ts";
 import { wake } from "../frames.ts";
 import { clientMoveWorld } from "./world.ts";
 
@@ -124,6 +125,8 @@ export function beginMove(tokenId: string, opts: { dragging: boolean }): void {
     dragging: opts.dragging,
     from: { x: t.pos.x, y: t.pos.y },
   });
+  // Lifted off the felt (SPEC §31): a drag picks the mini up; it's set down where it lands (or back where it was).
+  if (opts.dragging) playOnBoard("tokenPickUp", { ...t.pos, z: t.elevation });
 }
 
 /** The pointer moved: a new goal (and, dragging with Alt, one more trail point). */
@@ -157,6 +160,7 @@ export function cancelMove(): boolean {
     schedule();
     return true;
   }
+  if (s.dragging && s.from) playOnBoard("tokenPutDown", s.from);
   useMove.setState(EMPTY);
   broadcast(true);
   wake();
@@ -169,6 +173,7 @@ export async function commitMove(): Promise<void> {
   const t = tokenOf(s.tokenId);
   compute();
   const p = useMove.getState().preview;
+  if (s.dragging && t) playOnBoard("tokenPutDown", (p?.ok && p.points.at(-1)) || t.pos);
   if (!t || !p?.ok || p.points.length < 2 || pathLength(p.points) < 0.05) {
     useMove.setState(EMPTY);
     broadcast(true);

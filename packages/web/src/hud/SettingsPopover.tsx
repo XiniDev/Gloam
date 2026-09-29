@@ -13,7 +13,7 @@ import { ScrollFade } from "../ui/ScrollFade.tsx";
 import { DiceSkinPicker } from "./DiceSkinPicker.tsx";
 import { useHudInsets, useIsPhone, useObstacle } from "./insets.ts";
 
-const CHANNEL_LABEL: Record<Channel, string> = {
+export const CHANNEL_LABEL: Record<Channel, string> = {
   master: "Master",
   dice: "Dice",
   effects: "Effects",
@@ -31,7 +31,7 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
-function Volume({ c }: { c: Channel }) {
+export function Volume({ c }: { c: Channel }) {
   const v = useSettings((s) => s.volumes[c]);
   const muted = useSettings((s) => s.channelMuted[c]);
   const update = useSettings((s) => s.update);

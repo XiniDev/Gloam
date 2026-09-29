@@ -20,6 +20,7 @@ export type Decide = (
  */
 export function showKnockCard(k: KnockCard, decide: Decide, isAdmin: boolean): void {
   audio.play("knock");
+  audio.duck();
   useToasts.getState().push({
     key: `knock:${k.sessionId}`,
     kind: "knock",

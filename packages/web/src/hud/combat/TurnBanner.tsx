@@ -33,6 +33,8 @@ export function TurnBanner() {
     if (__GLOAM_TEST__) provideTestHook("turnsAnnounced", () => announced.map((a) => ({ ...a })));
     return yourTurn.on((t) => {
       void audio.play("yourTurn");
+      // The music dips a moment so the bell is heard without being loud (sound.md §6.6).
+      audio.duck();
       setShown({ name: t.name, round: t.round, key: Date.now() });
       let focused = false;
       if (useSettings.getState().focusOnMyTurn) {

@@ -1845,10 +1845,10 @@
       "code": "AUD",
       "phase": "P11",
       "text": "Audio unlocks on the first user gesture, with the enable-sound chip as a fallback.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p11-audio.spec.ts: under a desktop autoplay policy (fixtures/autoplay.ts — headless Chromium runs every AudioContext, so the policy is emulated: contexts held suspended and resume() refused until a trusted gesture) the page's audio reports 'locked' and shows 'Tap to enable sound'; the first click anywhere (a heading) unlocks it (state running, chip gone); in a second test the chip itself unlocks it.",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-29T20:41:47.346Z"
     },
     {
       "id": "AC-AUD-05",
@@ -1856,10 +1856,10 @@
       "code": "AUD",
       "phase": "P11",
       "text": "Board sounds are stereo-panned by screen position and attenuated by distance.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p11-audio.spec.ts 'AC-AUD-05': damage on tokens west, east and at the camera target of a 60x40 scene logs board sounds with pan < -0.25, > 0.25 and |pan| < 0.1, and distanceFt equal to each token's distance from the camera target; packages/web/src/audio/measure.test.ts proves the engine maps pan into ±0.8 (stereoPan) and gain 1/(1+d/60) (distanceGain: -6 dB at 60 ft); board sounds (footsteps, doors, pings, HP, spells, token pick-up) go through board/boardSound.ts playOnBoard.",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-29T20:41:47.420Z"
     },
     {
       "id": "AC-AUD-06",

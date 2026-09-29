@@ -1,9 +1,12 @@
 import type { HpFx } from "@gloam/shared/protocol";
 import { useThree } from "@react-three/fiber";
 import { useEffect } from "react";
-import { audio } from "../../audio/engine.ts";
 import { hpFx } from "../../net/health.ts";
+import { playOnBoard } from "../boardSound.ts";
 import { again } from "../frames.ts";
+
+/** Damage types that land as a blow (SPEC §31 "Melee hit"). */
+const PHYSICAL = new Set<string>(["bludgeoning", "piercing", "slashing"]);
 
 /**
  * HP feedback on the board (SPEC §8.11 Feedback; AC-HP-11), for everyone who can see the token (the server sends
@@ -35,10 +38,16 @@ export function HpFxLayer() {
           if (__GLOAM_TEST__) fxPlayed.push({ tokenId: f.tokenId, kind });
         }
         // The sounds — a hit, a heal, a fall (the heaviest) — for a token on this client's board.
-        if (scene.getObjectByName(`token:${f.tokenId}`)) {
-          if (f.dead || f.down) void audio.play("down");
-          else if (f.kind === "damage" && f.amount > 0) void audio.play("damage");
-          else if (f.kind === "heal" && f.amount > 0) void audio.play("heal");
+        const at = scene.getObjectByName(`token:${f.tokenId}`)?.position;
+        if (at) {
+          const where = { x: at.x, y: at.z, z: at.y };
+          if (f.dead || f.down) playOnBoard("down", where);
+          else if (f.kind === "damage" && f.amount > 0) {
+            // A blow (bludgeoning, piercing, slashing): the hit, then the crunch 40 ms after and 3 dB under it.
+            const blow = PHYSICAL.has(f.parts?.[0]?.type ?? "untyped");
+            if (blow) playOnBoard("meleeHit", where);
+            playOnBoard("damage", where, blow ? { delay: 0.04, gain: 0.71 } : {});
+          } else if (f.kind === "heal" && f.amount > 0) playOnBoard("heal", where);
         }
         again();
       }),

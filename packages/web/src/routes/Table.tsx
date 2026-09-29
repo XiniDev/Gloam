@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router";
+import { watchSoundCues } from "../audio/cues.ts";
 import { ActionBar } from "../hud/ActionBar.tsx";
 import { TurnBanner } from "../hud/combat/TurnBanner.tsx";
 import { TurnTracker } from "../hud/combat/TurnTracker.tsx";
@@ -74,6 +75,7 @@ export default function TableRoute() {
   useEffect(() => watchSheets(), []);
   useEffect(() => watchHealth(), []);
   useEffect(() => watchCombat(), []);
+  useEffect(() => watchSoundCues(), []);
   useEffect(() => watchSpells(), []);
   useEffect(() => watchPendingArt(), []);
   useEffect(() => {

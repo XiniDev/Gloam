@@ -2,6 +2,7 @@ import { create } from "zustand";
 
 /** Per-device preferences (SPEC §8.22), persisted to localStorage (wrapped in try/catch: storage may be blocked). */
 export interface DeviceSettings {
+  /** Slider positions 0–1, heard through a −48 dB law (sound.md §6.1: engine.ts `sliderGain`). */
   volumes: Record<"master" | "dice" | "effects" | "ui" | "music" | "ambience", number>;
   channelMuted: Record<"master" | "dice" | "effects" | "ui" | "music" | "ambience", boolean>;
   muted: boolean;
@@ -18,12 +19,15 @@ export interface DeviceSettings {
   clickToMove: boolean;
   /** The dice tray stays open after a roll (it closes by default, so the dice have the board). */
   diceTrayKeepOpen: boolean;
+  /** Which law `volumes` are saved under ("db48"); older saves held linear gains. */
+  volumeLaw?: "db48";
 }
 
 const KEY = "gloam.settings.v1";
 
 export const DEFAULT_SETTINGS: DeviceSettings = {
-  volumes: { master: 0.9, dice: 0.85, effects: 0.8, ui: 0.7, music: 0.55, ambience: 0.55 },
+  // Master −3 dB, dice and effects 0, UI −3, music and ambience −6 (sound.md §6.1).
+  volumes: { master: 0.94, dice: 1, effects: 1, ui: 0.94, music: 0.875, ambience: 0.875 },
   channelMuted: { master: false, dice: false, effects: false, ui: false, music: false, ambience: false },
   muted: false,
   tier: "auto",
@@ -37,6 +41,7 @@ export const DEFAULT_SETTINGS: DeviceSettings = {
   units: "campaign",
   clickToMove: true,
   diceTrayKeepOpen: false,
+  volumeLaw: "db48",
 };
 
 function load(): DeviceSettings {
@@ -47,7 +52,9 @@ function load(): DeviceSettings {
     return {
       ...DEFAULT_SETTINGS,
       ...parsed,
-      volumes: { ...DEFAULT_SETTINGS.volumes, ...parsed.volumes },
+      // Volumes saved before the slider law (linear gains) start again from the defaults.
+      volumes: { ...DEFAULT_SETTINGS.volumes, ...(parsed.volumeLaw === "db48" ? parsed.volumes : {}) },
+      volumeLaw: "db48",
       channelMuted: { ...DEFAULT_SETTINGS.channelMuted, ...parsed.channelMuted },
     };
   } catch {

@@ -465,13 +465,18 @@ export function areaBurst(preset: Preset, w: Where, scale: number, seed: number)
 }
 
 /** A projectile to a creature, then its impact there (§24.5 "a projectile or instant form"). */
+/** How long a projectile flies from its caster to a creature (s): its hit — and its sound — land then. */
+export function projectileFlight(from: V3, to: V3): number {
+  const dist = Math.hypot(to[0] - from[0], to[1] + 2.5 - (from[1] + 3), to[2] - from[2]);
+  return Math.min(0.6, Math.max(0.15, dist / 90));
+}
+
 export function projectile(preset: Preset, from: V3, to: V3, scale: number, seed: number): Piece {
   const p = VFX[preset];
   const g = new Group();
   const a: V3 = [from[0], from[1] + 3, from[2]];
   const b: V3 = [to[0], to[1] + 2.5, to[2]];
-  const dist = Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
-  const flight = Math.min(0.6, Math.max(0.15, dist / 90));
+  const flight = projectileFlight(from, to);
   if (preset === "lightning") {
     g.add(bolt(a, b, { life: 0.45, core: p.core, seed }));
   } else {

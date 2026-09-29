@@ -2,7 +2,7 @@ import { useFrame } from "@react-three/fiber";
 import { useEffect, useMemo, useRef } from "react";
 import { CircleGeometry, Color, type Mesh, MeshBasicMaterial, RingGeometry } from "three";
 import { create } from "zustand";
-import { audio } from "../audio/engine.ts";
+import { playOnBoard } from "./boardSound.ts";
 import { C } from "./colors.ts";
 import { disposeLater } from "./dispose.ts";
 import { setAnimating, wake } from "./frames.ts";
@@ -37,7 +37,8 @@ export function addPing(p: Omit<Ping, "id" | "at">): void {
     pingsSeen.push({ ...p, at: ping.at });
     if (pingsSeen.length > 50) pingsSeen.shift();
   }
-  audio.play("ping");
+  // A DM Spotlight ping is the same sound, 3 dB up (sound.md §2.6).
+  playOnBoard("ping", p, p.spotlight ? { gain: 1.41 } : {});
   wake();
   setTimeout(
     () => usePings.setState({ pings: usePings.getState().pings.filter((x) => x.id !== ping.id) }),

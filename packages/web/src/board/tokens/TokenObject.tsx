@@ -23,13 +23,13 @@ import {
   Vector2,
   Vector3,
 } from "three";
-import { audio } from "../../audio/engine.ts";
 import { useCombat } from "../../net/combat.ts";
 import { request, useTable } from "../../net/table.ts";
 import { useSettings } from "../../state/settings.ts";
 import { useUi } from "../../state/ui.ts";
 import { BoardText } from "../BoardText.tsx";
 import { boardApi } from "../boardApi.ts";
+import { footstepAt } from "../boardSound.ts";
 import { cameraRig } from "../CameraRig.tsx";
 import { targetToken } from "../cast/input.ts";
 import { C, col, ringColorOf } from "../colors.ts";
@@ -551,7 +551,8 @@ export const TokenObject = memo(function TokenObject({
         g.position.y + (token.elevation - g.position.y) * (1 - Math.exp(-dt * 12)),
         anim.pos.y,
       );
-      if (anim.step && nearCameraTarget(g.position, FOOTSTEP_RANGE_FT)) audio.play("footstep");
+      if (anim.step && nearCameraTarget(g.position, FOOTSTEP_RANGE_FT))
+        footstepAt({ x: g.position.x, y: g.position.z, z: g.position.y });
     } else if (first.current) {
       g.position.copy(target);
     } else g.position.lerp(target, 1 - Math.exp(-dt * 12));

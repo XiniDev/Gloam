@@ -2,7 +2,7 @@ import type { WallView } from "@gloam/shared/state";
 import { type ThreeEvent, useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useRef } from "react";
 import { type Sprite, Vector3 } from "three";
-import { audio } from "../../audio/engine.ts";
+import { stringSeed } from "../../audio/synth.ts";
 import { request, useTable } from "../../net/table.ts";
 import { boardData, useBoard, useEntities } from "../../state/entities.ts";
 import { knownAt, useFog } from "../../state/fog.ts";
@@ -10,8 +10,12 @@ import { useUi } from "../../state/ui.ts";
 import { useDmView } from "../../state/viewAs.ts";
 import { toast } from "../../ui/Toast.tsx";
 import { boardApi } from "../boardApi.ts";
+import { playOnBoard } from "../boardSound.ts";
 import { again, wake } from "../frames.ts";
 import { doorIconTexture } from "../tokens/glyphs.ts";
+
+/** A door's middle on the table (where its sounds come from). */
+const mid = (w: WallView) => ({ x: (w.ax + w.bx) / 2, y: (w.ay + w.by) / 2 });
 
 /**
  * Door handles (SPEC §8.7 Doors; AC-WAL-03): a handle icon at the middle of every door this viewer knows — shut,
@@ -78,7 +82,7 @@ function DoorHandle({ wall, dm }: { wall: WallView; dm: boolean }) {
       const code = (err as { code?: string }).code;
       if (code === "BLOCKED") {
         // Locked: rattle, and the lock shakes.
-        audio.play("lockRattle");
+        playOnBoard("lockRattle", mid(wall));
         shake.current = performance.now();
         wake(600);
       } else toast.info("Can't reach that door", (err as Error).message);
@@ -148,8 +152,9 @@ function useDoorSounds() {
         const now = doorSound(w);
         const was = before && doorSound(before);
         if (!now || !was || now === was) continue;
-        if (now === "open") audio.play("doorOpen");
-        else if (was === "open") audio.play("doorClose");
+        // Each door its own creak: seeded by its id.
+        if (now === "open") playOnBoard("doorOpen", mid(w), { seed: stringSeed(id) });
+        else if (was === "open") playOnBoard("doorClose", mid(w));
       }
       prev = walls;
     });

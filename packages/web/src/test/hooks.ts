@@ -8,6 +8,9 @@ export interface SoundLogEntry {
   at: number;
   /** The extra gain it played at (dice: v^1.5 from the contact's impulse). */
   gain?: number;
+  /** A board sound's stereo pan (−1…1, before the engine's ×0.8) and distance from the camera target (AC-AUD-05). */
+  pan?: number;
+  distanceFt?: number;
 }
 
 interface GloamTestApi {
@@ -43,7 +46,18 @@ export function provideTestHook<A extends unknown[]>(name: string, fn: (...args:
   window.__gloam[name] = fn;
 }
 
-export function logSound(name: string, played: boolean, gain?: number): void {
+export function logSound(
+  name: string,
+  played: boolean,
+  opts: { gain?: number; pan?: number; distanceFt?: number } = {},
+): void {
   if (!__GLOAM_TEST__) return;
-  window.__gloam?.sounds.push({ name, played, at: Date.now(), ...(gain !== undefined ? { gain } : {}) });
+  window.__gloam?.sounds.push({
+    name,
+    played,
+    at: Date.now(),
+    ...(opts.gain !== undefined ? { gain: opts.gain } : {}),
+    ...(opts.pan !== undefined ? { pan: opts.pan } : {}),
+    ...(opts.distanceFt !== undefined ? { distanceFt: opts.distanceFt } : {}),
+  });
 }

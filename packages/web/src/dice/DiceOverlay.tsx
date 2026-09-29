@@ -88,6 +88,9 @@ interface Throw {
   framed?: boolean;
   /** Framed clear of the tokens on the board too (decided once per throw: see `clearOfTokens`). */
   avoidTokens?: boolean;
+  /** Its tumbling bed (one voice per throw), and when every die had come to rest. */
+  rumble?: ReturnType<typeof audio.rumble>;
+  quietSince?: number;
 }
 
 /** What the dice showed (test hooks): per throw, each die's kind and the face on top when it came to rest. */
@@ -391,6 +394,40 @@ function DiceStage({ tier, onIdle }: { tier: TierSpec; onIdle: () => void }) {
             if (!t.reduced) play("diceSettle", { pan: panOf(mesh.position) });
           }
         }
+        // The tumble's friction bed (sound.md §2.1 "rolls/slides"): its level from how fast the dice on the floor spin,
+        // from the recorded poses; it stops 150 ms after the last die sleeps.
+        if (!t.reduced) {
+          if (t.rumble === undefined && k < res.steps)
+            t.rumble = audio.rumble(panOf(t.meshes[0]?.position ?? up));
+          if (t.rumble) {
+            let spin = 0;
+            const k0 = Math.max(0, k - 1);
+            for (let i = 0; i < n && k > 0 && k <= res.steps; i++) {
+              if (t.ticked[i]) continue;
+              const fr = res.frames;
+              const o0 = (k0 * n + i) * POSE;
+              const o1 = (k * n + i) * POSE;
+              const restY = fr[(res.steps * n + i) * POSE + 1] as number;
+              if ((fr[o1 + 1] as number) > 1.2 * restY) continue;
+              const dot = Math.abs(
+                (fr[o0 + 3] as number) * (fr[o1 + 3] as number) +
+                  (fr[o0 + 4] as number) * (fr[o1 + 4] as number) +
+                  (fr[o0 + 5] as number) * (fr[o1 + 5] as number) +
+                  (fr[o0 + 6] as number) * (fr[o1 + 6] as number),
+              );
+              const omega = (2 * Math.acos(Math.min(1, dot))) / STEP_S;
+              spin += Math.min(1, omega / 20);
+            }
+            t.rumble.set(Math.min(1, spin / 2));
+            if (t.ticked.every(Boolean)) {
+              t.quietSince ??= now;
+              if (now - t.quietSince >= 150) {
+                t.rumble.stop();
+                t.rumble = null;
+              }
+            }
+          }
+        }
         // Clacks from the recorded contacts, as playback reaches them.
         if (!t.reduced)
           while (t.contact < res.contacts.length && (res.contacts[t.contact] as { step: number }).step <= k) {
@@ -424,6 +461,7 @@ function DiceStage({ tier, onIdle }: { tier: TierSpec; onIdle: () => void }) {
               (b.material as Material).dispose();
             }
             for (const m of t.materials) m.dispose();
+            t.rumble?.stop();
             t.done = true;
           }
         }

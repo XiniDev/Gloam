@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { audio } from "../audio/engine.ts";
 import { boardApi } from "../board/boardApi.ts";
 import { useLoading } from "../board/diag.ts";
 import { setAnimating } from "../board/frames.ts";
@@ -102,6 +103,7 @@ export function SceneTransition() {
     // Already dark (a second activation while the name is up): the new name shows straight away.
     if (phaseRef.current === "title") reveal();
     else {
+      audio.play("sceneTravel");
       to("out");
       after(out, reveal);
     }
