@@ -14,6 +14,7 @@ export type DmSection =
   | "spells"
   | "effects"
   | "history"
+  | "sound"
   | "approvals";
 export type SheetTab =
   | "overview"

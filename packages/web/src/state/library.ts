@@ -35,6 +35,9 @@ export interface AssetItem {
   overrides: { scale?: number; rotationYDeg?: number; offsetY?: number };
   variants: { name: string; mime: string; bytes: number; width?: number; height?: number }[];
   usage?: number;
+  /** Audio: its length and loudness, once a DM's browser has measured them. */
+  durationMs?: number;
+  loudnessLufs?: number;
 }
 
 /**

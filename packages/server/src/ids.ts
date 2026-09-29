@@ -30,7 +30,8 @@ export type IdPrefix =
   | "cmb"
   | "job"
   | "cst"
-  | "cnt";
+  | "cnt"
+  | "pls";
 
 const nano = customAlphabet("0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ", 16);
 

@@ -102,6 +102,34 @@ export function measureSamples(x: Float32Array, sampleRate = 48000): { peakDb: n
   };
 }
 
+/**
+ * BS.1770-4 integrated loudness of a recording (its channels at 48 kHz): K-weighted, 400-ms blocks with 75 % overlap,
+ * the absolute gate at −70 LUFS then the relative gate 10 LU under the gated mean (sound.md §6.3: a track is played
+ * at −20 LUFS).
+ */
+export function integratedLufs(channels: Float32Array[], sampleRate = 48000): number {
+  const weighted = channels.map((c) => biquad(biquad(c, K1), K2));
+  const win = Math.round(0.4 * sampleRate);
+  const hop = Math.round(0.1 * sampleRate);
+  const len = weighted[0]?.length ?? 0;
+  const blocks: number[] = [];
+  for (let s = 0; s + win <= len; s += hop) {
+    let z = 0;
+    for (const w of weighted) {
+      let sum = 0;
+      for (let i = s; i < s + win; i++) sum += (w[i] as number) ** 2;
+      z += sum / win;
+    }
+    blocks.push(z);
+  }
+  const lufs = (z: number) => -0.691 + 10 * Math.log10(z);
+  const abs = blocks.filter((z) => z > 0 && lufs(z) > -70);
+  if (!abs.length) return Number.NEGATIVE_INFINITY;
+  const gate = lufs(abs.reduce((a, b) => a + b, 0) / abs.length) - 10;
+  const rel = abs.filter((z) => lufs(z) > gate);
+  return lufs(rel.reduce((a, b) => a + b, 0) / rel.length);
+}
+
 /** One recipe rendered offline at unity (rate 1: no per-play variation), mixed to mono. */
 export async function renderRecipe(name: SfxName): Promise<Float32Array> {
   audio.ensure();

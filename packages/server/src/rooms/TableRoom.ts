@@ -81,6 +81,7 @@ import {
   type RoomEvent,
 } from "../engine/commandBus.ts";
 import { checkSheet, readSheet } from "../engine/commands/actor.ts";
+import { AUDIO_SYNC, campaignAudio } from "../engine/commands/audio.ts";
 import {
   COMBAT_COLLECT,
   COMBAT_STOPPED,
@@ -102,6 +103,7 @@ import { ALL_COMMANDS, COMMAND_RATES, registerCommands } from "../engine/registr
 import { PromptService } from "../health/prompts.ts";
 import { type Proposal, ProposalService, proposalView } from "../sheets/proposals.ts";
 import { type MoveSeen, VisionService } from "../vision/visionService.ts";
+import { AudioTimer } from "./audioTimer.ts";
 import { CastFlow, type CastViewer } from "./castFlow.ts";
 import { CombatFlow, type CombatViewer } from "./combat.ts";
 import {
@@ -160,6 +162,8 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
   combat!: CombatFlow;
   casts!: CastFlow;
   effects!: EffectFlow;
+  /** When the track playing ends (SPEC §25.3). */
+  audioTimer!: AudioTimer;
   /** DM connections viewing a non-active scene in prep (SPEC §13.7): client → scene id. */
   private readonly prepSubs = new Map<Client, string>();
   /** Test probe (AC-PER-01): runs right before Colyseus encodes and sends a state patch. */
@@ -845,6 +849,16 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
         roomCtx().campaigns.appendLog(this.campaignId, { kind, text, data });
       },
     });
+    this.audioTimer = new AudioTimer({
+      model: () => this.model,
+      bus: () => this.bus,
+      durationOf: (assetId) => {
+        const a = this.model.get("asset", assetId);
+        return (a && roomCtx().assets.file(a.fileId)?.durationMs) || null;
+      },
+      onError: (err) => roomCtx().log.error({ err }, "the music's next track failed"),
+    });
+    this.audioTimer.changed();
     this.casts = new CastFlow({
       campaignId: this.campaignId,
       model: () => this.model,
@@ -1442,6 +1456,16 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
 
   private onCommitted(info: CommitInfo): void {
     this.historyChanged();
+    // The audio changed other than by its own commands (an undo, a revert): everyone gets it as it now is.
+    if (
+      !info.type.startsWith("audio.") &&
+      info.ops.some(
+        (o) => o.k === "set" && o.e === "campaign" && o.path[0] === "settings" && o.path[1] === "audio",
+      )
+    ) {
+      this.broadcastAll(AUDIO_SYNC, campaignAudio({ model: this.model }));
+      this.audioTimer.changed();
+    }
     if (info.ops.some((o) => (o.k === "set" || o.k === "create") && o.e === "campaign")) this.syncCampaign();
     const active = this.model.activeScene;
     const nextActive = active && !active.deletedAt ? active.id : "";
@@ -1653,6 +1677,8 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
     // Their open resolution cards, and the campaign's homebrew spells as they may see them.
     if (cv) this.casts.join(cv);
     this.sendHomebrewAll(client, auth);
+    // What's playing and the ambience, to join it where it is (SPEC §25.3: a late joiner starts at the position).
+    client.send(AUDIO_SYNC, campaignAudio({ model: this.model }));
     client.send("welcome", {
       userId: auth.userId,
       role: auth.role,
@@ -1742,6 +1768,7 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
   }
 
   override onDispose(): void {
+    this.audioTimer?.stop();
     this.vision.flush();
     this.vision.dispose();
     const ctx = roomCtx();
@@ -1957,7 +1984,10 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
         continue;
       }
       if ("viewersOf" in e.to) this.toViewersOf(e.to.viewersOf, e.name, e.payload);
-      else if ("users" in e.to)
+      else if ("all" in e.to) {
+        this.broadcastAll(e.name, e.payload);
+        if (e.name === AUDIO_SYNC) this.audioTimer.changed();
+      } else if ("users" in e.to)
         for (const u of e.to.users)
           for (const c of this.clientsByUser.get(u) ?? []) c.send(e.name, e.payload);
       else this.toDms(e.name, e.payload);
@@ -2022,6 +2052,13 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
   async reloadFromDatabase(): Promise<void> {
     this.loadModel();
     this.broadcastAll("table.resync", {});
+    // A restore carries the audio as it was then.
+    this.broadcastAll(AUDIO_SYNC, campaignAudio({ model: this.model }));
+    this.audioTimer.changed();
+  }
+
+  audioChanged(): void {
+    this.audioTimer.changed();
   }
 
   flushFog(): void {

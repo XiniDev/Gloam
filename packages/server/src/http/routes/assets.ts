@@ -265,6 +265,42 @@ export function assetRoutes(app: Express, ctx: ServerContext): void {
   );
 
   /**
+   * An audio track's length and loudness (SPEC §21.5, docs/research/sound.md §6.3), measured by the DM's browser as
+   * it decodes the file: the length lets the server move the music on when a track ends; the loudness evens tracks
+   * out. The campaign's DMs, the uploader or the Admin; the first measurement stays.
+   */
+  app.patch(
+    "/api/assets/:assetId/audio",
+    route((req, res) => {
+      const a = requireSession(req);
+      const id = z
+        .string()
+        .regex(/^ast_[A-Za-z0-9]{8,32}$/)
+        .parse(req.params.assetId);
+      const body = z
+        .strictObject({
+          durationMs: z
+            .number()
+            .min(100)
+            .max(6 * 3600_000),
+          loudnessLufs: z.number().min(-70).max(3),
+        })
+        .parse(req.body);
+      const asset = ctx.assets.get(id);
+      if (!asset) throw new GloamError("NOT_FOUND");
+      const may =
+        a.session.kind === "admin" ||
+        asset.uploaderId === a.user.id ||
+        ctx.campaigns.membership(asset.campaignId, a.user.id) === "dm";
+      if (!may) throw new GloamError("NOT_FOUND");
+      const set = ctx.assets.setAudioMeasure(asset.fileId, body);
+      // The track playing may be this one: its end can be timed now.
+      if (set) ctx.rooms.tables.get(asset.campaignId)?.audioChanged();
+      ok(res, { set });
+    }),
+  );
+
+  /**
    * Serving (SPEC §21.6): member-only, immutable, fixed Content-Type from the database, nosniff, a sandbox CSP
    * (AC-AST-05). Anything not readable answers 404, so asset ids can't be probed.
    */

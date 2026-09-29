@@ -204,6 +204,7 @@ export function Slider({
   disabled = false,
   className = "",
   labelled = false,
+  bubble = true,
 }: {
   value: number;
   onChange: (v: number) => void;
@@ -216,6 +217,8 @@ export function Slider({
   className?: string;
   /** Its label and value shown above the track (where no row label names it). */
   labelled?: boolean;
+  /** The value floating over the thumb while it's held (off where a row shows the value itself, or rows sit close). */
+  bubble?: boolean;
 }) {
   const [active, setActive] = useState(false);
   const f = max > min ? (Math.min(max, Math.max(min, value)) - min) / (max - min) : 0;
@@ -238,7 +241,7 @@ export function Slider({
         className="gloam-range w-full"
         style={{ ["--fill" as string]: `${f * 100}%` }}
       />
-      {active ? (
+      {active && bubble ? (
         <span
           aria-hidden
           className="tabular pointer-events-none absolute -top-6 -translate-x-1/2 rounded-chip border border-line bg-ink-950 px-1.5 text-12 text-brass-bright"

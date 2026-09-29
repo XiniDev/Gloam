@@ -174,7 +174,8 @@ export const COMBAT_SOUNDS = {
     reverb: 0.3,
     hero: true,
     play(ctx, dest, t, rate, engine) {
-      const out = outGain(ctx, dest, 0.3);
+      // (0.30 in the research mock; calibrated in /dev/sounds to the plan's −6 dBFS.)
+      const out = outGain(ctx, dest, 0.247);
       drumHit(ctx, engine, out, t, 0.8, rate);
       drumHit(ctx, engine, out, t + 0.38, 1, rate);
     },

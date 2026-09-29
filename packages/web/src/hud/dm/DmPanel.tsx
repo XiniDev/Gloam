@@ -14,6 +14,7 @@ import { HistoryPanel } from "./HistoryPanel.tsx";
 import { LibraryPanel } from "./LibraryPanel.tsx";
 import { RequestsPanel } from "./RequestsPanel.tsx";
 import { ScenesPanel } from "./ScenesPanel.tsx";
+import { SoundPanel } from "./SoundPanel.tsx";
 import { SpellsPanel } from "./SpellsPanel.tsx";
 
 const SECTIONS: { id: DmSection; label: string }[] = [
@@ -24,6 +25,7 @@ const SECTIONS: { id: DmSection; label: string }[] = [
   { id: "combat", label: "Combat" },
   { id: "spells", label: "Spells" },
   { id: "effects", label: "Effects" },
+  { id: "sound", label: "Sound" },
   { id: "history", label: "History" },
   { id: "approvals", label: "Approvals" },
 ];
@@ -153,6 +155,7 @@ export default function DmPanel() {
         {section === "combat" ? <CombatPanel /> : null}
         {section === "spells" ? <SpellsPanel /> : null}
         {section === "history" ? <HistoryPanel /> : null}
+        {section === "sound" ? <SoundPanel /> : null}
         {section === "effects" ? <EffectsPanel /> : null}
         {section === "approvals" ? <ApprovalsPanel /> : null}
       </div>

@@ -59,6 +59,9 @@ export interface AssetDto {
   variants: { name: string; mime: string; bytes: number; width?: number; height?: number }[];
   /** Tokens and scenes using it (filled by the table room from the live model). */
   usage?: number;
+  /** Audio: its length and integrated loudness, as the DM's browser measured them (SPEC §21.5, sound.md §6.3). */
+  durationMs?: number;
+  loudnessLufs?: number;
 }
 
 /**
@@ -67,7 +70,16 @@ export interface AssetDto {
  */
 export type AssetRenderDto = Pick<
   AssetDto,
-  "id" | "purpose" | "cls" | "width" | "height" | "dominant" | "overrides" | "variants"
+  | "id"
+  | "purpose"
+  | "cls"
+  | "width"
+  | "height"
+  | "dominant"
+  | "overrides"
+  | "variants"
+  | "durationMs"
+  | "loudnessLufs"
 > & { glb?: { bounds: NonNullable<ProcessMeta["glb"]>["bounds"]; animations: string[] } };
 
 export function renderDto(d: AssetDto): AssetRenderDto {
@@ -81,6 +93,8 @@ export function renderDto(d: AssetDto): AssetRenderDto {
     overrides: d.overrides,
     variants: d.variants,
     ...(d.glb ? { glb: { bounds: d.glb.bounds, animations: d.glb.animations } } : {}),
+    ...(d.durationMs ? { durationMs: d.durationMs } : {}),
+    ...(d.loudnessLufs !== undefined ? { loudnessLufs: d.loudnessLufs } : {}),
   };
 }
 
@@ -344,7 +358,10 @@ export class AssetService {
 
   dto(a: AssetEntity, file: typeof assetFiles.$inferSelect): AssetDto {
     const variants = JSON.parse(String(file.variantsJson)) as StoredVariant[];
-    const meta = JSON.parse(String(file.metaJson)) as ProcessMeta & { sha256?: string };
+    const meta = JSON.parse(String(file.metaJson)) as ProcessMeta & {
+      sha256?: string;
+      loudnessLufs?: number;
+    };
     return {
       id: a.id,
       name: a.name,
@@ -369,7 +386,28 @@ export class AssetService {
         width: v.width,
         height: v.height,
       })),
+      ...(file.durationMs ? { durationMs: file.durationMs } : {}),
+      ...(typeof meta.loudnessLufs === "number" ? { loudnessLufs: meta.loudnessLufs } : {}),
     };
+  }
+
+  /**
+   * An audio file's length and loudness, measured by a DM's browser on upload or first play (SPEC §21.5): kept on
+   * the file (every campaign using it shares them). Measured once: a value already there stays.
+   */
+  setAudioMeasure(fileId: string, m: { durationMs: number; loudnessLufs: number }): boolean {
+    const f = this.file(fileId);
+    if (!f || f.kind !== "audio" || f.durationMs) return false;
+    const meta = JSON.parse(String(f.metaJson)) as Record<string, unknown>;
+    this.ctx.db
+      .update(assetFiles)
+      .set({
+        durationMs: Math.round(m.durationMs),
+        metaJson: JSON.stringify({ ...meta, loudnessLufs: m.loudnessLufs }),
+      })
+      .where(eq(assetFiles.id, fileId))
+      .run();
+    return true;
   }
 
   dtoById(assetId: string): AssetDto | null {

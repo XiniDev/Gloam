@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { CampaignAudio } from "../protocol/audio.ts";
 
 /** House rules (SPEC §19.6). Defaults first; every option is a campaign setting the DM can change. */
 export const HouseRules = z
@@ -35,6 +36,8 @@ export const CampaignSettings = z
     revealHiddenCombatantCount: z.boolean().default(false),
     /** Party vision (SPEC §8.8 Vision sharing): every player sees what any party member sees. Off by default. */
     partyVision: z.boolean().default(false),
+    /** Music, ambience, playlists (SPEC §8.17): the audio commands' alone, never `campaign.update`'s. */
+    audio: CampaignAudio.optional(),
   })
   .strict();
 export type CampaignSettings = z.infer<typeof CampaignSettings>;
@@ -44,7 +47,7 @@ export const CampaignPatch = z
     name: z.string().trim().min(1).max(80).optional(),
     units: z.enum(["ft", "m"]).optional(),
     houseRules: HouseRules.partial().optional(),
-    settings: CampaignSettings.partial().optional(),
+    settings: CampaignSettings.omit({ audio: true }).partial().optional(),
   })
   .strict();
 export type CampaignPatch = z.infer<typeof CampaignPatch>;

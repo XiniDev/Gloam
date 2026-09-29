@@ -1,6 +1,6 @@
 import type { DataChange } from "@colyseus/schema";
 import { Callbacks, type Room } from "@colyseus/sdk";
-import type { KnockCard } from "@gloam/shared/protocol";
+import type { AudioSync, KnockCard } from "@gloam/shared/protocol";
 import { CampaignSettings, DEFAULT_HOUSE_RULES, HouseRules } from "@gloam/shared/schemas";
 import type { PrepPatch, PrepSnapshot } from "@gloam/shared/state";
 import { Table, type TableState } from "@gloam/shared/state";
@@ -10,6 +10,7 @@ import { clearRemotePreview, onRemotePreview } from "../board/move/remote.ts";
 import { addPing } from "../board/PingLayer.tsx";
 import { editPerf, measureSince } from "../board/perf.ts";
 import { type MeasureShape, onSharedMeasure } from "../board/tools/measure.ts";
+import { useAudioSync } from "../state/audioSync.ts";
 import { useEntities } from "../state/entities.ts";
 import type { FogRectMsg } from "../state/fog.ts";
 import { type AssetItem, type AssetRender, type SceneListItem, useLibrary } from "../state/library.ts";
@@ -359,6 +360,8 @@ async function join(campaignId: string): Promise<Room<unknown, TableState>> {
       onRemotePreview(m),
   );
   room.onMessage("hand.raised", (p: { userId: string; name: string }) => tableEvents.emit("hand.raised", p));
+  // The campaign's audio: a state, kept as it comes (the first on joining, before any screen listens).
+  room.onMessage("audio.sync", (p: AudioSync) => useAudioSync.getState().set(p));
   room.onMessage("*", (type, payload) => tableEvents.emit("message", { type: String(type), payload }));
   room.onDrop(() => useTable.getState().set({ connection: "dropped" }));
   room.onReconnect(() => useTable.getState().set({ connection: "open" }));

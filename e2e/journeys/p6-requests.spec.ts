@@ -351,13 +351,25 @@ test.describe("P6 — roll requests (DICE-06)", () => {
         return `${await c.getAttribute("data-anchor")}/${await c.getAttribute("data-align")}`;
       })
       .not.toBe("top/center");
-    const moved = (await stack.boundingBox()) as { x: number; y: number; width: number; height: number };
-    const clear =
-      moved.y > high.y1 ||
-      moved.y + moved.height < high.y0 ||
-      moved.x > high.x1 ||
-      moved.x + moved.width < high.x0;
-    expect(clear, `the stack ${JSON.stringify(moved)} clear of Brin ${JSON.stringify(high)}`).toBe(true);
+    // Where it comes to rest (it glides there; on a busy machine the glide takes a while): still, and clear of him.
+    let moved = { x: 0, y: 0, width: 0, height: 0 };
+    let last = "";
+    await expect
+      .poll(
+        async () => {
+          moved = (await stack.boundingBox()) as typeof moved;
+          const still = JSON.stringify(moved) === last;
+          last = JSON.stringify(moved);
+          const clear =
+            moved.y > high.y1 ||
+            moved.y + moved.height < high.y0 ||
+            moved.x > high.x1 ||
+            moved.x + moved.width < high.x0;
+          return still && clear;
+        },
+        { message: `the stack at rest, clear of Brin ${JSON.stringify(high)}` },
+      )
+      .toBe(true);
     await dave.screenshot({ path: `${SHOTS}/cards-moved.png` });
   });
 });

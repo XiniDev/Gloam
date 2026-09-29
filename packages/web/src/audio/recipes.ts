@@ -244,7 +244,8 @@ export const RECIPES = {
     variation: 0.015,
     dur: 3.5,
     play(ctx, dest, t, rate) {
-      const out = outGain(ctx, dest, 0.22);
+      // (Calibrated in /dev/sounds against the plan: the room adds 2.5 dB to the research mock's 0.22.)
+      const out = outGain(ctx, dest, 0.165);
       // The room: a damped feedback delay the bell rings into (and out of, softly).
       const room = ctx.createDelay(0.5);
       room.delayTime.value = 0.09;

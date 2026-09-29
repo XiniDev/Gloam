@@ -1812,10 +1812,10 @@
       "code": "AUD",
       "phase": "P11",
       "text": "All built-in sound events in §31 play from runtime synthesis with no audio files, routed through the six channels with volume and mute.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "Every §31 event is a synthesized recipe (packages/web/src/audio/recipes.ts + sounds/*.ts); e2e/journeys/p11-audio.spec.ts renders each on /dev/sounds (median of five offline renders: all non-silent, peaks within ±3 dB of docs/research/sound.md's level plan), plays one per channel live through the mixer (dice, effects, UI reach the master; each channel's mute silences it; half its slider is < 0.2× the level; the master's mute silences all) and records no audio file fetched; e2e/journeys/p11-music.spec.ts mutes a player's Music and Ambience faders (silent for him, still sounding for another player).",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-29T21:27:25.680Z"
     },
     {
       "id": "AC-AUD-02",
@@ -1823,10 +1823,10 @@
       "code": "AUD",
       "phase": "P11",
       "text": "The DM music player supports upload, playlists, play/pause/next/previous/loop/shuffle/stop and a 2-s crossfade; every client stays within 75 ms of the server timeline (so within 150 ms of each other); late joiners start at the current position.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/audio.test.ts: presets/tracks/playlists, pause/resume from the paused position, stop, next/previous, loop off and on, shuffle (each track once, the playing one kept), per-track and music volume; the server advances when a track's DM-measured length runs out; players refused; late joiner gets audio.sync. e2e/journeys/p11-music.spec.ts: a DM-uploaded 40 s track (length and loudness measured by the DM's browser and stored) plays on DM and player within 75 ms of the server timeline (12 samples each); a late joiner whose clock is 7 s fast computes server time within 40 ms and plays at the current position within 75 ms; pause/resume continues where it stopped; track→preset→preset→playlist crossfades never drop the music (min level > 0.002 over 2.6 s); a playlist made and played from the Sound panel.",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-29T21:27:25.752Z"
     },
     {
       "id": "AC-AUD-03",
@@ -1834,10 +1834,10 @@
       "code": "AUD",
       "phase": "P11",
       "text": "The six ambience layers are synthesized procedurally, mixed by the DM, and heard by everyone.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/web/src/audio/ambience.ts synthesizes rain, wind, fire, water, cave drips, insects (and murmur) from noise loops, oscillators and co-prime loop buffers; server test sets a preset and layers for everyone and a late joiner gets them; e2e/journeys/p11-music.spec.ts: the DM's Storm builds rain+wind on DM and both players with sound on each one's ambience channel, a Fire slider moved in the Sound panel reaches every player (preset cleared).",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-29T21:27:25.822Z"
     },
     {
       "id": "AC-AUD-04",
@@ -1867,10 +1867,10 @@
       "code": "AUD",
       "phase": "P11",
       "text": "The four generative music presets play continuously without audible loop points for at least 10 minutes, crossfade with each other and with uploaded tracks, and stay in sync across clients like tracks do.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/web/src/audio/music/gen.test.ts: each of the four presets generates identical bars forward and backward for a seed (random access, integer-hash decisions), differs with another seed, every layer plays, and over 10 minutes (three seeds) ≥ 95 % of bars are distinct and no 8-bar window repeats — for the notes alone as well as with the slow filter drift; notes stay in each preset's scale. e2e/journeys/p11-music.spec.ts: Tavern and Battle crossfade with each other and with tracks without a gap; two clients (one with a 7-s clock skew) schedule the same notes due at the same server times, each heard within 5 ms of due, fewer than 10 % late.",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-29T21:27:25.891Z"
     },
     {
       "id": "AC-FUN-01",

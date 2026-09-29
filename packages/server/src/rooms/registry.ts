@@ -31,6 +31,8 @@ export interface TableRoomApi {
   onlineUserIds(): Set<string>;
   reloadFromDatabase(): Promise<void>;
   flushFog(): void;
+  /** A track's length became known: time the music again (SPEC §25.3). */
+  audioChanged(): void;
 }
 
 /** Live room instances, registered by the rooms themselves on create/dispose. */

@@ -43,7 +43,8 @@ export const FLAVOUR_SOUNDS = {
     variation: 0.03,
     dur: 0.8,
     play(ctx, dest, t, _rate, engine) {
-      const out = outGain(ctx, dest, 0.465);
+      // (0.465 in the research mock; calibrated in /dev/sounds to the plan's −12 dBFS.)
+      const out = outGain(ctx, dest, 0.613);
       swish(ctx, engine, out, t, 0.08, 0.18, 1);
       swish(ctx, engine, out, t + 0.15, 0.06, 0.15, 0.8);
       swish(ctx, engine, out, t + 0.3, 0.08, 0.25, 0.6);

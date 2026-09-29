@@ -143,7 +143,8 @@ export const SPELL_SOUNDS = {
     dur: 3.2,
     hero: true,
     play(ctx, dest, t, rate, engine) {
-      const out = outGain(ctx, dest, 0.291);
+      // (0.291 in the research mock; calibrated in /dev/sounds to the plan's −7.5 dBFS.)
+      const out = outGain(ctx, dest, 0.375);
       const lp = lpf(ctx, 220 * rate);
       lp.frequency.setValueAtTime(220 * rate, t);
       lp.frequency.exponentialRampToValueAtTime(90 * rate, t + 3);
@@ -232,7 +233,7 @@ export const SPELL_SOUNDS = {
           .connect(gg)
           .connect(lp);
       }
-      lp.connect(envAHR(ctx, t, 0.4, 1, 0.2, 0.7)).connect(outGain(ctx, dest, 0.084));
+      lp.connect(envAHR(ctx, t, 0.4, 1, 0.2, 0.7)).connect(outGain(ctx, dest, 0.102)); // (0.084 in the mock; calibrated to −10.5 dBFS)
     },
   },
   /** Radiant (effects): an "ah" choir — saws through /ɑ/ formants in fifths, with vibrato — and a quiet shimmer. */

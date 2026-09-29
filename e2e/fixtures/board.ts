@@ -105,13 +105,13 @@ export async function admitPlayer(
     reducedMotion?: "reduce" | "no-preference";
     viewport?: { width: number; height: number };
     /** Called with the page before it knocks (e.g. to record its WebSocket frames from the start). */
-    onPage?: (page: Page) => void;
+    onPage?: (page: Page) => unknown;
   } = {},
 ): Promise<Page> {
   const { page, context } = await newPlayerContext(browser, gloam.url, guardLog, {
     ...(contextOptions.viewport ? { viewport: contextOptions.viewport } : {}),
   });
-  contextOptions.onPage?.(page);
+  await contextOptions.onPage?.(page);
   if (contextOptions.reducedMotion) await page.emulateMedia({ reducedMotion: contextOptions.reducedMotion });
   void context;
   await knockAsNew(page, gloam.url, code, name);

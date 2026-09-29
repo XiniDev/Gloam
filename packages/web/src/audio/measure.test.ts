@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { distanceGain, sliderGain, stereoPan } from "./engine.ts";
-import { measureSamples } from "./measure.ts";
+import { integratedLufs, measureSamples } from "./measure.ts";
 
 describe("audio levels (sound.md §6)", () => {
   it("measures a full-scale 997 Hz sine at 0 dBFS peak and −3.01 LUFS (BS.1770's reference)", () => {
@@ -14,6 +14,14 @@ describe("audio levels (sound.md §6)", () => {
     const quiet = x.map((v) => v / 10);
     expect(measureSamples(quiet, sr).lufsM).toBeCloseTo(-23.01, 1);
     expect(measureSamples(new Float32Array(sr), sr).peakDb).toBe(Number.NEGATIVE_INFINITY);
+  });
+
+  it("measures a recording's integrated loudness (gated): a −20 dBFS 997 Hz sine in both channels reads −20 LUFS; silence gaps don't pull it down", () => {
+    const sr = 48000;
+    const x = new Float32Array(sr * 6);
+    for (let i = 0; i < x.length; i++) x[i] = i < sr * 3 ? 0.1 * Math.sin((2 * Math.PI * 997 * i) / sr) : 0;
+    // Two channels: +3 dB over one (−23 + 3 = −20).
+    expect(integratedLufs([x, x], sr)).toBeCloseTo(-20.0, 0);
   });
 
   it("places a board sound: its screen side into ±0.8 of pan, and 1/(1 + d/60) by its distance (AC-AUD-05)", () => {

@@ -39,6 +39,8 @@ import { ViewAsBanner } from "../hud/ViewAsBanner.tsx";
 import { WallChips } from "../hud/WallChips.tsx";
 import { WallsPanel } from "../hud/WallsPanel.tsx";
 import { ZoneEditor, ZonesPanel } from "../hud/ZonesPanel.tsx";
+import { watchAudio } from "../net/audio.ts";
+import { watchClock } from "../net/clock.ts";
 import { joinErrorCode } from "../net/colyseus.ts";
 import { watchCombat } from "../net/combat.ts";
 import { watchDice } from "../net/dice.ts";
@@ -76,6 +78,8 @@ export default function TableRoute() {
   useEffect(() => watchHealth(), []);
   useEffect(() => watchCombat(), []);
   useEffect(() => watchSoundCues(), []);
+  useEffect(() => watchClock(), []);
+  useEffect(() => watchAudio(), []);
   useEffect(() => watchSpells(), []);
   useEffect(() => watchPendingArt(), []);
   useEffect(() => {

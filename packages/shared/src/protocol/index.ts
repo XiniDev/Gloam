@@ -162,6 +162,7 @@ export const MESSAGE_RATES = {
   "content.spells": rate(1, 3),
 } as const satisfies Record<string, RateSpec>;
 
+export * from "./audio.ts";
 export * from "./combat.ts";
 export * from "./commands.ts";
 export * from "./health.ts";

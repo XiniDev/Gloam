@@ -36,7 +36,7 @@ const Manifest = z.strictObject({
 
 /** Ids of row types — remapped wherever they appear. User ids and a sheet's own block ids travel as they are. */
 const ROW_ID =
-  /^(cmp|scn|tok|act|wal|lgt|zon|eff|ses|inv|rol|req|prm|his|snp|hnd|log|tpl|prp|api|ast|dev|tbs|cmb|job|cst|cnt)_[0-9A-Za-z]{16}$/;
+  /^(cmp|scn|tok|act|wal|lgt|zon|eff|ses|inv|rol|req|prm|his|snp|hnd|log|tpl|prp|api|ast|dev|tbs|cmb|job|cst|cnt|pls)_[0-9A-Za-z]{16}$/;
 
 /** A file name for a campaign: its name as a slug, and the date. */
 function exportName(name: string, at: number): string {

@@ -1,6 +1,7 @@
 import type { CommandBus, CommandDef } from "./commandBus.ts";
 import { ACTOR_COMMANDS } from "./commands/actor.ts";
 import { ASSET_COMMANDS } from "./commands/asset.ts";
+import { AUDIO_COMMANDS } from "./commands/audio.ts";
 import { campaignUpdate } from "./commands/campaign.ts";
 import { COMBAT_COMMANDS } from "./commands/combat.ts";
 import { CONTENT_COMMANDS } from "./commands/content.ts";
@@ -34,6 +35,7 @@ export const ALL_COMMANDS: CommandDef<never, unknown>[] = [
   ...COMBAT_COMMANDS,
   ...SPELL_COMMANDS,
   ...CONTENT_COMMANDS,
+  ...AUDIO_COMMANDS,
 ];
 
 /** Room message rate limits per command (SPEC §13.5); default 10/s. */
@@ -69,6 +71,8 @@ export const COMMAND_RATES: Record<string, { capacity: number; perSecond: number
   "attack.start": { capacity: 5, perSecond: 2 },
   ...Object.fromEntries(CONTENT_COMMANDS.map((d) => [d.type, { capacity: 5, perSecond: 2 }])),
   "content.spell.import": { capacity: 2, perSecond: 0.5 },
+  // Audio (§13.5: 5/s): the player's buttons, the mixer's sliders (sent as they move, a few a second).
+  ...Object.fromEntries(AUDIO_COMMANDS.map((d) => [d.type, { capacity: 8, perSecond: 5 }])),
 };
 
 export function registerCommands(bus: CommandBus): void {
