@@ -4,7 +4,7 @@ import { Fragment, useState } from "react";
 import { allSpells, loadSrdSpells, useSpells } from "../../../net/spells.ts";
 import { useTable } from "../../../net/table.ts";
 import { toast } from "../../../ui/Toast.tsx";
-import { CastDialog, type CastRequest } from "../../spells/CastDialog.tsx";
+import { useCastRequest } from "../../spells/CastDialog.tsx";
 import { duplicateOf, HomebrewBuilder } from "../../spells/HomebrewBuilder.tsx";
 import { SpellBrowserDialog } from "../../spells/SpellBrowserDialog.tsx";
 import { casterTokenOf } from "../../spells/useCaster.ts";
@@ -24,7 +24,7 @@ export function SpellsTab({ ctx }: { ctx: SheetCtx }) {
   const sc = ctx.sheet.core.spellcasting;
   const ro = !ctx.canEdit;
   const [newSpell, setNewSpell] = useState({ name: "", level: 1 });
-  const [casting, setCasting] = useState<CastRequest | null>(null);
+  const setCasting = useCastRequest((s) => s.set);
   const [browsing, setBrowsing] = useState(false);
   // A homebrew spell of one's own (§8.13 Homebrew builder): a player's goes to the DM as a proposal (AC-SPL-10).
   const [brewing, setBrewing] = useState<{ spell: Spell | null; replaces?: string } | null>(null);
@@ -312,7 +312,6 @@ export function SpellsTab({ ctx }: { ctx: SheetCtx }) {
         )}
       </div>
 
-      <CastDialog req={casting} onClose={() => setCasting(null)} />
       <SpellBrowserDialog
         open={browsing}
         onClose={() => setBrowsing(false)}

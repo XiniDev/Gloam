@@ -29,7 +29,7 @@ import { cutaway, doorLeafAngles, doorSwing } from "./map/Walls3D.tsx";
 import { animatingTokens, movedLog } from "./move/anims.ts";
 import { moveDiag, useMove } from "./move/drag.ts";
 import { remoteLog, useRemoteMoves } from "./move/remote.ts";
-import { usePings } from "./PingLayer.tsx";
+import { pingsSeen, usePings } from "./PingLayer.tsx";
 import { editPerf } from "./perf.ts";
 import { resourceStats } from "./resources.ts";
 import { TIERS, TierGovernor, useTier } from "./tiers.ts";
@@ -612,6 +612,10 @@ export function TestProbe() {
         shared: m.shared.map((x) => ({ shape: x.shape, by: x.by, name: x.name, ft: measuredFt(x) })),
       };
     });
+    // Every ping shown here since the page loaded, as each arrived (PingLayer.tsx).
+    provideTestHook("pingsSeen", () =>
+      pingsSeen.map((p) => ({ x: p.x, y: p.y, color: p.color, spotlight: p.spotlight, by: p.by })),
+    );
     provideTestHook("pings", () =>
       usePings
         .getState()

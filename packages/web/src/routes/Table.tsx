@@ -29,6 +29,7 @@ import { RadialMenu } from "../hud/RadialMenu.tsx";
 import { RollFeed } from "../hud/RollFeed.tsx";
 import { SceneTransition } from "../hud/SceneTransition.tsx";
 import { watchPendingArt } from "../hud/sheet/art.ts";
+import { CastDialogHost } from "../hud/spells/CastDialog.tsx";
 import { EffectChip } from "../hud/spells/EffectChip.tsx";
 import { TargetingBar } from "../hud/spells/TargetingBar.tsx";
 import { TopBar } from "../hud/TopBar.tsx";
@@ -119,8 +120,24 @@ export default function TableRoute() {
         tableEvents.on("left", ({ code }) => {
           if (code === 4005) navigate("/closed", { replace: true });
           else if (code === 4401) navigate("/join", { replace: true });
+          // Lost for good (the SDK's reconnection gave up — the server went away and came back, SPEC §8.15
+          // AC-PER-06): join again, backing off to 10 s, while the banner says so; the board resyncs from the join.
+          else if (code !== 1000) void rejoin(0);
         }),
       );
+      const rejoin = async (attempt: number): Promise<void> => {
+        await new Promise((r) => setTimeout(r, Math.min(10_000, 1000 * 2 ** attempt)));
+        if (cancelled || useTable.getState().room) return;
+        try {
+          await connectTable(campaignId);
+        } catch (err) {
+          if (cancelled) return;
+          const code = joinErrorCode(err);
+          // A seat that didn't survive (a player's session ended with the table): knock again.
+          if (code === "FORBIDDEN" || code === "UNAUTHENTICATED") navigate("/join", { replace: true });
+          else void rejoin(attempt + 1);
+        }
+      };
       try {
         await connectTable(campaignId);
       } catch (err) {
@@ -148,6 +165,7 @@ export default function TableRoute() {
       <TableStage />
       <SceneTransition />
       <TopBar />
+      <CastDialogHost />
       <LeftToolbar />
       <Dock />
       <PrepBanner />

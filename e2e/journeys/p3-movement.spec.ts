@@ -250,12 +250,10 @@ test.describe("P3 — moving tokens (MOV, WAL)", () => {
     await expect.poll(async () => (await tokenPos(dave, tokenId))?.x ?? 0).toBeLessThan(12 - 1.9);
   });
 
-  test("AC-WAL-03 / AC-WAL-04: door handles — a player opens and shuts a door within reach; a locked one refuses and rattles; the DM locks it from anywhere; a secret door has no handle until the DM opens it", async ({
-    admin,
-    browser,
-    gloam,
-    guardLog,
-  }) => {
+  test("AC-WAL-03 / AC-WAL-04: door handles — a player opens and shuts a door within reach; a locked one refuses and rattles; the DM locks it from anywhere; a secret door has no handle until the DM opens it", {
+    // Its door → path budget (200 ms, AC-WAL-03) is measured alone, not beside another journey's software GL.
+    tag: "@timing",
+  }, async ({ admin, browser, gloam, guardLog }) => {
     const code = await adminAtTable(admin);
     await introDone(admin);
     const sceneId = await createScene(admin, {

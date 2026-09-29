@@ -523,6 +523,17 @@ test("P9 key screens", async ({ admin, browser, gloam, guardLog }, info) => {
       .click();
     const d = dave.getByRole("dialog", { name: /Cast Light/ });
     await expect(d.getByText("Cast on").first()).toBeVisible();
+    // Fully in (Xini's report: a capture caught it see-through over the sheet) — and still open a moment later.
+    const shown = () =>
+      d.evaluate((el) => {
+        let o = 1;
+        for (let n: Element | null = el; n; n = n.parentElement) o *= Number(getComputedStyle(n).opacity);
+        return o;
+      });
+    await expect.poll(shown).toBe(1);
+    await dave.waitForTimeout(600);
+    await expect(d).toBeVisible();
+    expect(await shown()).toBe(1);
   });
   await dave.keyboard.press("Escape");
 

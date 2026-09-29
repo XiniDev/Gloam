@@ -495,3 +495,72 @@ P1 28/28 · P2 32/32 · P3 16/17 · P4 12/12 · P5 9/9 · P6 14/14 · P7 1/17 ·
 - Tests: castHide, aimFrame, rimEntry, zoom-out plates, VFX edge fade (every material), import `spells[]`, the
   Library menu follow/close journey step. `pnpm check`: 607 tests.
 - Next: P9 journeys and key screens again, visual critic round 2 (the last), the full E2E run and bench; then P10.
+
+## 2026-09-29 — P10: undo and history — History panel in (a33530a)
+
+- Server: `history.list` / `history.revert` / `history.restore` (DM, dry-run plans), `history.changed` to DMs; an
+  entry's scene from its ops when its plan names none.
+- DM panel → History: filters (person, kind, scene), one-click Revert (a confirmation only over later changes),
+  Restore to here with its list; struck-through undone entries. Journey p10-undo (J8: doubled damage, deleted token,
+  fog wipe; redo keys).
+- ACs: AC-MOV-06, AC-UNDO-01, -02, -03, -04 passing. AC-UNDO-05 open until emotes and music exist (DECISIONS).
+- Open in P10: AC-PER-02 (SIGKILL mid-session), AC-PER-05 (.gloam export/import), AC-PER-06 (banner and resync
+  after a server restart), AC-PER-07 (crash recovery end to end). `pnpm check`: 611 tests.
+- P9: key screens re-shot (18 steps × 3 viewports, all ran); visual critic round 2 under way; full E2E run under way.
+
+## 2026-09-29 — P9 visual critic round 2 (6/10, the last round): findings to fix (open)
+
+Verified from round 1: typed chips, stepper, disabled Apply, eye-slash DC, cover chip, hints, middots, inline
+concentration, darts counter + ×2, Tap wording, storm rim, toggle rows, one scroller, ‹ Results, builder status and
+Edit/Preview, import sections, bar-only plates, rim leaders. Open (critic's numbering):
+- B1 NPC-cast DM cards lack the DC (08-cover-card ~1005,633; vfx-casts Fireball/Lightning Bolt): always show the DC to the
+  DM (eye-slash), "DC — [set]" when the caster has none.
+- B2 A "Couldn't cast Web" toast on the board repeats the bar's inline "No clear path there" (web-blocked.png): drop it.
+- B3 Toggle thumbs grey (02 ~943,284/343; 12 ~713,397): §28 brass thumb on an ink track.
+- I4 Web VFX a white noise slab with hard edges (1024 07): bone strands (radial + chords), soft rim, to the footprint.
+- I5 Cloud looks spiky/faceted with a bright outline (10, haze.png): radial alpha falloff, clamp noise contrast.
+- I6 Darkness body and the dashed outlines still run onto the table (15, 09, 10): clip/fade them at the bounds too.
+- I7 Wall of Fire curtain's hard rectangular foot (09b): fade alpha over its bottom 15 %.
+- I8 Nine identical dashed rings (09): tint each outline by its damage-type colour.
+- I9 Flaming Sphere drawn over the unseen fog wedge (10): effects under the fog composite; a blacked-out Cantor 3's plate
+  still shows (1024 10 ~743,580).
+- I10 Phone aim framing frames 150 ft reach > scene (03/06: board 190 px of 844): frame reach ∩ scene into the space
+  above the bar, steeper pitch.
+- I11 Phone card-sheet handle floats above the sheet (04/05/08/14 ~195,487): inside the sheet's top edge.
+- I12 1024: the targeting bar covers the feed header (06/07); phone feed card covers the board: collapse the feed
+  while aiming.
+- I13 Phone inline concentration ask squeezed (07): stack the buttons full-width under the text.
+- I14 Builder: no inline error on the bad field ("8d6 +"); at 1024 "1 problem" scrolls to nothing (box below the
+  fold): ember border + message on the field; status scrolls to it.
+- I15 Phone import report cut after "Will import" (13): report scrollable/visible above the footer.
+- I16 Caster card: rows empty on the right; Hide as a bare X — label it "Hide"; a per-row state.
+- I17 Several open cards stack centred, off-screen, dice button over the third (vfx-casts): column, others collapsed.
+- I18 Phone cover chip truncates "½ cover · +2…" (14): let it wrap.
+- Minor: 01 filigree over the list corners + bottom gap 8 vs 24 px, top fade; "The DM rolled (hidden)"; dagger roll card
+  "1d4 + 2 [piercing]" raw bracket → chip; "DEX / save" widow; ×2 badge radius 4 px; "Poison · from the damage";
+  builder School/Unit alignment; phone builder status into the footer; phone 11 chip gap, Light handle on the MV rim;
+  1024 11 chip over the toolbar/plate, 06 hover card over DA's plate; mono ids in the import report → decide in
+  DECISIONS; lasting-effects.png Adept 8's plate over a handle.
+- Staging: step 15 not captured (wait for the dialog to settle); step 11 DEX save vs her own storm; Poison Ball text.
+
+Full E2E run (a33530a + rejoin loop): new failures so far p3-movement AC-WAL-03/04 (door handles) and p3-tools
+AC-MOV-11/12 — to investigate (possibly the zoom-out plates or the handles' board marks).
+Uncommitted: packages/web/src/routes/Table.tsx — the table rejoins with backoff after a lost connection (AC-PER-06
+groundwork; its restart test still to write: spawnServer({ dataDir, env: { PORT } }) reuses the port).
+- FIRST (Xini's report, 390x844 step 15): the Cast Light dialog is captured see-through over the open Sheet — the sheet's
+  rows, the Web row's brass Cast and the dialog's own Cast/Cancel all overlap. At 1440/1024 the same step shows only the
+  sheet (the dialog never in the capture). Find out whether the dialog is fading out or closing (a real bug: e.g. the
+  dock page or a focus/outside-press closing it when it opens from the sheet on a phone) or only caught mid-fade
+  (motion's JS animations escape the shot's document.getAnimations() wait). Fix the cause, make the shot wait for the
+  dialog's computed opacity to reach 1, and add a journey assertion that the dialog stays open and opaque.
+- Done for Xini's report (uncommitted, not yet re-shot): the cast dialog is owned by the table screen
+  (`useCastRequest` + `CastDialogHost` in routes/Table.tsx) instead of the sheet's Spells section, whose mount on a
+  phone's one-page sheet can come and go; step 15 now waits for the dialog to be fully opaque and still open 600 ms
+  later. Next: re-run `pnpm shots e2e/shots/p9.shots.ts` after the full E2E run and look at 15-light-dialog at all three
+  viewports; add a journey assertion (the dialog stays open while the sheet scrolls).
+- Full E2E run (in progress when written): failures p3-movement AC-WAL-03/04, p3-tools AC-MOV-11/12, p5-dice rest —
+  p5 failed in two full runs now (passes alone): treat as a real load-sensitive issue, not a flake.
+- Full E2E run finished: 54 passed, 3 failed (33.4 min) — p3-movement AC-WAL-03/04 (door handles), p3-tools
+  AC-MOV-11/12, p5-dice rest (third full-run failure). Next: investigate each from artifacts/logs/e2e-all.log and its
+  traces (likely suspects: the zoom-out compact plates and the effect handles' board marks from d6208d7), then re-run
+  the P9 shots for step 15, commit, rerun everything, bench.

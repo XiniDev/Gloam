@@ -650,7 +650,10 @@ function frameDice(
     margin,
     minDistance: (top + 12) / Math.sin((DICE_PITCH * Math.PI) / 180),
   });
-  const dt = camReady ? Math.min(100, now - camAt) : 0;
+  // Eased in wall-clock time, however slow the frames: a slow machine (software GL, a Low-tier laptop at a few frames
+  // a second) sees the same ~1.4 s ease, not a slow-motion one. No cap is needed — 1 − e^(−dt/τ) never passes 1, so a
+  // long frame (or a stall in a hidden tab) lands on the target rather than beyond it.
+  const dt = camReady ? Math.max(0, now - camAt) : 0;
   camAt = now;
   const k = !camReady || reduced || fresh ? 1 : 1 - Math.exp(-dt / 160);
   if (!camReady) {

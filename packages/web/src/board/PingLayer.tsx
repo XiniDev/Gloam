@@ -24,10 +24,19 @@ export interface Ping {
 export const usePings = create<{ pings: Ping[] }>(() => ({ pings: [] }));
 const LIFE_MS = 1600;
 let seq = 0;
+/**
+ * Test builds only: every ping this client has shown, as it arrived — a ping lasts 1.6 s, and a check that polls the
+ * live ones can miss it on a busy machine.
+ */
+export const pingsSeen: Omit<Ping, "id">[] = [];
 
 export function addPing(p: Omit<Ping, "id" | "at">): void {
   const ping: Ping = { ...p, id: ++seq, at: performance.now() };
   usePings.setState({ pings: [...usePings.getState().pings, ping].slice(-12) });
+  if (__GLOAM_TEST__) {
+    pingsSeen.push({ ...p, at: ping.at });
+    if (pingsSeen.length > 50) pingsSeen.shift();
+  }
   audio.play("ping");
   wake();
   setTimeout(

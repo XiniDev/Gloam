@@ -10,6 +10,7 @@ import {
 import type { Spell, Spellcasting } from "@gloam/shared/schemas";
 import { useEffect, useMemo, useState } from "react";
 import type { z } from "zod";
+import { create } from "zustand";
 import { Button } from "../../ui/Button.tsx";
 import { Segmented, Toggle } from "../../ui/controls.tsx";
 import { Dialog } from "../../ui/Dialog.tsx";
@@ -224,4 +225,21 @@ export function CastDialog({ req, onClose }: { req: CastRequest | null; onClose:
       </div>
     </Dialog>
   );
+}
+
+/**
+ * The cast being set up, owned by the table screen rather than the sheet section it was started from: a phone's sheet
+ * is one scrolling page whose sections come and go, and a modal must not vanish (or fade out mid-open) with one.
+ */
+export const useCastRequest = create<{ req: CastRequest | null; set(req: CastRequest | null): void }>(
+  (set) => ({
+    req: null,
+    set: (req) => set({ req }),
+  }),
+);
+
+/** The one cast dialog, mounted with the table's HUD. */
+export function CastDialogHost() {
+  const req = useCastRequest((s) => s.req);
+  return <CastDialog req={req} onClose={() => useCastRequest.getState().set(null)} />;
 }

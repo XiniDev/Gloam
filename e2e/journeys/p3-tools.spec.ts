@@ -189,11 +189,12 @@ test.describe("P3 — measuring, elevation and pings (MOV-11/12, TOK-07, FUN-02)
     await dave.keyboard.down("Alt");
     await dave.mouse.click(at.x, at.y);
     await dave.keyboard.up("Alt");
-    // The sender sees their own ping at once (pings last a few seconds: look before they fade), and so does the DM.
+    // The sender sees their own ping at once (pings last 1.6 s: look before it fades), and so does the DM — checked by
+    // what each screen showed as it arrived, so a busy machine's slow poll can't miss the DM's.
     await expect.poll(async () => (await hook<unknown[]>(dave, "pings")).length).toBeGreaterThan(0);
     await expect
       .poll(async () =>
-        (await hook<{ color: string; spotlight: boolean }[]>(admin, "pings")).map((p) => [
+        (await hook<{ color: string; spotlight: boolean }[]>(admin, "pingsSeen")).map((p) => [
           p.color.toLowerCase(),
           p.spotlight,
         ]),
@@ -207,7 +208,7 @@ test.describe("P3 — measuring, elevation and pings (MOV-11/12, TOK-07, FUN-02)
     await admin.keyboard.up("Shift");
     await admin.keyboard.up("Alt");
     await expect
-      .poll(async () => (await hook<{ spotlight: boolean }[]>(dave, "pings")).some((p) => p.spotlight))
+      .poll(async () => (await hook<{ spotlight: boolean }[]>(dave, "pingsSeen")).some((p) => p.spotlight))
       .toBe(true);
     await expect
       .poll(async () => {
