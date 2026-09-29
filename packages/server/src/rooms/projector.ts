@@ -1,5 +1,11 @@
 import type { ArraySchema } from "@colyseus/schema";
-import { effectiveSpeed, effectiveTokenState, HP_BAND_HIDDEN, hpBand } from "@gloam/shared/rules";
+import {
+  effectiveSpeed,
+  effectiveTokenState,
+  HP_BAND_HIDDEN,
+  hpBand,
+  speedZeroCondition,
+} from "@gloam/shared/rules";
 import type {
   EffectEntity,
   LightEntity,
@@ -73,6 +79,19 @@ export function tokenView(t: TokenEntity, ctx: ProjectionCtx): TokenView {
   }
   const mv = ctx.movementOf?.(t.id) ?? {};
   const speeds = stats.speeds;
+  // Its speed after conditions (Speed 0) and Exhaustion (−5 ft a level; §19.4, AC-HP-05).
+  const walk = effectiveSpeed(
+    t.overrides.speedOverride ?? speeds.walk,
+    conditions,
+    status.exhaustion,
+    t.overrides.ignoreConditionSpeed === true,
+  );
+  const heldBy = t.overrides.ignoreConditionSpeed ? null : speedZeroCondition(conditions);
+  // Why it can't move at all, for the action bar to say (§8.6, `stuckName`); a DM's move ignores all of it.
+  const stuck =
+    t.locked || t.overrides.lockMovement
+      ? "locked"
+      : (heldBy ?? (walk <= 0 && !t.overrides.freeMovement ? "speed0" : ""));
   return {
     id: t.id,
     actorId: t.actorId ?? "",
@@ -122,13 +141,7 @@ export function tokenView(t: TokenEntity, ctx: ProjectionCtx): TokenView {
     hp: { hp: stats.hp, hpMax: stats.hpMax, hpTemp: stats.hpTemp },
     own: {
       ac: stats.ac,
-      // Its speed after conditions (Speed 0) and Exhaustion (−5 ft a level; §19.4, AC-HP-05).
-      budgetFt: effectiveSpeed(
-        t.overrides.speedOverride ?? speeds.walk,
-        conditions,
-        status.exhaustion,
-        t.overrides.ignoreConditionSpeed === true,
-      ),
+      budgetFt: walk,
       usedFt: 0,
       turnStart: { x: t.pos.x, y: t.pos.y },
       mode: t.moveMode,
@@ -144,6 +157,7 @@ export function tokenView(t: TokenEntity, ctx: ProjectionCtx): TokenView {
       segments: 0,
       freeMovement: t.overrides.freeMovement === true,
       lockMovement: t.overrides.lockMovement === true,
+      stuck,
       ...mv,
     },
     vis: {
@@ -283,6 +297,7 @@ export function effectView(e: EffectEntity, ctx: ProjectionCtx): EffectView {
     vfx: e.vfx,
     roundsLeft: "never" in e.expires ? -1 : Math.max(0, e.expires.round - round),
     name: e.name,
+    dmHidden: e.visibility === "dm",
   };
   const tokenId = e.attachedTokenId ?? "";
   const casterId = e.source.casterTokenId ?? "";

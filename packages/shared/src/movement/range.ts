@@ -315,3 +315,146 @@ export function rangeLimit(f: RangeField, at = f.budget): P[] {
     }
   return out;
 }
+
+/** What the overlay draws (the field as seen): each cell's cost and how much of it is reachable ground (0–1). */
+export interface RangeDisplay {
+  cost: Float32Array;
+  reach: Float32Array;
+}
+
+/**
+ * The field as the overlay draws it (critic P8 r1 #21). The field is where the creature's *centre* can go, so it stops
+ * a clearance radius short of a wall or another creature's base — drawn as it is, its limit line would end in open
+ * floor. Here each unreachable cell within that band (a wall, or a base's rim, closer than the radius) takes the cost
+ * of the nearest reachable centre it can see, so the reachable floor and its limit line run flush to the wall face
+ * and round a base's edge; cells inside a base, past a wall, or beyond the budget stay out. Then the cost and the reach
+ * mask are each smoothed by a cell (edges come out smooth, not stepped or wriggling), and the cost carried two cells on
+ * past the reachable ground (no false limit along its edge). Drawing only: a move's cost is its path's.
+ */
+export function rangeDisplay(world: MoveWorld, f: RangeField, rc: number): RangeDisplay {
+  const { cols, rows, h, x0, y0, cost } = f;
+  const out = new Float32Array(cost);
+  const hard = new Uint8Array(cols * rows);
+  for (let k = 0; k < cost.length; k++) hard[k] = Number.isFinite(cost[k] as number) ? 1 : 0;
+  const R = Math.ceil((rc + h) / h);
+  const reach2 = (rc + h * 0.5) * (rc + h * 0.5);
+  const centre = (c: number, r: number): P => ({ x: x0 + (c + 0.5) * h, y: y0 + (r + 0.5) * h });
+  const seen = (a: P, b: P) =>
+    world.forWallsNear(a.x, a.y, b.x, b.y, 0, (i) => {
+      const ax = world.wx0[i] as number;
+      const ay = world.wy0[i] as number;
+      const bx = world.wx1[i] as number;
+      const by = world.wy1[i] as number;
+      const d1x = b.x - a.x;
+      const d1y = b.y - a.y;
+      const d2x = bx - ax;
+      const d2y = by - ay;
+      const den = d1x * d2y - d1y * d2x;
+      if (Math.abs(den) < 1e-12) return true;
+      const t = ((ax - a.x) * d2y - (ay - a.y) * d2x) / den;
+      const u = ((ax - a.x) * d1y - (ay - a.y) * d1x) / den;
+      return !(t > 1e-6 && t < 1 - 1e-6 && u >= -1e-9 && u <= 1 + 1e-9);
+    });
+  const inBase = (p: P) => world.solids.some((s) => Math.hypot(p.x - s.c.x, p.y - s.c.y) < s.r);
+  const nearObstacle = (p: P) => {
+    if (world.solids.some((s) => Math.hypot(p.x - s.c.x, p.y - s.c.y) < s.r + rc)) return true;
+    return !world.forWallsNear(p.x, p.y, p.x, p.y, rc, (i) => {
+      const ax = world.wx0[i] as number;
+      const ay = world.wy0[i] as number;
+      const bx = world.wx1[i] as number;
+      const by = world.wy1[i] as number;
+      return segSegDist2(p.x, p.y, p.x, p.y, ax, ay, bx, by) >= rc * rc;
+    });
+  };
+  for (let r = 0; r < rows; r++)
+    for (let c = 0; c < cols; c++) {
+      const k = r * cols + c;
+      if (hard[k]) continue;
+      const p = centre(c, r);
+      if (inBase(p) || !nearObstacle(p)) continue;
+      let best = Number.POSITIVE_INFINITY;
+      for (let dr = -R; dr <= R; dr++)
+        for (let dc = -R; dc <= R; dc++) {
+          const rr = r + dr;
+          const cc = c + dc;
+          if (rr < 0 || cc < 0 || rr >= rows || cc >= cols) continue;
+          const j = rr * cols + cc;
+          if (!hard[j]) continue;
+          const v = cost[j] as number;
+          if (v >= best || (dr * dr + dc * dc) * h * h > reach2) continue;
+          if (seen(p, centre(cc, rr))) best = v;
+        }
+      if (Number.isFinite(best)) out[k] = best;
+    }
+  // The cost itself smoothed by a cell (a 3 × 3 tent over the reachable cells): where the front straight from the
+  // creature meets the one bent round a wall's end, the cells take their costs from either side a cell at a time —
+  // drawn raw, the limit line wriggled along that seam (critic P8 r2 I4). In open ground a tent leaves a cone's cost
+  // as it was (to a few hundredths of a foot).
+  const W = [1, 2, 1];
+  const smooth = new Float32Array(out);
+  for (let r = 0; r < rows; r++)
+    for (let c = 0; c < cols; c++) {
+      const k = r * cols + c;
+      if (!Number.isFinite(out[k] as number)) continue;
+      let sum = 0;
+      let wsum = 0;
+      for (let dr = -1; dr <= 1; dr++)
+        for (let dc = -1; dc <= 1; dc++) {
+          const rr = r + dr;
+          const cc = c + dc;
+          if (rr < 0 || cc < 0 || rr >= rows || cc >= cols) continue;
+          const v = out[rr * cols + cc] as number;
+          if (!Number.isFinite(v)) continue;
+          const wt = (W[dr + 1] as number) * (W[dc + 1] as number);
+          sum += v * wt;
+          wsum += wt;
+        }
+      smooth[k] = sum / wsum;
+    }
+  // Reach, blurred by a cell (a 3 × 3 tent): the edge interpolates smoothly instead of stepping cell by cell.
+  const on = new Float32Array(cols * rows);
+  for (let k = 0; k < out.length; k++) on[k] = Number.isFinite(out[k] as number) ? 1 : 0;
+  const reach = new Float32Array(cols * rows);
+  for (let r = 0; r < rows; r++)
+    for (let c = 0; c < cols; c++) {
+      let s = 0;
+      let w = 0;
+      for (let dr = -1; dr <= 1; dr++)
+        for (let dc = -1; dc <= 1; dc++) {
+          const rr = r + dr;
+          const cc = c + dc;
+          if (rr < 0 || cc < 0 || rr >= rows || cc >= cols) continue;
+          const wt = (W[dr + 1] as number) * (W[dc + 1] as number);
+          s += (on[rr * cols + cc] as number) * wt;
+          w += wt;
+        }
+      reach[r * cols + c] = s / w;
+    }
+  // Past the reachable ground (a wall's far side, off the scene), two rings of cells carry on the cost at its edge
+  // (the mean of their reached neighbours): drawn from a texture, the cost never climbs to "unreachable" within a
+  // cell of the edge — which traced a false limit along it, a spur where the true one meets a wall or the scene's
+  // edge (critic P8 r2 I4).
+  for (let ring = 0; ring < 2; ring++) {
+    const next = new Float32Array(smooth);
+    for (let r = 0; r < rows; r++)
+      for (let c = 0; c < cols; c++) {
+        const k = r * cols + c;
+        if (Number.isFinite(smooth[k] as number)) continue;
+        let sum = 0;
+        let n = 0;
+        for (let dr = -1; dr <= 1; dr++)
+          for (let dc = -1; dc <= 1; dc++) {
+            const rr = r + dr;
+            const cc = c + dc;
+            if (rr < 0 || cc < 0 || rr >= rows || cc >= cols) continue;
+            const v = smooth[rr * cols + cc] as number;
+            if (!Number.isFinite(v)) continue;
+            sum += v;
+            n++;
+          }
+        if (n) next[k] = sum / n;
+      }
+    smooth.set(next);
+  }
+  return { cost: smooth, reach };
+}

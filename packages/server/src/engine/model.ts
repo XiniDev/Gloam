@@ -1,4 +1,4 @@
-import { eq, inArray, isNull } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import * as t from "../db/schema.ts";
 import { CODECS, type EntityMap } from "./codecs.ts";
@@ -36,6 +36,7 @@ export class CampaignModel {
       template: new Map(),
       content: new Map(),
       asset: new Map(),
+      cast: new Map(),
     };
     this.sceneIndex = {
       wall: new Map(),
@@ -82,7 +83,13 @@ export class CampaignModel {
       m.put("content", CODECS.content.fromRow(r));
     for (const r of db.select().from(t.assets).where(eq(t.assets.campaignId, campaignId)).all())
       m.put("asset", CODECS.asset.fromRow(r));
-    void isNull;
+    // Resolution cards still waiting on the DM (a finished one is history; it's read from the table when asked).
+    for (const r of db
+      .select()
+      .from(t.casts)
+      .where(and(eq(t.casts.campaignId, campaignId), eq(t.casts.status, "open")))
+      .all())
+      m.put("cast", CODECS.cast.fromRow(r));
     return m;
   }
 
@@ -104,11 +111,22 @@ export class CampaignModel {
     if (
       kind === "wall" ||
       kind === "zone" ||
-      (kind === "effect" && (isWallEffect(entity) || isWallEffect(prev)))
+      (kind === "effect" && (shapesGround(entity) || shapesGround(prev)))
     ) {
       this.touchGeometry((entity as { sceneId: string }).sceneId);
       if (prev?.sceneId) this.touchGeometry(prev.sceneId);
+      if (kind === "effect")
+        this.indexCarried(entity as EntityMap["effect"], prev as EntityMap["effect"] | undefined);
     } else if (kind === "scene") this.touchGeometry(id);
+    else if (kind === "token" && this.carries.has(id)) {
+      // An emanation that slows the ground goes where its creature goes (Spirit Guardians).
+      const moved = prev as EntityMap["token"] | undefined;
+      const now = entity as EntityMap["token"];
+      if (!moved || moved.pos.x !== now.pos.x || moved.pos.y !== now.pos.y || moved.sceneId !== now.sceneId) {
+        this.touchGeometry(now.sceneId);
+        if (moved && moved.sceneId !== now.sceneId) this.touchGeometry(moved.sceneId);
+      }
+    }
     if ((SCENE_SCOPED as readonly string[]).includes(kind)) {
       const idx = this.sceneIndex[kind as SceneScoped];
       const sceneId = (entity as { sceneId: string }).sceneId;
@@ -127,18 +145,38 @@ export class CampaignModel {
     const map = this.maps[kind as CollectionKind] as Map<string, { sceneId?: string }>;
     const prev = map.get(id);
     map.delete(id);
-    if ((kind === "wall" || kind === "zone" || (kind === "effect" && isWallEffect(prev))) && prev?.sceneId)
+    if ((kind === "wall" || kind === "zone" || (kind === "effect" && shapesGround(prev))) && prev?.sceneId)
       this.touchGeometry(prev.sceneId);
+    if (kind === "effect" && prev) this.indexCarried(undefined, prev as EntityMap["effect"]);
     if (prev?.sceneId && (SCENE_SCOPED as readonly string[]).includes(kind)) {
       this.sceneIndex[kind as SceneScoped].get(prev.sceneId)?.delete(id);
     }
+  }
+
+  /** Tokens carrying an effect that shapes the ground (an emanation from them), with how many. */
+  private readonly carries = new Map<string, number>();
+  private indexCarried(now: EntityMap["effect"] | undefined, prev: EntityMap["effect"] | undefined): void {
+    const src = (e: EntityMap["effect"] | undefined) =>
+      e && shapesGround(e) && e.shape.kind === "emanation" ? e.shape.sourceTokenId : null;
+    const a = src(prev);
+    const b = src(now);
+    if (a === b) return;
+    if (a) {
+      const n = (this.carries.get(a) ?? 1) - 1;
+      if (n > 0) this.carries.set(a, n);
+      else this.carries.delete(a);
+    }
+    if (b) this.carries.set(b, (this.carries.get(b) ?? 0) + 1);
   }
 
   private touchGeometry(sceneId: string): void {
     this.geometry.set(sceneId, (this.geometry.get(sceneId) ?? 0) + 1);
   }
 
-  /** Changes whenever the scene's walls, zones, wall-shaped effects or bounds change. */
+  /**
+   * Changes whenever the scene's walls, zones or bounds change, or an effect that shapes movement does (a wall, slow
+   * ground, halved speed) — its creature moving included.
+   */
   geometryVersion(sceneId: string): number {
     return this.geometry.get(sceneId) ?? 0;
   }
@@ -164,7 +202,13 @@ export class CampaignModel {
   }
 }
 
-/** A wall-shaped effect (Wall of Force, Wall of Stone…): part of a scene's geometry. */
-function isWallEffect(e: unknown): boolean {
-  return (e as { shape?: { kind?: string } } | undefined)?.shape?.kind === "wall";
+/**
+ * An effect that's part of a scene's movement geometry: a wall (Wall of Force, Wall of Stone…), difficult terrain
+ * (Web, Spike Growth, Sleet Storm) or ground that halves Speed (Spirit Guardians).
+ */
+function shapesGround(e: unknown): boolean {
+  const x = e as
+    | { shape?: { kind?: string }; props?: { difficult?: boolean; speedHalved?: boolean } }
+    | undefined;
+  return x?.shape?.kind === "wall" || x?.props?.difficult === true || x?.props?.speedHalved === true;
 }

@@ -15,7 +15,7 @@ export interface Region {
    * "swim": water for a creature without a swimming speed — +1 per foot, on top of difficult terrain (SRD 5.2.1
    * p. 189: 2 extra feet in Difficult Terrain). Otherwise difficult.
    */
-  kind?: "difficult" | "swim";
+  kind?: "difficult" | "swim" | "halved";
 }
 export interface Bounds {
   minX: number;
@@ -187,16 +187,21 @@ export class MoveWorld {
     return false;
   }
 
-  /** The cost regions p is in: difficult terrain (never cumulative) and water to swim (stacking with it). */
-  regionsAt(p: P): { difficult: boolean; swim: boolean } {
+  /**
+   * The cost regions p is in: difficult terrain (never cumulative), water to swim (stacking with it), and ground where
+   * Speed is halved (Spirit Guardians: every foot there counts twice, on top of the rest).
+   */
+  regionsAt(p: P): { difficult: boolean; swim: boolean; halved: boolean } {
     let difficult = false;
     let swim = false;
+    let halved = false;
     for (const r of this.regions) {
       if (!regionHolds(r, p)) continue;
       if (r.kind === "swim") swim = true;
+      else if (r.kind === "halved") halved = true;
       else difficult = true;
     }
-    return { difficult, swim };
+    return { difficult, swim, halved };
   }
 
   /** Every t ∈ (0, 1) where pq crosses a region boundary, sorted. */

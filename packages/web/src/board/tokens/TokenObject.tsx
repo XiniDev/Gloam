@@ -30,6 +30,7 @@ import { useUi } from "../../state/ui.ts";
 import { BoardText } from "../BoardText.tsx";
 import { boardApi } from "../boardApi.ts";
 import { cameraRig } from "../CameraRig.tsx";
+import { targetToken } from "../cast/input.ts";
 import { C, col, ringColorOf } from "../colors.ts";
 import { boardDiag } from "../diag.ts";
 import { disposeLater } from "../dispose.ts";
@@ -46,12 +47,15 @@ import {
   leaderFor,
   overlayClear,
   overlayCompact,
+  overlayCrossed,
   overlayOffset,
+  overlaysOff,
   PRIORITY,
   registerOverlay,
   setOverlayBody,
   setOverlaySpots,
 } from "./declutter.ts";
+import { GREY, withDesat } from "./desaturate.ts";
 import { canRaise, heightLabel } from "./elevation.ts";
 import {
   baseTop,
@@ -93,8 +97,6 @@ const COIN_H = 0.2;
  * pixels across — a GL line is 1 px, too faint to tie a plate to its token), and the dot at its token end.
  */
 const LEADER_STRIP = new PlaneGeometry(1, 1).translate(0.5, 0, 0);
-/** A unit quad, scaled to size (exhaustion's notch). Shared: never disposed. */
-const UNIT_PLANE = new PlaneGeometry(1, 1);
 const LEADER_DOT = new CircleGeometry(1, 16);
 /** A troika text mesh (drei's <Text>): its opacities apply at render, no re-layout. */
 type TroikaText = Mesh & {
@@ -253,9 +255,20 @@ function resolveMode(t: TokenView, cls: "image" | "model" | null): ResolvedMode 
  * step 4) — from one point, its centre (`at`), so a grade boundary never splits a coin; or not at all (`at` null) for
  * the owner/disposition ring, which must read at any light like the plate (AC-TOK-02).
  */
-function useTransparentMaterial(make: () => MeshStandardMaterial, deps: unknown[], at: Vector2 | null) {
-  // biome-ignore lint/correctness/useExhaustiveDependencies: deps are the material's inputs
-  const m = useMemo(() => (at ? withFog(make(), "object", { at }) : make()), deps);
+function useTransparentMaterial(
+  make: () => MeshStandardMaterial,
+  deps: unknown[],
+  at: Vector2 | null,
+  grey?: { value: number },
+) {
+  const m = useMemo(
+    () => {
+      const made = at ? withFog(make(), "object", { at }) : make();
+      return grey ? withDesat(made, grey) : made;
+    },
+    // biome-ignore lint/correctness/useExhaustiveDependencies: deps are the material's inputs
+    deps,
+  );
   useEffect(() => () => disposeLater(m), [m]);
   return m;
 }
@@ -307,26 +320,37 @@ export const TokenObject = memo(function TokenObject({
   const selRing = useRef<Mesh>(null);
 
   // ── materials (per token, so hidden opacity never touches shared ones) ───────────────────────────────
+  // How grey it is (dead: §8.5 "desaturated, lying down"), shared by its parts.
+  // (Where it starts; the frame loop drains it from there.)
+  const [grey] = useState(() => ({ value: token.dead ? 1 : 0 }));
   // A base's top: lacquered slate, lit in the middle and darker toward its rim (geometries.ts `baseTopTexture`).
   const baseMat = useTransparentMaterial(
     () => new MeshStandardMaterial({ map: baseTopTexture(), roughness: 0.38, metalness: 0.1 }),
     [],
     gradeAt,
+
+    grey,
   );
   const rimMat = useTransparentMaterial(
     () => new MeshStandardMaterial({ roughness: 0.4, metalness: 0.2 }),
     [],
     null,
+
+    grey,
   );
   const coinFaceMat = useTransparentMaterial(
     () => new MeshStandardMaterial({ roughness: 0.75 }),
     [],
     gradeAt,
+
+    grey,
   );
   const standeeFront = useTransparentMaterial(
     () => new MeshStandardMaterial({ roughness: 0.85, alphaTest: 0.5 }),
     [],
     gradeAt,
+
+    grey,
   );
   const standeeBack = useTransparentMaterial(
     () =>
@@ -335,12 +359,16 @@ export const TokenObject = memo(function TokenObject({
       ),
     [],
     gradeAt,
+
+    grey,
   );
   // The standee's foot: plain cardboard (never cut by the art's outline, unlike the card's edge).
   const standeeFootMat = useTransparentMaterial(
     () => new MeshStandardMaterial({ color: C.cardboard, roughness: 0.9 }),
     [],
     gradeAt,
+
+    grey,
   );
   // The card's cardboard edge (§8.5, §24): a shade darker than its back, so the top edge reads against it.
   const standeeEdge = useTransparentMaterial(
@@ -350,6 +378,8 @@ export const TokenObject = memo(function TokenObject({
       ),
     [],
     gradeAt,
+
+    grey,
   );
   // The selection's brass ring (§8.5): unlit and outside tone mapping — a lit, emissive ring came out bone-white.
   const selMat = useMemo(() => new MeshBasicMaterial({ color: C.brass400, toneMapped: false }), []);
@@ -587,6 +617,13 @@ export const TokenObject = memo(function TokenObject({
           : Math.max(0, lie.current - dt / 0.45);
       again();
     }
+    // Dead: the colour drains as it falls (§8.5 "desaturated, lying down"; critic P8 r2 I14).
+    const wantGrey = token.dead ? 1 : 0;
+    if (grey.value !== wantGrey) {
+      const step = useSettings.getState().motion === "reduced" ? 1 : dt / 0.6;
+      grey.value = wantGrey > grey.value ? Math.min(1, grey.value + step) : Math.max(0, grey.value - step);
+      again();
+    }
     const e = wantLie ? lie.current * lie.current : 1 - (1 - lie.current) * (1 - lie.current);
     lieOf.set(token.id, e);
     if (miniGroup.current) {
@@ -663,6 +700,11 @@ export const TokenObject = memo(function TokenObject({
     if (n.button === 0 && (tool === "walls" || tool === "zones" || tool === "measure")) return;
     e.stopPropagation();
     boardApi.claimedPointer = n.pointerId;
+    // Aiming a spell: a click on a creature picks it (or places the area on it); nothing else happens to it.
+    if (tool === "target") {
+      if (n.button === 0) targetToken(token.id);
+      return;
+    }
     down.current = { x: n.clientX, y: n.clientY, button: n.button, timer: null };
     if (n.button === 0) {
       useUi.getState().select([token.id], n.shiftKey ? "toggle" : "replace");
@@ -913,7 +955,11 @@ function useMiniMaterials(mini: MiniInstance | null, opacity: number, dead: bool
         c.transparent = opacity < 1;
         c.opacity = opacity;
         c.depthWrite = opacity >= 1;
-        if (dead && "color" in c) (c as MeshStandardMaterial).color.multiplyScalar(0.45);
+        // Dead: grey, a shade darker (§8.5 "desaturated").
+        if (dead) {
+          withDesat(c, GREY);
+          if ("color" in c) (c as MeshStandardMaterial).color.multiplyScalar(0.85);
+        }
         clones.push(c);
         return c;
       });
@@ -1168,7 +1214,8 @@ function Overlay({
   // Decluttering: this overlay competes for its spot on screen with its neighbours' (declutter.ts).
   const latest = useRef({ token, viewer });
   latest.current = { token, viewer };
-  const clear = useRef(1);
+  // (Plates off, for a test's measurement: they never show, not even for the first frames of their fade.)
+  const clear = useRef(overlaysOff() ? 0 : 1);
   useEffect(() => {
     const g = group.current;
     if (!g) return;
@@ -1358,7 +1405,9 @@ function Overlay({
     // Clutter fade (150 ms) toward the layout's verdict; while a radial menu is open no plate shows — they'd peek
     // through the gaps between its slices, its own token's behind them (the menu names the token).
     const radial = useUi.getState().radial;
-    const target = radial ? 0 : overlayClear(token.id);
+    // Under a planned move's path: faded back to a third while the drag lasts.
+    const target =
+      radial || overlaysOff() ? 0 : Math.min(overlayClear(token.id), overlayCrossed(token.id) ? 0.35 : 1);
     clear.current = approach(clear.current, target, frameDelta() / 0.15);
     if (clear.current !== target) again();
     const fade = far * clear.current;

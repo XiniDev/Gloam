@@ -47,6 +47,8 @@ export function buildMoveWorld(input: {
   creature?: WorldCreature;
   /** Solid effect walls (Wall of Force, Wall of Stone…): they block movement like walls (§17.1). */
   solid?: Iterable<{ a: P; b: P; id?: string }>;
+  /** Effects that slow the ground (Web, Spike Growth: difficult; Spirit Guardians: Speed halved), as outlines. */
+  slow?: Iterable<{ poly?: P[]; circle?: { c: P; r: number }; difficult: boolean; halved: boolean }>;
 }): MoveWorld {
   const walls: { a: P; b: P; id?: string }[] = [];
   for (const w of input.walls)
@@ -64,6 +66,12 @@ export function buildMoveWorld(input: {
         regions.push({ circle: { c: { x: z.shape.x, y: z.shape.y }, r: z.shape.r }, kind });
       else regions.push({ poly: zonePolygon(z.shape), kind });
     }
+  }
+  for (const e of input.slow ?? []) {
+    const shape = e.circle ? { circle: e.circle } : e.poly ? { poly: e.poly } : null;
+    if (!shape) continue;
+    if (e.difficult) regions.push({ ...shape, kind: "difficult" });
+    if (e.halved) regions.push({ ...shape, kind: "halved" });
   }
   return new MoveWorld({ walls, regions, bounds: input.bounds });
 }

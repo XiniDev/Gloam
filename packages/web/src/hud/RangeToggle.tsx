@@ -1,7 +1,7 @@
-import { Footprints } from "lucide-react";
 import { useEffect } from "react";
 import { rangeInputs } from "../board/move/drag.ts";
 import { requestRange } from "../board/move/rangeHost.ts";
+import { ReachIcon } from "../icons/combat.tsx";
 import { useTable } from "../net/table.ts";
 import { boardData, useBoard, useEntities } from "../state/entities.ts";
 import { useUi } from "../state/ui.ts";
@@ -49,7 +49,7 @@ export function RangeToggle() {
         active={on}
         onClick={() => useUi.getState().set({ rangeOverlay: !on })}
       >
-        <Footprints size={18} />
+        <ReachIcon size={18} />
       </IconButton>
     </div>
   );

@@ -14,12 +14,11 @@ import {
 } from "@gloam/shared/movement";
 import { GloamError, MoveCommit } from "@gloam/shared/protocol";
 import {
-  CONDITIONS,
-  type ConditionInfo,
   controlsToken,
   effectiveTokenState,
   incapacitates,
   isDm,
+  speedZeroCondition,
   statusName,
 } from "@gloam/shared/rules";
 import type { TokenEntity } from "@gloam/shared/schemas";
@@ -76,10 +75,8 @@ export const moveCommit: CommandDef<z.infer<typeof MoveCommit>, MoveResult> = {
     if (!t.overrides.ignoreConditionSpeed) {
       const actor = t.actorId ? ctx.model.get("actor", t.actorId) : undefined;
       const { status } = effectiveTokenState(t, actor);
-      const zero = status.conditions.find(
-        (x) => (CONDITIONS as Record<string, ConditionInfo>)[x.id]?.speedZero,
-      );
-      if (zero) throw new GloamError("SPEED_ZERO", `${t.name} can't move: ${statusName(zero.id)} (speed 0).`);
+      const zero = speedZeroCondition(status.conditions.map((x) => x.id));
+      if (zero) throw new GloamError("SPEED_ZERO", `${t.name} can't move — ${statusName(zero)}.`);
     }
   },
   plan(ctx, p) {
@@ -102,7 +99,7 @@ export const moveCommit: CommandDef<z.infer<typeof MoveCommit>, MoveResult> = {
     const actor = t.actorId ? ctx.model.get("actor", t.actorId) : undefined;
     const { stats, status } = effectiveTokenState(t, actor);
     const rules = ctx.model.campaign.houseRules;
-    const base = moveWorldOf(ctx.model, t.sceneId, { swim: stats.speeds.swim > 0 });
+    const base = moveWorldOf(ctx.model, t.sceneId, { swim: stats.speeds.swim > 0, id: t.id });
     // Prone and not standing up: crawling, +1 per foot (§16.4); standing up is its own command (move.stand).
     const crawl = status.conditions.some((c) => c.id === "prone");
     // In combat on its turn (§16.5 step 5): what it may spend — unless it moves freely; a DM's move only when the

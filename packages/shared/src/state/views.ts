@@ -34,6 +34,8 @@ export interface TokenOwnerView {
   segments: number;
   freeMovement: boolean;
   lockMovement: boolean;
+  /** Why it can't move at all — a condition id ("grappled"), "speed0" or "locked" (`stuckName`) — or "" (§8.6). */
+  stuck: string;
 }
 
 export interface TokenVisionView {
@@ -164,6 +166,8 @@ export interface EffectView {
   roundsLeft: number;
   name: string;
   link?: LinkView;
+  /** DMs: hidden from the players. */
+  dmHidden?: boolean;
 }
 
 export interface SceneView {

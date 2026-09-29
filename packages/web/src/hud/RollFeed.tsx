@@ -18,11 +18,13 @@ import { WaxSeal } from "../ui/ornaments.tsx";
 import { Portrait } from "../ui/Portrait.tsx";
 import { D20Spinner } from "../ui/Spinner.tsx";
 import { useCardsAtBottom } from "./FloatingCards.tsx";
-import { useHudInsets, useIsPhone, useObstacle } from "./insets.ts";
+import { useBoardCovers, useCover, useHudInsets, useIsPhone, useObstacle } from "./insets.ts";
 import { useAssetImage } from "./useAssetImage.ts";
 
 /** A phone shows the newest card this long after its dice settle, then tucks it into the tab. */
 const PHONE_FRESH_MS = 6000;
+/** …of which the whole card shows this long after its dice settle; then it folds to its one-line row (critic P8 r2 I12). */
+const PHONE_CARD_MS = 2500;
 
 /**
  * The roll feed (SPEC §8.9): bottom-left beside the left toolbar, newest first — the last three when collapsed, the
@@ -68,8 +70,12 @@ function DesktopFeed({ feed }: { feed: FeedRoll[] }) {
       set(0);
     };
   }, []);
-  // The dice come to rest clear of it.
+  // The dice come to rest clear of it; the name plates keep out from under it.
   useObstacle("feed", ref);
+  useCover("feed", ref);
+  // Where the action bar would run under it (a narrow screen), it stands above the bar's band instead.
+  const bar = useBoardCovers((st) => st.rects.actions);
+  const lift = bar && left + FEED_W + 8 > bar.left ? Math.max(12, window.innerHeight - bar.top + 4) : 12;
   // Open, the list is as tall as the newest whole cards that fit in 55 % of the screen, and scrolls a card at a time
   // (snapping card tops to its edge): a card is never cut through. An edge with more beyond it fades over 12 px.
   const [limit, setLimit] = useState<number | null>(null);
@@ -106,14 +112,16 @@ function DesktopFeed({ feed }: { feed: FeedRoll[] }) {
     more.above || more.below
       ? `linear-gradient(to bottom, ${more.above ? "transparent 0, black 12px" : "black 0"}, ${more.below ? "black calc(100% - 12px), transparent 100%" : "black 100%"})`
       : undefined;
-  const shown = feed.slice(0, open ? 30 : 3);
+  const shown = feed.slice(0, open ? 30 : 1);
+  // Closed: the newest in full, the two before it a line each (a run of the DM's hidden rolls as one line).
+  const older = open ? [] : lines(feed.slice(1), 2);
   return (
     <section
       ref={ref}
       aria-label="Roll feed"
       data-testid="roll-feed"
-      className="pointer-events-none absolute bottom-3 z-30 flex w-[272px] max-w-[calc(100vw-24px)] flex-col-reverse gap-1.5"
-      style={{ left }}
+      className="pointer-events-none absolute z-30 flex w-[272px] max-w-[calc(100vw-24px)] flex-col-reverse gap-1.5"
+      style={{ left, bottom: lift }}
     >
       <button
         type="button"
@@ -142,8 +150,74 @@ function DesktopFeed({ feed }: { feed: FeedRoll[] }) {
             />
           </li>
         ))}
+        {older.map((l) => (
+          <li key={l.key} className="pointer-events-auto">
+            <RollLine
+              line={l}
+              settled={l.rolls.every((r) => !rolling.has(r.id))}
+              onOpen={() => setOpen(true)}
+            />
+          </li>
+        ))}
       </ol>
     </section>
+  );
+}
+
+/** The feed's width (px). */
+const FEED_W = 272;
+
+/** An older roll as a line — or a run of the DM's hidden rolls, one line for them all. */
+interface Line {
+  key: string;
+  rolls: FeedRoll[];
+}
+function lines(feed: FeedRoll[], max: number): Line[] {
+  const out: Line[] = [];
+  for (const r of feed) {
+    const last = out[out.length - 1];
+    const hiddenDm = (x: FeedRoll) => isMasked(x) && x.byDm;
+    if (last && hiddenDm(r) && last.rolls.every(hiddenDm)) {
+      last.rolls.push(r);
+      continue;
+    }
+    if (out.length >= max) break;
+    out.push({ key: r.id, rolls: [r] });
+  }
+  return out;
+}
+
+/** One older roll in a line: who (or what for), the total; a click opens the whole feed. */
+function RollLine({ line, settled, onOpen }: { line: Line; settled: boolean; onOpen: () => void }) {
+  const me = useTable((s) => s.me?.userId);
+  const r = line.rolls[0] as FeedRoll;
+  const masked = isMasked(r);
+  const many = line.rolls.length;
+  const byDm = masked ? r.byDm : false;
+  const who = masked ? (many > 1 ? `The DM rolled ${many} times` : r.text) : r.userId === me ? "You" : r.name;
+  const what = masked ? null : r.label || r.formula;
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      data-testid="roll-line"
+      className="panel flex h-8 w-full items-center gap-2 border-l-4 px-2.5 text-left"
+      style={{ borderLeftColor: byDm ? "var(--wax-500)" : (!masked && r.color) || "var(--border)" }}
+      title={what ? `${who}: ${what}` : who}
+    >
+      <span className="min-w-0 flex-1 truncate text-12 text-bone/85">
+        {what ? (
+          <>
+            {what} <span className="text-muted">· {who}</span>
+          </>
+        ) : (
+          who
+        )}
+      </span>
+      <span className="tabular shrink-0 text-14 font-bold text-bone">
+        {masked ? <span className="text-faint">?</span> : settled ? r.total : "…"}
+      </span>
+    </button>
   );
 }
 
@@ -159,10 +233,18 @@ function PhoneFeed({ feed }: { feed: FeedRoll[] }) {
   useEffect(() => {
     setFresh(newest.id);
   }, [newest.id]);
+  // A phone's board is small: the card folds to its one-line row soon after the dice settle, then goes (the pill keeps
+  // the total).
+  const [folded, setFolded] = useState(false);
   useEffect(() => {
+    setFolded(false);
     if (!newestSettled || fresh !== newest.id) return;
+    const f = setTimeout(() => setFolded(true), PHONE_CARD_MS);
     const t = setTimeout(() => setFresh(null), PHONE_FRESH_MS);
-    return () => clearTimeout(t);
+    return () => {
+      clearTimeout(f);
+      clearTimeout(t);
+    };
   }, [newestSettled, fresh, newest.id]);
   const ref = useRef<HTMLElement>(null);
   useObstacle("feed", ref, !open);
@@ -219,12 +301,16 @@ function PhoneFeed({ feed }: { feed: FeedRoll[] }) {
       </button>
       {fresh === newest.id ? (
         <div className="pointer-events-auto">
-          <RollCard
-            roll={newest}
-            settled={newestSettled}
-            expanded={expanded === newest.id}
-            onToggle={() => setExpanded((e) => (e === newest.id ? null : newest.id))}
-          />
+          {folded && expanded !== newest.id ? (
+            <RollLine line={{ key: newest.id, rolls: [newest] }} settled onOpen={() => setOpen(true)} />
+          ) : (
+            <RollCard
+              roll={newest}
+              settled={newestSettled}
+              expanded={expanded === newest.id}
+              onToggle={() => setExpanded((e) => (e === newest.id ? null : newest.id))}
+            />
+          )}
         </div>
       ) : null}
     </section>
@@ -267,33 +353,47 @@ function RollCard({
       className="panel flex w-full flex-col gap-1 border-l-4 px-3 py-2 text-left"
       style={{ borderLeftColor: byDm ? "var(--wax-500)" : roll.color || "var(--border)" }}
     >
-      <div className="flex w-full items-center gap-2">
+      <div className="flex w-full items-start gap-2">
         {byDm ? <WaxSeal size={24} label="DM" /> : <RollerPortrait roll={roll} />}
-        {/* Who rolled keeps its width (up to half the row); what it was for takes the rest and truncates first. */}
-        <span className="min-w-0 max-w-[50%] shrink-0 truncate text-13 font-bold text-bone">{name}</span>
-        {roll.label ? (
-          <span className="min-w-0 flex-1 truncate text-13 text-bone/80">{roll.label}</span>
-        ) : null}
-        {roll.manual ? (
-          <HandDieIcon
-            size={15}
-            className="shrink-0 text-muted"
-            role="img"
-            aria-hidden={false}
-            aria-label="Rolled by hand"
-          />
-        ) : null}
-        {hidden ? (
-          <span
-            data-testid="roll-private"
-            className="caps flex shrink-0 items-center gap-1 text-12 text-fog"
-            title={hidden === "Self" ? "Only the roller (and DMs) see it" : "Players don't see this roll"}
-          >
-            <EyeOff size={12} aria-hidden />
-            {hidden}
+        {/* What it was for leads (two lines at most: the creature's name is never the part cut off); who rolled it,
+            by hand or in private, underneath. */}
+        <span className="flex min-w-0 flex-1 flex-col">
+          {/* Unlabelled: its formula is what it was (critic P8 r2 N3), the roller underneath as for any other. */}
+          <span className="line-clamp-2 text-13 font-bold leading-snug text-bone [overflow-wrap:anywhere]">
+            {masked ? name : roll.label || roll.formula}
           </span>
-        ) : null}
-        <span className="ml-auto shrink-0">
+          {!masked || roll.manual || hidden ? (
+            <span className="flex items-center gap-1.5 text-12 text-muted">
+              {!masked ? <span className="truncate">{name}</span> : null}
+              {roll.manual ? (
+                <HandDieIcon
+                  size={14}
+                  className="shrink-0"
+                  role="img"
+                  aria-hidden={false}
+                  aria-label="Rolled by hand"
+                />
+              ) : null}
+              {hidden ? (
+                <span
+                  data-testid="roll-private"
+                  className="flex shrink-0 items-center text-fog"
+                  title={
+                    hidden === "Self"
+                      ? "Self: only the roller (and DMs) see it"
+                      : hidden === "Blind"
+                        ? "Blind: only the DM sees the result"
+                        : "Private: players don't see this roll"
+                  }
+                >
+                  <EyeOff size={13} aria-hidden />
+                  <span className="sr-only">{hidden}</span>
+                </span>
+              ) : null}
+            </span>
+          ) : null}
+        </span>
+        <span className="shrink-0">
           {masked ? (
             <span className="display text-22 leading-none text-faint">?</span>
           ) : (

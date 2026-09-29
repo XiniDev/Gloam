@@ -1,6 +1,8 @@
 import { formulaText, summarizeFormula } from "@gloam/shared/dice";
 import { sheetRefs } from "@gloam/shared/rules";
 import { useMemo, useState } from "react";
+import { beginAttack } from "../../spells/casting.ts";
+import { useCasterToken } from "../../spells/useCaster.ts";
 import type { SheetCtx } from "../context.ts";
 import { RollButton, SectionTitle, TextField } from "../primitives.tsx";
 import { AddButton, RemoveButton } from "./OverviewTab.tsx";
@@ -14,6 +16,8 @@ export function ActionsTab({ ctx }: { ctx: SheetCtx }) {
   const attacks = ctx.sheet.core.attacks;
   const ro = !ctx.canEdit;
   const [editing, setEditing] = useState<number | null>(null);
+  // The character's token on the scene: an attack aimed from it goes through the card.
+  const token = useCasterToken(ctx.actor.id);
   const resolve = useMemo(() => sheetRefs(ctx.sheet.core), [ctx.sheet.core]);
   const shown = (formula: string, toHit: boolean) =>
     formulaText(summarizeFormula(formula, resolve), { toHit }) ?? formula;
@@ -88,6 +92,17 @@ export function ActionsTab({ ctx }: { ctx: SheetCtx }) {
                 test={null}
                 text={<span className="tabular">{shown(a.damage, false)}</span>}
               />
+            ) : null}
+            {/* Through the resolution card (§8.13 Weapons and abilities): click the creature on the board. */}
+            {!ro && token && (a.attack || a.damage) ? (
+              <button
+                type="button"
+                data-testid="attack-at"
+                onClick={() => beginAttack(token.id, i, a.name, a.range)}
+                className="h-8 min-h-[var(--touch-min)] rounded-[var(--radius-control)] border border-paper-ink/35 px-2.5 text-13 font-semibold text-paper-ink hover:border-paper-ink/60 hover:bg-parchment-deep"
+              >
+                Attack…
+              </button>
             ) : null}
             {a.range ? <span className="text-13 text-paper-muted">{a.range}</span> : null}
             {a.properties ? <span className="text-13 italic text-paper-muted">{a.properties}</span> : null}

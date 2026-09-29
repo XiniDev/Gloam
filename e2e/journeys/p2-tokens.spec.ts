@@ -452,9 +452,12 @@ test.describe("P2 — tokens (TOK)", () => {
     expect(b1.min[1] as number).toBeCloseTo(BASE_H + 0.5, 1);
 
     // AC-TOK-10: twenty tokens with the same GLB share its geometry and materials. The renderer's geometry count
-    // grows by the same amount for 19 more minis as for 19 more plain coins (their overlays are identical), so the
-    // minis add no geometry of their own — one set for all twenty.
+    // grows by the same amount for 19 more minis as for 19 more plain coins, so the minis add no geometry of their
+    // own — one set for all twenty. Plates are off for the count: where each goes (and so which of its parts draw)
+    // depends on its token's body — a tall mini's plate stands clear of its art — and what's counted here is the
+    // tokens' own geometry.
     type MiniStats = { instances: number; geometries: number; materials: number; rendererGeometries: number };
+    await hook(admin, "overlaysOff", true);
     const one = await hook<MiniStats>(admin, "miniStats");
     const settle = async () => {
       await admin.waitForTimeout(600);
@@ -487,6 +490,7 @@ test.describe("P2 — tokens (TOK)", () => {
     expect(twenty.geometries).toBe(one.geometries);
     expect(twenty.materials).toBe(one.materials);
     expect(Math.abs(g2 - g1 - (g1 - g0))).toBeLessThanOrEqual(3);
+    await hook(admin, "overlaysOff", false);
   });
 
   test("AC-TOK-05: damage leaves a ghost that holds 400 ms and drains over 600 ms; temp HP is its own segment; a tick marks 50 %", async ({

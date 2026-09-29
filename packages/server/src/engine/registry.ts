@@ -3,6 +3,7 @@ import { ACTOR_COMMANDS } from "./commands/actor.ts";
 import { ASSET_COMMANDS } from "./commands/asset.ts";
 import { campaignUpdate } from "./commands/campaign.ts";
 import { COMBAT_COMMANDS } from "./commands/combat.ts";
+import { CONTENT_COMMANDS } from "./commands/content.ts";
 import { FOG_COMMANDS } from "./commands/fog.ts";
 import { HEALTH_COMMANDS } from "./commands/health.ts";
 import { LIGHT_COMMANDS } from "./commands/light.ts";
@@ -10,6 +11,7 @@ import { MOVE_COMMANDS } from "./commands/move.ts";
 import { PARTY_COMMANDS } from "./commands/party.ts";
 import { REST_COMMANDS } from "./commands/rest.ts";
 import { SCENE_COMMANDS } from "./commands/scene.ts";
+import { SPELL_COMMANDS } from "./commands/spells.ts";
 import { TOKEN_COMMANDS } from "./commands/token.ts";
 import { WALL_COMMANDS } from "./commands/wall.ts";
 import { ZONE_COMMANDS } from "./commands/zone.ts";
@@ -30,6 +32,8 @@ export const ALL_COMMANDS: CommandDef<never, unknown>[] = [
   ...HEALTH_COMMANDS,
   ...REST_COMMANDS,
   ...COMBAT_COMMANDS,
+  ...SPELL_COMMANDS,
+  ...CONTENT_COMMANDS,
 ];
 
 /** Room message rate limits per command (SPEC §13.5); default 10/s. */
@@ -59,6 +63,12 @@ export const COMMAND_RATES: Record<string, { capacity: number; perSecond: number
   ...Object.fromEntries(COMBAT_COMMANDS.map((d) => [d.type, { capacity: 10, perSecond: 10 }])),
   "combat.start": { capacity: 3, perSecond: 1 },
   "combat.quickStart": { capacity: 3, perSecond: 1 },
+  // Spells (§8.13): a cast, then the card's steps as the DM works through them.
+  ...Object.fromEntries(SPELL_COMMANDS.map((d) => [d.type, { capacity: 10, perSecond: 5 }])),
+  "spell.cast": { capacity: 5, perSecond: 2 },
+  "attack.start": { capacity: 5, perSecond: 2 },
+  ...Object.fromEntries(CONTENT_COMMANDS.map((d) => [d.type, { capacity: 5, perSecond: 2 }])),
+  "content.spell.import": { capacity: 2, perSecond: 0.5 },
 };
 
 export function registerCommands(bus: CommandBus): void {

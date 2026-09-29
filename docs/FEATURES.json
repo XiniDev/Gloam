@@ -844,10 +844,10 @@
       "code": "VIS",
       "phase": "P9",
       "text": "Magical darkness blocks darkvision and nonmagical light; truesight and blindsight within range see through it.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/spellVision.test.ts › 'AC-VIS-06: magical darkness blocks darkvision and a torch's light; truesight and blindsight within range see through it' (a dark hall: Darkness cast over a goblin 25 ft from an elf with darkvision 60 and 12 ft from Bob's torch — neither client is sent it; truesight 30 ft sees it, 20 ft doesn't; blindsight 30 ft does; the effect removed, both see it)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-29T08:42:34.596Z"
     },
     {
       "id": "AC-VIS-07",
@@ -866,10 +866,10 @@
       "code": "VIS",
       "phase": "P9",
       "text": "Invisible creatures are visible only to viewers with truesight or blindsight in range, See Invisibility, or while outlined by Faerie Fire.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/spellVision.test.ts › 'AC-VIS-08: an invisible goblin is seen with See Invisibility, or once Faerie Fire outlines it' (Invisible: no client is sent it; See Invisibility on the elf — attached to her — and Anna's client gets it, Bob's doesn't; Faerie Fire on a failed save outlines it and Bob sees it by his torch; the outline removed, he doesn't). Truesight and blindsight in range: AC-VIS-06 and AC-VIS-15 tests.",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-29T08:42:34.664Z"
     },
     {
       "id": "AC-VIS-09",
@@ -1515,10 +1515,10 @@
       "code": "SPL",
       "phase": "P9",
       "text": "Slots are consumed on cast and restored on cancel or undo; rituals and free casts can skip slot use.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/spells.test.ts › 'cancel gives the slot back; undo of a cast gives it back too; a ritual spends none (AC-SPL-06)' (a 1st-level slot spent on Magic Missile, back on Cancel; spent again, back on undo with the card gone; Detect Magic as a ritual spends none, Magic Missile refused as one) and 'Fireball…' (the 3rd-level slot spent); free casts with no slot: spellVision.test.ts (the DM's NPC casts Darkness, Fog Cloud, Faerie Fire free).",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-29T08:42:34.732Z"
     },
     {
       "id": "AC-SPL-07",

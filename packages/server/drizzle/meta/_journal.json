@@ -29,6 +29,13 @@
       "when": 1790621708723,
       "tag": "0003_next_red_ghost",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1790663159859,
+      "tag": "0004_right_white_queen",
+      "breakpoints": true
     }
   ]
 }

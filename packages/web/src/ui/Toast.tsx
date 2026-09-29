@@ -2,7 +2,7 @@ import { X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { type ReactNode, useEffect, useRef } from "react";
 import { create } from "zustand";
-import { useCover, useHudInsets, useHudObstacles } from "../hud/insets.ts";
+import { type ScreenArea, useBoardCovers, useCover, useHudInsets } from "../hud/insets.ts";
 import { provideTestHook } from "../test/hooks.ts";
 import { keepHyphenated } from "./text.tsx";
 
@@ -73,6 +73,30 @@ export const toast = {
   danger: (title: ReactNode, body?: ReactNode) => useToasts.getState().push({ kind: "danger", title, body }),
 };
 
+/** HUD that isn't in the toasts' way wherever it is (the stack itself; the bottom band's pieces). */
+const NOT_IN_THE_WAY = new Set(["toasts", "feed", "actions", "targeting"]);
+
+/**
+ * Where the toast stack starts: below each piece of HUD in its column (x0…x1) that stands within the stack's reach —
+ * a stack of `height` (at least a toast's, 96 px) from where it would start — taken top to bottom.
+ */
+export function stackTop(
+  base: number,
+  x0: number,
+  x1: number,
+  covers: Record<string, ScreenArea>,
+  height: number,
+): number {
+  const reach = Math.max(96, height);
+  let top = base;
+  const inColumn = Object.entries(covers)
+    .filter(([name, r]) => !NOT_IN_THE_WAY.has(name) && r.right > x0 && r.left < x1)
+    .map(([, r]) => r)
+    .sort((a, b) => a.top - b.top);
+  for (const r of inColumn) if (r.top < top + reach && r.bottom > top) top = r.bottom + 4;
+  return Math.round(top);
+}
+
 const ACCENT: Record<ToastKind, string> = {
   info: "var(--arcane-400)",
   success: "var(--verdigris-400)",
@@ -94,21 +118,18 @@ export function Toaster() {
   const phoneTable = table && cornerLeft > 0;
   // Never in a band with the cards (critic P7 r2 #2): where the stack of cards reaches into the toasts' column at the
   // top, the toasts stand under it.
-  const cards = useHudObstacles((s) => s.rects.cards);
+  const covers = useBoardCovers((s) => s.rects);
   const columnW = Math.min(380, window.innerWidth - right - 12);
-  const columnX0 = window.innerWidth - right - columnW;
-  const underCards =
-    table &&
-    !phoneTable &&
-    cards &&
-    cards.right > columnX0 &&
-    cards.left < window.innerWidth - right &&
-    cards.top < 240
-      ? cards.bottom
-      : null;
+  const x1 = window.innerWidth - right;
+  const x0 = phoneTable ? 12 : x1 - columnW;
   // The stack is HUD over the board while it holds a toast: plates keep out from under it (critic P7 r2 #2).
   const ref = useRef<HTMLDivElement>(null);
   useCover("toasts", ref, table && items.length > 0);
+  // Never over other HUD (critic P7 r2 #2, P8 r2 I3): the stack starts below whatever stands in its column where it
+  // would reach — the turn tracker, the "your turn" banner, the cards, a phone's tools button.
+  const top = table
+    ? stackTop(phoneTable ? cornerLeft : 72, x0, x1, covers, ref.current?.offsetHeight ?? 0)
+    : null;
   // Tests: a toast on demand (where it stands beside the HUD).
   useEffect(() => provideTestHook("toast", (title: unknown) => toast.info(String(title))), []);
   return (
@@ -119,13 +140,14 @@ export function Toaster() {
       style={
         phoneTable
           ? // (With a page of the dock open across the phone, the stack takes the width, over the page.)
-            { top: cornerLeft, left: 12, right: right < window.innerWidth / 2 ? right : 12, width: "auto" }
+            {
+              top: top ?? cornerLeft,
+              left: 12,
+              right: right < window.innerWidth / 2 ? right : 12,
+              width: "auto",
+            }
           : table
-            ? {
-                right,
-                width: `min(380px, calc(100vw - ${right + 12}px))`,
-                ...(underCards !== null ? { top: underCards } : {}),
-              }
+            ? { right, width: `min(380px, calc(100vw - ${right + 12}px))`, ...(top !== null ? { top } : {}) }
             : undefined
       }
     >

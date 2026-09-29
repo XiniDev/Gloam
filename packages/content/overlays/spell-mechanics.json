@@ -500,6 +500,32 @@
           }
         ]
       }
+    },
+    "scorching-ray": {
+      "page": 159,
+      "source": "\"You hurl three fiery rays. You can hurl them at one target within range or at several. Make a ranged spell attack for each ray.\" \"You create one additional ray for each spell slot level above 2.\"",
+      "set": {
+        "targeting": {
+          "kind": "creatures",
+          "count": 3,
+          "countPerSlot": 1
+        }
+      }
+    },
+    "eldritch-blast": {
+      "page": 127,
+      "source": "\"The spell creates two beams at level 5, three beams at level 11, and four beams at level 17. You can direct the beams at the same target or at different ones. Make a separate attack roll for each beam.\"",
+      "set": {
+        "targeting": {
+          "kind": "creatures",
+          "count": 1,
+          "countAtLevels": {
+            "5": 2,
+            "11": 3,
+            "17": 4
+          }
+        }
+      }
     }
   }
 }

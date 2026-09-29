@@ -88,8 +88,11 @@ export function Segments({
 
 const textures = new Map<string, CanvasTexture>();
 /** A white mark (tinted by the material): a handle dot, a snap ring or an on-wall diamond, with a dark edge. */
-/** A mark's shape: a dot, a ring (a reach limit), a diamond (a waypoint), crossed swords (an opportunity attack). */
-export type MarkKind = "dot" | "ring" | "diamond" | "swords";
+/**
+ * A mark's shape: a dot, a ring (a reach limit), a diamond (a waypoint), crossed swords (an opportunity attack), a
+ * cross (where a move was aimed past its reach).
+ */
+export type MarkKind = "dot" | "ring" | "diamond" | "swords" | "cross";
 
 function markTexture(kind: MarkKind): CanvasTexture {
   const cached = textures.get(kind);
@@ -115,6 +118,21 @@ function markTexture(kind: MarkKind): CanvasTexture {
     g.lineWidth = 6;
     g.strokeStyle = "#fff";
     g.stroke();
+  } else if (kind === "cross") {
+    g.lineCap = "round";
+    for (const [w, style] of [
+      [14, "rgba(10,9,8,0.8)"],
+      [7, "#fff"],
+    ] as const) {
+      g.lineWidth = w;
+      g.strokeStyle = style;
+      g.beginPath();
+      g.moveTo(16, 16);
+      g.lineTo(48, 48);
+      g.moveTo(48, 16);
+      g.lineTo(16, 48);
+      g.stroke();
+    }
   } else if (kind === "swords") {
     // Two crossed blades with their guards (an opportunity attack, AC-MOV-15), on a dark disc so it reads anywhere.
     g.beginPath();

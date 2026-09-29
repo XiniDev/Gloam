@@ -5,7 +5,15 @@ import { create } from "zustand";
 export type Tool = "select" | "pan" | "measure" | "ping" | "target" | "walls" | "zones" | "lights" | "fog";
 export type WallDrawKind = "wall" | "door" | "window" | "curtain" | "invisible" | "secret";
 export type DockTab = "party" | "sheet" | "spells" | "log" | "dm";
-export type DmSection = "scenes" | "library" | "requests" | "health" | "combat" | "approvals";
+export type DmSection =
+  | "scenes"
+  | "library"
+  | "requests"
+  | "health"
+  | "combat"
+  | "spells"
+  | "effects"
+  | "approvals";
 export type SheetTab =
   | "overview"
   | "abilities"

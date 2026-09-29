@@ -1,5 +1,5 @@
 {
-  "$comment": "Persistent-effect templates (SPEC §8.13 F13, §12.3 Effect), hand-authored from the SRD 5.2.1 PDF. The 16 effects F13 requires are first; emanations follow (§33.4: they move with the caster unless the text makes them immobile/stationary), then other persistent areas. `attach`: caster = moves with the caster; object = moves with an object (placed as a token); target = on each affected creature/object; point = fixed where cast. Triggers create DM prompts: `enter` (a creature enters, or the area moves into its space), `startTurn`/`endTurn` (a creature's own turn inside), `per5ft` (each 5 ft moved inside). DCs and slot scaling come from the cast; damage formulas are the base level. `movement.drift` moves the effect at the start of the caster's turns.",
+  "$comment": "Persistent-effect templates (SPEC §8.13 F13, §12.3 Effect), hand-authored from the SRD 5.2.1 PDF. The 16 effects F13 requires are first; emanations follow (§33.4: they move with the caster unless the text makes them immobile/stationary), then other persistent areas. `attach`: caster = moves with the caster; object = an object at the point it's placed (`bodyFt` its size) or on the creature holding it; target = on each affected creature/object; point = fixed where cast. Triggers create DM prompts: `enter` (a creature enters, or the area moves into its space), `startTurn`/`endTurn` (a creature's own turn inside), `per5ft` (each 5 ft moved inside), `moveInto` (the effect's object moved into a creature's space), `action` (its caster's action repeats it: Call Lightning). `onAppear`: creatures in the area when it appears make the spell's save; otherwise only its triggers act. `oncePerTurn`: one save a turn across its triggers. A trigger's `side` reaches that far out of a wall's damaging side; `breaksConcentration` and `conditionEnds` add to a failed save. DCs and slot scaling come from the cast; damage formulas are the base level. `movement.drift` moves the effect at the start of the caster's turns.",
   "spells": {
     "fog-cloud": {
       "page": 133,
@@ -98,7 +98,8 @@
               "note": "Necrotic instead if you are evil. Once per turn; designated creatures are unaffected."
             }
           ],
-          "attach": "caster"
+          "attach": "caster",
+          "oncePerTurn": true
         }
       }
     },
@@ -146,7 +147,9 @@
             "by": "caster",
             "maxFt": 60,
             "action": "action"
-          }
+          },
+          "onAppear": true,
+          "oncePerTurn": true
         }
       }
     },
@@ -222,7 +225,8 @@
                 "onSuccess": "none"
               },
               "condition": "prone",
-              "note": "First time it enters on a turn. On a failure it also loses Concentration."
+              "note": "First time it enters on a turn. On a failure it also loses Concentration.",
+              "breaksConcentration": true
             },
             {
               "when": "startTurn",
@@ -231,7 +235,8 @@
                 "onSuccess": "none"
               },
               "condition": "prone",
-              "note": "On a failure it also loses Concentration."
+              "note": "On a failure it also loses Concentration.",
+              "breaksConcentration": true
             }
           ],
           "attach": "point"
@@ -254,7 +259,8 @@
                 "onSuccess": "none"
               },
               "condition": "poisoned",
-              "note": "Poisoned until the end of the current turn; while Poisoned this way it can’t take an action or a Bonus Action."
+              "note": "Poisoned until the end of the current turn; while Poisoned this way it can’t take an action or a Bonus Action.",
+              "conditionEnds": "turnEnd"
             }
           ],
           "attach": "point"
@@ -302,7 +308,9 @@
               "ft": 10,
               "direction": "awayFromCaster"
             }
-          }
+          },
+          "onAppear": true,
+          "oncePerTurn": true
         }
       }
     },
@@ -329,10 +337,12 @@
                 "formula": "5d8",
                 "type": "fire"
               },
-              "note": "Inside the wall or within 10 feet of its damaging side. No save."
+              "note": "Inside the wall or within 10 feet of its damaging side. No save.",
+              "side": 10
             }
           ],
-          "attach": "point"
+          "attach": "point",
+          "onAppear": true
         }
       }
     },
@@ -396,7 +406,7 @@
               "note": "Within 5 feet of the sphere."
             },
             {
-              "when": "enter",
+              "when": "moveInto",
               "save": {
                 "ability": "dex",
                 "onSuccess": "half"
@@ -413,19 +423,39 @@
             "by": "caster",
             "maxFt": 30,
             "action": "bonus"
-          }
+          },
+          "bodyFt": 5
         }
       }
     },
     "call-lightning": {
       "page": 114,
       "source": "\"A storm cloud appears at a point within range that you can see above yourself. It takes the shape of a Cylinder that is 10 feet tall with a 60-foot radius … Until the spell ends, you can take a Magic action to call down lightning in that way again\" — each bolt: creatures within 5 feet of a point under the cloud make a Dexterity save (3d10 Lightning, half on success). The cloud itself has no triggers.",
-      "review": "The storm cloud is the effect; each bolt (Magic action, 5-ft radius under the cloud) is resolved as a new roll by the DM.",
+      "review": "The storm cloud is the effect, centred over its caster; the cast is the first bolt (5-ft radius at the chosen point), and its caster calls the next ones from the cloud (an action trigger).",
       "set": {
         "effect": {
           "props": {},
-          "triggers": [],
-          "attach": "point"
+          "triggers": [
+            {
+              "when": "action",
+              "save": {
+                "ability": "dex",
+                "onSuccess": "half"
+              },
+              "damage": {
+                "formula": "3d10",
+                "type": "lightning"
+              },
+              "note": "A Magic action: another bolt at a point under the cloud — creatures within 5 feet of it save."
+            }
+          ],
+          "attach": "point",
+          "area": {
+            "shape": "cylinder",
+            "radius": 60,
+            "height": 10
+          },
+          "centre": "caster"
         }
       }
     },
@@ -855,6 +885,49 @@
           },
           "triggers": [],
           "attach": "point"
+        }
+      }
+    },
+    "see-invisibility": {
+      "page": 160,
+      "source": "\"For the duration, you see creatures and objects that have the Invisible condition as if they were visible\" — on the caster, for the spell's duration.",
+      "set": {
+        "effect": {
+          "props": {
+            "seeInvisible": true
+          },
+          "triggers": [],
+          "attach": "caster"
+        }
+      }
+    },
+    "true-seeing": {
+      "page": 171,
+      "source": "\"For the duration, the willing creature you touch has Truesight with a range of 120 feet.\"",
+      "set": {
+        "effect": {
+          "props": {
+            "senses": {
+              "truesight": 120
+            }
+          },
+          "triggers": [],
+          "attach": "target"
+        }
+      }
+    },
+    "darkvision": {
+      "page": 122,
+      "source": "\"For the duration, a willing creature you touch has Darkvision with a range of 150 feet.\"",
+      "set": {
+        "effect": {
+          "props": {
+            "senses": {
+              "darkvision": 150
+            }
+          },
+          "triggers": [],
+          "attach": "target"
         }
       }
     }

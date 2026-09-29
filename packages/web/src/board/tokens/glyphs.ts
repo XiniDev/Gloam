@@ -1,4 +1,5 @@
 import { CanvasTexture, SRGBColorSpace } from "three";
+import { initialsOf } from "../../ui/initials.ts";
 import { C } from "../colors.ts";
 import { wake } from "../frames.ts";
 
@@ -30,16 +31,6 @@ function texture(key: string, size: number, draw: (g: CanvasRenderingContext2D) 
   t.anisotropy = 4;
   cache.set(key, t);
   return t;
-}
-
-export function initialsOf(name: string): string {
-  const words = name
-    .replace(/[^\p{L}\p{N}\s]/gu, "")
-    .trim()
-    .split(/\s+/);
-  const letters =
-    words.length > 1 ? `${words[0]?.[0] ?? ""}${words.at(-1)?.[0] ?? ""}` : (words[0] ?? "").slice(0, 2);
-  return letters.toUpperCase() || "?";
 }
 
 /** A parchment-and-ink coin face with the token's initials (tokens without an image). */

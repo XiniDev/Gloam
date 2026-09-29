@@ -5,7 +5,13 @@
  * budget. The field's costs go back as a transferred buffer.
  */
 import type { P } from "@gloam/shared/geometry";
-import { MoveWorld, type MoveWorldInput, type RangeOptions, rangeField } from "@gloam/shared/movement";
+import {
+  MoveWorld,
+  type MoveWorldInput,
+  type RangeOptions,
+  rangeDisplay,
+  rangeField,
+} from "@gloam/shared/movement";
 
 interface Request {
   id: number;
@@ -28,7 +34,14 @@ self.onmessage = (e: MessageEvent<Request>) => {
     }
     const t0 = performance.now();
     const field = rangeField(held.world, origin, opts);
-    self.postMessage({ id, field, ms: performance.now() - t0 }, [field.cost.buffer]);
+    const ms = performance.now() - t0;
+    // What the overlay draws: flush to walls and bases, its edge smoothed (drawing only; not timed as the field).
+    const display = rangeDisplay(held.world, field, opts.rc);
+    self.postMessage({ id, field, display, ms }, [
+      field.cost.buffer,
+      display.cost.buffer,
+      display.reach.buffer,
+    ]);
   } catch (err) {
     self.postMessage({ id, error: (err as Error).message ?? String(err) });
   }

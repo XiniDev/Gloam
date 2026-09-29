@@ -164,14 +164,14 @@ function consequenceRules(ctx: CommandCtx) {
   return { bloodied: r.bloodied && ctx.model.campaign.rulesPack !== "srd-5.1", npcAtZero: r.npcAtZero };
 }
 
-const itemOf = (c: Consequence): PromptItemView => ({
+export const itemOf = (c: Consequence): PromptItemView => ({
   key: c.kind,
   consequence: c,
   ...describeConsequence(c),
 });
 
 /** A prompt's heading for what it asks. */
-function promptTitle(name: string, ask: readonly Consequence[]): string {
+export function promptTitle(name: string, ask: readonly Consequence[]): string {
   if (ask.some((c) => c.kind === "down" || c.kind === "npcAtZero")) return `${name} dropped to 0 HP`;
   if (ask.some((c) => c.kind === "dying")) return `${name}: dead?`;
   if (ask.some((c) => c.kind === "deathSaveFailures")) return `${name} took damage at 0 HP`;

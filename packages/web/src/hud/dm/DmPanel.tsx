@@ -8,10 +8,12 @@ import { WaxSeal } from "../../ui/ornaments.tsx";
 import { visibleTabs } from "../sheet/tabsLayout.ts";
 import { ApprovalsPanel } from "./ApprovalsPanel.tsx";
 import { CombatPanel } from "./CombatPanel.tsx";
+import { EffectsPanel } from "./EffectsPanel.tsx";
 import { HealthPanel } from "./HealthPanel.tsx";
 import { LibraryPanel } from "./LibraryPanel.tsx";
 import { RequestsPanel } from "./RequestsPanel.tsx";
 import { ScenesPanel } from "./ScenesPanel.tsx";
+import { SpellsPanel } from "./SpellsPanel.tsx";
 
 const SECTIONS: { id: DmSection; label: string }[] = [
   { id: "scenes", label: "Scenes" },
@@ -19,6 +21,8 @@ const SECTIONS: { id: DmSection; label: string }[] = [
   { id: "requests", label: "Requests" },
   { id: "health", label: "Health" },
   { id: "combat", label: "Combat" },
+  { id: "spells", label: "Spells" },
+  { id: "effects", label: "Effects" },
   { id: "approvals", label: "Approvals" },
 ];
 
@@ -145,6 +149,8 @@ export default function DmPanel() {
         {section === "requests" ? <RequestsPanel /> : null}
         {section === "health" ? <HealthPanel /> : null}
         {section === "combat" ? <CombatPanel /> : null}
+        {section === "spells" ? <SpellsPanel /> : null}
+        {section === "effects" ? <EffectsPanel /> : null}
         {section === "approvals" ? <ApprovalsPanel /> : null}
       </div>
     </div>

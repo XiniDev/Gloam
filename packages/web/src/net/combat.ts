@@ -4,7 +4,9 @@
  * (`combat.expired`), the summary when combat stops — and the actions, each a server command.
  */
 import type { CombatExpiredMessage, CombatTurnMessage, CombatView } from "@gloam/shared/protocol";
+import { createElement } from "react";
 import { create } from "zustand";
+import { CombatSummary } from "../hud/combat/CombatSummary.tsx";
 import { provideTestHook } from "../test/hooks.ts";
 import { toast } from "../ui/Toast.tsx";
 import { request, tableEvents } from "./table.ts";
@@ -61,8 +63,16 @@ function onMessage(type: string, payload: unknown): void {
       return;
     }
     case "combat.stopped": {
-      const p = payload as { text: string };
-      toast.info("Combat ended", p.text);
+      const p = payload as {
+        text: string;
+        rounds: number;
+        downed?: string[];
+        tally?: { name: string; dealt: number; taken: number }[];
+      };
+      toast.info(
+        `Combat ended · ${p.rounds} ${p.rounds === 1 ? "round" : "rounds"}`,
+        createElement(CombatSummary, { downed: p.downed ?? [], tally: p.tally ?? [] }),
+      );
       s.set({ turn: null });
       return;
     }

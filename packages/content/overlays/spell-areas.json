@@ -216,8 +216,8 @@
     },
     "flaming-sphere": {
       "page": 132,
-      "source": "\"You create a 5-foot-diameter sphere of fire … Any creature that ends its turn within 5 feet of the sphere makes a Dexterity saving throw\". The damaging zone is a 5-ft Emanation from the sphere object (§17.1: distance + the source's radius), which moves when you move the sphere.",
-      "review": "The damaging zone is a 5-ft Emanation from the sphere as an object token (5-ft diameter).",
+      "source": "\"You create a 5-foot-diameter sphere of fire … Any creature that ends its turn within 5 feet of the sphere makes a Dexterity saving throw\". The damaging zone is a 5-ft Emanation from the sphere object (§17.1: distance + the object's radius — 7.5 ft from its centre), which goes where the sphere is rolled.",
+      "review": "The damaging zone is a 5-ft Emanation from the 5-ft sphere object at its point.",
       "set": {
         "area": {
           "shape": "emanation",
@@ -227,12 +227,11 @@
     },
     "call-lightning": {
       "page": 114,
-      "source": "SPEC §33.4 cylinder: \"It takes the shape of a Cylinder that is 10 feet tall with a 60-foot radius.\" (the storm cloud; each bolt hits creatures within 5 feet of a chosen point).",
+      "source": "\"choose a point you can see under the cloud. A lightning bolt shoots from the cloud to that point. Each creature within 5 feet of that point makes a Dexterity saving throw\" — the cast's area is the bolt; the cloud (a Cylinder 10 feet tall with a 60-foot radius) is its effect's own area (spell-effects.json).",
       "set": {
         "area": {
-          "shape": "cylinder",
-          "radius": 60,
-          "height": 10
+          "shape": "sphere",
+          "radius": 5
         }
       }
     },

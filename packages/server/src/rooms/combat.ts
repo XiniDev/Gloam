@@ -230,7 +230,15 @@ export class CombatFlow {
       const mod = initiativeModOf(ctx, t);
       const { mode } = initiativeModeOf(ctx, t, e.surprised === true);
       const formula = `1d20${mod ? ` ${mod < 0 ? "-" : "+"} ${Math.abs(mod)}` : ""}${mode === "normal" ? "" : ` ${mode}`}`;
-      const label = e.group ? `Initiative · ${e.name} (and their kind)` : `Initiative · ${e.name}`;
+      // The creature first (the feed truncates the end of a label, never who it was for); a group's one roll names
+      // every creature it's for, and "Initiative" reads as the players' own cards do (critic P8 r2 N1/N2).
+      const who = e.group
+        ? d.combatants
+            .filter((x) => x.group === e.group)
+            .map((x) => x.name)
+            .join(", ")
+        : e.name;
+      const label = `${who} · Initiative`;
       const v = this.host.rollFor(id, formula, label);
       values[id] = v;
       if (e.group) groupRoll.set(e.group, v);
@@ -404,6 +412,8 @@ export class CombatFlow {
       parts.push(`Damage — ${hits.map((x) => `${x.name}: dealt ${x.dealt}, took ${x.taken}`).join("; ")}.`);
     const text = parts.join(" ");
     this.host.log("combat.summary", text, { rounds: e.rounds, downed: e.downed, tally: e.tally });
-    for (const v of this.host.viewers()) v.send("combat.stopped", { text, rounds: e.rounds });
+    // The words for the log; the parts for the toast's own layout (a title, who went down, a tally row each).
+    for (const v of this.host.viewers())
+      v.send("combat.stopped", { text, rounds: e.rounds, downed: e.downed, tally: hits });
   }
 }

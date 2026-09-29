@@ -21,7 +21,7 @@ import { provideTestHook } from "../test/hooks.ts";
 import { boardApi } from "./boardApi.ts";
 import { cameraRig, rigDiag } from "./CameraRig.tsx";
 import { boardDiag, useLoading } from "./diag.ts";
-import { setAnimating, wake } from "./frames.ts";
+import { again, setAnimating, wake } from "./frames.ts";
 import { cutaway, doorLeafAngles, doorSwing } from "./map/Walls3D.tsx";
 import { animatingTokens, movedLog } from "./move/anims.ts";
 import { moveDiag, useMove } from "./move/drag.ts";
@@ -30,7 +30,7 @@ import { usePings } from "./PingLayer.tsx";
 import { editPerf } from "./perf.ts";
 import { resourceStats } from "./resources.ts";
 import { TIERS, TierGovernor, useTier } from "./tiers.ts";
-import { overlayDiagnostics, plateCovers } from "./tokens/declutter.ts";
+import { overlayDiagnostics, plateCovers, setOverlaysOff } from "./tokens/declutter.ts";
 import { createHpBarMaterial, setHpBar } from "./tokens/hpBar.ts";
 import { fxPlayed, lieOf } from "./tokens/hpFx.tsx";
 import { statusAtlas } from "./tokens/statusAtlas.ts";
@@ -271,6 +271,17 @@ export function TestProbe() {
     // The brightest pixel of the board within r px of a screen point (luminance 0–255), read from the drawing buffer
     // (kept in test builds) — no screenshot, so no waiting on a compositor frame.
     // The board's mean colour within r px of a screen point ([r, g, b] 0–255), from its drawing buffer.
+    // Every plate off: the tokens' own geometry measured apart from whatever the plates' layout shows (AC-TOK-10).
+    provideTestHook("overlaysOff", (on: boolean) => {
+      setOverlaysOff(on);
+      again();
+      return true;
+    });
+    // This device's settings, changed as the Settings popover would (the colour-blind palette in the shots).
+    provideTestHook("settings", (patch: Record<string, unknown>) => {
+      useSettings.getState().update(patch as never);
+      return true;
+    });
     provideTestHook("boardRgb", (sx: number, sy: number, radius?: number) => {
       const r = radius ?? 1;
       const el = gl.domElement;

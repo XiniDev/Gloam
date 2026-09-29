@@ -20,6 +20,8 @@ import { useUi } from "../state/ui.ts";
 import { toast } from "../ui/Toast.tsx";
 import { boardApi } from "./boardApi.ts";
 import { CameraRig, cameraRig } from "./CameraRig.tsx";
+import { targetDown, targetKey, targetMove, targetWheel } from "./cast/input.ts";
+import { TargetingLayer } from "./cast/TargetingLayer.tsx";
 import { C } from "./colors.ts";
 import { DustMotes } from "./DustMotes.tsx";
 import { boardDiag } from "./diag.ts";
@@ -74,6 +76,8 @@ import { WallToolLayer } from "./tools/WallToolLayer.tsx";
 import { useWallTool, wallsDoubleClick, wallsDown, wallsKey, wallsMove, wallsUp } from "./tools/walls.ts";
 import { ZoneToolLayer } from "./tools/ZoneToolLayer.tsx";
 import { zonesDoubleClick, zonesDown, zonesKey, zonesMove, zonesUp } from "./tools/zones.ts";
+import { EffectsLayer } from "./vfx/EffectsLayer.tsx";
+import { VfxLayer } from "./vfx/VfxLayer.tsx";
 import { fogUniforms } from "./vision/fogMaterial.ts";
 import { SensedLayer } from "./vision/SensedLayer.tsx";
 import { VisionLayer } from "./vision/VisionLayer.tsx";
@@ -203,6 +207,11 @@ export default function Board() {
       const el = e.target as HTMLElement | null;
       if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return;
       const ui = useUi.getState();
+      // Aiming a spell: Esc cancels, Enter casts, [ and ] turn the template.
+      if (ui.tool === "target" && targetKey(e)) {
+        e.preventDefault();
+        return;
+      }
       // The Walls tool's keys (Esc/Enter finish, Backspace removes the last segment or the selection, Delete).
       if (ui.tool === "walls" && dm && wallsKey(e)) {
         e.preventDefault();
@@ -288,6 +297,7 @@ export default function Board() {
     // Tools that draw or place with a left press (a press on empty table doesn't pan there).
     const drawing =
       tool === "measure" ||
+      tool === "target" ||
       tool === "ping" ||
       tool === "walls" ||
       tool === "zones" ||
@@ -336,6 +346,11 @@ export default function Board() {
     }
     if (tool === "measure" && !cameraRig.spaceHeld) {
       measureDown(e.clientX, e.clientY);
+      return;
+    }
+    // Aiming a spell: a click on the floor casts it there (a creature's own press picks it — TokenObject).
+    if (tool === "target" && !cameraRig.spaceHeld && !onToken) {
+      targetDown(e.clientX, e.clientY);
       return;
     }
     if (tool === "walls" && dm && !cameraRig.spaceHeld) {
@@ -432,6 +447,7 @@ export default function Board() {
     const p = press.current;
     if (p?.box) setBox({ x0: p.x, y0: p.y, x1: e.clientX, y1: e.clientY });
     if (useUi.getState().tool === "measure") measureMove(e.clientX, e.clientY);
+    if (useUi.getState().tool === "target" && !drag) targetMove(e.clientX, e.clientY);
     if (useUi.getState().tool === "walls" && dm && !drag) wallsMove(e.nativeEvent);
     if (useUi.getState().tool === "zones" && dm && !drag) zonesMove(e.nativeEvent);
     if (useUi.getState().tool === "fog" && dm && !drag) fogMove(e.nativeEvent);
@@ -507,7 +523,11 @@ export default function Board() {
       }}
       onContextMenu={(e) => e.preventDefault()}
       onDragOver={onDragOver}
-      onWheel={() => wake()}
+      onWheel={(e) => {
+        // Aiming a cone, a line or a cube: the wheel turns it (the camera's own wheel is off meanwhile).
+        if (useUi.getState().tool === "target") targetWheel(e.deltaY);
+        wake();
+      }}
       onDrop={(e) => void onDrop(e)}
       style={{ cursor: tool === "pan" ? "grab" : undefined }}
     >
@@ -565,9 +585,15 @@ export default function Board() {
         <Contained>
           <ZonesLayer />
         </Contained>
+        {/* Lasting spell areas (§8.13) and casts' VFX (§24.5). */}
+        <Contained>
+          <EffectsLayer />
+          <VfxLayer />
+        </Contained>
         <Contained>
           <MoveLayer />
           <RangeOverlay />
+          <TargetingLayer />
         </Contained>
         <Contained>
           <PingLayer />

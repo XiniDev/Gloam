@@ -179,7 +179,12 @@ export class CommandBus {
     type: string,
     raw: unknown,
     actor: CommandActor,
-    opts: { cid?: string; undoGroup?: string } = {},
+    opts: {
+      cid?: string;
+      undoGroup?: string;
+      /** A follow-up of that entry (concentration's cleanup): undone and redone with it, one step for its user. */
+      joinEntry?: number;
+    } = {},
   ): R {
     const t0 = performance.now();
     if (opts.cid) {
@@ -204,7 +209,7 @@ export class CommandBus {
       plan.ops.length > 0
         ? this.commit(type, plan.ops, plan.summary, undoable, actor, plan.sceneId ?? null)
         : null;
-    if (entry && undoable) this.pushUndo(actor.userId, entry.id, opts.undoGroup ?? null);
+    if (entry && undoable) this.pushUndo(actor.userId, entry.id, opts.undoGroup ?? null, opts.joinEntry);
     const info: CommitInfo = { entry, ops: plan.ops, actor, type };
     if (plan.ops.length > 0) {
       this.hooks.onCommitted(info);
@@ -344,10 +349,11 @@ export class CommandBus {
 
   // ── undo / redo / revert (SPEC §14.4) ─────────────────────────────────────────────────────────────────
 
-  private pushUndo(userId: string, id: number, group: string | null): void {
+  private pushUndo(userId: string, id: number, group: string | null, join?: number): void {
     const s = this.undoStacks.get(userId) ?? [];
     const top = s[s.length - 1];
-    if (group && top?.group === group) top.ids.push(id);
+    if (join !== undefined && top?.ids.includes(join)) top.ids.push(id);
+    else if (group && top?.group === group) top.ids.push(id);
     else s.push({ ids: [id], group });
     if (s.length > LIMITS.undoStack) s.shift();
     this.undoStacks.set(userId, s);

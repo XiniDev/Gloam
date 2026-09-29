@@ -160,7 +160,14 @@ export interface ZoneEntity {
 }
 
 export interface TokenStatusT {
-  conditions: { id: ConditionId; source?: string; untilRound?: number; sourceTokenId?: string }[];
+  /** `castId`: the cast that put it on (a concentration spell's conditions end with its concentration). */
+  conditions: {
+    id: ConditionId;
+    source?: string;
+    untilRound?: number;
+    sourceTokenId?: string;
+    castId?: string;
+  }[];
   markers: {
     id: MarkerId | `custom:${string}`;
     label?: string;
@@ -171,7 +178,8 @@ export interface TokenStatusT {
     description?: string;
   }[];
   exhaustion: 0 | 1 | 2 | 3 | 4 | 5 | 6;
-  concentration?: { effectId?: string; spellId?: string; spellName?: string } | undefined;
+  /** What it's concentrating on: the spell, and the cast (its effects and conditions end with it). */
+  concentration?: { effectId?: string; spellId?: string; spellName?: string; castId?: string } | undefined;
   deathSaves?:
     | { successes: 0 | 1 | 2 | 3; failures: 0 | 1 | 2 | 3; stable: boolean; dead: boolean }
     | undefined;
@@ -282,6 +290,13 @@ export interface EffectProps {
   light?: { bright: Ft; dim: Ft; color: string; magical: boolean; pierceDarkness: boolean };
   silence?: boolean;
   outline?: boolean;
+  /** A creature's Speed is halved while inside (Spirit Guardians). */
+  speedHalved?: boolean;
+  /** Senses the creature it's on gains (Darkvision, True Seeing), and seeing the Invisible (See Invisibility). */
+  senses?: { darkvision?: Ft; blindsight?: Ft; tremorsense?: Ft; truesight?: Ft };
+  seeInvisible?: boolean;
+  /** Creatures its triggers and slowing leave alone (Spirit Guardians' "designated creatures"). */
+  exempt?: string[];
 }
 
 export interface EffectTrigger {
@@ -296,7 +311,14 @@ export interface EffectEntity {
   id: string;
   sceneId: string;
   name: string;
-  source: { kind: "spell" | "feature" | "custom"; contentId?: string; casterTokenId?: string; slot?: number };
+  source: {
+    kind: "spell" | "feature" | "custom";
+    contentId?: string;
+    casterTokenId?: string;
+    slot?: number;
+    /** The cast that made it (its card; its concentration). */
+    castId?: string;
+  };
   shape: AreaShape;
   attachedTokenId: string | null;
   props: EffectProps;

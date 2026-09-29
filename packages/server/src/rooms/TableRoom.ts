@@ -8,6 +8,8 @@ import {
   AdminBan,
   AdminUnban,
   CameraSpotlight,
+  CastNpcSaves,
+  CastRoll,
   ClockSync,
   CombatRollRemaining,
   DeathSaveRequest,
@@ -86,14 +88,17 @@ import {
   dataOf,
   movementOf,
 } from "../engine/commands/combat.ts";
+import { homebrewFor } from "../engine/commands/content.ts";
 import { FOLLOWUPS, type Followups, hpApply, previewHp } from "../engine/commands/health.ts";
 import { SYSTEM_ACTOR } from "../engine/commands/party.ts";
 import { REST_FOLLOWUPS, type RestFollowups } from "../engine/commands/rest.ts";
+import { CAST_FOLLOWUP, type CastFollowup, concentrationsEnded } from "../engine/commands/spells.ts";
 import { CampaignModel } from "../engine/model.ts";
 import { ALL_COMMANDS, COMMAND_RATES, registerCommands } from "../engine/registry.ts";
 import { PromptService } from "../health/prompts.ts";
 import { type Proposal, ProposalService, proposalView } from "../sheets/proposals.ts";
 import { type MoveSeen, VisionService } from "../vision/visionService.ts";
+import { CastFlow, type CastViewer } from "./castFlow.ts";
 import { CombatFlow, type CombatViewer } from "./combat.ts";
 import {
   buildHandlers,
@@ -103,6 +108,7 @@ import {
   type MessageDef,
   parseCookies,
 } from "./dispatch.ts";
+import { EffectFlow } from "./effectFlow.ts";
 import { HealthFlow, type SystemRequest } from "./health.ts";
 import {
   glowView,
@@ -146,6 +152,8 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
   prompts!: PromptService;
   health!: HealthFlow;
   combat!: CombatFlow;
+  casts!: CastFlow;
+  effects!: EffectFlow;
   /** DM connections viewing a non-active scene in prep (SPEC §13.7): client → scene id. */
   private readonly prepSubs = new Map<Client, string>();
   /** Test probe (AC-PER-01): runs right before Colyseus encodes and sends a state patch. */
@@ -411,7 +419,7 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
           const opts = {
             formula: hinted(target, p.ignoreHints),
             visibility: r.visibility,
-            label: `${r.label} · ${target.name}`,
+            label: `${target.name} · ${r.label}`,
           };
           roll =
             p.action === "roll"
@@ -467,7 +475,7 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
             {
               formula: hinted(target, p.ignoreHints),
               visibility: r.visibility === "public" ? "public" : "dm",
-              label: `${r.label} · ${target.name}`,
+              label: `${target.name} · ${r.label}`,
               purpose: "request",
               ...(x.token ? { token: x.token } : {}),
             },
@@ -536,6 +544,21 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
           this.requireDm(auth);
           return { rolled: this.combat.rollRemaining(auth.userId, p.players) };
         },
+      ),
+      // Resolution cards (§8.13): a roll from a card (an attack, the damage), the NPCs' saves on one click.
+      "cast.roll": def(CastRoll, MESSAGE_RATES["cast.roll"], ({ auth }, p) =>
+        this.casts.roll(this.actorFor(auth), p),
+      ),
+      "cast.npcSaves": def(CastNpcSaves, MESSAGE_RATES["cast.npcSaves"], ({ auth }, p) =>
+        this.casts.npcSaves(this.actorFor(auth), p.castId),
+      ),
+      // The campaign's homebrew spells as this person may see them (§8.13).
+      "content.spells": def(z.strictObject({}), MESSAGE_RATES["content.spells"], ({ auth }) =>
+        homebrewFor(
+          this.model,
+          { userId: auth.userId, dm: auth.role === "admin" || auth.role === "dm" },
+          (u) => roomCtx().profiles.get(u)?.displayName ?? "someone",
+        ),
       ),
       // Outside combat, the DM asks the dying for death saving throws.
       "death.request": def(DeathSaveRequest, MESSAGE_RATES["death.request"], ({ auth }, p) => {
@@ -751,6 +774,44 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
         roomCtx().campaigns.appendLog(this.campaignId, { kind, text, data });
       },
     });
+    this.casts = new CastFlow({
+      campaignId: this.campaignId,
+      model: () => this.model,
+      bus: () => this.bus,
+      viewers: () => this.castViewers(),
+      actorOf: (userId) => this.actorOfUser(userId),
+      askSaves: (createdBy, p) =>
+        this.createRequest(createdBy, {
+          targets: p.targets,
+          type: "save",
+          ability: p.ability,
+          label: p.label,
+          ...(p.dc !== undefined ? { dc: p.dc } : {}),
+          showDc: p.showDc,
+          adv: "none",
+          visibility: p.visibility,
+          purpose: { kind: "castSave", castId: p.castId },
+        }),
+      answerAsDm: (r, targetId, dmUserId) => this.answerAsDm(r, targetId, dmUserId),
+      request: (id) => this.requests.get(id) ?? undefined,
+      updateRequest: (r) => {
+        this.requests.save(r);
+        this.sendRequest(r);
+      },
+      roll: (userId, p) => this.rollFromCard(userId, p, null),
+      manual: (userId, p) => this.rollFromCard(userId, p, p.total),
+    });
+    this.effects = new EffectFlow({
+      model: () => this.model,
+      bus: () => this.bus,
+      dmActor: () => {
+        const dm = [...this.clients]
+          .map((c) => c.auth as ClientAuth | undefined)
+          .find((a) => a && (a.role === "dm" || a.role === "admin"));
+        return dm ? this.actorOfUser(dm.userId) : SYSTEM_ACTOR;
+      },
+      toDms: (type, payload) => this.toDms(type, payload),
+    });
     this.syncCampaign();
     this.views?.detachAll();
     this.projector = new StateProjector(this.state, this.projectionCtx());
@@ -912,6 +973,7 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
     try {
       this.health.answered(r, t, res, roll);
       this.combat.answered(r, t, res);
+      this.casts.answered(r, t, res);
     } catch (err) {
       roomCtx().log.error({ err }, "health follow-up of a roll failed");
     }
@@ -1093,6 +1155,88 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
     return out;
   }
 
+  /** Everyone at the table as the resolution cards see them (the tracker's viewers). */
+  private castViewers(): CastViewer[] {
+    return this.combatViewers();
+  }
+
+  /** The homebrew spells, to each person as they may see them (after a change to them). */
+  private sendHomebrew(): void {
+    for (const c of this.clients) {
+      const auth = c.auth as ClientAuth | undefined;
+      if (!auth) continue;
+      c.send(
+        "content.spells",
+        homebrewFor(
+          this.model,
+          { userId: auth.userId, dm: auth.role === "admin" || auth.role === "dm" },
+          (u) => roomCtx().profiles.get(u)?.displayName ?? "someone",
+        ),
+      );
+    }
+  }
+
+  /** Who rolls for a user (their dice skin and colour); a DM who isn't here rolls as "The DM". */
+  private rollerFor(userId: string) {
+    const auth = [...(this.clientsByUser.get(userId) ?? [])]
+      .map((c) => c.auth as ClientAuth | undefined)
+      .find((a) => a);
+    return auth
+      ? this.rollerOf(auth)
+      : { userId, name: "The DM", color: BOARD_COLORS.brass400, skin: DEFAULT_SKIN, dm: true };
+  }
+
+  /** A roll from a resolution card (an attack, the damage): rolled, or a total entered; the table sees it. */
+  private rollFromCard(
+    userId: string,
+    p: { formula: string; label: string; visibility: "public" | "dm"; tokenId?: string },
+    total: number | null,
+  ): RollRecord {
+    const roller = this.rollerFor(userId);
+    const token = p.tokenId ? this.model.get("token", p.tokenId) : undefined;
+    const opts = {
+      formula: p.formula,
+      label: p.label,
+      visibility: p.visibility,
+      purpose: "cast",
+      ...(token ? { token } : {}),
+    };
+    const r =
+      total === null
+        ? this.dice.roll(this.campaignId, this.projector.activeSceneId || null, roller, opts)
+        : this.dice.manual(this.campaignId, this.projector.activeSceneId || null, roller, { ...opts, total });
+    this.deliverRoll(r, roller.dm);
+    return r;
+  }
+
+  /** The DM rolls a request's target (its formula with its hints), as the request board's Roll does. */
+  private answerAsDm(r: RollRequest, targetId: string, dmUserId: string): void {
+    const target = r.targets.find((t) => t.id === targetId);
+    if (!target || r.responses[target.id]?.state !== "pending") return;
+    const x = this.requestTarget(target.id);
+    const roller = this.rollerFor(dmUserId);
+    const roll = this.dice.roll(this.campaignId, this.projector.activeSceneId || null, roller, {
+      formula: hinted(target, false),
+      visibility: r.visibility === "public" ? "public" : "dm",
+      label: `${target.name} · ${r.label}`,
+      purpose: "request",
+      ...(x.token ? { token: x.token } : {}),
+    });
+    this.deliverRoll(roll, true);
+    const res: RequestResponse = {
+      state: "dm",
+      rollId: roll.id,
+      formula: roll.normalized || roll.formula,
+      total: roll.total,
+      by: dmUserId,
+      ...(r.dc !== undefined ? { success: roll.total >= r.dc } : {}),
+    };
+    r.responses[target.id] = res;
+    this.answeredForRules(r, target, res, roll);
+    this.requests.save(r);
+    this.sendRequest(r);
+  }
+
   /** The server rolls a creature's initiative (the NPCs, or everyone): a DM's roll, seen as the DM's rolls are. */
   private rollForCombat(tokenId: string, formula: string, label: string): number {
     const token = this.model.get("token", tokenId);
@@ -1194,6 +1338,34 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
     )
       this.combat.sync();
     this.vision.deliverFog();
+    // Resolution cards (§8.13): the ones that changed; all of them when a creature on one did (its HP preview).
+    const castIds = info.ops
+      .filter((o) => o.k !== "fog" && o.k !== "sheet" && o.e === "cast")
+      .map((o) => (o as { id: string }).id);
+    if (castIds.length) this.casts.push([...new Set(castIds)]);
+    else if (
+      this.model.all("cast").some((c) => c.status === "open") &&
+      info.ops.some((o) => o.k === "sheet" || (o.k !== "fog" && (o.e === "token" || o.e === "actor")))
+    )
+      this.casts.push();
+    if (info.ops.some((o) => o.k !== "fog" && o.k !== "sheet" && o.e === "content")) this.sendHomebrew();
+    // A concentration that ended takes what it held up with it (§8.13; AC-SPL-07) — in the same undo step.
+    if (info.type !== "history.undo" && info.type !== "history.redo")
+      for (const ended of concentrationsEnded(info.ops)) {
+        const entry = info.entry?.id;
+        queueMicrotask(() => {
+          try {
+            this.bus.execute(
+              "concentration.cleanup",
+              ended,
+              info.actor,
+              entry !== undefined ? { joinEntry: entry } : {},
+            );
+          } catch (err) {
+            roomCtx().log.error({ err }, "concentration's cleanup failed");
+          }
+        });
+      }
     for (const [sceneId, patch] of res.prep) {
       for (const [client, sub] of this.prepSubs) if (sub === sceneId) client.send("prep.patch", patch);
     }
@@ -1329,6 +1501,16 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
       for (const p of this.health.list()) client.send("prompt.update", p);
     const cv = this.combatViewers().find((v) => v.key === client);
     if (cv) this.combat.join(cv);
+    // Their open resolution cards, and the campaign's homebrew spells as they may see them.
+    if (cv) this.casts.join(cv);
+    client.send(
+      "content.spells",
+      homebrewFor(
+        this.model,
+        { userId: auth.userId, dm: auth.role === "admin" || auth.role === "dm" },
+        (u) => roomCtx().profiles.get(u)?.displayName ?? "someone",
+      ),
+    );
     client.send("welcome", {
       userId: auth.userId,
       role: auth.role,
@@ -1563,20 +1745,49 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
         }
         continue;
       }
+      // A cast's follow-ups (§8.13): save cards, the VFX, its line.
+      if (e.name === CAST_FOLLOWUP) {
+        try {
+          this.casts.followup(e.payload as CastFollowup, info?.actor.userId ?? "system");
+        } catch (err) {
+          roomCtx().log.error({ err }, "cast follow-up failed");
+        }
+        continue;
+      }
+      // An effect moved (the DM's drag, its caster's, a drift): whoever it now covers (its "enter" trigger).
+      if (e.name === "effect.moved") {
+        try {
+          const m = e.payload as { effectId: string; before: import("@gloam/shared/schemas").AreaShape };
+          this.effects.effectMoved(m.effectId, m.before);
+        } catch (err) {
+          roomCtx().log.error({ err }, "an effect's move follow-up failed");
+        }
+        continue;
+      }
       // Combat's cues: initiative to find, a turn's processing, the summary when it stops.
       if (e.name === COMBAT_COLLECT || e.name === COMBAT_TURN || e.name === COMBAT_STOPPED) {
         try {
           if (e.name === COMBAT_COLLECT)
             this.combat.collect(e.payload as CombatCollect, info?.actor.userId ?? "system");
-          else if (e.name === COMBAT_TURN) this.combat.turn(e.payload as CombatTurn);
-          else this.combat.stopped(e.payload as CombatStopped);
+          else if (e.name === COMBAT_TURN) {
+            this.combat.turn(e.payload as CombatTurn);
+            // The effects' part of a turn: triggers inside them, what ran out, drifts (§8.13).
+            this.effects.turn(e.payload as CombatTurn);
+          } else this.combat.stopped(e.payload as CombatStopped);
         } catch (err) {
           roomCtx().log.error({ err, event: e.name }, "combat follow-up failed");
         }
         continue;
       }
       if (e.name === "token.moved" && "viewersOf" in e.to) {
-        this.deliverMove(e.payload as { id: string; path: { x: number; y: number }[]; durationMs: number });
+        const m = e.payload as { id: string; path: { x: number; y: number }[]; durationMs: number };
+        this.deliverMove(m);
+        // The effects it walked into or through (their "enter" and per-5-ft triggers).
+        try {
+          this.effects.moved(m.id, m.path);
+        } catch (err) {
+          roomCtx().log.error({ err }, "effects after a move failed");
+        }
         continue;
       }
       if ("viewersOf" in e.to) this.toViewersOf(e.to.viewersOf, e.name, e.payload);

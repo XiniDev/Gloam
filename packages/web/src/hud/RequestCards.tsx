@@ -205,7 +205,8 @@ function Card({ rows, compact }: { rows: RequestCard[]; compact: boolean }) {
       <span className="caps block text-12 text-brass">
         The DM asks{rows.length === 1 ? <> · {keepHyphenated(first.targetName)}</> : null}
       </span>
-      <span className="block truncate text-18 font-bold text-bone">{first.label}</span>
+      {/* The card's heading in the display face, as every dialog's and card's (§27.3; critic P8 r1 #31). */}
+      <span className="display block truncate text-22 leading-tight text-bone">{first.label}</span>
     </span>
   );
   if (!open)

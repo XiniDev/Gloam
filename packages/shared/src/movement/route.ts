@@ -50,7 +50,8 @@ export function segmentCost(world: MoveWorld, a: P, b: P, opts: Partial<MoveOpti
     const piece = len * (t1 - t0);
     const at = world.regionsAt(lerp(a, b, (t0 + t1) / 2));
     if (at.difficult) difficultFt += piece;
-    cost += piece * (1 + (at.difficult ? 1 : 0) + (at.swim ? 1 : 0) + extra);
+    // Halved Speed (Spirit Guardians) doubles what each foot costs there, whatever else it costs (§8.13).
+    cost += piece * (1 + (at.difficult ? 1 : 0) + (at.swim ? 1 : 0) + extra) * (at.halved ? 2 : 1);
   }
   return { from: a, to: b, cost, difficultFt };
 }

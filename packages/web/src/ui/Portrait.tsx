@@ -1,14 +1,6 @@
+import type { CSSProperties } from "react";
+import { initialsOf, shortInitialsOf } from "./initials.ts";
 import { WaxSeal } from "./ornaments.tsx";
-
-/** Up to two initials of a name. */
-export const initialsOf = (name: string): string =>
-  name
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((w) => w[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
 
 /**
  * A person's or creature's portrait (SPEC §27.4: circles only for portraits, pips and the dice button): their picture,
@@ -40,18 +32,21 @@ export function Portrait({
       style={{ width: size, height: size, marginRight: dm && sealRoom ? Math.round(size * 0.34) : undefined }}
     >
       <span
-        className="grid h-full w-full place-items-center overflow-hidden rounded-full bg-ink-800 font-caps text-bone"
-        style={{
-          boxShadow: `0 0 0 ${size >= 28 ? 2 : 1.5}px var(--ink-950), 0 0 0 ${(size >= 28 ? 2 : 1.5) + ring}px ${color || "var(--border)"}`,
-          opacity: dim ? 0.45 : 1,
-          fontSize: Math.max(10, Math.round(size * 0.38)),
-        }}
+        className="grid h-full w-full place-items-center overflow-hidden rounded-full bg-ink-800 font-caps leading-none text-bone [font-size:var(--mono)] pointer-coarse:[font-size:max(13px,var(--mono))]"
+        style={
+          {
+            boxShadow: `0 0 0 ${size >= 28 ? 2 : 1.5}px var(--ink-950), 0 0 0 ${(size >= 28 ? 2 : 1.5) + ring}px ${color || "var(--border)"}`,
+            opacity: dim ? 0.45 : 1,
+            // Never under the HUD's 12 px (13 on touch; §27.3, critic P8 r2 B5).
+            ["--mono" as string]: `${Math.max(12, Math.round(size * 0.38))}px`,
+          } as CSSProperties
+        }
         aria-hidden
       >
         {src ? (
           <img src={src} alt="" className="h-full w-full object-cover" draggable={false} />
         ) : (
-          initialsOf(name)
+          <Monogram text={size < 28 ? shortInitialsOf(name) : initialsOf(name)} />
         )}
       </span>
       {dm ? (
@@ -59,6 +54,23 @@ export function Portrait({
           <WaxSeal size={Math.max(14, Math.round(size * 0.56))} label={dm} />
         </span>
       ) : null}
+    </span>
+  );
+}
+
+/** Initials with any figures in the UI face's lining numerals (Cinzel's small figures read "2" as "z"). */
+function Monogram({ text }: { text: string }) {
+  return (
+    <span className="whitespace-nowrap">
+      {text.split(/(\d+)/).map((part, i) =>
+        /^\d+$/.test(part) ? (
+          <span key={i} className="font-ui font-bold tabular">
+            {part}
+          </span>
+        ) : (
+          part
+        ),
+      )}
     </span>
   );
 }

@@ -95,6 +95,17 @@ export interface AssetEntity {
   overrides: { scale?: number; rotationYDeg?: number; offsetY?: number };
 }
 
+/** A resolution card (SPEC §8.13, §29.5): its document is `CastData` (commands/spells.ts). */
+export interface CastEntity {
+  id: string;
+  campaignId: string;
+  sceneId: string | null;
+  status: "open" | "done" | "cancelled";
+  data: import("./commands/castData.ts").CastData;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface EntityMap {
   campaign: CampaignEntity;
   scene: SceneEntity;
@@ -109,6 +120,7 @@ export interface EntityMap {
   template: TemplateEntity;
   content: ContentEntity;
   asset: AssetEntity;
+  cast: CastEntity;
 }
 
 type Row = Record<string, unknown>;
@@ -557,6 +569,27 @@ export const CODECS: { [K in EntityKind]: Codec<K> } = {
       reviewedAt: (r.reviewedAt as number | null) ?? null,
       deletedAt: (r.deletedAt as number | null) ?? null,
       overrides: p(r.overridesJson, {}),
+    }),
+  },
+  cast: {
+    table: t.casts,
+    toRow: (e) => ({
+      id: e.id,
+      campaignId: e.campaignId,
+      sceneId: e.sceneId,
+      status: e.status,
+      dataJson: j(e.data),
+      createdAt: e.createdAt,
+      updatedAt: e.updatedAt,
+    }),
+    fromRow: (r) => ({
+      id: r.id as string,
+      campaignId: r.campaignId as string,
+      sceneId: (r.sceneId as string | null) ?? null,
+      status: r.status as CastEntity["status"],
+      data: p(r.dataJson, {}) as CastEntity["data"],
+      createdAt: r.createdAt as number,
+      updatedAt: r.updatedAt as number,
     }),
   },
 };

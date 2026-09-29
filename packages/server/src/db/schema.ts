@@ -455,6 +455,29 @@ export const dmPrompts = sqliteTable(
   (t) => [index("dm_prompts_campaign_idx").on(t.campaignId, t.status)],
 );
 
+/**
+ * Resolution cards (SPEC §8.13, §29.5): a spell cast, a sheet's attack or an effect's trigger with its targets, rolls
+ * and outcomes until the DM applies or cancels it. The card lives here so a reload, a reconnect or an undo finds it
+ * as it was; the document is `data_json` (engine/commands/spells.ts).
+ */
+export const casts = sqliteTable(
+  "casts",
+  {
+    id: text("id").primaryKey(),
+    campaignId: text("campaign_id")
+      .notNull()
+      .references(() => campaigns.id, { onDelete: "cascade" }),
+    sceneId: text("scene_id"),
+    status: text("status", { enum: ["open", "done", "cancelled"] })
+      .notNull()
+      .default("open"),
+    dataJson: json("data_json").notNull(),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (t) => [index("casts_campaign_idx").on(t.campaignId, t.status)],
+);
+
 export const content = sqliteTable(
   "content",
   {

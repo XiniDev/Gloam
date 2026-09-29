@@ -14,7 +14,8 @@ export type EntityKind =
   | "handout"
   | "template"
   | "content"
-  | "asset";
+  | "asset"
+  | "cast";
 
 export interface Rect {
   x: number;

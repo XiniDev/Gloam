@@ -413,3 +413,32 @@ P1 28/28 · P2 32/32 · P3 16/17 · P4 12/12 · P5 9/9 · P6 14/14 · P7 1/17 ·
 - `pnpm bench`: vision p95 4.5 ms (10), range p95 7.5 ms (30).
 - Next: P8 key screens and the visual critic (≤ 2 rounds); then P9.
 
+
+## 2026-09-29 — P8 visual critic, rounds 1 and 2 (4/10 → 6/10, final round): fixes in; P9 under way
+
+- Round 1's blockers and most majors fixed (tracker fit and "+n", layering of the path past the reach, the feed
+  above the action bar, phone menus — a Tooltip that dropped its child's ref —, phone HUD compaction, monograms,
+  numbered namesakes, the combat summary, the start dialog, the DM's Combat list). Round 2's: the action bar centred in
+  the board's clear width and fitted there in steps (never over the DM panel), the turn banner's settled box as a
+  cover, the path past the budget in --path-over with a still hatch (the journey checks stripes, gaps and stillness),
+  the start dialog's Surprised column, 12-px monograms from one shared `initialsOf`, "Can't move — Grappled" projected by
+  the server and shown in the meter (a stuck drag refused at once, a warning), toasts below whatever HUD is in their
+  column, HP numbers on the bar, custom Begin/Stop/boot/range glyphs, the "+n" disc, dead tokens drained to grey, the
+  range line smoothed and clipped to reachable ground (unit-tested against the geodesic), Settings' Camera first, the
+  phone's newest roll folding to a line, one roll-label grammar. Disputed with reasons (DECISIONS): the focus ring on
+  the Settings gear after Escape; Stand up on the phone bar's second row. The 04 shot's plate under the banner was a
+  software-GL frame caught mid-glide (instrumented: at rest the plate is below its token) — the shot now waits for the
+  glide to settle.
+- P9 so far: shared aoe/rules/protocol for spells; the server's casts (slots, areas with a clear line, the resolution
+  card per reader, NPC saves, damage and apply with resistances, conditions, concentration with its cleanup in the same
+  undo step, triggers as DM cards, effect moves and drift, homebrew and import); the browser's spell browser, cast
+  dialog, targeting, resolution cards, homebrew builder, import dialog, effects and VFX layers; slowing effects in both
+  movement worlds (Web/Spike Growth difficult, Spirit Guardians' halved Speed as doubled cost, spared creatures).
+  Server tests: spells.test.ts (Fireball targets and walls, the views per reader, the DM's add/remove, NPC saves,
+  apply with a save and resistance, cancel/undo refunds, rituals, concentration, the web's cost) and spellVision.test.ts
+  (Darkness, Fog Cloud, See Invisibility, Faerie Fire in the vision engine). Found and fixed on the way: undoing a cast
+  crashed the card push; self-centred areas demanded a placement.
+- ACs: AC-VIS-06, AC-VIS-08, AC-SPL-06 marked. PASSING 154/224.
+- Next: commit P8 round 2 with the P9 work so far once the P8 journeys and shots pass; then P9's journeys (browser
+  filters, a Fireball cast end to end, self spells, the concentration prompt, the 16 effects, 12 VFX presets, the
+  homebrew builder, import, a weapon attack, the cover hint), its key screens, critic, rules-auditor and security review.

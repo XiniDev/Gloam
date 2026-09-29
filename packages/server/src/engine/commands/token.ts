@@ -73,6 +73,25 @@ function inBounds(ctx: CommandCtx, sceneId: string, pos: { x: number; y: number 
   };
 }
 
+/**
+ * A name told apart from the scene's others (§8.6 "Goblin 2", §29.5): a creature placed where one of the same name
+ * already stands takes the next number ("Goblin", "Goblin 2", "Goblin 3"); the first keeps its plain name. Numbers
+ * are part of the name — the tracker, the cards and the log all say the same — and initiative still groups them as
+ * identical (rules/combat.ts ignores a trailing number). `taken` holds names given in the same command.
+ */
+export function numberedName(ctx: CommandCtx, sceneId: string, name: string, taken: string[] = []): string {
+  const base = name.trim().replace(/\s*#?\d+$/, "");
+  const key = base.toLowerCase();
+  const names = [...ctx.model.inScene("token", sceneId).map((t) => t.name), ...taken];
+  let top = 0;
+  for (const n of names) {
+    const m = /^(.*?)\s*#?(\d+)?$/.exec(n.trim());
+    if (!m || (m[1] ?? "").toLowerCase() !== key) continue;
+    top = Math.max(top, m[2] ? Number(m[2]) : 1);
+  }
+  return top === 0 ? name.trim() : `${base} ${top + 1}`;
+}
+
 /** `token.create` — DM places any unit with any values (SPEC §8.5 Creation; Quick Unit, AC-TOK-09). */
 export const tokenCreate: CommandDef<z.infer<typeof TokenCreate>, { tokenId: string }> = {
   type: "token.create",
@@ -105,7 +124,8 @@ export const tokenCreate: CommandDef<z.infer<typeof TokenCreate>, { tokenId: str
       sceneId: p.sceneId,
       actorId: actor?.id ?? null,
       link,
-      name: p.name,
+      // A character's token is the character (its own name); a creature placed beside its twins gets its number.
+      name: link === "linked" ? p.name : numberedName(ctx, p.sceneId, p.name),
       pos: inBounds(ctx, p.sceneId, p.pos),
       elevation: p.elevation,
       rotationDeg: 0,
@@ -388,9 +408,13 @@ export const tokenDuplicate: CommandDef<z.infer<typeof TokenDuplicate>, { tokenI
     const off = p.at ? { x: p.at.x - first.pos.x, y: p.at.y - first.pos.y } : (p.offset ?? { x: 5, y: 5 });
     const ops: Op[] = [];
     const ids: string[] = [];
+    const named: string[] = [];
     for (const t of src) {
+      const name = numberedName(ctx, t.sceneId, t.name, named);
+      named.push(name);
       const copy: TokenEntity = {
         ...clone(t),
+        name,
         id: newId("tok"),
         link: "unlinked",
         stats: t.stats ? clone(t.stats) : null,

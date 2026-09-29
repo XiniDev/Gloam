@@ -173,6 +173,20 @@ export const EffectPropsTemplate = z
       .describe(
         "A creature's Speed is halved while it is inside (Spirit Guardians); distinct from Difficult Terrain",
       ),
+    senses: z
+      .object({
+        darkvision: Ft.optional(),
+        blindsight: Ft.optional(),
+        tremorsense: Ft.optional(),
+        truesight: Ft.optional(),
+      })
+      .strict()
+      .optional()
+      .describe("Senses the creature it's on gains, in feet (Darkvision 150, True Seeing's Truesight 120)"),
+    seeInvisible: z
+      .boolean()
+      .optional()
+      .describe("The creature it's on sees Invisible creatures (See Invisibility)"),
   })
   .strict();
 
@@ -265,6 +279,10 @@ export const SpellSchema = z
         kind: z.enum(["area", "creatures", "self", "point", "object"]),
         count: z.number().int().min(1).max(100).optional(),
         countPerSlot: z.number().int().min(0).max(100).optional(),
+        countAtLevels: z
+          .record(z.enum(["5", "11", "17"]), z.number().int().min(1).max(100))
+          .optional()
+          .describe("A cantrip's count at character levels 5, 11 and 17 (Eldritch Blast's beams)"),
       })
       .strict()
       .optional(),

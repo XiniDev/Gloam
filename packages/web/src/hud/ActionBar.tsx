@@ -1,12 +1,14 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { prefetchDice } from "../dice/throws.ts";
 import { D20Icon } from "../icons/dice.tsx";
+import { useCombat } from "../net/combat.ts";
 import { useTable } from "../net/table.ts";
+import { boardData, useEntities } from "../state/entities.ts";
 import { useUi } from "../state/ui.ts";
 import { Tooltip } from "../ui/Tooltip.tsx";
-import { TurnControls } from "./combat/TurnControls.tsx";
+import { type Density, TurnControls } from "./combat/TurnControls.tsx";
 import { ElevationControl } from "./ElevationControl.tsx";
-import { insetMeasures, useCover, useIsPhone, useMeasuredInset } from "./insets.ts";
+import { insetMeasures, useCover, useHudInsets, useIsPhone, useMeasuredInset } from "./insets.ts";
 import { RangeToggle } from "./RangeToggle.tsx";
 
 const typing = (t: EventTarget | null) => {
@@ -15,7 +17,7 @@ const typing = (t: EventTarget | null) => {
 };
 
 /**
- * The bottom action bar (SPEC §29.3): centred along the bottom — the turn's controls in combat (pips, movement,
+ * The bottom action bar (SPEC §29.3): centred along the bottom of the board's clear area — the turn's controls in combat (pips, movement,
  * Dash, Stand up, Reset, End turn), the selected creature's height, and the dice. A tool with its own options bar
  * owns the bottom edge while it's picked; the tray still opens with D.
  */
@@ -47,22 +49,97 @@ function Bar({ tray }: { tray: boolean }) {
   // Its band along the bottom is the HUD's: the camera frames above it.
   useMeasuredInset("bottom", ref, insetMeasures.bottom);
   useCover("actions", ref);
-  // Above the roll feed (z-40): its questions (Dash anyway?) are the player's to answer.
+  // Centred in the board's clear width — between the toolbar and the dock or its open panel (§29.3), never over them
+  // (critic P8 r2 B1) — and fitted to it: the turn controls step down (a menu for the rest, the portrait alone, two
+  // rows) until the bar fits.
+  const hudLeft = useHudInsets((s) => s.left);
+  const hudRight = useHudInsets((s) => s.right);
+  const [vw, setVw] = useState(() => window.innerWidth);
+  useEffect(() => {
+    const on = () => setVw(window.innerWidth);
+    window.addEventListener("resize", on);
+    return () => window.removeEventListener("resize", on);
+  }, []);
+  const [asking, setAsking] = useState<"dash" | null>(null);
+  const [density, setDensity] = useState<Density>(phone ? 3 : 0);
+  // What sets the bar's natural width: the room, whose turn and what it shows, the selection (the height stepper).
+  const view = useCombat((s) => s.view);
+  const activeId = view.entries[view.activeIndex]?.tokenId ?? "";
+  const t = useEntities((s) => (activeId ? boardData(s).tokens.get(activeId) : undefined));
+  const selection = useUi((s) => s.selection.join());
+  const sig = [
+    phone,
+    vw - hudLeft - hudRight,
+    view.begun,
+    activeId,
+    t?.prone,
+    t?.own?.stuck,
+    t?.hp?.hp,
+    t?.name,
+    selection,
+    asking,
+  ].join("|");
+  const fitted = useRef("");
+  useLayoutEffect(() => {
+    if (phone) {
+      if (density !== 3) setDensity(3);
+      return;
+    }
+    // Something changed: start from the fullest again.
+    if (fitted.current !== sig) {
+      fitted.current = sig;
+      if (density !== 0) {
+        setDensity(0);
+        return;
+      }
+    }
+    const el = ref.current;
+    if (!el || density >= 3) return;
+    const over = [el, ...el.querySelectorAll<HTMLElement>("[data-testid=turn-controls]")].some(
+      (x) => x.scrollWidth > x.clientWidth + 1,
+    );
+    if (over) setDensity((density + 1) as Density);
+  });
+  // Narrow: the height stepper above, the dice and the range toggle in a column beside the turn controls.
+  const stacked = phone || density >= 2;
+  const controls = <TurnControls density={density} asking={asking} setAsking={setAsking} />;
   return (
-    <div className="pointer-events-none absolute bottom-4 left-1/2 z-40 flex -translate-x-1/2 items-end gap-2">
-      {/* The creature's controls in their own panel; the dice button stands on its own, round (no tile round it). */}
-      {/* A phone's width holds the turn controls alone: they take a row of their own above the rest. */}
+    <div
+      className="pointer-events-none absolute bottom-4 z-40 flex justify-center"
+      style={phone ? { left: 12, right: 12 } : { left: hudLeft, right: hudRight }}
+    >
       <div
         ref={ref}
         data-testid="action-bar"
-        className={phone ? "flex flex-col items-center gap-2" : "flex items-center gap-2"}
+        data-density={density}
+        className={
+          stacked
+            ? "flex min-w-0 max-w-full flex-col items-center gap-2"
+            : "flex min-w-0 max-w-full items-center gap-2"
+        }
       >
-        <TurnControls />
-        <div className="flex items-center gap-2">
-          <RangeToggle />
-          <ElevationControl />
-          <DiceButton open={tray} />
-        </div>
+        {stacked ? (
+          <>
+            {/* The height stepper, when a creature that can take one is selected, on a row of its own above. */}
+            <ElevationControl />
+            <div className="flex min-w-0 max-w-full items-end gap-2">
+              {controls}
+              <div className="flex shrink-0 flex-col-reverse items-center gap-2">
+                <DiceButton open={tray} />
+                <RangeToggle />
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            {controls}
+            <div className="flex shrink-0 items-center gap-2">
+              <RangeToggle />
+              <ElevationControl />
+              <DiceButton open={tray} />
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

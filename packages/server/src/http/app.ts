@@ -12,6 +12,7 @@ import { csrfGuard, ok, requestContext, route, sendError } from "./helpers.ts";
 import { adminRoutes } from "./routes/admin.ts";
 import { assetRoutes } from "./routes/assets.ts";
 import { type AuthRouteHooks, authRoutes } from "./routes/auth.ts";
+import { contentRoutes } from "./routes/content.ts";
 import { fontRoutes } from "./routes/fonts.ts";
 
 const NONCE_PLACEHOLDER = "__GLOAM_NONCE__";
@@ -119,6 +120,8 @@ export async function buildHttpApp(
     next();
   });
 
+  // A spell import carries whole spell texts (up to a thousand): its own body limit, read before the API's 256 kB one.
+  app.use("/api/v1/content/spells\\:import", express.json({ limit: "4mb" }));
   app.use(
     "/api",
     express.json({
@@ -152,6 +155,7 @@ export async function buildHttpApp(
   adminRoutes(app, ctx);
   assetRoutes(app, ctx);
   fontRoutes(app, ctx);
+  contentRoutes(app, ctx);
 
   app.get(
     "/api/health",

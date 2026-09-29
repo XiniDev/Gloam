@@ -109,6 +109,23 @@ export function setOverlaySpots(id: string, full: Placed | null, compact: Placed
 /** The overlay's target visibility (1 shown, 0 hidden by clutter). */
 export const overlayClear = (id: string): number => entries.get(id)?.clear ?? 1;
 
+/**
+ * Plates a planned move's path runs under (critic P8 r1 #15): they fade back while the drag lasts, so the line and its
+ * marks read through them (moving them away mid-drag would be worse — the board jumping under the pointer).
+ */
+let crossed: ReadonlySet<string> = new Set();
+export function setPathCrossed(ids: ReadonlySet<string>): void {
+  crossed = ids;
+}
+export const overlayCrossed = (id: string): boolean => crossed.has(id);
+
+/** Tests: every plate off (a measurement of the tokens' own geometry, whatever the plates' layout would show). */
+let off = false;
+export function setOverlaysOff(on: boolean): void {
+  off = on;
+}
+export const overlaysOff = (): boolean => off;
+
 /** Whether the overlay shows compact (its bar alone). */
 export const overlayCompact = (id: string): boolean => entries.get(id)?.compact ?? false;
 
@@ -719,6 +736,12 @@ function place(
         if (leaders.some((l) => crosses(l, q))) return false;
         if (leader && leaders.some((l) => segmentsCross(l, leader))) return false;
         if (tier === 2) return true;
+        // A full plate never lies across its own creature's art: only the compact bar may sit on its own face (the
+        // "on" spot), and the compact steps come before a full plate's looser tiers (critic P8 r1 #16).
+        if (!compact) {
+          const own = bodies.find((o) => o.id === it.id);
+          if (own && bodyDepth(q, own.parts) > RIM_PX) return false;
+        }
         if (tier === 1) return !covers(q, ownish(k) ? BURIED : ASIDE);
         // Its leader over another creature points at that one — up to where it reaches its own token (over its own
         // art, a creature behind it is hidden by it), and all the way for one standing in front of it.

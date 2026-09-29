@@ -1,5 +1,6 @@
 import { useFrame } from "@react-three/fiber";
 import { useEffect, useMemo, useReducer } from "react";
+import { Vector3 } from "three";
 import { useBoardCovers, useHudObstacles } from "../../hud/insets.ts";
 import { useTable } from "../../net/table.ts";
 import { boardData, useBoard, useEntities } from "../../state/entities.ts";
@@ -8,7 +9,8 @@ import { boardApi } from "../boardApi.ts";
 import { setTokenPositionLookup } from "../CameraRig.tsx";
 import { again } from "../frames.ts";
 import { ghostTokens, onGhosts } from "../move/anims.ts";
-import { layoutOverlays } from "./declutter.ts";
+import { useMove } from "../move/drag.ts";
+import { layoutOverlays, plateRects, setPathCrossed } from "./declutter.ts";
 import { HpFxLayer } from "./hpFx.tsx";
 import { TokenObject } from "./TokenObject.tsx";
 
@@ -18,6 +20,11 @@ import { TokenObject } from "./TokenObject.tsx";
  */
 const STACK_FT = 0.01;
 const STACK_LEVELS = 8;
+
+const v = new Vector3();
+/** Whether any plate is faded under a path now (so the fade is lifted once the drag ends). */
+let crossedCount = 0;
+const overlayCrossedAny = () => crossedCount > 0;
 
 /** Every token the viewer may see (SPEC §24.1 TokensLayer). */
 export function TokensLayer() {
@@ -60,6 +67,31 @@ export function TokensLayer() {
       ...Object.values(useBoardCovers.getState().rects),
     ].map((r) => ({ x0: r.left, y0: r.top, x1: r.right, y1: r.bottom }));
     if (layoutOverlays(state.camera, state.size.width, state.size.height, covered)) again();
+    // The planned move's line under a plate: that plate fades back while the drag lasts.
+    const preview = useMove.getState().preview;
+    const hit = new Set<string>();
+    if (preview && preview.points.length > 1) {
+      const samples: { x: number; y: number }[] = [];
+      let prev: { x: number; y: number } | null = null;
+      for (const p of preview.points) {
+        v.set(p.x, 0.1, p.y).project(state.camera);
+        const at = { x: ((v.x + 1) / 2) * state.size.width, y: ((1 - v.y) / 2) * state.size.height };
+        if (prev) {
+          const n = Math.min(120, Math.ceil(Math.hypot(at.x - prev.x, at.y - prev.y) / 6));
+          for (let k = 1; k <= n; k++)
+            samples.push({ x: prev.x + ((at.x - prev.x) * k) / n, y: prev.y + ((at.y - prev.y) * k) / n });
+        } else samples.push(at);
+        prev = at;
+      }
+      // The mover's own too: mid-drag its ghost and the label say where it's going.
+      for (const { id, r } of plateRects())
+        if (samples.some((q) => q.x > r.x0 && q.x < r.x1 && q.y > r.y0 && q.y < r.y1)) hit.add(id);
+    }
+    if (hit.size || overlayCrossedAny()) {
+      setPathCrossed(hit);
+      crossedCount = hit.size;
+      again();
+    }
   });
 
   return (

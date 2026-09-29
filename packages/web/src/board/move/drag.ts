@@ -11,13 +11,13 @@ import {
   truncateAtCollision,
   withCreatureSpaces,
 } from "@gloam/shared/movement";
-import { incapacitates } from "@gloam/shared/rules";
+import { incapacitates, stuckName } from "@gloam/shared/rules";
 import type { TokenView } from "@gloam/shared/state";
 import { create } from "zustand";
 import { useCombat } from "../../net/combat.ts";
 import { request, send, useTable } from "../../net/table.ts";
 import { boardData, useEntities } from "../../state/entities.ts";
-import { toast } from "../../ui/Toast.tsx";
+import { useToasts } from "../../ui/Toast.tsx";
 import { wake } from "../frames.ts";
 import { clientMoveWorld } from "./world.ts";
 
@@ -100,10 +100,24 @@ function optionsFor(t: TokenView) {
   };
 }
 
+const REFUSED = "move-refused";
+
+/** A move refused: a warning, not an error (critic P8 r2 N12) — replaced by the next, cleared by the next try. */
+function refused(title: string, body?: string): void {
+  useToasts.getState().push({ kind: "warning", title, body, key: REFUSED });
+}
+
 /** Starts planning a move for a token (drag start, or a controllable token selected with click-to-move). */
 export function beginMove(tokenId: string, opts: { dragging: boolean }): void {
   const t = tokenOf(tokenId);
   if (!t) return;
+  // A creature that can't move at all says why at once (§8.6: "Can't move — Grappled"), instead of planning a move
+  // the server would refuse; the DM's moves are never held.
+  if (t.own?.stuck && !isDm()) {
+    if (opts.dragging) refused(`Can't move — ${stuckName(t.own.stuck)}`);
+    return;
+  }
+  useToasts.getState().dismissKey(REFUSED);
   useMove.setState({
     ...EMPTY,
     tokenId,
@@ -165,7 +179,7 @@ export async function commitMove(): Promise<void> {
   try {
     await request("move.commit", { tokenId: t.id, points: p.points.slice(0, 256) });
   } catch (e) {
-    toast.danger("Couldn't move there", (e as Error).message);
+    refused("Couldn't move there", (e as Error).message);
   } finally {
     useMove.setState({ sending: false });
     wake();
@@ -258,6 +272,11 @@ function withSpaces(base: MoveWorld, t: TokenView): MoveWorld {
   return world;
 }
 
+/** Who a world is built for: swimmers treat water as ground; an effect's designated creatures skip its slowing. */
+function creatureOf(t: TokenView): { swim: boolean; id: string } {
+  return { swim: (t.own?.speedSwim ?? 0) > 0, id: t.id };
+}
+
 /**
  * What the movement range overlay measures for a token (§8.6, §16.6): the world a move of its would be planned in
  * (with the creatures' spaces where they shape a player's move), its clearance and crawl, and its budget — the
@@ -266,7 +285,7 @@ function withSpaces(base: MoveWorld, t: TokenView): MoveWorld {
 export function rangeInputs(
   t: TokenView,
 ): { world: MoveWorld; rc: number; crawl: boolean; budget: number } | null {
-  const base = clientMoveWorld({ swim: false });
+  const base = clientMoveWorld(creatureOf(t));
   if (!base || !t.own) return null;
   const world = spacesApply() ? withSpaces(base, t) : base;
   const left = budgetFor(t);
@@ -282,7 +301,7 @@ function compute(): void {
     return;
   }
   const opts = optionsFor(t);
-  const base = clientMoveWorld({ swim: false });
+  const base = clientMoveWorld(creatureOf(t));
   if (!base) return;
   const world = spacesApply() ? withSpaces(base, t) : base;
   let preview: MovePreview;

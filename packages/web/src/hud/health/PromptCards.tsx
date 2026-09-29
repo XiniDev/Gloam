@@ -1,16 +1,13 @@
 import type { DmPromptView, HpPreviewRow } from "@gloam/shared/protocol";
 import { ChevronUp } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { audio } from "../../audio/engine.ts";
-import { previewHp, promptArrived, resolvePrompt, useHealth } from "../../net/health.ts";
+import { useEffect, useMemo, useState } from "react";
+import { previewHp, resolvePrompt, useHealth } from "../../net/health.ts";
 import { useTable } from "../../net/table.ts";
-import { useUi } from "../../state/ui.ts";
 import { Button, IconButton } from "../../ui/Button.tsx";
 import { Segmented } from "../../ui/controls.tsx";
 import { WaxSeal } from "../../ui/ornaments.tsx";
 import { toast } from "../../ui/Toast.tsx";
 import { keepHyphenated } from "../../ui/text.tsx";
-import { PHONE_BOTTOM_BAND, useCover, useHudInsets, useIsPhone, useObstacle } from "../insets.ts";
 import { choiceOnly, type Decisions, PreviewRow } from "./HpDialog.tsx";
 
 /**

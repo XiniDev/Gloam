@@ -276,6 +276,21 @@ export function effectiveSpeed(
   return Math.max(0, speed - 5 * Math.max(0, Math.min(6, Math.trunc(exhaustion))));
 }
 
+/** The condition holding a creature's Speed at 0 (Grappled, Restrained…), if any (§8.6: "Can't move — Grappled"). */
+export function speedZeroCondition(conditions: readonly string[]): string | null {
+  return conditions.find((id) => (CONDITIONS as Record<string, ConditionInfo>)[id]?.speedZero) ?? null;
+}
+
+/**
+ * Why a creature can't move at all, as the table says it (§8.6 "Can't move — Grappled"): from the code its view carries
+ * — "locked" (the DM's lock), "speed0" (a Speed of 0 by other means), or the condition holding it.
+ */
+export function stuckName(code: string): string {
+  if (code === "locked") return "Locked by the DM";
+  if (code === "speed0") return "Speed 0";
+  return statusName(code);
+}
+
 /** Whether any condition incapacitates (it breaks concentration, §8.11). */
 export const incapacitates = (conditions: readonly string[]): boolean =>
   conditions.some((id) => (CONDITIONS as Record<string, ConditionInfo>)[id]?.incapacitated);

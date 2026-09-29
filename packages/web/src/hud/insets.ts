@@ -91,13 +91,32 @@ export function useMeasuredInset(
     const ro = new ResizeObserver(update);
     ro.observe(el);
     window.addEventListener("resize", update);
+    const off = relayout(update);
     return () => {
       ro.disconnect();
+      off();
       window.removeEventListener("resize", update);
       mine.delete(id);
       settle(key);
     };
   }, [key, ref, measure, enabled]);
+}
+
+/**
+ * Runs `update` on the frame after any inset changes: HUD pieces place themselves by the insets (a phone's tools
+ * button under the tracker), so one moving can move another without resizing it — which a ResizeObserver never sees.
+ * Measuring settles: a box that hasn't changed changes nothing.
+ */
+function relayout(update: () => void): () => void {
+  let frame = 0;
+  const off = useHudInsets.subscribe(() => {
+    cancelAnimationFrame(frame);
+    frame = requestAnimationFrame(update);
+  });
+  return () => {
+    cancelAnimationFrame(frame);
+    off();
+  };
 }
 
 export const insetMeasures = {
@@ -161,9 +180,27 @@ export const useHudObstacles = create<{
 /** Room kept round a floating HUD piece (px): what's framed beside it never crowds it. */
 const OBSTACLE_GAP = 16;
 
-/** An element's box with a gap round it, or null while it isn't laid out. */
-function boxOf(el: HTMLElement, gap: number): ScreenArea | null {
-  const r = el.getBoundingClientRect();
+/**
+ * An element's box with a gap round it, or null while it isn't laid out. `settled`: where it comes to rest — its layout
+ * box, without its own transform (an entrance mid-spring, scaled and lifted, would otherwise register short of it).
+ */
+function boxOf(el: HTMLElement, gap: number, settled = false): ScreenArea | null {
+  let r: { left: number; top: number; right: number; bottom: number; width: number; height: number } =
+    el.getBoundingClientRect();
+  const parent = settled ? (el.offsetParent as HTMLElement | null) : null;
+  if (parent) {
+    const p = parent.getBoundingClientRect();
+    const left = p.left + parent.clientLeft + el.offsetLeft;
+    const top = p.top + parent.clientTop + el.offsetTop;
+    r = {
+      left,
+      top,
+      right: left + el.offsetWidth,
+      bottom: top + el.offsetHeight,
+      width: el.offsetWidth,
+      height: el.offsetHeight,
+    };
+  }
   if (r.width <= 0 || r.height <= 0) return null;
   return {
     left: Math.round(r.left - gap),
@@ -205,9 +242,17 @@ export const useBoardCovers = create<{
   },
 }));
 
-/** Keeps an element's box registered as covering the board while it's on screen. */
-export function useCover(name: string, ref: RefObject<HTMLElement | null>, enabled = true): void {
-  useBox(useBoardCovers, name, ref, enabled, COVER_GAP);
+/**
+ * Keeps an element's box registered as covering the board while it's on screen — for one that enters with a transform
+ * (`settled`), the box it comes to rest in, from its first frame.
+ */
+export function useCover(
+  name: string,
+  ref: RefObject<HTMLElement | null>,
+  enabled = true,
+  settled = false,
+): void {
+  useBox(useBoardCovers, name, ref, enabled, COVER_GAP, settled);
 }
 
 /** Room kept between a name plate and the HUD (px). */
@@ -219,24 +264,27 @@ function useBox(
   ref: RefObject<HTMLElement | null>,
   enabled: boolean,
   gap: number,
+  settled = false,
 ): void {
   useLayoutEffect(() => {
     const el = ref.current;
-    if (el && enabled) store.getState().put(name, boxOf(el, gap));
+    if (el && enabled) store.getState().put(name, boxOf(el, gap, settled));
   });
   useEffect(() => {
     const el = ref.current;
     if (!el || !enabled) return;
-    const update = () => store.getState().put(name, boxOf(el, gap));
+    const update = () => store.getState().put(name, boxOf(el, gap, settled));
     const ro = new ResizeObserver(update);
     ro.observe(el);
     window.addEventListener("resize", update);
+    const off = relayout(update);
     return () => {
       ro.disconnect();
+      off();
       window.removeEventListener("resize", update);
       store.getState().put(name, null);
     };
-  }, [store, name, ref, enabled, gap]);
+  }, [store, name, ref, enabled, gap, settled]);
 }
 
 /**

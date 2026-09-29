@@ -156,9 +156,14 @@ export const MESSAGE_RATES = {
   "hp.preview": rate(8, 16),
   // Combat (§8.12): the DM's "Roll NPCs" / "Roll the rest".
   "combat.rollRemaining": rate(2, 4),
+  // Spells (§8.13): rolls from a card (a few attacks in a row), the NPCs' saves, the homebrew list.
+  "cast.roll": rate(4, 8),
+  "cast.npcSaves": rate(1, 3),
+  "content.spells": rate(1, 3),
 } as const satisfies Record<string, RateSpec>;
 
 export * from "./combat.ts";
 export * from "./commands.ts";
 export * from "./health.ts";
 export * from "./sheets.ts";
+export * from "./spells.ts";

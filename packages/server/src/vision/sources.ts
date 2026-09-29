@@ -1,14 +1,8 @@
-import { circlePolygon, type P, type Seg } from "@gloam/shared/geometry";
+import { areaHeight, areaPolygon, resolveArea } from "@gloam/shared/aoe";
+import type { P, Seg } from "@gloam/shared/geometry";
 import { effectiveTokenState } from "@gloam/shared/rules";
 import type { EffectEntity, TokenEntity } from "@gloam/shared/schemas";
-import {
-  type Creature,
-  facingAngle,
-  type Obscurer,
-  type Viewer,
-  type VisionLight,
-  type VisionWall,
-} from "@gloam/shared/vision";
+import type { Creature, Obscurer, Viewer, VisionLight, VisionWall } from "@gloam/shared/vision";
 import type { CampaignModel } from "../engine/model.ts";
 
 /**
@@ -64,6 +58,40 @@ export function effectWalls(
       out.push({ a: sh.points[i] as P, b: sh.points[(i + 1) % sh.points.length] as P, id: e.id });
   }
   return out;
+}
+
+/**
+ * Effects that slow movement in a scene (§8.13: Web and Spike Growth make difficult terrain; Spirit Guardians halves
+ * Speed), as the movement world's cost regions — leaving out those that spare `creatureId` (its designated creatures).
+ */
+export function slowingEffects(model: CampaignModel, sceneId: string, creatureId?: string): EffectEntity[] {
+  return model
+    .inScene("effect", sceneId)
+    .filter(
+      (e) =>
+        e.shape.kind !== "wall" &&
+        (e.props.difficult === true || e.props.speedHalved === true) &&
+        !(creatureId && e.props.exempt?.includes(creatureId)),
+    );
+}
+
+export function effectSlow(
+  model: CampaignModel,
+  effects: EffectEntity[],
+): { id: string; poly: P[]; difficult: boolean; halved: boolean }[] {
+  return effects.flatMap((e) => {
+    const fp = footprint(e, model);
+    return fp
+      ? [
+          {
+            id: e.id,
+            poly: fp.poly,
+            difficult: e.props.difficult === true,
+            halved: e.props.speedHalved === true,
+          },
+        ]
+      : [];
+  });
 }
 
 export interface EffectInputs {
@@ -122,78 +150,50 @@ function centre(poly: P[]): P {
   return { x: x / poly.length, y: y / poly.length };
 }
 
-/** An area's footprint on the table (circles as 48-gons) and vertical extent. */
+/**
+ * An effect's footprint on the table (circles as 48-gons that contain them) and its vertical extent — from the shared
+ * area resolver (aoe/effects.ts), so what blocks sight is exactly what the board draws and the triggers test.
+ */
 function footprint(e: EffectEntity, model: CampaignModel): { poly: P[]; zMin: number; zMax: number } | null {
-  const sh = e.shape;
-  switch (sh.kind) {
-    case "sphere":
-      return {
-        poly: circlePolygon(sh.origin, sh.radius, 48, true),
-        zMin: sh.origin.z - sh.radius,
-        zMax: sh.origin.z + sh.radius,
-      };
-    case "cylinder":
-      return {
-        poly: circlePolygon(sh.origin, sh.radius, 48, true),
-        zMin: sh.origin.z,
-        zMax: sh.origin.z + sh.height,
-      };
-    case "emanation": {
-      const t = model.get("token", sh.sourceTokenId);
-      if (!t) return null;
-      return {
-        poly: circlePolygon(t.pos, sh.distance + t.sizeFt / 2, 48, true),
-        zMin: t.elevation - sh.distance,
-        zMax: t.elevation + sh.distance + t.sizeFt,
-      };
-    }
-    case "cube": {
-      const a = facingAngle(sh.dirDeg);
-      const f = { x: Math.cos(a), y: Math.sin(a) };
-      const s = { x: -f.y, y: f.x };
-      const back = sh.originOnFace ? 0 : -sh.size / 2;
-      const pts = [
-        [back, -sh.size / 2],
-        [back + sh.size, -sh.size / 2],
-        [back + sh.size, sh.size / 2],
-        [back, sh.size / 2],
-      ].map(([u, v]) => ({
-        x: sh.origin.x + f.x * (u as number) + s.x * (v as number),
-        y: sh.origin.y + f.y * (u as number) + s.y * (v as number),
-      }));
-      return { poly: pts, zMin: sh.origin.z, zMax: sh.origin.z + sh.size };
-    }
-    case "line": {
-      const a = facingAngle(sh.dirDeg);
-      const f = { x: Math.cos(a), y: Math.sin(a) };
-      const s = { x: -f.y * (sh.width / 2), y: f.x * (sh.width / 2) };
-      const o = sh.origin;
-      const end = { x: o.x + f.x * sh.length, y: o.y + f.y * sh.length };
-      return {
-        poly: [
-          { x: o.x + s.x, y: o.y + s.y },
-          { x: end.x + s.x, y: end.y + s.y },
-          { x: end.x - s.x, y: end.y - s.y },
-          { x: o.x - s.x, y: o.y - s.y },
-        ],
-        zMin: o.z - sh.width / 2,
-        zMax: o.z + sh.width / 2,
-      };
-    }
-    case "cone": {
-      const a = facingAngle(sh.dirDeg);
-      const half = Math.atan(0.5);
-      const pts: P[] = [{ x: sh.origin.x, y: sh.origin.y }];
-      for (let k = 0; k <= 8; k++) {
-        const t = a - half + (2 * half * k) / 8;
-        const r = sh.length / Math.cos(t - a);
-        pts.push({ x: sh.origin.x + Math.cos(t) * r, y: sh.origin.y + Math.sin(t) * r });
+  const area = resolveArea(e.shape, (id) => {
+    const t = model.get("token", id);
+    return t ? { pos: t.pos, r: t.sizeFt / 2, z: t.elevation, height: Math.max(t.sizeFt, 2.5) } : null;
+  });
+  if (!area) return null;
+  const poly = areaPolygon(area, 48);
+  if (!poly) return null;
+  const [zMin, zMax] = areaHeight(area);
+  return { poly, zMin, zMax };
+}
+
+/**
+ * What the effects on a creature give or do to it (§8.13, AC-VIS-08): senses (Darkvision, True Seeing), seeing the
+ * Invisible (See Invisibility), an outline that keeps it from being Invisible (Faerie Fire).
+ */
+export function effectsOn(
+  model: CampaignModel,
+  t: TokenEntity,
+): {
+  senses: Partial<Record<"darkvision" | "blindsight" | "tremorsense" | "truesight", number>>;
+  seeInvisible: boolean;
+  outlined: boolean;
+} {
+  const out = {
+    senses: {} as Partial<Record<"darkvision" | "blindsight" | "tremorsense" | "truesight", number>>,
+    seeInvisible: false,
+    outlined: false,
+  };
+  for (const e of model.inScene("effect", t.sceneId)) {
+    if (e.attachedTokenId !== t.id) continue;
+    if (e.props.seeInvisible) out.seeInvisible = true;
+    if (e.props.outline) out.outlined = true;
+    for (const [k, v] of Object.entries(e.props.senses ?? {}))
+      if (typeof v === "number") {
+        const key = k as keyof typeof out.senses;
+        out.senses[key] = Math.max(out.senses[key] ?? 0, v);
       }
-      return { poly: pts, zMin: sh.origin.z - sh.length / 2, zMax: sh.origin.z + sh.length / 2 };
-    }
-    default:
-      return null;
   }
+  return out;
 }
 
 /** A token as a viewer: its senses and the conditions that take them away (Blinded, Unconscious). */
@@ -201,12 +201,19 @@ export function tokenViewer(model: CampaignModel, t: TokenEntity): Viewer {
   const actor = t.actorId ? model.get("actor", t.actorId) : undefined;
   const { stats, status } = effectiveTokenState(t, actor);
   const conditions = status.conditions.map((c) => c.id as string);
+  // Senses a spell on it gives (the better of its own and the spell's), and See Invisibility.
+  const fx = effectsOn(model, t);
+  const senses = { ...stats.senses };
+  for (const [k, v] of Object.entries(fx.senses)) {
+    const key = k as keyof typeof senses;
+    senses[key] = Math.max(senses[key], v ?? 0);
+  }
   return {
     x: t.pos.x,
     y: t.pos.y,
     elevation: t.elevation,
-    senses: stats.senses,
-    seeInvisible: status.seeInvisible,
+    senses,
+    seeInvisible: status.seeInvisible || fx.seeInvisible,
     blinded: conditions.includes("blinded"),
     unconscious: conditions.includes("unconscious"),
     flying: t.moveMode === "fly" || t.elevation > 0,
@@ -225,7 +232,8 @@ export function tokenCreature(model: CampaignModel, t: TokenEntity): Creature {
     elevation: t.elevation,
     sizeFt: t.sizeFt,
     invisible: conditions.includes("invisible"),
-    outlined: status.outlined,
+    // Faerie Fire's glow on it (an effect on the creature), as well as a DM's mark.
+    outlined: status.outlined || effectsOn(model, t).outlined,
     flying: t.moveMode === "fly" || t.elevation > 0,
   };
 }

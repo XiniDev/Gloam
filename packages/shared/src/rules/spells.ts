@@ -149,10 +149,21 @@ export function scaledFormula(
   return out;
 }
 
-/** How many creatures a targeted spell takes at a slot: its count, plus `countPerSlot` per level above. */
-export function targetCount(spell: Pick<Spell, "level" | "targeting">, slot: number | null): number {
+/**
+ * How many creatures a targeted spell takes: its count, plus `countPerSlot` per slot level above its own; a cantrip's
+ * at the caster's character level (Eldritch Blast's beams).
+ */
+export function targetCount(
+  spell: Pick<Spell, "level" | "targeting">,
+  slot: number | null,
+  casterLevel = 1,
+): number {
   const t = spell.targeting;
-  const base = t?.count ?? 1;
+  let base = t?.count ?? 1;
+  for (const at of ["5", "11", "17"] as const) {
+    const n = t?.countAtLevels?.[at];
+    if (n && casterLevel >= Number(at)) base = n;
+  }
   return base + Math.max(0, (slot ?? spell.level) - spell.level) * (t?.countPerSlot ?? 0);
 }
 
@@ -161,7 +172,9 @@ export function targetCount(spell: Pick<Spell, "level" | "targeting">, slot: num
  * or a hit of its own); a spell with a save picks each creature once.
  */
 export const repeatTargets = (spell: Pick<Spell, "attack" | "save" | "damage" | "targeting">): boolean =>
-  !spell.save && Boolean(spell.attack || spell.damage?.length) && (spell.targeting?.count ?? 1) > 1;
+  !spell.save &&
+  Boolean(spell.attack || spell.damage?.length) &&
+  ((spell.targeting?.count ?? 1) > 1 || Boolean(spell.targeting?.countAtLevels));
 
 /** An area's size at a slot: the primary dimension grown by `scaling.perSlot` per level above the spell's (Fog Cloud). */
 export function areaAtSlot(area: SpellArea, spellLevel: number, slot: number | null): SpellArea {

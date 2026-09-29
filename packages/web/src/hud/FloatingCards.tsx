@@ -6,6 +6,7 @@ import { audio } from "../audio/engine.ts";
 import { bodyRects } from "../board/tokens/declutter.ts";
 import { promptArrived } from "../net/health.ts";
 import { requestArrived } from "../net/sheets.ts";
+import { useSpells } from "../net/spells.ts";
 import { useUi } from "../state/ui.ts";
 import { Button, IconButton } from "../ui/Button.tsx";
 import { PromptCard, usePromptList } from "./health/PromptCards.tsx";
@@ -18,6 +19,7 @@ import {
   useObstacle,
 } from "./insets.ts";
 import { RequestGroupCard, useRequestGroups } from "./RequestCards.tsx";
+import { ResolutionCard } from "./spells/ResolutionCard.tsx";
 
 /** Below this width a screen shows two cards at once, then "Show n more" (critic P7 r2 #7). */
 const WIDE = 1200;
@@ -74,6 +76,7 @@ interface Item {
 export function FloatingCards() {
   const groups = useRequestGroups();
   const prompts = usePromptList();
+  const casts = useSpells((st) => st.casts);
   const phone = useIsPhone();
   const dockOpen = useUi((s) => s.dock !== null);
   const away = phone && dockOpen;
@@ -84,6 +87,13 @@ export function FloatingCards() {
         at: seenAt(`p:${p.id}`),
         subjects: p.tokenId ? [p.tokenId] : [],
         node: <PromptCard key={`p:${p.id}`} p={p} compact={false} />,
+      })),
+      // Resolution cards (§8.13): the DM's whole card, the caster's rolls — about the creatures they're aimed at.
+      ...[...casts.values()].map((c) => ({
+        key: `c:${c.id}`,
+        at: seenAt(`c:${c.id}`),
+        subjects: c.targets.map((t) => t.id),
+        node: <ResolutionCard key={`c:${c.id}`} c={c} />,
       })),
       ...groups.map((rows: RequestCard[]) => {
         const first = rows[0] as RequestCard;
@@ -96,7 +106,7 @@ export function FloatingCards() {
       }),
     ];
     return out.sort((a, b) => a.at - b.at || (a.key < b.key ? -1 : 1));
-  }, [groups, prompts]);
+  }, [groups, prompts, casts]);
   const shown = items.length > 0 && !away;
 
   const top = useHudInsets((s) => s.top);

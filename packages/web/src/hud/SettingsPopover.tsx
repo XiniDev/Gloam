@@ -9,6 +9,7 @@ import { type DeviceSettings, useSettings } from "../state/settings.ts";
 import { BottomSheet } from "../ui/BottomSheet.tsx";
 import { Button, IconButton } from "../ui/Button.tsx";
 import { Segmented, Slider, Toggle } from "../ui/controls.tsx";
+import { ScrollFade } from "../ui/ScrollFade.tsx";
 import { DiceSkinPicker } from "./DiceSkinPicker.tsx";
 import { useHudInsets, useIsPhone, useObstacle } from "./insets.ts";
 
@@ -114,6 +115,24 @@ export function SettingsPopover() {
           </Button>
         </Section>
       ) : null}
+      {/* The camera first: two short switches, the one a turn in combat is about in view on a phone without a scroll
+          (critic P8 r2 I7) — the dice's materials below them. */}
+      {!dm ? (
+        <Section title="Camera">
+          <Toggle
+            label="Let the DM move my camera"
+            description="The DM's Spotlight can pull your view to a spot on the map."
+            checked={s.dmCanMoveCamera}
+            onChange={(dmCanMoveCamera) => s.update({ dmCanMoveCamera })}
+          />
+          <Toggle
+            label="Focus camera on my turn"
+            description="In combat, the view glides to your creature as its turn begins."
+            checked={s.focusOnMyTurn}
+            onChange={(focusOnMyTurn) => s.update({ focusOnMyTurn })}
+          />
+        </Section>
+      ) : null}
       {role !== "spectator" ? (
         <Section title="Your dice">
           <DiceSkinPicker />
@@ -175,22 +194,6 @@ export function SettingsPopover() {
           onChange={(colorBlind) => s.update({ colorBlind })}
         />
       </Section>
-      {!dm ? (
-        <Section title="Camera">
-          <Toggle
-            label="Let the DM move my camera"
-            description="The DM's Spotlight can pull your view to a spot on the map."
-            checked={s.dmCanMoveCamera}
-            onChange={(dmCanMoveCamera) => s.update({ dmCanMoveCamera })}
-          />
-          <Toggle
-            label="Focus camera on my turn"
-            description="In combat, the view glides to your creature as its turn begins."
-            checked={s.focusOnMyTurn}
-            onChange={(focusOnMyTurn) => s.update({ focusOnMyTurn })}
-          />
-        </Section>
-      ) : null}
     </>
   );
   return (
@@ -234,10 +237,11 @@ export function SettingsPopover() {
             // Beside the dock's rail: over nothing it would half-hide (a rail button showing at its rounded corner read
             // as a glitch). The dice come to rest clear of it. On the page itself: the top bar's backdrop filter would
             // otherwise be its frame.
-            className="panel fixed z-50 flex w-[min(340px,calc(100vw-24px))] flex-col overflow-y-auto outline-none"
+            className="panel fixed z-50 flex w-[min(340px,calc(100vw-24px))] flex-col overflow-hidden outline-none"
             style={{ right: place.right, top: place.top, maxHeight: `calc(100dvh - ${place.top + 16}px)` }}
           >
-            {content}
+            {/* Taller than the screen: its edges fade where there's more (never a toggle sliced in half). */}
+            <ScrollFade testId="settings-more-below">{content}</ScrollFade>
           </div>,
           document.body,
         )

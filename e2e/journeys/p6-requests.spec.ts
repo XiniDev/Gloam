@@ -138,7 +138,7 @@ test.describe("P6 — roll requests (DICE-06)", () => {
     await expect(cardFor(dave)).toHaveAttribute("data-state", "rolled");
     await expect.poll(async () => (await feed(dave)).length).toBeGreaterThan(before);
     const daveRoll = (await feed(dave))[0] as Roll;
-    expect(daveRoll.label).toBe("Dexterity save · Thorin");
+    expect(daveRoll.label).toBe("Thorin · Dexterity save");
     // His card shows his number, but not how it went (the DC is hidden).
     await expect(cardFor(dave)).toContainText(String(daveRoll.total));
     await expect(cardFor(dave)).not.toContainText(/success|failure/);

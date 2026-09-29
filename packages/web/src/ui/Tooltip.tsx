@@ -3,6 +3,7 @@ import {
   isValidElement,
   type ReactElement,
   type ReactNode,
+  type Ref,
   useEffect,
   useId,
   useRef,
@@ -52,17 +53,37 @@ export function Tooltip({
   );
 
   if (!isValidElement(children)) return <>{children}</>;
+  // The trigger keeps its own ref and handlers (a Menu measures its button through its ref): composed, not replaced.
+  const own = children.props as {
+    ref?: Ref<HTMLElement>;
+    onPointerEnter?: (e: unknown) => void;
+    onPointerLeave?: (e: unknown) => void;
+    onFocus?: (e: unknown) => void;
+    onBlur?: (e: unknown) => void;
+  };
   const child = cloneElement(children as ReactElement<Record<string, unknown>>, {
     ref: (el: HTMLElement | null) => {
       ref.current = el;
+      if (typeof own.ref === "function") own.ref(el);
+      else if (own.ref) (own.ref as { current: HTMLElement | null }).current = el;
     },
-    onPointerEnter: show,
-    onPointerLeave: hide,
+    onPointerEnter: (e: unknown) => {
+      own.onPointerEnter?.(e);
+      show();
+    },
+    onPointerLeave: (e: unknown) => {
+      own.onPointerLeave?.(e);
+      hide();
+    },
     // Keyboard focus only: a dialog focusing its close button, or a click, isn't a request for the tooltip.
     onFocus: (e: { currentTarget: HTMLElement }) => {
+      own.onFocus?.(e);
       if (e.currentTarget.matches(":focus-visible")) show();
     },
-    onBlur: hide,
+    onBlur: (e: unknown) => {
+      own.onBlur?.(e);
+      hide();
+    },
     "aria-describedby": open ? id : undefined,
   });
   return (

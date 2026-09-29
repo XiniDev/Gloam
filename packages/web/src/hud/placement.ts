@@ -46,8 +46,9 @@ export function boardObstacles(): Rect[] {
 
 /**
  * Where a label of size w × h goes beside a thing on screen (a disc at (cx, cy) of radius r, px): to its right, left,
- * above or below — the first that stays on screen and covers neither the thing nor anything in `avoid`; failing that,
- * the one that covers least.
+ * above or below, or at a corner — the first that stays on screen and covers neither the thing, anything in `avoid`,
+ * nor any of `points` (a path's line, sampled); failing that, the one that covers least (a point of the path costs as
+ * much as a sizeable area: the line is what the label is about).
  */
 export function placeBeside(
   cx: number,
@@ -56,15 +57,21 @@ export function placeBeside(
   w: number,
   h: number,
   avoid: readonly Rect[],
+  points: readonly { x: number; y: number }[] = [],
 ): { x: number; y: number } {
   const vw = typeof window === "undefined" ? 1e4 : window.innerWidth;
   const vh = typeof window === "undefined" ? 1e4 : window.innerHeight;
   const thing: Rect = { x0: cx - r, y0: cy - r, x1: cx + r, y1: cy + r };
+  const d = (r + GAP) * Math.SQRT1_2;
   const spots = [
     { x: cx + r + GAP, y: cy - h / 2 },
     { x: cx - r - GAP - w, y: cy - h / 2 },
     { x: cx - w / 2, y: cy - r - GAP - h },
     { x: cx - w / 2, y: cy + r + GAP },
+    { x: cx + d, y: cy - d - h },
+    { x: cx - d - w, y: cy - d - h },
+    { x: cx + d, y: cy + d },
+    { x: cx - d - w, y: cy + d },
   ];
   let best = spots[0] as { x: number; y: number };
   let bestCost = Number.POSITIVE_INFINITY;
@@ -75,6 +82,8 @@ export function placeBeside(
     const box: Rect = { x0: x, y0: y, x1: x + w, y1: y + h };
     let cost = area(box, thing) * 4;
     for (const a of avoid) cost += area(box, a);
+    for (const p of points)
+      if (p.x > box.x0 - 4 && p.x < box.x1 + 4 && p.y > box.y0 - 4 && p.y < box.y1 + 4) cost += 400;
     if (cost === 0) return { x, y };
     if (cost < bestCost) {
       bestCost = cost;
@@ -90,7 +99,7 @@ export function placeBeside(
  */
 export function useBesideLabel(
   ref: RefObject<HTMLElement | null>,
-  anchor: () => { cx: number; cy: number; r: number } | null,
+  anchor: () => { cx: number; cy: number; r: number; points?: { x: number; y: number }[] } | null,
 ): void {
   const get = useRef(anchor);
   get.current = anchor;
@@ -98,7 +107,7 @@ export function useBesideLabel(
     const el = ref.current;
     const a = get.current();
     if (!el || !a) return;
-    const at = placeBeside(a.cx, a.cy, a.r, el.offsetWidth, el.offsetHeight, boardObstacles());
+    const at = placeBeside(a.cx, a.cy, a.r, el.offsetWidth, el.offsetHeight, boardObstacles(), a.points);
     const left = `${Math.round(at.x)}px`;
     const top = `${Math.round(at.y)}px`;
     if (el.style.left !== left) el.style.left = left;

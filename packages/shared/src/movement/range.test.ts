@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { P } from "../geometry/index.ts";
-import { rangeAt, rangeField, rangeLimit } from "./range.ts";
+import { rangeAt, rangeDisplay, rangeField, rangeLimit } from "./range.ts";
 import { MoveWorld } from "./world.ts";
 
 const bounds = { minX: -100, minY: -100, maxX: 100, maxY: 100 };
@@ -67,6 +67,68 @@ describe("movement range field (§16.6, AC-MOV-10: the limit within 1 ft of the 
     const behind = rangeLimit(f).filter((p) => p.x > 10 + RC + 0.5 && p.y < C.y);
     expect(behind.length).toBeGreaterThan(10);
     expect(worst(rangeLimit(f), truth, budget)).toBeLessThan(1);
+  });
+
+  it("as drawn (rangeDisplay): the limit within 1 ft, no rougher than the field along the seam where the straight front meets the one round a wall's end, and the cost carried on past the reachable ground (no false limit at its edge)", () => {
+    const C = { x: 10, y: 5 };
+    const world = new MoveWorld({ walls: [{ a: { x: 10, y: -90 }, b: C }], bounds });
+    const budget = 30;
+    const f = rangeField(world, o, { rc: RC, budget });
+    const d = rangeDisplay(world, f, RC);
+    const cell = (p: P) => Math.floor((p.y - f.y0) / f.h) * f.cols + Math.floor((p.x - f.x0) / f.h);
+    // The drawn limit: where the drawn cost crosses the budget on ground a creature's centre can reach (the band the
+    // display paints flush to the wall's face has no geodesic to compare with).
+    const drawn = rangeLimit({ ...f, cost: d.cost }).filter(
+      (p) => (d.reach[cell(p)] as number) > 0.5 && Number.isFinite(f.cost[cell(p)] as number),
+    );
+    const raw = rangeLimit(f);
+    // Truth: straight where the creature sees past the wall's clearance, else round its end (tangent, arc, tangent).
+    const truth = (p: P) => {
+      const steps = 200;
+      let clear = true;
+      for (let i = 0; i <= steps && clear; i++) {
+        const q = { x: (p.x * i) / steps, y: (p.y * i) / steps };
+        const dy = q.y > C.y ? q.y - C.y : q.y < -90 ? q.y + 90 : 0;
+        if (Math.hypot(q.x - 10, dy) < RC - 1e-6) clear = false;
+      }
+      if (clear) return Math.hypot(p.x, p.y);
+      const dO = Math.hypot(C.x, C.y);
+      const dP = Math.hypot(p.x - C.x, p.y - C.y);
+      const ang = (a: P) => {
+        const v = Math.atan2(a.y - C.y, a.x - C.x);
+        return v < 0 ? v + 2 * Math.PI : v;
+      };
+      const a1 = ang(o);
+      const a2 = ang(p);
+      const down = (3 * Math.PI) / 2;
+      const lo = Math.min(a1, a2);
+      const hi = Math.max(a1, a2);
+      const theta = down > lo && down < hi ? 2 * Math.PI - (hi - lo) : hi - lo;
+      const arc = Math.max(0, theta - Math.acos(RC / dO) - Math.acos(RC / dP));
+      return Math.sqrt(dO * dO - RC * RC) + Math.sqrt(dP * dP - RC * RC) + RC * arc;
+    };
+    expect(drawn.length).toBeGreaterThan(100);
+    expect(worst(drawn, truth, budget)).toBeLessThan(1);
+    // The seam: the shadow line from the creature past the corner's clearance circle, out to the limit.
+    const along = { x: C.x / Math.hypot(C.x, C.y), y: C.y / Math.hypot(C.x, C.y) };
+    const nearSeam = (p: P) =>
+      Math.abs(p.x * along.y - p.y * along.x) < 4 && p.x * along.x + p.y * along.y > 12;
+    const rms = (pts: P[]) =>
+      Math.sqrt(pts.reduce((sum, p) => sum + (truth(p) - budget) ** 2, 0) / Math.max(1, pts.length));
+    const seamDrawn = drawn.filter(nearSeam);
+    expect(seamDrawn.length).toBeGreaterThan(3);
+    expect(rms(seamDrawn)).toBeLessThanOrEqual(rms(raw.filter(nearSeam)) + 0.02);
+    // Every cell beside reachable ground carries a cost on (the texture never climbs to "unreachable" there).
+    for (let r = 1; r < f.rows - 1; r++)
+      for (let c = 1; c < f.cols - 1; c++) {
+        const k = r * f.cols + c;
+        if (Number.isFinite(f.cost[k] as number)) continue;
+        let beside = false;
+        for (let dr = -1; dr <= 1; dr++)
+          for (let dc = -1; dc <= 1; dc++)
+            if (Number.isFinite(f.cost[(r + dr) * f.cols + c + dc] as number)) beside = true;
+        if (beside) expect(Number.isFinite(d.cost[k] as number)).toBe(true);
+      }
   });
 
   it("into difficult terrain: twice the cost there, the cheapest path bending where it enters", () => {

@@ -34,6 +34,40 @@ describe("a scene's movement world (§16.1)", () => {
     }
   });
 
+  it("effects slow the ground: Web's difficult terrain doubles, Spirit Guardians' halved Speed doubles on top (§8.13)", () => {
+    const web = { x: 0, y: 40 };
+    const sq = (o: { x: number; y: number }) => [
+      o,
+      { x: o.x + 100, y: o.y },
+      { x: o.x + 100, y: o.y + 20 },
+      { x: o.x, y: o.y + 20 },
+    ];
+    const line = (y: number) => [
+      { x: 10, y },
+      { x: 30, y },
+    ];
+    const world = buildMoveWorld({
+      walls: [],
+      zones: [],
+      bounds,
+      slow: [
+        { poly: sq(web), difficult: true, halved: false },
+        { circle: { c: { x: 20, y: 80 }, r: 15 }, difficult: false, halved: true },
+        { poly: sq({ x: 0, y: 0 }), difficult: true, halved: false },
+        { poly: sq({ x: 0, y: 0 }), difficult: false, halved: true },
+      ],
+    });
+    // Open ground, then web, then guardians, then both: 20, 40, 40, 80.
+    expect(pathCost(world, line(30), medium).cost).toBeCloseTo(20, 5);
+    expect(pathCost(world, line(50), medium).cost).toBeCloseTo(40, 5);
+    expect(pathCost(world, line(80), medium).cost).toBeCloseTo(40, 5);
+    expect(pathCost(world, line(10), medium).cost).toBeCloseTo(80, 5);
+    // Straight through the guardians' ring costs 36 + 30 = 66; the pathfinder finds the cheaper way round.
+    const r = route(world, { x: 2, y: 80 }, { x: 38, y: 80 }, [], medium);
+    expect(r?.cost).toBeLessThan(60);
+    expect(r?.points.length).toBeGreaterThan(2);
+  });
+
   it("impassable zones are walls around their outline; difficult terrain doubles; water only for non-swimmers", () => {
     const zones = [
       { id: "pit", kind: "impassable", shape: { kind: "circle" as const, x: 50, y: 50, r: 10 } },

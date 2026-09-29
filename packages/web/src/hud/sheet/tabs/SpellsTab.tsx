@@ -1,7 +1,11 @@
 import { ABILITIES } from "@gloam/shared";
-import type { DerivedKey } from "@gloam/shared/schemas";
+import type { DerivedKey, Spell } from "@gloam/shared/schemas";
 import { Fragment, useState } from "react";
+import { allSpells, loadSrdSpells, useSpells } from "../../../net/spells.ts";
 import { toast } from "../../../ui/Toast.tsx";
+import { CastDialog, type CastRequest } from "../../spells/CastDialog.tsx";
+import { SpellBrowserDialog } from "../../spells/SpellBrowserDialog.tsx";
+import { casterTokenOf } from "../../spells/useCaster.ts";
 import { overrideDerived, type SheetCtx } from "../context.ts";
 import { DerivedValue, NumberField, Pips, RollButton, SectionTitle } from "../primitives.tsx";
 import { type AbilityKey, abilityName, signed } from "../sheetActions.ts";
@@ -10,14 +14,16 @@ import { AddButton, RemoveButton } from "./OverviewTab.tsx";
 const LEVEL = ["Cantrips", "1st", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th", "9th"];
 
 /**
- * Spells (§8.10): the casting ability with its save DC and attack bonus (derived, overridable), slot pips per level
- * and pact slots, spells by level with prepare toggles and Cast (spends a slot of the spell's level; its effects
- * arrive with spells, P9) and a spell-attack roll.
+ * Spells (§8.10, §8.13): the casting ability with its save DC and attack bonus (derived, overridable), slot pips per
+ * level and pact slots, spells by level with prepare toggles and Cast (the cast dialog: the slot, then the board and
+ * the resolution card), a spell-attack roll, and spells added from the table's list or by name.
  */
 export function SpellsTab({ ctx }: { ctx: SheetCtx }) {
   const sc = ctx.sheet.core.spellcasting;
   const ro = !ctx.canEdit;
   const [newSpell, setNewSpell] = useState({ name: "", level: 1 });
+  const [casting, setCasting] = useState<CastRequest | null>(null);
+  const [browsing, setBrowsing] = useState(false);
   if (!sc)
     return (
       <div className="flex flex-col items-start gap-2 text-14 text-paper-ink">
@@ -47,17 +53,46 @@ export function SpellsTab({ ctx }: { ctx: SheetCtx }) {
     );
   const d = ctx.derived;
   const override = (key: DerivedKey, v: number | undefined) => overrideDerived(ctx, key, v);
-  const cast = (level: number, name: string) => {
-    if (level === 0) return;
-    const i = sc.slots.findIndex((s) => s.level === level && s.used < s.max);
+  // Cast (§8.13 Casting flow): the spell from the table's list — the slot, the board, the card. A spell the list
+  // doesn't know (typed in by hand) spends its slot as before, and says so.
+  const cast = async (entry: { name: string; level: number; contentId?: string | undefined }) => {
+    let spells: Spell[] = [];
+    try {
+      spells = allSpells({ srd: await loadSrdSpells(), homebrew: useSpells.getState().homebrew });
+    } catch {
+      // the list couldn't be loaded: the slot, by hand
+    }
+    const spell =
+      spells.find((x) => x.id === entry.contentId) ??
+      spells.find((x) => x.name.toLowerCase() === entry.name.trim().toLowerCase());
+    if (spell) {
+      const token = casterTokenOf(ctx.actor.id);
+      setCasting({
+        spell,
+        casterTokenId: token?.id ?? null,
+        casterName: ctx.sheet.core.name,
+        spellcasting: sc,
+        casterLevel: Math.max(1, d.values.level),
+      });
+      return;
+    }
+    if (entry.level === 0) {
+      toast.info(`${entry.name} isn't in the spell list`, "Add it from the list to cast it on the board.");
+      return;
+    }
+    const i = sc.slots.findIndex((x) => x.level === entry.level && x.used < x.max);
     if (i < 0) {
       toast.warning(
-        `No ${LEVEL[level]}-level slots left`,
-        `${name} needs one — take a rest or cast it with a higher slot.`,
+        `No ${LEVEL[entry.level]}-level slots left`,
+        `${entry.name} needs one — take a rest or cast it with a higher slot.`,
       );
       return;
     }
     void ctx.set(["core", "spellcasting", "slots", i, "used"], (sc.slots[i]?.used ?? 0) + 1);
+    toast.info(
+      `${entry.name}: a ${LEVEL[entry.level]}-level slot spent`,
+      "It isn't in the spell list, so there's nothing to aim.",
+    );
   };
   const byLevel = new Map<number, { spell: (typeof sc.spells)[number]; i: number }[]>();
   for (const [i, spell] of sc.spells.entries())
@@ -154,10 +189,11 @@ export function SpellsTab({ ctx }: { ctx: SheetCtx }) {
                     <span className="w-5" />
                   )}
                   <span className="min-w-0 flex-1 truncate">{spell.name}</span>
-                  {level > 0 && !ro ? (
+                  {!ro ? (
                     <button
                       type="button"
-                      onClick={() => cast(level, spell.name)}
+                      data-testid="cast-spell"
+                      onClick={() => void cast(spell)}
                       // A paper-secondary button (wax stays for danger and seals).
                       className="h-7 min-h-[var(--touch-min)] rounded-[var(--radius-control)] border border-paper-ink/35 px-2.5 text-13 font-semibold text-paper-ink hover:border-paper-ink/60 hover:bg-parchment-deep"
                     >
@@ -269,9 +305,43 @@ export function SpellsTab({ ctx }: { ctx: SheetCtx }) {
         )}
       </div>
 
+      <CastDialog req={casting} onClose={() => setCasting(null)} />
+      <SpellBrowserDialog
+        open={browsing}
+        onClose={() => setBrowsing(false)}
+        title={`Add spells to ${ctx.sheet.core.name}`}
+        actions={(s) =>
+          sc.spells.some((x) => x.contentId === s.id || x.name.toLowerCase() === s.name.toLowerCase()) ? (
+            <span className="text-13 italic text-paper-muted">On the sheet</span>
+          ) : (
+            <button
+              type="button"
+              onClick={() =>
+                void ctx.set(
+                  ["core", "spellcasting", "spells"],
+                  [...sc.spells, { name: s.name, level: s.level, prepared: false, contentId: s.id }],
+                )
+              }
+              className="h-8 min-h-[var(--touch-min)] rounded-[var(--radius-control)] border border-paper-ink/35 px-3 text-13 font-semibold text-paper-ink hover:border-paper-ink/60 hover:bg-parchment-deep"
+            >
+              Add to the sheet
+            </button>
+          )
+        }
+      />
       {ro ? null : (
         <>
-          <SectionTitle action={<AddButton label="Add the spell" onClick={addSpell} />}>
+          <SectionTitle
+            action={
+              <button
+                type="button"
+                onClick={() => setBrowsing(true)}
+                className="min-h-[var(--touch-min)] text-13 text-paper-muted underline decoration-dotted hover:text-wax"
+              >
+                From the spell list…
+              </button>
+            }
+          >
             Add a spell
           </SectionTitle>
           <div className="flex items-center gap-1.5">
@@ -295,6 +365,7 @@ export function SpellsTab({ ctx }: { ctx: SheetCtx }) {
                 </option>
               ))}
             </select>
+            <AddButton label="Add the spell" onClick={addSpell} />
           </div>
         </>
       )}

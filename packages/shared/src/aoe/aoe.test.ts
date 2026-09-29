@@ -93,7 +93,7 @@ describe("areas of effect (§17)", () => {
     ]);
     // A short one covering only the centre and one side: the other side's points are in the open.
     expect(affected(blast, [behind], [wall(8, -3, 8, 0.5)])[0]?.affected).toBe(true);
-    // A window (it blocks sight, not movement) doesn't stop an area.
+    // A curtain (it blocks sight, not movement) doesn’t stop an area; glass does (a window blocks movement).
     expect(affected(blast, [behind], [{ ...wall(8, -10, 8, 10), blocksMove: false }])[0]?.affected).toBe(
       true,
     );

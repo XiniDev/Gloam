@@ -71,7 +71,9 @@ export interface RollRequest {
     /** A Hit Die to spend on a short rest (its character; one die a card). */
     | { kind: "hitDie"; die: string; actorId: string }
     /** Initiative in a combat (§8.12): its answers go into the order; the surprised roll with disadvantage. */
-    | { kind: "initiative"; combatId: string; surprised: string[] };
+    | { kind: "initiative"; combatId: string; surprised: string[] }
+    /** A spell's save (§8.13 Resolution card): its answers go onto the cast's card. */
+    | { kind: "castSave"; castId: string };
 }
 
 /** The formula a request asks of everyone, with its `@` references (resolved per target). */

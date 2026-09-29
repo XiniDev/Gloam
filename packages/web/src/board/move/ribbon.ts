@@ -4,7 +4,8 @@ import { BufferAttribute, type BufferGeometry, Color, ShaderMaterial } from "thr
 
 /**
  * The movement path line (SPEC §8.6): a ribbon on the floor, 0.6 ft wide, with dashes flowing toward the
- * destination — verdigris, a double dash through difficult terrain, a faint ember line when there's no way there.
+ * destination — verdigris, a double dash through difficult terrain; past the budget (or with no way there) a still
+ * hatch in --path-over.
  * The geometry is a mitred triangle strip carrying, per vertex, the arc length (for the dashes) and whether that
  * stretch is difficult; the shader animates the dashes.
  */
@@ -103,7 +104,7 @@ void main() {
 
 const FRAG = /* glsl */ `
 uniform float uTime; uniform vec3 uColor; uniform vec3 uEdge; uniform float uOpacity; uniform float uLength;
-uniform float uSolid;
+uniform float uSolid; uniform float uHatch; uniform float uHalf;
 varying float vAlong; varying float vDiff; varying float vSide;
 void main() {
   // Dashes 1.2 ft long every 2 ft, flowing toward the destination.
@@ -114,14 +115,22 @@ void main() {
   float twin = step(0.35, across) * step(across, 0.95);
   float body = mix(dash, dash * twin, vDiff);
   body = max(body, uSolid);
+  // Past the budget (§8.6, §27.2): a still 45° hatch between two edge rules instead of the flowing dash — a
+  // pattern, not only a hue, so the colour-blind palette's split never rests on colour alone.
+  float stripe = step(fract((vAlong + vSide * uHalf) / 0.55), 0.45);
+  float rules = step(0.72, across);
+  body = mix(body, max(stripe, rules), uHatch);
   // Fade in over the first foot and out over the last, so the ends are soft.
   float ends = smoothstep(0.0, 1.0, vAlong) * smoothstep(0.0, 0.6, uLength - vAlong);
   float edge = smoothstep(0.75, 1.0, across);
   vec3 col = mix(uColor, uEdge, edge * 0.5);
   gl_FragColor = vec4(col, body * uOpacity * ends);
+  // Out in the output's colour space, as three's own materials are: without it the linear colour reads dark and
+  // oversaturated beside the HUD's --path-ok (critic P8 r1 #25).
+  #include <colorspace_fragment>
 }`;
 
-export function createRibbonMaterial(color: string, edge: string): ShaderMaterial {
+export function createRibbonMaterial(color: string, edge: string, hatch = false): ShaderMaterial {
   return new ShaderMaterial({
     vertexShader: VERT,
     fragmentShader: FRAG,
@@ -134,6 +143,8 @@ export function createRibbonMaterial(color: string, edge: string): ShaderMateria
       uOpacity: { value: 0.95 },
       uLength: { value: 1 },
       uSolid: { value: 0 },
+      uHatch: { value: hatch ? 1 : 0 },
+      uHalf: { value: RIBBON_WIDTH_FT / 2 },
     },
   });
 }

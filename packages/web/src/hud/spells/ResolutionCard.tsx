@@ -1,0 +1,513 @@
+import type { CastTargetView, CastView } from "@gloam/shared/protocol";
+import { ChevronDown, ChevronUp, X } from "lucide-react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
+import { D20Icon } from "../../icons/dice.tsx";
+import {
+  castApply,
+  castCancel,
+  castClose,
+  castNpcSaves,
+  castRevealDc,
+  castRoll,
+  castSet,
+  castSkip,
+  castTarget,
+} from "../../net/spells.ts";
+import { Button, IconButton } from "../../ui/Button.tsx";
+import { toast } from "../../ui/Toast.tsx";
+import { keepHyphenated } from "../../ui/text.tsx";
+
+const ABILITY: Record<string, string> = {
+  str: "STR",
+  dex: "DEX",
+  con: "CON",
+  int: "INT",
+  wis: "WIS",
+  cha: "CHA",
+};
+const COVER: Record<string, string> = {
+  half: "half cover (+2)",
+  threeQuarters: "¾ cover (+5)",
+  total: "total cover",
+};
+const STEP_LABEL = {
+  targets: "Targets",
+  attacks: "Attacks",
+  saves: "Saves",
+  damage: "Damage",
+  apply: "Apply",
+} as const;
+
+const act = (p: Promise<unknown>, what: string) => void p.catch((e: Error) => toast.danger(what, e.message));
+
+/**
+ * A resolution card (SPEC §8.13 Resolution card, §29.5; AC-SPL-04/05/12/13): what was cast (or swung) and at whom —
+ * the DM's whole card: its steps, the save with its DC (hidden from players until shown) and "Roll all NPC saves", the
+ * damage rolled or entered, a row per creature (its save or hit, what it takes, full / half / none, its resistances —
+ * each toggleable — conditions to tick, the final number to edit, its HP before and after; one cut off by a wall is
+ * "blocked", added back by hand), the cover hint, Skip / Apply / Apply all / Cancel & refund. The caster's card has
+ * their rolls — attacks per target, the damage — and Cancel before anything's applied; others see a line in the feed.
+ */
+export function ResolutionCard({ c }: { c: CastView }) {
+  const dm = c.can.edit;
+  const [open, setOpen] = useState<string | null>(null);
+  const waiting = c.targets.filter((t) => t.state === "in");
+  const npcSavesLeft = dm && c.save ? waiting.some((t) => !t.pc && t.save?.total === undefined) : false;
+  const rolled = c.damage?.per === "cast" ? c.damage.roll : null;
+  return (
+    <li
+      className="panel pointer-events-auto flex flex-col gap-2 border-brass/60 p-3 shadow-[var(--shadow-float)] motion-safe:animate-[rise-in_var(--dur-base)_var(--ease-out)_both]"
+      data-testid="resolution-card"
+      data-cast={c.id}
+      aria-label={`${c.name}: resolution`}
+    >
+      <header className="flex items-start gap-2">
+        <span className="min-w-0 flex-1">
+          <span className="caps block text-12 text-brass">
+            {c.subtitle} · {keepHyphenated(c.casterName)}
+          </span>
+          <span className="display block truncate text-22 leading-tight text-bone">{c.name}</span>
+        </span>
+        {dm ? (
+          <IconButton label="Close the card" onClick={() => act(castClose(c.id), "Couldn't close it")}>
+            <X size={16} />
+          </IconButton>
+        ) : null}
+      </header>
+      {dm ? (
+        <ol className="flex flex-wrap items-center gap-1 text-12 text-muted" aria-label="Steps">
+          {c.steps.map((s, i) => (
+            <li key={s} className="flex items-center gap-1">
+              {i ? <span aria-hidden>→</span> : null}
+              <span className={i === 0 ? "text-bone" : ""}>
+                {STEP_LABEL[s]}
+                {s === "targets" ? ` ${waiting.length}` : ""}
+              </span>
+            </li>
+          ))}
+        </ol>
+      ) : null}
+      {c.save ? (
+        <Row>
+          <span className="min-w-0 flex-1 text-13 text-bone">
+            <span className="font-bold">{ABILITY[c.save.ability]} save</span>
+            {c.save.dc !== undefined ? (
+              <span className="text-muted">
+                {" "}
+                · DC {c.save.dc}
+                {dm ? (c.save.revealed ? " (shown)" : " (hidden from players)") : ""}
+              </span>
+            ) : null}
+            <span className="text-muted">
+              {c.save.onSuccess === "half"
+                ? " · half on a success"
+                : c.save.onSuccess === "none"
+                  ? " · none on a success"
+                  : ""}
+            </span>
+          </span>
+          {dm && c.save.dc !== undefined ? (
+            <Button
+              size="S"
+              variant="ghost"
+              onClick={() => act(castRevealDc(c.id, !c.save?.revealed), "Couldn't change that")}
+            >
+              {c.save.revealed ? "Hide DC" : "Show DC"}
+            </Button>
+          ) : null}
+          {npcSavesLeft ? (
+            <Button
+              size="S"
+              variant="secondary"
+              icon={<D20Icon size={14} />}
+              onClick={() => act(castNpcSaves(c.id), "Couldn't roll them")}
+            >
+              Roll NPC saves
+            </Button>
+          ) : null}
+        </Row>
+      ) : null}
+      {c.damage ? (
+        <Row>
+          <span className="min-w-0 flex-1 text-13 text-bone">
+            <span className="font-bold">{c.damage.healing ? "Healing" : "Damage"}</span>{" "}
+            <span className="mono text-12 text-muted">{c.damage.formula}</span>
+            {rolled ? (
+              <span className="ml-1.5 text-bone" data-testid="cast-rolled">
+                · rolled <span className="tabular font-bold">{rolled.total}</span>
+                {rolled.entered ? " (entered)" : ""}
+              </span>
+            ) : null}
+          </span>
+          {c.damage.per === "cast" && !rolled && c.can.roll ? <DamageRoll c={c} /> : null}
+        </Row>
+      ) : null}
+      <ul className="flex flex-col divide-y divide-line/60" aria-label="Targets">
+        {c.targets.map((t) => (
+          <TargetRow
+            key={t.key}
+            c={c}
+            t={t}
+            dm={dm}
+            open={open === t.key}
+            onToggle={() => setOpen((o) => (o === t.key ? null : t.key))}
+          />
+        ))}
+      </ul>
+      {c.coverNote ? (
+        <p className="text-12 text-muted" data-testid="cover-note">
+          {c.coverNote}
+        </p>
+      ) : null}
+      <footer className="flex flex-wrap items-center justify-end gap-2 pt-1">
+        {c.can.cancel ? (
+          <Button size="S" variant="ghost" onClick={() => act(castCancel(c.id), "Couldn't cancel it")}>
+            {c.slot ? "Cancel & refund slot" : "Cancel"}
+          </Button>
+        ) : null}
+        {dm && waiting.length ? (
+          <Button size="S" variant="primary" onClick={() => act(castApply(c.id), "Couldn't apply it")}>
+            {waiting.length === 1 ? "Apply" : "Apply all"}
+          </Button>
+        ) : null}
+      </footer>
+    </li>
+  );
+}
+
+function Row({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-[var(--radius-control)] bg-raised/60 px-2.5 py-1.5">
+      {children}
+    </div>
+  );
+}
+
+/** Roll the damage (or healing) — or enter a number (a physical roll, the DM's say). */
+function DamageRoll({ c, targetId }: { c: CastView; targetId?: string }) {
+  const [entering, setEntering] = useState(false);
+  const [v, setV] = useState("");
+  const input = useRef<HTMLInputElement>(null);
+  // The field takes the focus when it opens (Enter… was the request to type a number).
+  useEffect(() => {
+    if (entering) input.current?.focus();
+  }, [entering]);
+  if (entering)
+    return (
+      <span className="flex items-center gap-1">
+        <input
+          ref={input}
+          aria-label="Damage total"
+          inputMode="numeric"
+          value={v}
+          onChange={(e) => setV(e.target.value.replace(/\D/g, "").slice(0, 5))}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && v) {
+              act(
+                castRoll(c.id, "damage", { ...(targetId ? { targetId } : {}), entered: Number(v) }),
+                "Couldn't enter it",
+              );
+              setEntering(false);
+            }
+            if (e.key === "Escape") setEntering(false);
+          }}
+          className="tabular h-8 w-16 rounded-[var(--radius-control)] border border-line bg-ink-900 text-center text-14 text-bone focus:border-brass focus:outline-none"
+        />
+        <Button
+          size="S"
+          variant="primary"
+          disabled={!v}
+          onClick={() => {
+            act(
+              castRoll(c.id, "damage", { ...(targetId ? { targetId } : {}), entered: Number(v) }),
+              "Couldn't enter it",
+            );
+            setEntering(false);
+          }}
+        >
+          Enter
+        </Button>
+      </span>
+    );
+  return (
+    <span className="flex items-center gap-1">
+      <Button
+        size="S"
+        variant="secondary"
+        icon={<D20Icon size={14} />}
+        onClick={() => act(castRoll(c.id, "damage", targetId ? { targetId } : {}), "Couldn't roll it")}
+      >
+        Roll
+      </Button>
+      <Button size="S" variant="ghost" onClick={() => setEntering(true)}>
+        Enter…
+      </Button>
+    </span>
+  );
+}
+
+function TargetRow({
+  c,
+  t,
+  dm,
+  open,
+  onToggle,
+}: {
+  c: CastView;
+  t: CastTargetView;
+  dm: boolean;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  const saved = t.save;
+  const saveChip =
+    c.save && saved ? (
+      saved.pending ? (
+        <span className="text-12 text-muted" data-testid="save-waiting">
+          waiting…
+        </span>
+      ) : saved.total !== undefined ? (
+        <span
+          className={`tabular text-13 font-bold ${saved.success ? "text-[var(--hp-high)]" : "text-ember"}`}
+          data-testid="save-result"
+        >
+          {saved.autoFail ? "fails" : saved.total} {saved.success ? "✓" : "✗"}
+        </span>
+      ) : null
+    ) : null;
+  const atk = t.attack;
+  const attackChip = c.attack ? (
+    atk?.total !== undefined ? (
+      <span
+        className={`tabular text-13 font-bold ${atk.crit ? "text-brass-bright" : atk.hit === false ? "text-ember" : atk.hit ? "text-[var(--hp-high)]" : "text-bone"}`}
+        data-testid="attack-result"
+      >
+        {atk.total}
+        {dm && atk.hit !== undefined && atk.hit !== null ? (atk.hit ? " hit" : " miss") : ""}
+        {atk.crit ? " crit" : ""}
+      </span>
+    ) : c.can.roll && t.state === "in" ? (
+      <Button
+        size="S"
+        variant="secondary"
+        icon={<D20Icon size={13} />}
+        onClick={() => act(castRoll(c.id, "attack", { targetId: t.key }), "Couldn't roll it")}
+      >
+        Attack
+      </Button>
+    ) : null
+  ) : null;
+  if (t.state === "blocked" || t.state === "removed")
+    return (
+      <li
+        className="flex items-center gap-2 py-1.5 text-13 text-muted"
+        data-testid="cast-target"
+        data-token={t.id}
+        data-state={t.state}
+      >
+        <span className="min-w-0 flex-1 truncate">
+          {keepHyphenated(t.name)}{" "}
+          <span className="text-12">{t.state === "blocked" ? "· blocked by a wall" : "· left out"}</span>
+        </span>
+        {dm ? (
+          <Button
+            size="S"
+            variant="ghost"
+            onClick={() => act(castTarget(c.id, t.key, true), "Couldn't add it")}
+          >
+            {t.state === "blocked" ? "Add anyway" : "Add back"}
+          </Button>
+        ) : null}
+      </li>
+    );
+  const done = t.state === "applied" || t.state === "skipped";
+  const num = t.final ?? t.computed;
+  return (
+    <li
+      className={`flex flex-col gap-1 py-1.5 ${done ? "opacity-60" : ""}`}
+      data-testid="cast-target"
+      data-token={t.id}
+      data-state={t.state}
+    >
+      <div className="flex items-center gap-2">
+        <span className="min-w-0 flex-1 truncate text-14 text-bone">
+          {keepHyphenated(t.name)}
+          {t.times > 1 ? <span className="text-muted"> ×{t.times}</span> : null}
+          {t.cover !== "none" ? (
+            <span className="ml-1 text-12 text-brass" title={`Cover hint (§17.5): ${COVER[t.cover]}`}>
+              ◐ {t.cover === "threeQuarters" ? "¾" : t.cover === "half" ? "½" : "total"}
+            </span>
+          ) : null}
+        </span>
+        {saveChip}
+        {attackChip}
+        {c.damage?.per === "target" && t.state === "in" && (!c.attack || atk?.hit) ? (
+          t.roll ? (
+            <span className="tabular text-12 text-muted">rolled {t.roll.total}</span>
+          ) : c.can.roll ? (
+            <DamageRoll c={c} targetId={t.key} />
+          ) : null
+        ) : null}
+        {dm && c.damage && num !== undefined ? (
+          <FinalInput c={c} t={t} value={num} edited={t.final !== undefined} />
+        ) : null}
+        {done ? <span className="caps text-12 text-fog">{t.state}</span> : null}
+        {dm && !done ? (
+          <IconButton
+            label={open ? `Less on ${t.name}` : `More on ${t.name}`}
+            aria-expanded={open}
+            onClick={onToggle}
+          >
+            {open ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+          </IconButton>
+        ) : null}
+      </div>
+      {dm && t.hp && !done ? (
+        <span className="tabular pl-0.5 text-12 text-muted" data-testid="hp-change">
+          {c.damage?.healing ? "HP" : t.outcome === "none" ? "no damage" : `takes ${t.outcome}`} · HP{" "}
+          {t.hp.now} → {t.hp.after}
+        </span>
+      ) : null}
+      {dm && open && !done ? <Details c={c} t={t} /> : null}
+    </li>
+  );
+}
+
+/** The final number (§8.13 "final numbers editable"): the computed one until the DM types another. */
+function FinalInput({
+  c,
+  t,
+  value,
+  edited,
+}: {
+  c: CastView;
+  t: CastTargetView;
+  value: number;
+  edited: boolean;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const commit = () => {
+    if (draft === null) return;
+    const n = Number(draft);
+    setDraft(null);
+    if (draft.trim() === "") act(castSet(c.id, t.key, { final: null }), "Couldn't change it");
+    else if (Number.isInteger(n) && n !== value)
+      act(castSet(c.id, t.key, { final: n }), "Couldn't change it");
+  };
+  return (
+    <input
+      aria-label={`What ${t.name} takes`}
+      inputMode="numeric"
+      value={draft ?? String(value)}
+      onChange={(e) => setDraft(e.target.value.replace(/\D/g, "").slice(0, 5))}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+      }}
+      title={edited ? "Edited by the DM (clear it for the computed number)" : "Computed — type to change it"}
+      className={`tabular h-8 w-14 shrink-0 rounded-[var(--radius-control)] border bg-ink-900 text-center text-14 focus:border-brass focus:outline-none ${edited ? "border-brass text-brass-bright" : "border-line text-bone"}`}
+    />
+  );
+}
+
+/** A row's details (DM): full / half / none, its resistances (each toggleable), conditions, its save by hand, Skip. */
+function Details({ c, t }: { c: CastView; t: CastTargetView }) {
+  const set = (p: Parameters<typeof castSet>[2]) => act(castSet(c.id, t.key, p), "Couldn't change it");
+  return (
+    <div
+      className="flex flex-col gap-2 rounded-[var(--radius-control)] bg-raised/60 p-2 text-13"
+      data-testid="cast-details"
+    >
+      {c.damage && !c.damage.healing ? (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="caps text-12 text-fog">Takes</span>
+          {(["full", "half", "none"] as const).map((o) => (
+            <button
+              key={o}
+              type="button"
+              aria-pressed={t.outcome === o}
+              onClick={() => set({ outcome: o })}
+              className={`min-h-[var(--touch-min)] rounded-[var(--radius-chip)] border px-2 text-12 font-bold ${t.outcome === o ? "border-brass text-brass-bright" : "border-line text-muted"}`}
+            >
+              {o}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      {c.damage && !c.damage.healing && (t.adjust.has.resist || t.adjust.has.vuln || t.adjust.has.immune) ? (
+        <div className="flex flex-wrap items-center gap-3">
+          {(["resist", "vuln", "immune"] as const)
+            .filter((k) => t.adjust.has[k])
+            .map((k) => (
+              <label key={k} className="inline-flex min-h-[var(--touch-min)] items-center gap-1.5 text-bone">
+                <input
+                  type="checkbox"
+                  checked={t.adjust[k]}
+                  onChange={(e) => set({ ignore: { [k]: !e.target.checked } })}
+                  className="h-4 w-4 accent-[var(--brass-400)]"
+                />
+                {k === "resist" ? "Resistance" : k === "vuln" ? "Vulnerability" : "Immunity"}
+              </label>
+            ))}
+        </div>
+      ) : null}
+      {t.conditions.length ? (
+        <div className="flex flex-wrap items-center gap-3">
+          {t.conditions.map((x) => (
+            <label key={x.id} className="inline-flex min-h-[var(--touch-min)] items-center gap-1.5 text-bone">
+              <input
+                type="checkbox"
+                checked={x.on}
+                onChange={(e) =>
+                  set({
+                    conditions: t.conditions
+                      .filter((y) => (y.id === x.id ? e.target.checked : y.on))
+                      .map((y) => y.id),
+                  })
+                }
+                className="h-4 w-4 accent-[var(--brass-400)]"
+              />
+              {x.id.charAt(0).toUpperCase() + x.id.slice(1)}
+            </label>
+          ))}
+        </div>
+      ) : null}
+      <div className="flex flex-wrap items-center gap-1.5">
+        {c.save ? (
+          <>
+            <Button size="S" variant="ghost" onClick={() => set({ saveSuccess: true })}>
+              Saved
+            </Button>
+            <Button size="S" variant="ghost" onClick={() => set({ saveSuccess: false })}>
+              Failed
+            </Button>
+          </>
+        ) : null}
+        {c.attack ? (
+          <>
+            <Button size="S" variant="ghost" onClick={() => set({ hit: true })}>
+              Hit
+            </Button>
+            <Button size="S" variant="ghost" onClick={() => set({ hit: false })}>
+              Miss
+            </Button>
+          </>
+        ) : null}
+        <span className="flex-1" />
+        <Button
+          size="S"
+          variant="ghost"
+          onClick={() => act(castTarget(c.id, t.key, false), "Couldn't leave it out")}
+        >
+          Leave out
+        </Button>
+        <Button size="S" variant="ghost" onClick={() => act(castSkip(c.id, t.key), "Couldn't skip it")}>
+          Skip
+        </Button>
+        <Button size="S" variant="primary" onClick={() => act(castApply(c.id, [t.key]), "Couldn't apply it")}>
+          Apply
+        </Button>
+      </div>
+    </div>
+  );
+}

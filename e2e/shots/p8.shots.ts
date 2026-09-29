@@ -77,6 +77,19 @@ test("P8 key screens", async ({ admin, browser, gloam, guardLog }, info) => {
       await page.screenshot({ path: join(dir, `_failed-${name}.png`) }).catch(() => {});
     }
   };
+  // Every throw on the board has faded (they rest 2.5 s after settling, §18.4): the key screens show the board, not
+  // dice over its plates (critic P8 r2 N8).
+  const diceClear = async (p: Page, name: string) =>
+    expect
+      .poll(
+        async () => {
+          const st = await hook<{ throws: { done: boolean }[] } | null>(p, "diceStage").catch(() => null);
+          return !st || st.throws.every((t) => t.done);
+        },
+        { timeout: 20_000 },
+      )
+      .toBe(true)
+      .catch(() => notes.push(`${name}: dice were still on the board`));
   const tokenOf = (p: Page, id: string) =>
     hook<{ id: string; actorId: string; pos: { x: number; y: number }; elevation: number } | null>(
       p,
@@ -192,6 +205,9 @@ test("P8 key screens", async ({ admin, browser, gloam, guardLog }, info) => {
     };
     return { x: s.sx, y: s.sy };
   };
+  // The drags' whole way — Thorin, round the wall's end, past the goblins — in the clear part of every screen (a
+  // phone's too: its ghost and the × at the aimed end in view, critic P8 r2 N8).
+  const PATH_AREA = { minX: 12, minY: 4, maxX: 54, maxY: 38 };
   const activeId = async () => {
     const v = await hook<{ activeIndex: number; entries: { tokenId: string | null }[] }>(admin, "combat");
     return v.entries[v.activeIndex]?.tokenId ?? null;
@@ -227,6 +243,12 @@ test("P8 key screens", async ({ admin, browser, gloam, guardLog }, info) => {
     await total.press("Enter");
     await dave.waitForTimeout(300);
   }
+  // ── The DM's tracker while initiative is found: Roll NPCs and Begin beside it ──
+  await step("02b-tracker-initiative", admin, async () => {
+    await closeDock(admin);
+    await expect(admin.getByTestId("turn-tracker")).toBeVisible();
+    if (!phone) await expect(admin.getByRole("button", { name: "Roll NPCs" })).toBeVisible();
+  });
   await req(admin, "combat.rollRemaining", { players: false });
   const begun = async () => (await hook<{ begun: boolean }>(admin, "combat")).begun;
   await expect
@@ -247,9 +269,14 @@ test("P8 key screens", async ({ admin, browser, gloam, guardLog }, info) => {
       await dmSection(admin, "Combat");
     }
     await expect(admin.getByTestId("turn-tracker")).toBeVisible();
+    // The NPCs' initiative dice have faded.
+    await diceClear(admin, "03-tracker-dm");
   });
 
   // ── Thorin's turn, for Dave: the banner, the ring, the turn controls ──
+  // (Dave's page plays the initiative dice when it comes to the front: they fade before his turn comes.)
+  await dave.bringToFront();
+  await diceClear(dave, "04-your-turn");
   await req(admin, "combat.next", {});
   for (let i = 0; i < 8 && (await activeId()) !== hero.id; i++) {
     await req(admin, "combat.next", {});
@@ -260,7 +287,40 @@ test("P8 key screens", async ({ admin, browser, gloam, guardLog }, info) => {
     dave,
     async () => {
       await expect(dave.getByTestId("turn-banner")).toBeVisible();
-      await dave.waitForTimeout(700);
+      // The view glides to Thorin (Focus camera on my turn): photographed once it has come to rest and the plates
+      // have been laid out for where it stopped — software GL draws a frame in hundreds of ms, so a fixed wait could
+      // catch the glide mid-way with the plates a frame behind it. The banner stands 2.6 s.
+      let last = "";
+      await expect
+        .poll(
+          async () => {
+            const c = await camera(dave);
+            const now = JSON.stringify(c.target.map((v: number) => v.toFixed(2)));
+            const still = now === last;
+            last = now;
+            return still;
+          },
+          { intervals: [120], timeout: 2000 },
+        )
+        .toBe(true);
+      await dave.evaluate(
+        () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(null)))),
+      );
+      // …and the plates have faded in or out where the layout put them (150 ms each).
+      await dave
+        .waitForFunction(
+          () => {
+            const o = (
+              window as unknown as {
+                __gloam?: { overlays?: () => { fade?: { a: number; target: number } }[] };
+              }
+            ).__gloam?.overlays?.();
+            return !o || o.every((x) => !x.fade || Math.abs(x.fade.a - x.fade.target) < 0.01);
+          },
+          null,
+          { timeout: 1200 },
+        )
+        .catch(() => notes.push("04-your-turn: a plate was still fading"));
     },
     false,
   );
@@ -272,7 +332,7 @@ test("P8 key screens", async ({ admin, browser, gloam, guardLog }, info) => {
     async () => {
       await dave.bringToFront();
       // The whole way in view (the turn's start brought the camera close to Thorin).
-      await camera(dave, { pitchDeg: 62, distance: phone ? 84 : 52, target: [30, 27], ms: 0 });
+      await camera(dave, { pitchDeg: 62, frame: PATH_AREA });
       await dave.waitForTimeout(400);
       const to = { x: 44, y: 34 };
       const a = await screen(dave, heroAt.x, heroAt.y);
@@ -319,16 +379,109 @@ test("P8 key screens", async ({ admin, browser, gloam, guardLog }, info) => {
       "aria-pressed",
       "true",
     );
-    if (phone) {
+    await diceClear(dave, "07-bonus-and-dash");
+    // Dash on the bar when there's room for every button, else in its "Turn actions" menu.
+    const dashButton = dave.getByTestId("turn-controls").getByRole("button", { name: "Dash", exact: true });
+    if (await dashButton.isVisible().catch(() => false)) await dashButton.click();
+    else {
       await dave.getByRole("button", { name: "Turn actions" }).click();
       await dave.getByRole("menuitem", { name: "Dash" }).click();
-    } else await dave.getByTestId("turn-controls").getByRole("button", { name: "Dash", exact: true }).click();
+    }
     await expect(dave.getByRole("alertdialog", { name: "Action already used" })).toBeVisible();
   });
   const cancelDash = dave
     .getByRole("alertdialog", { name: "Action already used" })
     .getByRole("button", { name: "Cancel" });
   if (await cancelDash.isVisible().catch(() => false)) await cancelDash.click();
+
+  // ── Prone: Stand up for half its speed ──
+  await step("07b-prone-stand-up", dave, async () => {
+    await req(admin, "status.change", { tokenId: hero.id, add: [{ id: "prone" }] });
+    // On the bar itself at every size while prone — never only in a menu (critic P8 r2 I13).
+    await expect(dave.getByTestId("turn-controls").getByRole("button", { name: /^Stand up/ })).toBeVisible();
+  });
+  await req(admin, "status.change", { tokenId: hero.id, remove: ["prone"] });
+
+  // ── Speed 0 (Grappled): a move refused, and why ──
+  await step("07c-speed-zero", dave, async () => {
+    await req(admin, "status.change", { tokenId: hero.id, add: [{ id: "grappled" }] });
+    await dave.bringToFront();
+    const a = await screen(dave, heroAt.x, heroAt.y);
+    const b = await screen(dave, heroAt.x - 6, heroAt.y - 4, 0);
+    await dave.mouse.move(a.x, a.y);
+    await dave.mouse.down();
+    for (let i = 1; i <= 6; i++) {
+      await dave.mouse.move(a.x + ((b.x - a.x) * i) / 6, a.y + ((b.y - a.y) * i) / 6);
+      await dave.waitForTimeout(40);
+    }
+    await dave.mouse.up();
+    await expect(
+      dave.locator("[data-toast]").filter({ hasText: "Can't move — Grappled" }).first(),
+    ).toBeVisible();
+    await expect(dave.getByTestId("move-budget")).toContainText("Can't move — Grappled");
+  });
+  await req(admin, "status.change", { tokenId: hero.id, remove: ["grappled"] });
+
+  // ── The colour-blind palette: the same drag, sky within reach and orange past it ──
+  await step(
+    "07d-colorblind-path",
+    dave,
+    async () => {
+      await hook(dave, "settings", { colorBlind: true });
+      await dave.bringToFront();
+      await camera(dave, { pitchDeg: 62, frame: PATH_AREA });
+      await dave.waitForTimeout(400);
+      const to = { x: 44, y: 34 };
+      const a = await screen(dave, heroAt.x, heroAt.y);
+      await dave.mouse.move(a.x, a.y);
+      await dave.mouse.down();
+      for (let i = 1; i <= 10; i++) {
+        const q = await screen(
+          dave,
+          heroAt.x + ((to.x - heroAt.x) * i) / 10,
+          heroAt.y + ((to.y - heroAt.y) * i) / 10,
+          0,
+        );
+        await dave.mouse.move(q.x, q.y);
+        await dave.waitForTimeout(40);
+      }
+      await expect(dave.getByTestId("move-label")).toBeVisible();
+    },
+    false,
+  );
+  await dave.keyboard.press("Escape");
+  await dave.mouse.up();
+
+  // ── The colour-blind palette past the budget: sky to the reach mark, an orange hatch beyond it ──
+  await step(
+    "07e-colorblind-over",
+    dave,
+    async () => {
+      await dave.bringToFront();
+      await camera(dave, { pitchDeg: 62, frame: PATH_AREA });
+      await dave.waitForTimeout(400);
+      // Round the wall's top end to the far corner: well past the 40 ft (30 + the DM's 10) — a hatch to see.
+      const to = { x: 57, y: 5 };
+      const a = await screen(dave, heroAt.x, heroAt.y);
+      await dave.mouse.move(a.x, a.y);
+      await dave.mouse.down();
+      for (let i = 1; i <= 12; i++) {
+        const q = await screen(
+          dave,
+          heroAt.x + ((to.x - heroAt.x) * i) / 12,
+          heroAt.y + ((to.y - heroAt.y) * i) / 12,
+          0,
+        );
+        await dave.mouse.move(q.x, q.y);
+        await dave.waitForTimeout(40);
+      }
+      await expect(dave.getByTestId("move-label")).toContainText("over");
+    },
+    false,
+  );
+  await dave.keyboard.press("Escape");
+  await dave.mouse.up();
+  await hook(dave, "settings", { colorBlind: false });
 
   // ── The DM's Delay ──
   await step("08-dm-delay", admin, async () => {

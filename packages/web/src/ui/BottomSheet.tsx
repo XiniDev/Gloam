@@ -73,7 +73,7 @@ export function BottomSheet({
       aria-label={label}
       data-testid={testId}
       data-snap={SHEET_SNAPS[snap]}
-      className="panel pointer-events-auto fixed inset-x-0 bottom-0 z-30 flex flex-col rounded-b-none pb-[env(safe-area-inset-bottom)]"
+      className="panel pointer-events-auto fixed inset-x-0 bottom-0 z-50 flex flex-col rounded-b-none pb-[env(safe-area-inset-bottom)]"
       style={{
         height,
         transition: dragPx === null ? "height var(--dur-panel) var(--ease-out)" : "none",

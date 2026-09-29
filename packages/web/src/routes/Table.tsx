@@ -29,6 +29,7 @@ import { RadialMenu } from "../hud/RadialMenu.tsx";
 import { RollFeed } from "../hud/RollFeed.tsx";
 import { SceneTransition } from "../hud/SceneTransition.tsx";
 import { watchPendingArt } from "../hud/sheet/art.ts";
+import { TargetingBar } from "../hud/spells/TargetingBar.tsx";
 import { TopBar } from "../hud/TopBar.tsx";
 import { useUndoKeys } from "../hud/useUndoKeys.ts";
 import { ViewAsBanner } from "../hud/ViewAsBanner.tsx";
@@ -41,6 +42,7 @@ import { watchDice } from "../net/dice.ts";
 import { watchFog } from "../net/fog.ts";
 import { watchHealth } from "../net/health.ts";
 import { watchSheets } from "../net/sheets.ts";
+import { watchSpells } from "../net/spells.ts";
 import { connectTable, disconnectTable, request, tableEvents, useTable } from "../net/table.ts";
 import { useSession } from "../state/session.ts";
 import { useUi } from "../state/ui.ts";
@@ -70,6 +72,7 @@ export default function TableRoute() {
   useEffect(() => watchSheets(), []);
   useEffect(() => watchHealth(), []);
   useEffect(() => watchCombat(), []);
+  useEffect(() => watchSpells(), []);
   useEffect(() => watchPendingArt(), []);
   useEffect(() => {
     let cancelled = false;
@@ -156,6 +159,7 @@ export default function TableRoute() {
       <WallChips />
       <MeasureLabels />
       <ActionBar />
+      <TargetingBar />
       <RollFeed />
       <TurnTracker />
       <TurnBanner />

@@ -1,5 +1,8 @@
 import type { P } from "@gloam/shared/geometry";
-import type { MoveWorld, RangeField, RangeOptions } from "@gloam/shared/movement";
+import type { MoveWorld, RangeDisplay, RangeField, RangeOptions } from "@gloam/shared/movement";
+
+/** A field with what the overlay draws of it (flush to walls, its edge smoothed). */
+export type ShownField = RangeField & { display?: RangeDisplay };
 
 /**
  * The range field's worker, from the main thread (SPEC §16.6): one worker, made on first use; each world is sent to
@@ -11,13 +14,20 @@ let seq = 0;
 let sentWorld: MoveWorld | null = null;
 const keys = new WeakMap<MoveWorld, number>();
 let nextKey = 0;
-const pending = new Map<number, { ok: (f: RangeField | null) => void; fail: (e: Error) => void }>();
+const pending = new Map<number, { ok: (f: ShownField | null) => void; fail: (e: Error) => void }>();
 
 function ensure(): Worker {
   if (worker) return worker;
   const w = new Worker(new URL("./range.worker.ts", import.meta.url), { type: "module" });
   w.onmessage = (
-    e: MessageEvent<{ id: number; field?: RangeField; stale?: true; error?: string; ms?: number }>,
+    e: MessageEvent<{
+      id: number;
+      field?: RangeField;
+      display?: RangeDisplay;
+      stale?: true;
+      error?: string;
+      ms?: number;
+    }>,
   ) => {
     const p = pending.get(e.data.id);
     if (!p) return;
@@ -25,7 +35,7 @@ function ensure(): Worker {
     if (e.data.error) p.fail(new Error(e.data.error));
     else {
       if (e.data.ms !== undefined) lastMs = e.data.ms;
-      p.ok(e.data.field ?? null);
+      p.ok(e.data.field ? { ...e.data.field, ...(e.data.display ? { display: e.data.display } : {}) } : null);
     }
   };
   w.onerror = (e) => {
@@ -42,7 +52,7 @@ function ensure(): Worker {
 export let lastMs = 0;
 
 /** The field for a creature at `origin` in `world` (null when a newer request took over or the world moved on). */
-export function requestRange(world: MoveWorld, origin: P, opts: RangeOptions): Promise<RangeField | null> {
+export function requestRange(world: MoveWorld, origin: P, opts: RangeOptions): Promise<ShownField | null> {
   let key = keys.get(world);
   if (key === undefined) {
     key = ++nextKey;

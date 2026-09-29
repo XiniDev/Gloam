@@ -275,8 +275,11 @@ describe("P8 — combat on the server (§8.12, §16.5)", () => {
     const r = await move(anna().room, hero, { x: at.x, y: at.y + 5 });
     expect(r.cost).toBeCloseTo(10, 1);
     await cmd(dm, "status.change", { tokenId: hero, remove: ["prone"], add: [{ id: "grappled" }] });
-    await expect(move(anna().room, hero, { x: at.x, y: at.y + 10 })).rejects.toThrow(/Grappled \(speed 0\)/);
+    // Refused with why, in §8.6's words — and the player's view says so before they try (the action bar).
+    await expect(move(anna().room, hero, { x: at.x, y: at.y + 10 })).rejects.toThrow(/can't move — Grappled/);
+    await waitFor(() => own(hero)?.stuck === "grappled");
     await cmd(dm, "status.change", { tokenId: hero, remove: ["grappled"] });
+    await waitFor(() => own(hero)?.stuck === "");
     await cmd(anna().room, "move.reset", { tokenId: hero });
   });
 

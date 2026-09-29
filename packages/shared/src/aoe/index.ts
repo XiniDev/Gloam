@@ -12,7 +12,15 @@ export type AreaShape =
   | { kind: "cone"; origin: P; z?: number; dirDeg: number; length: number }
   | { kind: "cube"; origin: P; z?: number; dirDeg: number; size: number; originOnFace: boolean }
   | { kind: "line"; origin: P; z?: number; dirDeg: number; length: number; width: number }
-  | { kind: "emanation"; source: P; sourceRadius: number; z?: number; distance: number }
+  | {
+      kind: "emanation";
+      source: P;
+      sourceRadius: number;
+      /** The source's base elevation and height: the area reaches `distance` past its space every way. */
+      z?: number;
+      sourceHeight?: number;
+      distance: number;
+    }
   | { kind: "wall"; points: P[]; closed: boolean; z?: number; height: number; thickness: number };
 
 /** A footprint on the map plane: a disc, a polygon, or a thick polyline (a wall). */
@@ -84,7 +92,7 @@ export function verticalExtent(a: AreaShape, p: P): [number, number] {
     case "cylinder":
       return [z, z + a.height];
     case "emanation":
-      return [z - a.distance, z + a.distance];
+      return [z - a.distance, z + (a.sourceHeight ?? 0) + a.distance];
     case "cube":
       return [z, z + a.size];
     case "wall":
@@ -133,6 +141,30 @@ export function overlaps(f: Footprint, c: P, r: number): boolean {
   if (f.kind === "poly")
     return inside(c, f.points) || edges(f.points, true).some(([a, b]) => pointSegDist(c, a, b) < r);
   return edges(f.points, f.closed).some(([a, b]) => pointSegDist(c, a, b) < f.halfWidth + r);
+}
+
+/** Whether two footprints overlap at all (spells undoing each other: Daylight over Darkness). */
+export function footprintsOverlap(f: Footprint, g: Footprint): boolean {
+  if (f.kind === "circle") return overlaps(g, f.c, f.r);
+  if (g.kind === "circle") return overlaps(f, g.c, g.r);
+  const a = f.points;
+  const b = g.points;
+  if (f.kind === "poly" && b.some((p) => inside(p, f.points))) return true;
+  if (g.kind === "poly" && a.some((p) => inside(p, g.points))) return true;
+  const ea = edges(a, f.kind === "poly" || (f.kind === "strip" && f.closed));
+  const eb = edges(b, g.kind === "poly" || (g.kind === "strip" && g.closed));
+  const pad = (f.kind === "strip" ? f.halfWidth : 0) + (g.kind === "strip" ? g.halfWidth : 0);
+  for (const [p, q] of ea)
+    for (const [r, s] of eb) {
+      if (segIntersect(p, q, r, s)) return true;
+      if (
+        pad > 0 &&
+        Math.min(pointSegDist(p, r, s), pointSegDist(q, r, s), pointSegDist(r, p, q), pointSegDist(s, p, q)) <
+          pad
+      )
+        return true;
+    }
+  return false;
 }
 
 /** A wall segment and what it stops (a closed door stops both; an open one neither). */
@@ -288,3 +320,6 @@ export function coverHint(
   }
   return { cover, blocked: count };
 }
+
+export * from "./effects.ts";
+export * from "./place.ts";

@@ -1,3 +1,4 @@
+import { CB_COLORS } from "@gloam/shared";
 import { type P, pathLength } from "@gloam/shared/geometry";
 import { useFrame } from "@react-three/fiber";
 import { useEffect, useMemo } from "react";
@@ -16,9 +17,6 @@ import { useRemoteMoves } from "./remote.ts";
 import { buildRibbon, createRibbonMaterial, difficultPieces } from "./ribbon.ts";
 import { clientMoveWorld } from "./world.ts";
 
-/** Colour-blind palette for paths (SPEC §27.2 --path-ok / --path-over). */
-const CB = { ok: "#56b4e9", no: "#e69f00" };
-
 /**
  * Movement previews on the floor (SPEC §8.6): the viewer's own planned move and other viewers' drags — each a path
  * ribbon (its colour says within reach or not) and a translucent ghost of the token itself (its face on its base)
@@ -30,10 +28,11 @@ export function MoveLayer() {
   const tokenId = useMove((s) => s.tokenId);
   const remote = useRemoteMoves((s) => s.byToken);
   const waypoints = useMove((s) => s.waypoints);
-  // In combat past its budget (AC-MOV-01): verdigris to the max-reach point, ember beyond it — the ghost where the
+  // In combat past its budget (AC-MOV-01): verdigris to the max-reach point, hatched --path-over beyond it — the ghost where the
   // move would stop (clamped there; with "Overlong moves: reject" where it was aimed, refused), a hollow ring there.
   const split = preview?.reach ? splitAt(preview.points, preview.reach) : null;
   const reject = useTable((s) => s.houseRules.overlongMoves) === "reject";
+  const cb = useSettings((s) => s.colorBlind);
   return (
     <group name="moves">
       {preview && tokenId && preview.points.length > 1 && !split ? (
@@ -42,8 +41,15 @@ export function MoveLayer() {
       {preview && tokenId && split ? (
         <>
           <PathLine tokenId={tokenId} points={split.within} ok ghost={!reject} opacity={0.95} />
-          <PathLine tokenId={tokenId} points={split.beyond} ok={false} ghost={false} opacity={0.95} />
-          <Dots points={[preview.reach as P]} kind="ring" px={20} color={C.bone100} />
+          {/* What's past its reach reads over the ghost standing at the limit (critic P8 r1 #2): drawn on top. */}
+          <PathLine tokenId={tokenId} points={split.beyond} ok={false} ghost={false} opacity={0.95} onTop />
+          <Dots points={[preview.reach as P]} kind="ring" px={22} color={C.bone100} />
+          <Dots
+            points={[split.beyond[split.beyond.length - 1] as P]}
+            kind="cross"
+            px={16}
+            color={cb ? CB_COLORS.pathOver : C.blood500}
+          />
         </>
       ) : null}
       {preview?.oa?.length ? (
@@ -85,6 +91,7 @@ function PathLine({
   opacity,
   mover,
   ghost = ok,
+  onTop = false,
 }: {
   tokenId: string;
   points: P[];
@@ -94,15 +101,22 @@ function PathLine({
   mover?: string;
   /** The token's ghost at the path's end (where it would stand). */
   ghost?: boolean;
+  /** Drawn over everything on the floor (the part of a move past its reach, over the ghost at the limit). */
+  onTop?: boolean;
 }) {
   const cb = useSettings((s) => s.colorBlind);
-  const color = ok ? (cb ? CB.ok : C.verdigris400) : cb ? CB.no : C.ember400;
+  // --path-ok / --path-over (SPEC §27.2), their colour-blind swaps from the same constants; past the budget, hatched.
+  const color = ok ? (cb ? CB_COLORS.pathOk : C.verdigris400) : cb ? CB_COLORS.pathOver : C.blood500;
   const geo = useMemo(() => new BufferGeometry(), []);
-  const mat = useMemo(() => createRibbonMaterial(color, C.ink950), [color]);
+  const mat = useMemo(() => {
+    const m = createRibbonMaterial(color, C.ink950, !ok);
+    if (onTop) m.depthTest = false;
+    return m;
+  }, [color, onTop, ok]);
   const token = useEntities((s) => boardData(s).tokens.get(tokenId));
   const face = useTokenFace(token, token ? ringColorOf(token, cb) : C.brass400);
   const ghostMat = useMemo(
-    () => new MeshBasicMaterial({ map: face, transparent: true, opacity: 0.42, depthWrite: false }),
+    () => new MeshBasicMaterial({ map: face, transparent: true, opacity: 0.4, depthWrite: false }),
     [face],
   );
   const baseMat = useMemo(
@@ -111,7 +125,7 @@ function PathLine({
   );
   const ringMat = useMemo(
     () =>
-      new MeshBasicMaterial({ color: mover || color, transparent: true, opacity: 0.9, depthWrite: false }),
+      new MeshBasicMaterial({ color: mover || color, transparent: true, opacity: 0.7, depthWrite: false }),
     [mover, color],
   );
   useEffect(() => () => disposeLater(mat, ghostMat, baseMat, ringMat), [mat, ghostMat, baseMat, ringMat]);
@@ -136,7 +150,7 @@ function PathLine({
   const end = points[points.length - 1] as P;
   return (
     <group>
-      <mesh geometry={geo} material={mat} renderOrder={5} raycast={() => null} />
+      <mesh geometry={geo} material={mat} renderOrder={onTop ? 7 : 5} raycast={() => null} />
       {ghost ? (
         <group position={[end.x, 0, end.y]} userData={{ part: "moveGhost", tokenId }}>
           <mesh

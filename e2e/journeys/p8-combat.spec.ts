@@ -212,6 +212,8 @@ test.describe("P8 — combat (CMB)", () => {
     await expect.poll(() => activeId(dave)).toBe(wren);
     await expect(dave.getByTestId("turn-banner")).toContainText("Your turn");
     await expect(dave.getByTestId("turn-banner")).toContainText("Wren");
+    // The moment itself, banner and all (it stands 2.6 s).
+    await dave.screenshot({ path: `${SHOTS}/your-turn.png` });
     await expect
       .poll(() => dave.evaluate(() => (window.__gloam?.sounds ?? []).some((s) => s.name === "yourTurn")))
       .toBe(true);
@@ -230,7 +232,6 @@ test.describe("P8 — combat (CMB)", () => {
     await expect(controls.getByTestId("move-budget")).toContainText("30");
     for (const pip of ["action", "bonus", "reaction", "object"])
       await expect(controls.locator(`[data-pip="${pip}"]`)).toHaveAttribute("aria-pressed", "false");
-    await dave.screenshot({ path: `${SHOTS}/your-turn.png` });
     await dave.waitForTimeout(1500);
     await dave.screenshot({ path: `${SHOTS}/your-turn-settled.png` });
     // Every portrait the size of its place — none left over from an earlier turn — and one swelling: the active one.
@@ -321,7 +322,7 @@ test.describe("P8 — combat (CMB)", () => {
     await expect.poll(async () => (await view(admin)).active).toBe(false);
   });
 
-  test("AC-MOV-01/15/18: on its turn a drag shows its routed path round a wall — within the budget verdigris, beyond it ember, a hollow mark at the exact budget point — with its length and what's left; an opportunity-attack mark where it leaves a foe's reach (none once Disengaged); the DM's bonus movement in the budget label", async ({
+  test("AC-MOV-01/15/18: on its turn a drag shows its routed path round a wall — within the budget verdigris, beyond it a still ember-red hatch, a hollow mark at the exact budget point — with its length and what's left; an opportunity-attack mark where it leaves a foe's reach (none once Disengaged); the DM's bonus movement in the budget label", async ({
     admin,
     browser,
     gloam,
@@ -384,8 +385,8 @@ test.describe("P8 — combat (CMB)", () => {
     await req(admin, "token.update", { tokenId: wren, overrides: { bonusMove: null } });
     await expect(dave.getByTestId("move-budget")).not.toContainText("+");
 
-    // A drag past the wall: routed round its end, longer than the 30 ft left (AC-MOV-01).
-    const goal = { x: 35, y: 20 };
+    // A drag past the wall: routed round its end, well past the 30 ft left (AC-MOV-01).
+    const goal = { x: 45, y: 20 };
     await dragHold(dave, start, goal);
     type Preview = { points: P[]; cost: number; ok: boolean; budget?: number; reach?: P; oa?: { at: P }[] };
     const preview = async () => (await hook<{ preview: Preview | null }>(dave, "move")).preview;
@@ -412,10 +413,10 @@ test.describe("P8 — combat (CMB)", () => {
     const label = dave.getByTestId("move-label");
     await expect(label).toContainText(`${Math.round(pv.cost)} ft`);
     await expect(label).toContainText("over");
-    // On the board: verdigris before the mark, ember after it.
-    const rgbAt = async (q: P) => {
+    // On the board: verdigris before the mark, ember-red after it (averaged over a hatch period: its stripes and gaps).
+    const rgbAt = async (q: P, r = 1) => {
       const s = await screen(dave, q.x, q.y, 0.05);
-      return hook<number[]>(dave, "boardRgb", s.x, s.y, 1);
+      return hook<number[]>(dave, "boardRgb", s.x, s.y, r);
     };
     const first = pv.points[1] as P;
     const early = { x: start.x + (first.x - start.x) * 0.35, y: start.y + (first.y - start.y) * 0.35 };
@@ -430,10 +431,43 @@ test.describe("P8 — combat (CMB)", () => {
       .toBeGreaterThan(15);
     await expect
       .poll(async () => {
-        const [r, g] = await rgbAt(late);
+        const [r, g] = await rgbAt(late, 4);
         return (r as number) - (g as number);
       })
       .toBeGreaterThan(15);
+    // Past the mark (§8.6, §27.2 --path-over): a still hatch — stripes and gaps along its middle, clear of the ghost
+    // standing at the mark, in the same places a moment later (not the flowing dash within the budget).
+    const pointAt = (d: number): P => {
+      let acc = 0;
+      for (let i = 1; i < pv.points.length; i++) {
+        const a = pv.points[i - 1] as P;
+        const b = pv.points[i] as P;
+        const seg = Math.hypot(b.x - a.x, b.y - a.y);
+        if (acc + seg >= d) {
+          const t = (d - acc) / seg;
+          return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+        }
+        acc += seg;
+      }
+      return pv.points[pv.points.length - 1] as P;
+    };
+    expect(pv.cost - reachAt).toBeGreaterThan(6);
+    const along14 = Array.from({ length: 14 }, (_, i) => pointAt(reachAt + 3.5 + i * 0.08));
+    const redness = async () => {
+      const out: number[] = [];
+      for (const q of along14) {
+        const s = await screen(dave, q.x, q.y, 0.05);
+        const [r, g] = await hook<number[]>(dave, "boardRgb", s.x, s.y, 0);
+        out.push((r as number) - (g as number));
+      }
+      return out;
+    };
+    const first14 = await redness();
+    expect(first14.filter((v) => v > 40).length, `stripes in ${first14}`).toBeGreaterThanOrEqual(3);
+    expect(first14.filter((v) => v < 15).length, `gaps in ${first14}`).toBeGreaterThanOrEqual(3);
+    await dave.waitForTimeout(400);
+    const again14 = await redness();
+    expect(again14.map((v) => v > 40)).toEqual(first14.map((v) => v > 40));
     await dave.screenshot({ path: `${SHOTS}/combat-drag.png` });
     // Leaving the goblin's reach (5 ft) on the way: an opportunity attack marked where it does (AC-MOV-15).
     expect((pv.oa ?? []).length).toBeGreaterThan(0);

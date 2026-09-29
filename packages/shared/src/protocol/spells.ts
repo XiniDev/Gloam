@@ -78,9 +78,15 @@ export const AttackStart = z.strictObject({
 });
 
 const CastRef = { castId: Id };
+/** A row on a card: its creature's id, and "#n" for a second ray at the same creature (each an attack of its own). */
+const RowKey = z
+  .string()
+  .min(3)
+  .max(44)
+  .regex(/^[a-z]{3}_[A-Za-z0-9]{8,32}(#[0-9]{1,2})?$/);
 
 /** The DM adds or removes a target (a blocked one "add anyway"). */
-export const CastTarget = z.strictObject({ ...CastRef, targetId: Id, include: z.boolean() });
+export const CastTarget = z.strictObject({ ...CastRef, targetId: RowKey, include: z.boolean() });
 
 /** The DM rolls every NPC target's save with one click (§8.13 Resolution card: "NPC saves roll with one DM click"). */
 export const CastNpcSaves = z.strictObject({ ...CastRef });
@@ -89,8 +95,8 @@ export const CastNpcSaves = z.strictObject({ ...CastRef });
 export const CastRoll = z.strictObject({
   ...CastRef,
   what: z.enum(["attack", "damage"]),
-  /** Attacks and per-target damage (a spell attack's hit): whose. */
-  targetId: Id.optional(),
+  /** Attacks and per-target damage (a spell attack's hit): whose row. */
+  targetId: RowKey.optional(),
   /** Entered instead of rolled (the DM, or a physical roll). */
   entered: z.number().int().min(0).max(99_999).optional(),
   adv: z.enum(["none", "adv", "dis"]).default("none"),
@@ -99,7 +105,7 @@ export const CastRoll = z.strictObject({
 /** The DM's edits of one target's row: its save, what it takes, the adjustments, conditions, the final number. */
 export const CastSet = z.strictObject({
   ...CastRef,
-  targetId: Id,
+  targetId: RowKey,
   saveSuccess: z.boolean().nullable().optional(),
   hit: z.boolean().nullable().optional(),
   outcome: z.enum(["full", "half", "none"]).optional(),
@@ -120,10 +126,10 @@ export const CastSet = z.strictObject({
 export const CastRevealDc = z.strictObject({ ...CastRef, reveal: z.boolean() });
 
 /** Apply what the card says — to these targets, or every one still waiting (Apply all). */
-export const CastApply = z.strictObject({ ...CastRef, targets: z.array(Id).max(40).optional() });
+export const CastApply = z.strictObject({ ...CastRef, targets: z.array(RowKey).max(60).optional() });
 
 /** Skip a target (it takes nothing). */
-export const CastSkip = z.strictObject({ ...CastRef, targetId: Id });
+export const CastSkip = z.strictObject({ ...CastRef, targetId: RowKey });
 
 /** Cancel the cast: the slot back, its effect gone, concentration on it ended. */
 export const CastCancel = z.strictObject({ ...CastRef });
@@ -156,9 +162,6 @@ export const EffectUpdate = z.strictObject({
     .optional(),
 });
 
-/** A trigger's prompt answered: resolve it on a card, or let it go. */
-export const EffectTriggerAnswer = z.strictObject({ promptId: Id, resolve: z.boolean() });
-
 // ── views ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
 export type CastOutcome = "full" | "half" | "none";
@@ -166,6 +169,8 @@ export type Cover = "none" | "half" | "threeQuarters" | "total";
 
 /** A target's row as the DM has it. */
 export interface CastTargetView {
+  /** The row: its creature's id ("#n" for another ray at it). */
+  key: string;
   id: string;
   name: string;
   /** In the list, left out by the DM, cut off by a wall (§17.3 "blocked"), applied, or skipped. */

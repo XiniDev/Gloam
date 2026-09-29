@@ -49,6 +49,7 @@ export const TokenOwner = schema(
     segments: t.uint16(),
     freeMovement: t.boolean(),
     lockMovement: t.boolean(),
+    stuck: t.string(), // why it can't move at all: a condition id, "speed0" or "locked" (stuckName); "" when it can
   },
   "TokenOwner",
 );
@@ -198,6 +199,8 @@ export const EffectS = schema(
     roundsLeft: t.int16(),
     name: t.string(),
     link: t.ref(LinkS).view(TAG_LINK), // attached token and caster, only while perceivable
+    /** DMs: hidden from the players (the DM's own). */
+    dmHidden: t.boolean().view(TAG_DM),
   },
   "Effect",
 );

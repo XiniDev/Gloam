@@ -298,7 +298,12 @@
     "cantripUpgrade": "The spell creates two beams at level 5, three beams at level 11, and four beams at level 17. You can direct the beams at the same target or at different ones. Make a separate attack roll for each beam.",
     "targeting": {
       "kind": "creatures",
-      "count": 1
+      "count": 1,
+      "countAtLevels": {
+        "5": 2,
+        "11": 3,
+        "17": 4
+      }
     },
     "attack": {
       "kind": "ranged"
@@ -328,7 +333,7 @@
       "range": "pdf",
       "ritual": "pdf",
       "school": "pdf",
-      "targeting": "foundry:affects.type=creatureOrObject",
+      "targeting": "overlay:spell-mechanics.json",
       "text": "pdf",
       "vfx": "derived:primary damage force"
     }
@@ -6348,6 +6353,15 @@
       "kind": "creatures",
       "count": 1
     },
+    "effect": {
+      "props": {
+        "senses": {
+          "darkvision": 150
+        }
+      },
+      "triggers": [],
+      "attach": "target"
+    },
     "vfx": "arcane",
     "source": {
       "pack": "srd-5.2.1",
@@ -6358,6 +6372,7 @@
       "classes": "pdf",
       "components": "pdf",
       "duration": "pdf",
+      "effect": "overlay:spell-effects.json",
       "id": "pdf",
       "level": "pdf",
       "name": "pdf",
@@ -8464,7 +8479,9 @@
     "text": "You hurl three fiery rays. You can hurl them at one target within range or at several. Make a ranged spell attack for each ray. On a hit, the target takes 2d6 Fire damage.",
     "higherLevels": "You create one additional ray for each spell slot level above 2.",
     "targeting": {
-      "kind": "creatures"
+      "kind": "creatures",
+      "count": 3,
+      "countPerSlot": 1
     },
     "attack": {
       "kind": "ranged"
@@ -8494,7 +8511,7 @@
       "range": "pdf",
       "ritual": "pdf",
       "school": "pdf",
-      "targeting": "derived:range ranged",
+      "targeting": "overlay:spell-mechanics.json",
       "text": "pdf",
       "vfx": "derived:primary damage fire"
     }
@@ -8533,6 +8550,13 @@
     "targeting": {
       "kind": "self"
     },
+    "effect": {
+      "props": {
+        "seeInvisible": true
+      },
+      "triggers": [],
+      "attach": "caster"
+    },
     "vfx": "arcane",
     "source": {
       "pack": "srd-5.2.1",
@@ -8543,6 +8567,7 @@
       "classes": "pdf",
       "components": "pdf",
       "duration": "pdf",
+      "effect": "overlay:spell-effects.json",
       "id": "pdf",
       "level": "pdf",
       "name": "pdf",
@@ -18825,6 +18850,15 @@
       "kind": "creatures",
       "count": 1
     },
+    "effect": {
+      "props": {
+        "senses": {
+          "truesight": 120
+        }
+      },
+      "triggers": [],
+      "attach": "target"
+    },
     "vfx": "arcane",
     "source": {
       "pack": "srd-5.2.1",
@@ -18835,6 +18869,7 @@
       "classes": "pdf",
       "components": "pdf",
       "duration": "pdf",
+      "effect": "overlay:spell-effects.json",
       "id": "pdf",
       "level": "pdf",
       "name": "pdf",

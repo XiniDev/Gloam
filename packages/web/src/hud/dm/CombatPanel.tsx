@@ -1,6 +1,7 @@
 import type { CombatViewEntry } from "@gloam/shared/protocol";
-import { X } from "lucide-react";
+import { GripVertical, X } from "lucide-react";
 import { useState } from "react";
+import { StatusIcon } from "../../icons/status.tsx";
 import {
   addToCombat,
   beginTurns,
@@ -9,6 +10,7 @@ import {
   previousTurn,
   quickStartCombat,
   removeFromCombat,
+  reorderCombat,
   rollRemaining,
   setFreeMovement,
   setInitiative,
@@ -36,6 +38,7 @@ export function CombatPanel() {
   const view = useCombat((s) => s.view);
   const selection = useUi((s) => s.selection);
   const [starting, setStarting] = useState(false);
+  const [dragging, setDragging] = useState<string | null>(null);
   if (!view.active)
     return (
       <div className="flex flex-col gap-3 p-4">
@@ -56,6 +59,16 @@ export function CombatPanel() {
         <StartCombatDialog open={starting} onClose={() => setStarting(false)} />
       </div>
     );
+  const drop = (target: string | undefined) => {
+    if (!dragging || !target || dragging === target) return;
+    const ids = view.entries.map((e) => e.tokenId).filter((x): x is string => Boolean(x));
+    const from = ids.indexOf(dragging);
+    const to = ids.indexOf(target);
+    setDragging(null);
+    if (from < 0 || to < 0) return;
+    ids.splice(to, 0, ...ids.splice(from, 1));
+    act(reorderCombat(ids), "Couldn't reorder");
+  };
   const inFight = new Set(view.entries.map((e) => e.tokenId));
   const joining = selection.filter((id) => !inFight.has(id));
   const pending = view.entries.filter((e) => e.pending).length;
@@ -94,20 +107,31 @@ export function CombatPanel() {
         )}
       </div>
       <ol className="flex flex-col" aria-label="Combatants">
-        {view.entries.map((e, i) => (
-          <Row
-            key={e.key}
-            e={e}
-            active={view.begun && i === view.activeIndex}
-            others={view.entries.filter((o) => o.tokenId && o.tokenId !== e.tokenId)}
-          />
-        ))}
+        {view.entries.map((e, i) => {
+          // "Until after" the one right before it changes nothing: not offered (critic P8 r1 #27).
+          const before = view.entries[(i - 1 + view.entries.length) % view.entries.length];
+          return (
+            <Row
+              key={e.key}
+              e={e}
+              active={view.begun && i === view.activeIndex}
+              others={view.entries.filter(
+                (o) => o.tokenId && o.tokenId !== e.tokenId && o.tokenId !== before?.tokenId,
+              )}
+              dragging={dragging}
+              onDragStart={() => setDragging(e.tokenId ?? null)}
+              onDrop={() => drop(e.tokenId)}
+            />
+          );
+        })}
       </ol>
       {joining.length ? (
         <Button size="S" variant="secondary" onClick={() => act(addToCombat(joining), "Couldn't add them")}>
           {joining.length === 1 ? "Add the selected creature" : `Add the ${joining.length} selected`}
         </Button>
-      ) : null}
+      ) : (
+        <p className="text-12 text-muted">Select creatures on the board to add them.</p>
+      )}
       <Toggle
         checked={view.freeMovement}
         onChange={(on) => act(setFreeMovement(on), "Couldn't change that")}
@@ -121,7 +145,21 @@ export function CombatPanel() {
   );
 }
 
-function Row({ e, active, others }: { e: CombatViewEntry; active: boolean; others: CombatViewEntry[] }) {
+function Row({
+  e,
+  active,
+  others,
+  dragging,
+  onDragStart,
+  onDrop,
+}: {
+  e: CombatViewEntry;
+  active: boolean;
+  others: CombatViewEntry[];
+  dragging: string | null;
+  onDragStart: () => void;
+  onDrop: () => void;
+}) {
   const [draft, setDraft] = useState<string | null>(null);
   const tokenId = e.tokenId as string;
   const commit = () => {
@@ -133,11 +171,31 @@ function Row({ e, active, others }: { e: CombatViewEntry; active: boolean; other
   };
   return (
     <li
-      className={`flex items-center gap-2 border-t border-line/60 py-1.5 ${active ? "text-brass-bright" : "text-bone"}`}
+      // The active one: a brass rule down its left and a raised ground, not just brass words (critic P8 r1 #28).
+      className={`flex items-center gap-2 border-t border-line/60 py-1.5 pr-1 ${
+        active ? "-ml-2 border-l-2 border-l-brass bg-raised pl-1.5 text-brass-bright" : "text-bone"
+      } ${dragging === tokenId ? "opacity-50" : ""}`}
       data-testid="combat-row"
       data-token={tokenId}
       data-active={active ? "1" : "0"}
+      draggable
+      onDragStart={(ev) => {
+        ev.dataTransfer.effectAllowed = "move";
+        onDragStart();
+      }}
+      onDragOver={(ev) => ev.preventDefault()}
+      onDrop={(ev) => {
+        ev.preventDefault();
+        onDrop();
+      }}
     >
+      <span
+        className="grid h-8 w-4 shrink-0 cursor-grab place-items-center text-faint"
+        title="Drag to reorder"
+        aria-hidden
+      >
+        <GripVertical size={14} />
+      </span>
       <input
         aria-label={`${e.name}'s initiative`}
         inputMode="numeric"
@@ -150,9 +208,11 @@ function Row({ e, active, others }: { e: CombatViewEntry; active: boolean; other
         }}
         className="tabular h-8 w-12 shrink-0 rounded-[var(--radius-control)] border border-line bg-ink-900 text-center text-14 text-bone focus:border-brass focus:outline-none"
       />
-      <span className="min-w-0 flex-1 truncate text-14">
-        {keepHyphenated(e.name)}
-        {e.surprised ? <span className="caps ml-1.5 text-12 text-fog">surprised</span> : null}
+      {/* The whole name (wrapping, never cut for a tag: with Goblin, Goblin 2 and Goblin Sneak listed, "Gobl…"
+          names no one; critic P8 r2 I8), and Surprised as its badge after it. */}
+      <span className="flex min-w-0 flex-1 items-center gap-1.5 text-14 leading-tight">
+        <span className="min-w-0 break-words">{keepHyphenated(e.name)}</span>
+        {e.surprised ? <StatusIcon id="surprised" badge size={18} label="Surprised" /> : null}
       </span>
       {others.length ? (
         <Menu

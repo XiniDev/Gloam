@@ -1,9 +1,10 @@
 import { X } from "lucide-react";
 import { AnimatePresence, motion, useIsPresent } from "motion/react";
-import { type ReactNode, type RefObject, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { type ReactNode, type RefObject, useEffect, useId, useRef } from "react";
 import { createPortal } from "react-dom";
 import { IconButton } from "./Button.tsx";
 import { Filigree } from "./ornaments.tsx";
+import { ScrollFade } from "./ScrollFade.tsx";
 import { keepHyphenated } from "./text.tsx";
 
 const FOCUSABLE =
@@ -211,49 +212,9 @@ function DialogCard({
  * surface (a slider or field under the fold is never a secret, and never sliced).
  */
 function DialogBody({ children }: { children: ReactNode }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [more, setMore] = useState({ up: false, down: false });
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const update = () => {
-      const up = el.scrollTop > 1;
-      const down = el.scrollTop + el.clientHeight < el.scrollHeight - 1;
-      setMore((m) => (m.up === up && m.down === down ? m : { up, down }));
-    };
-    update();
-    el.addEventListener("scroll", update, { passive: true });
-    const ro = new ResizeObserver(update);
-    ro.observe(el);
-    for (const c of el.children) ro.observe(c);
-    return () => {
-      el.removeEventListener("scroll", update);
-      ro.disconnect();
-    };
-  }, []);
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col">
-      <div ref={ref} className="min-h-0 flex-1 overflow-y-auto px-6 pb-2 pt-4">
-        {children}
-      </div>
-      {/* Where the body scrolls under the title and the buttons: a hairline, and the content fading into the surface
-          over 16 px — never cut hard through a row (critic P7 r2 #9). */}
-      <span
-        aria-hidden
-        className={`pointer-events-none absolute inset-x-0 top-0 transition-opacity duration-[var(--dur-fast)] ${more.up ? "opacity-100" : "opacity-0"}`}
-      >
-        <span className="block h-px bg-[var(--border)]" />
-        <span className="block h-4 bg-gradient-to-b from-[var(--surface)] to-transparent" />
-      </span>
-      <span
-        aria-hidden
-        data-testid="dialog-more-below"
-        data-more={more.down}
-        className={`pointer-events-none absolute inset-x-0 bottom-0 transition-opacity duration-[var(--dur-fast)] ${more.down ? "opacity-100" : "opacity-0"}`}
-      >
-        <span className="block h-4 bg-gradient-to-t from-[var(--surface)] to-transparent" />
-        <span className="block h-px bg-[var(--border)]" />
-      </span>
-    </div>
+    <ScrollFade className="px-6 pb-2 pt-4" testId="dialog-more-below">
+      {children}
+    </ScrollFade>
   );
 }
