@@ -678,7 +678,7 @@ describe("P9 — spells never leak what a player can't perceive", () => {
       const card = anna.msgs
         .slice(mark)
         .find((m) => m.type === "request.card" && JSON.stringify(m.payload).includes(owl));
-      expect((card?.payload as { dc?: number }).dc).toBeUndefined();
+      expect((card?.payload as { dc?: number } | undefined)?.dc).toBeUndefined();
       await cmd(dm, "cast.npcSaves", { castId: fb.castId });
       const owlRow = room()
         .model.get("cast", fb.castId)
