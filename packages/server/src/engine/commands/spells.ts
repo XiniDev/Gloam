@@ -148,8 +148,11 @@ export interface CastFollowup {
 export function spellById(ctx: CommandCtx, id: string): Spell | null {
   const srd = ctx.app.content.spellById.get(id);
   if (srd) return srd;
+  // In use; the DM's own only for the DM (and the table itself acting for them).
+  const dm = isDm(ctx.actor.role);
   for (const c of ctx.model.all("content"))
-    if (c.type === "spell" && c.slug === id && c.status === "active") return c.data as unknown as Spell;
+    if (c.type === "spell" && c.slug === id && (c.status === "active" || (dm && c.status === "private")))
+      return c.data as unknown as Spell;
   return null;
 }
 
@@ -368,6 +371,22 @@ function castOnto(
  */
 function playersRoll(ctx: CommandCtx, row: { id: string; pc: boolean }): boolean {
   return row.pc || (ctx.model.get("token", row.id)?.ownerIds.length ?? 0) > 0;
+}
+
+/** How many open cards a player's creature may have at once (each is re-sent on every change to it). */
+export const OPEN_CARDS_MAX = 6;
+
+/** A player's creature with too many open cards can't start another (the DM's can — P2). */
+function roomForACard(ctx: CommandCtx, t: TokenEntity): void {
+  if (isDm(ctx.actor.role)) return;
+  const open = ctx.model
+    .all("cast")
+    .filter((c) => c.status === "open" && c.data.kind !== "trigger" && c.data.caster.tokenId === t.id).length;
+  if (open >= OPEN_CARDS_MAX)
+    throw new GloamError(
+      "CONFLICT",
+      `${t.name} has ${OPEN_CARDS_MAX} cards open — finish or close some first.`,
+    );
 }
 
 /** A wall's drawn length (a ring's circumference). */
@@ -905,6 +924,7 @@ export const spellCast: CommandDef<
     }
     if (p.mode === "ritual" && !spell.ritual)
       throw new GloamError("INVALID", `${spell.name} isn't a ritual.`);
+    if (!p.narrative) roomForACard(ctx, t);
     if (!dm) {
       // On the scene in play (a token left on a prep scene isn't at the table).
       if (t.sceneId !== ctx.model.campaign.activeSceneId)
@@ -1261,6 +1281,7 @@ export const attackStart: CommandDef<z.infer<typeof AttackStart>, { castId: stri
     if (!a) throw new GloamError("NOT_FOUND", "That attack isn't on the sheet.");
     if (!a.attack && !a.damage) throw new GloamError("INVALID", `${a.name} has no attack or damage to roll.`);
     if (isDm(ctx.actor.role)) return;
+    roomForACard(ctx, t);
     // A player's attack as the rules have one (security review L1, rules audit I12): on the scene in play, on its
     // own turn in combat (an action), at most four swings (the Attack action's most, Extra Attack at its highest — the
     // DM makes more), each at a creature they see, within its range (SRD p. 16), not behind total cover (p. 106).

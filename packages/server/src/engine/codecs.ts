@@ -71,7 +71,8 @@ export interface ContentEntity {
   slug: string;
   name: string;
   data: Record<string, unknown>;
-  status: "active" | "proposed" | "rejected";
+  /** In use; the DM's own (an NPC's signature spell, no player's to see); a player's proposal; turned down. */
+  status: "active" | "private" | "proposed" | "rejected";
   createdBy: string;
   createdAt: number;
   updatedAt: number;

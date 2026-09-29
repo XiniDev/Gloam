@@ -702,4 +702,54 @@ describe("P9 — spells never leak what a player can't perceive", () => {
       await place(lurker, { x: 70, y: 20 });
     });
   });
+
+  describe("M5 / L6: bounded cards; an unseen creature's burst", () => {
+    it("a player's creature holds six open cards at most (the DM's are unbounded); an emanation's burst from a creature she can't see comes to the foot", async () => {
+      const toks = room().model.inScene("token", sceneId);
+      const mira = (toks.find((x) => x.name === "Mira") as { id: string }).id;
+      const goblin = (toks.find((x) => x.name === "Goblin") as { id: string }).id;
+      for (const c of room()
+        .model.all("cast")
+        .filter((x) => x.status === "open"))
+        await cmd(dm, "cast.close", { castId: c.id });
+      for (let i = 0; i < 6; i++)
+        await cmd(anna.room, "spell.cast", {
+          casterTokenId: mira,
+          spellId: "fire-bolt",
+          mode: "slot",
+          targets: [goblin],
+        });
+      await expect(
+        cmd(anna.room, "spell.cast", {
+          casterTokenId: mira,
+          spellId: "fire-bolt",
+          mode: "slot",
+          targets: [goblin],
+        }),
+      ).rejects.toThrow(/6 cards open/);
+      for (const c of room()
+        .model.all("cast")
+        .filter((x) => x.status === "open"))
+        await cmd(dm, "cast.close", { castId: c.id });
+      // The hidden Lurker's Spirit Guardians catches Anna's elf: she sees the burst, its centre to the foot.
+      await place(lurker, { x: 14.4, y: 20.3 });
+      const mark = anna.msgs.length;
+      const sg = await cmd<{ effectId: string }>(dm, "spell.cast", {
+        casterTokenId: lurker,
+        spellId: "spirit-guardians",
+        mode: "free",
+        level: 3,
+        endConcentration: true,
+      });
+      await waitFor(() => anna.msgs.slice(mark).some((m) => m.type === "cast.fx"));
+      const fx = anna.msgs.slice(mark).find((m) => m.type === "cast.fx")?.payload as {
+        from: unknown;
+        shape: { at: { x: number; y: number } };
+      };
+      expect(fx.from).toBeNull();
+      expect(fx.shape.at).toMatchObject({ x: 14, y: 20 });
+      await cmd(dm, "effect.remove", { effectId: sg.effectId });
+      await place(lurker, { x: 70, y: 20 });
+    });
+  });
 });

@@ -61,7 +61,13 @@ export function homebrewFor(
   return model
     .all("content")
     .filter((c) => c.type === "spell" && c.campaignId === model.campaign.id)
-    .filter((c) => viewer.dm || c.status === "active" || c.createdBy === viewer.userId)
+    .filter(
+      (c) =>
+        viewer.dm ||
+        c.status === "active" ||
+        // Their own proposals (never another player's, nor the DM's private spells).
+        (c.createdBy === viewer.userId && c.status !== "private"),
+    )
     .map((c) => ({
       id: c.id,
       status: c.status,
@@ -72,17 +78,36 @@ export function homebrewFor(
     .sort((a, b) => a.spell.name.localeCompare(b.spell.name));
 }
 
-function homebrewBySlug(ctx: CommandCtx, slug: string): ContentEntity | undefined {
+/**
+ * The homebrew spell holding an id: one in use or the DM's own — and `forUser`'s own waiting proposals (by the id
+ * they ask for; null: nobody's). `except`: the spell itself (an edit, an approval).
+ */
+function homebrewBySlug(
+  ctx: CommandCtx,
+  slug: string,
+  forUser: string | null = null,
+  except?: string,
+): ContentEntity | undefined {
   return ctx.model
     .all("content")
     .find(
       (c) =>
         c.type === "spell" &&
         c.campaignId === ctx.model.campaign.id &&
-        c.slug === slug &&
-        c.status !== "rejected",
+        c.id !== except &&
+        (((c.status === "active" || c.status === "private") && c.slug === slug) ||
+          (forUser !== null &&
+            c.createdBy === forUser &&
+            c.status === "proposed" &&
+            (c.data as { id?: string }).id === slug)),
     );
 }
+
+/**
+ * A waiting proposal's slug: a placeholder that no spell id can be (ids are kebab-case) — a proposal holds no real id
+ * (security review L8: it can't squat one the DM wants); approval gives it its id, or the next free one.
+ */
+const waitingSlug = (contentId: string) => `~${contentId}`;
 
 /** Parses a spell for a campaign: the schema, the formulas, the homebrew pack's mark. */
 function parseSpell(raw: unknown): { spell: Spell } | { errors: string[] } {
@@ -101,7 +126,12 @@ export const ContentSpellSave = z.strictObject({
   spell: z.unknown(),
   /** The homebrew spell it replaces (an edit); absent: a new one. */
   replaces: z.string().min(3).max(40).optional(),
+  /** The DM's alone (an NPC's signature spell): no player sees it or can cast it (security review L8). */
+  private: z.boolean().optional(),
 });
+
+/** How many of a player's spells may wait on the DM at once (security review M5). */
+export const PROPOSALS_MAX = 20;
 
 /**
  * `content.spell.save` (§8.13 Homebrew builder): the DM's spell goes into use; a player's is a proposal the DM
@@ -129,31 +159,61 @@ export const contentSpellSave: CommandDef<
     const spell = parsed.spell;
     if (ctx.app.content.spellById.has(spell.id))
       throw new GloamError("CONFLICT", `"${spell.id}" is an SRD spell's id — give yours another.`);
-    const clash = homebrewBySlug(ctx, spell.id);
-    if (clash && clash.id !== p.replaces)
-      throw new GloamError("CONFLICT", `There's already a homebrew spell "${clash.name}" with that id.`);
     const dm = isDm(ctx.actor.role);
-    const status: ContentEntity["status"] = dm ? "active" : "proposed";
+    // A clash with a spell in use (or the DM's own), or with this person's own proposal — another player's waiting
+    // proposal holds no id (it can't squat one the DM wants, nor is its name told to anyone; security review L8).
+    const clash = homebrewBySlug(ctx, spell.id, dm ? null : ctx.actor.userId);
+    if (clash && clash.id !== p.replaces)
+      throw new GloamError(
+        "CONFLICT",
+        clash.status === "proposed" && clash.createdBy !== ctx.actor.userId
+          ? "That id is taken."
+          : `There's already a homebrew spell "${clash.name}" with that id.`,
+      );
+    if (!dm && !p.replaces) {
+      const waiting = ctx.model
+        .all("content")
+        .filter(
+          (c) => c.type === "spell" && c.createdBy === ctx.actor.userId && c.status === "proposed",
+        ).length;
+      if (waiting >= PROPOSALS_MAX)
+        throw new GloamError(
+          "INVALID",
+          `${PROPOSALS_MAX} of your spells are waiting on the DM — wait for those first.`,
+        );
+    }
+    const status: ContentEntity["status"] = dm ? (p.private ? "private" : "active") : "proposed";
     if (p.replaces) {
       const c = mustGet(ctx, "content", p.replaces);
       return {
         ops: setOps("content", c, {
-          slug: spell.id,
+          // A proposal (still waiting, or sent back to wait) keeps its placeholder.
+          slug:
+            dm && c.status !== "proposed" ? spell.id : c.status === "proposed" ? c.slug : waitingSlug(c.id),
           name: spell.name,
           data: spell as unknown as Record<string, unknown>,
-          status: dm ? (c.status === "rejected" ? "active" : c.status) : "proposed",
+          status: dm
+            ? p.private !== undefined && c.status !== "proposed"
+              ? p.private
+                ? "private"
+                : "active"
+              : c.status === "rejected"
+                ? "active"
+                : c.status
+            : "proposed",
           updatedAt: ctx.now,
         }),
         summary: `Homebrew spell ${spell.name} changed`,
         result: { id: c.id, status: dm ? "active" : "proposed" },
       };
     }
+    const cid = newId("cnt");
     const c: ContentEntity = {
-      id: newId("cnt"),
+      id: cid,
       campaignId: ctx.model.campaign.id,
       pack: "homebrew",
       type: "spell",
-      slug: spell.id,
+      slug: dm ? spell.id : waitingSlug(cid),
       name: spell.name,
       data: spell as unknown as Record<string, unknown>,
       status,
@@ -185,9 +245,21 @@ export const contentSpellDecide: CommandDef<z.infer<typeof ContentSpellDecide>, 
   plan(ctx, p) {
     const c = mustGet(ctx, "content", p.id);
     const status = p.approve ? "active" : "rejected";
+    // Approved: under the id it asks for — or the next free one, if a spell took that meanwhile.
+    const asked = String((c.data as { id?: string }).id ?? c.slug);
+    let slug = asked;
+    if (p.approve)
+      for (let n = 2; ctx.app.content.spellById.has(slug) || homebrewBySlug(ctx, slug, null, c.id); n++)
+        slug = `${asked}-${n}`;
     return {
-      ops: setOps("content", c, { status, updatedAt: ctx.now }),
-      summary: `${c.name} ${p.approve ? "approved" : "rejected"}`,
+      ops: setOps(
+        "content",
+        c,
+        !p.approve
+          ? { status, updatedAt: ctx.now }
+          : { status, slug, data: { ...c.data, id: slug }, updatedAt: ctx.now },
+      ),
+      summary: `${c.name} ${p.approve ? "approved" : "rejected"}${p.approve && slug !== asked ? ` (as "${slug}")` : ""}`,
       result: { status },
     };
   },

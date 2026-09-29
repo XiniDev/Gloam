@@ -3,9 +3,10 @@ import { checkFormula } from "@gloam/shared/dice";
 import { type Spell, SpellSchema } from "@gloam/shared/schemas";
 import { Minus, Plus } from "lucide-react";
 import { type ReactNode, useEffect, useId, useMemo, useState } from "react";
-import { saveHomebrew } from "../../net/spells.ts";
+import { saveHomebrew, useSpells } from "../../net/spells.ts";
 import { useTable } from "../../net/table.ts";
 import { Button, IconButton } from "../../ui/Button.tsx";
+import { Toggle } from "../../ui/controls.tsx";
 import { Dialog } from "../../ui/Dialog.tsx";
 import { toast } from "../../ui/Toast.tsx";
 import { SpellCard } from "./SpellCard.tsx";
@@ -113,6 +114,12 @@ export function HomebrewBuilder({
   const [d, setD] = useState<Draft>(BLANK);
   const [idTouched, setIdTouched] = useState(false);
   const [busy, setBusy] = useState(false);
+  // The DM's own (an NPC's signature spell): no player sees it or casts it.
+  const was = useSpells((s) => (replaces ? s.homebrew.find((h) => h.id === replaces) : undefined));
+  const [dmOnly, setDmOnly] = useState(false);
+  useEffect(() => {
+    if (open) setDmOnly(was?.status === "private");
+  }, [open, was?.status]);
   useEffect(() => {
     if (!open) return;
     if (initial) {
@@ -140,10 +147,18 @@ export function HomebrewBuilder({
   const save = async () => {
     setBusy(true);
     try {
-      const r = await saveHomebrew(d as never, replaces);
+      const r = await saveHomebrew(
+        d as never,
+        replaces,
+        dm && was?.status !== "proposed" ? dmOnly : undefined,
+      );
       toast.success(
         r.status === "proposed" ? `${String(d.name)} sent to the DM` : `${String(d.name)} saved`,
-        r.status === "proposed" ? "It's in use once they approve it." : "It's in the spell list now.",
+        r.status === "proposed"
+          ? "It's in use once they approve it."
+          : r.status === "private"
+            ? "Yours alone: no player sees it."
+            : "It's in the spell list now.",
       );
       onClose();
     } catch (e) {
@@ -173,6 +188,9 @@ export function HomebrewBuilder({
           <span className="mr-auto text-13 text-muted" data-testid="builder-status">
             {errors.length ? `${errors.length} to fix` : "Ready"}
           </span>
+          {dm && was?.status !== "proposed" ? (
+            <Toggle inline checked={dmOnly} onChange={setDmOnly} label="DM only" />
+          ) : null}
           <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>

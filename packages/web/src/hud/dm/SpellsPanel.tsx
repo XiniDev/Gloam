@@ -23,7 +23,7 @@ export function SpellsPanel() {
   const [editing, setEditing] = useState<{ spell: Spell | null; replaces?: string } | null>(null);
   const [importing, setImporting] = useState(false);
   const proposed = homebrew.filter((h) => h.status === "proposed");
-  const active = homebrew.filter((h) => h.status === "active");
+  const active = homebrew.filter((h) => h.status === "active" || h.status === "private");
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4" data-testid="spells-panel">
       <div className="flex flex-wrap gap-2">
@@ -123,6 +123,7 @@ function Row({ h, onOpen, children }: { h: HomebrewSpell; onOpen: () => void; ch
         {h.spell.name}
         <span className="ml-1.5 text-12 text-muted">
           {h.spell.level === 0 ? "cantrip" : `level ${h.spell.level}`} · {h.createdByName}
+          {h.status === "private" ? " · DM only" : ""}
         </span>
       </button>
       {children}

@@ -509,10 +509,7 @@ export class CastFlow {
         castId: null,
         preset: fx.preset,
         from: v.dm || v.perceives(fx.casterTokenId) ? from : null,
-        shape:
-          fx.shape && fx.shape.kind === "emanation"
-            ? { kind: "emanation", distance: fx.shape.distance, at: from }
-            : fx.shape,
+        shape: fx.shape && fx.shape.kind === "emanation" ? emanationFor(model, fx.shape, v) : fx.shape,
         to: seenTo.map(({ x, y, z }) => ({ x, y, z })),
         kind: fx.kind,
       });
@@ -721,6 +718,27 @@ export class CastFlow {
     );
     return { total };
   }
+}
+
+/**
+ * An emanation's burst as one reader gets it (security review L6): where its creature stands (the one it hangs on,
+ * not always the caster) — exact for whoever perceives that creature, to the foot for anyone else (as a glimpse is).
+ */
+function emanationFor(
+  model: CampaignModel,
+  sh: { kind: "emanation"; sourceTokenId: string; distance: number },
+  v: { dm: boolean; perceives(id: string): boolean },
+): unknown {
+  const t = model.get("token", sh.sourceTokenId);
+  if (!t) return { kind: "emanation", distance: sh.distance, at: null };
+  const exact = v.dm || v.perceives(t.id);
+  const r = (n: number) => (exact ? n : Math.round(n));
+  return {
+    kind: "emanation",
+    distance: sh.distance,
+    at: { x: r(t.pos.x), y: r(t.pos.y), z: r(t.elevation) },
+    baseRadius: t.sizeFt / 2,
+  };
 }
 
 /** A total shared among damage types as their formulas would on average (the remainder to the first). */

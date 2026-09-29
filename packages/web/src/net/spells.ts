@@ -15,7 +15,8 @@ import { request, tableEvents } from "./table.ts";
 /** A homebrew spell as the room lists it: its content id, whether it's in use or waiting on the DM, who made it. */
 export interface HomebrewSpell {
   id: string;
-  status: "active" | "proposed" | "rejected";
+  /** In use; the DM's own (no player sees it); a player's proposal; turned down. */
+  status: "active" | "private" | "proposed" | "rejected";
   createdBy: string;
   createdByName: string;
   spell: Spell;
@@ -74,7 +75,8 @@ export function loadSrdSpells(): Promise<Spell[]> {
 
 /** Every spell the table can cast: the SRD's and the homebrew in use (a player's own proposals marked as such). */
 export function allSpells(s: Pick<SpellsStore, "srd" | "homebrew">): Spell[] {
-  const brew = s.homebrew.filter((h) => h.status === "active").map((h) => h.spell);
+  // In use: the table's, and the DM's own (only a DM is ever sent those).
+  const brew = s.homebrew.filter((h) => h.status === "active" || h.status === "private").map((h) => h.spell);
   return [...(s.srd ?? []), ...brew];
 }
 
@@ -148,10 +150,11 @@ export const updateEffect = (
 // ── homebrew ─────────────────────────────────────────────────────────────────────────────────────────────
 
 /** The DM saves a homebrew spell (in use at once); a player proposes one (the DM approves it). */
-export const saveHomebrew = (spell: SpellInput, replaces?: string) =>
+export const saveHomebrew = (spell: SpellInput, replaces?: string, dmOnly?: boolean) =>
   request<{ id: string; status: HomebrewSpell["status"] }>("content.spell.save", {
     spell,
     ...(replaces ? { replaces } : {}),
+    ...(dmOnly !== undefined ? { private: dmOnly } : {}),
   });
 export const decideHomebrew = (id: string, approve: boolean) =>
   request("content.spell.decide", { id, approve });
@@ -209,6 +212,17 @@ function onMessage(type: string, payload: unknown): void {
     case "content.spells":
       s.set({ homebrew: payload as HomebrewSpell[] });
       return;
+    case "content.spells.patch": {
+      // Only what changed (the whole list came on joining).
+      const p = payload as { upsert: HomebrewSpell[]; remove: string[] };
+      const gone = new Set([...p.remove, ...p.upsert.map((x) => x.id)]);
+      s.set({
+        homebrew: [...s.homebrew.filter((x) => !gone.has(x.id)), ...p.upsert].sort((a, b) =>
+          a.spell.name.localeCompare(b.spell.name),
+        ),
+      });
+      return;
+    }
   }
 }
 

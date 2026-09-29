@@ -1165,18 +1165,38 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
   }
 
   /** The homebrew spells, to each person as they may see them (after a change to them). */
+  /**
+   * The homebrew spells each person may see, after a change to them: only what changed for them (the whole list
+   * went when they joined) — never the campaign's whole list again on every change (security review M5).
+   */
+  private readonly homebrewSent = new WeakMap<Client, Map<string, string>>();
+  private homebrewOf(auth: ClientAuth) {
+    return homebrewFor(
+      this.model,
+      { userId: auth.userId, dm: auth.role === "admin" || auth.role === "dm" },
+      (u) => roomCtx().profiles.get(u)?.displayName ?? "someone",
+    );
+  }
+  private sendHomebrewAll(c: Client, auth: ClientAuth): void {
+    const list = this.homebrewOf(auth);
+    this.homebrewSent.set(c, new Map(list.map((e) => [e.id, JSON.stringify(e)])));
+    c.send("content.spells", list);
+  }
   private sendHomebrew(): void {
     for (const c of this.clients) {
       const auth = c.auth as ClientAuth | undefined;
       if (!auth) continue;
-      c.send(
-        "content.spells",
-        homebrewFor(
-          this.model,
-          { userId: auth.userId, dm: auth.role === "admin" || auth.role === "dm" },
-          (u) => roomCtx().profiles.get(u)?.displayName ?? "someone",
-        ),
-      );
+      const had = this.homebrewSent.get(c);
+      if (!had) {
+        this.sendHomebrewAll(c, auth);
+        continue;
+      }
+      const list = this.homebrewOf(auth);
+      const now = new Map(list.map((e) => [e.id, JSON.stringify(e)]));
+      const upsert = list.filter((e) => had.get(e.id) !== now.get(e.id));
+      const remove = [...had.keys()].filter((id) => !now.has(id));
+      this.homebrewSent.set(c, now);
+      if (upsert.length || remove.length) c.send("content.spells.patch", { upsert, remove });
     }
   }
 
@@ -1351,11 +1371,30 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
       .filter((o) => o.k !== "fog" && o.k !== "sheet" && o.e === "cast")
       .map((o) => (o as { id: string }).id);
     if (castIds.length) this.casts.push([...new Set(castIds)]);
-    else if (
-      this.model.all("cast").some((c) => c.status === "open") &&
-      info.ops.some((o) => o.k === "sheet" || (o.k !== "fog" && (o.e === "token" || o.e === "actor")))
-    )
-      this.casts.push();
+    else {
+      // A creature changed (moved, hurt, its sheet): the open cards it's on — as caster or row — again; a wall or
+      // door: every open card (lines and cover). Never the campaign's closed ones (security review M5).
+      const open = this.model.all("cast").filter((c) => c.status === "open");
+      if (open.length) {
+        const walls = info.ops.some((o) => o.k !== "fog" && o.k !== "sheet" && o.e === "wall");
+        const touched = new Set<string>();
+        for (const o of info.ops) {
+          if (o.k === "fog") continue;
+          const actorId = o.k === "sheet" ? o.actorId : o.e === "actor" ? o.id : null;
+          if (actorId) for (const t of this.model.all("token")) if (t.actorId === actorId) touched.add(t.id);
+          if (o.k !== "sheet" && o.e === "token") touched.add(o.id);
+        }
+        const ids = open
+          .filter(
+            (c) =>
+              walls ||
+              (c.data.caster.tokenId !== null && touched.has(c.data.caster.tokenId)) ||
+              c.data.targets.some((t) => touched.has(t.id)),
+          )
+          .map((c) => c.id);
+        if (ids.length) this.casts.push(ids);
+      }
+    }
     if (info.ops.some((o) => o.k !== "fog" && o.k !== "sheet" && o.e === "content")) this.sendHomebrew();
     // A concentration that ended takes what it held up with it (§8.13; AC-SPL-07) — in the same undo step.
     if (info.type !== "history.undo" && info.type !== "history.redo")
@@ -1511,14 +1550,7 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
     if (cv) this.combat.join(cv);
     // Their open resolution cards, and the campaign's homebrew spells as they may see them.
     if (cv) this.casts.join(cv);
-    client.send(
-      "content.spells",
-      homebrewFor(
-        this.model,
-        { userId: auth.userId, dm: auth.role === "admin" || auth.role === "dm" },
-        (u) => roomCtx().profiles.get(u)?.displayName ?? "someone",
-      ),
-    );
+    this.sendHomebrewAll(client, auth);
     client.send("welcome", {
       userId: auth.userId,
       role: auth.role,

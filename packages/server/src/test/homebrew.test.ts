@@ -50,8 +50,19 @@ describe("P9 — homebrew spells and imports (AC-SPL-10/11)", () => {
     await sleep(230);
     return rq<T>(r, type, payload);
   };
-  const latestHomebrew = (msgs: Msg[]) =>
-    [...msgs].reverse().find((m) => m.type === "content.spells")?.payload as HomebrewEntry[] | undefined;
+  /** The homebrew list as a client holds it: the whole list on joining, then only what changed (M5). */
+  const latestHomebrew = (msgs: Msg[]): HomebrewEntry[] | undefined => {
+    let list: HomebrewEntry[] | undefined;
+    for (const m of msgs) {
+      if (m.type === "content.spells") list = m.payload as HomebrewEntry[];
+      else if (m.type === "content.spells.patch" && list) {
+        const p = m.payload as { upsert: HomebrewEntry[]; remove: string[] };
+        const gone = new Set([...p.remove, ...p.upsert.map((x) => x.id)]);
+        list = [...list.filter((x) => !gone.has(x.id)), ...p.upsert];
+      }
+    }
+    return list;
+  };
 
   async function admit(name: string) {
     const p = await joinAsNew(t, code, name);
@@ -274,5 +285,44 @@ describe("P9 — homebrew spells and imports (AC-SPL-10/11)", () => {
     } finally {
       t.server.ctx.campaigns.setMembership(campaignId, bo.id, "player");
     }
+  });
+
+  it("L8 / M5: a waiting proposal holds no id (the DM's spell takes it; approved, the proposal is renamed); the DM's own spells no player sees or casts; changes go as patches; 20 proposals wait at most", async () => {
+    const anna = players.Anna as (typeof players)[string];
+    const bo = players.Bo as (typeof players)[string];
+    const mine = await cmd<{ id: string }>(anna.room, "content.spell.save", {
+      spell: from(fireball, "shadow-bolt", "Anna's Shadow Bolt"),
+    });
+    // Bo may propose the same id (he's told nothing of Anna's).
+    const his = await cmd<{ id: string }>(bo.room, "content.spell.save", {
+      spell: from(fireball, "shadow-bolt", "Bo's Shadow Bolt"),
+    });
+    // The DM takes the id for a spell of their own — private: no player sees or casts it.
+    const dms = await cmd<{ id: string; status: string }>(dm, "content.spell.save", {
+      spell: from(fireball, "shadow-bolt", "The Lich's Shadow Bolt"),
+      private: true,
+    });
+    expect(dms.status).toBe("private");
+    await sleep(400);
+    expect(latestHomebrew(anna.msgs)?.some((h) => h.id === dms.id)).toBe(false);
+    expect(latestHomebrew(bo.msgs)?.some((h) => h.id === dms.id)).toBe(false);
+    expect(anna.msgs.some((m) => m.type === "content.spells.patch")).toBe(true);
+    // Approved now, Anna's comes in as "shadow-bolt-2"; Bo's, rejected.
+    await cmd(dm, "content.spell.decide", { id: mine.id, approve: true });
+    await cmd(dm, "content.spell.decide", { id: his.id, approve: false });
+    expect(room().model.get("content", mine.id)?.slug).toBe("shadow-bolt-2");
+    await waitFor(() =>
+      latestHomebrew(bo.msgs)?.some((h) => h.spell.id === "shadow-bolt-2" && h.status === "active"),
+    );
+    // Twenty waiting at most.
+    // (Content commands are two a second.)
+    for (let i = 0; i < 20; i++) {
+      await sleep(300);
+      await cmd(anna.room, "content.spell.save", { spell: from(fireball, `wait-${i}`, `Wait ${i}`) });
+    }
+    await sleep(300);
+    await expect(
+      cmd(anna.room, "content.spell.save", { spell: from(fireball, "wait-20", "Wait 20") }),
+    ).rejects.toThrow(/waiting on the DM/);
   });
 });
