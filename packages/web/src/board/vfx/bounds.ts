@@ -1,5 +1,6 @@
 import { ShaderMaterial, type ShaderMaterialParameters, Vector4 } from "three";
 import type { Bounds } from "../scene.ts";
+import { FOG_SEEN_GLSL, fogUniforms } from "../vision/fogMaterial.ts";
 
 /**
  * The scene's bounds as the spell effects see them: an effect fades out over the last few feet inside the map's edge,
@@ -43,14 +44,29 @@ export function vfxMaterial(
         /void main\(\)\s*\{/,
         "void main() {\n  vBoundsW = (modelMatrix * vec4(position, 1.0)).xz;",
       )}`;
-  const frag = `${FADE_GLSL}${p.fragmentShader.replace(
+  // Faded at the scene's edge, and drawn only as far as the viewer sees the table under it (the players' fog).
+  const frag = `${FADE_GLSL}${FOG_SEEN_GLSL}${p.fragmentShader.replace(
     /gl_FragColor\s*=[^;]*;/g,
-    (m) => `${m} gl_FragColor.a *= boundsFade(vBoundsW);`,
+    (m) => `${m} gl_FragColor.a *= boundsFade(vBoundsW) * gloamSeen(vBoundsW);`,
   )}`;
   return new ShaderMaterial({
     ...p,
     vertexShader: vert,
     fragmentShader: frag,
-    uniforms: { ...p.uniforms, ...VFX_BOUNDS },
+    uniforms: {
+      ...p.uniforms,
+      ...VFX_BOUNDS,
+      gMode: fogUniforms.gMode,
+      gDm: fogUniforms.gDm,
+      gAmbient: fogUniforms.gAmbient,
+      gRect: fogUniforms.gRect,
+      gMemTexel: fogUniforms.gMemTexel,
+      gMemRect: fogUniforms.gMemRect,
+      gVis: fogUniforms.gVis,
+      gVisPrev: fogUniforms.gVisPrev,
+      gBlend: fogUniforms.gBlend,
+      gLight: fogUniforms.gLight,
+      gMem: fogUniforms.gMem,
+    },
   });
 }

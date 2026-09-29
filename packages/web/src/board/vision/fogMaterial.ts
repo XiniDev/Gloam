@@ -228,6 +228,44 @@ vec3 gloamFog(vec3 col, vec2 xz, float feather, vec2 across, vec2 facing) {
 }
 `;
 
+/**
+ * How much of something drawn over the table at a point this viewer may see (1 where they see now, dimmer over
+ * remembered ground, 0 over the unknown; always 1 without fog or for the DM) — for what the composite doesn't grade,
+ * the spell effects (vfx/bounds.ts; critic P9 r2 #9: a Flaming Sphere drew over the fog's unseen wedge). The same
+ * "seen" as gloamFog's, without its colours. Its own uniform declarations: a shader that has them from COMMON doesn't
+ * take this.
+ */
+export const FOG_SEEN_GLSL = /* glsl */ `
+uniform float gMode; uniform float gDm; uniform float gAmbient; uniform vec4 gRect;
+uniform vec2 gMemTexel; uniform vec4 gMemRect; uniform sampler2D gVis; uniform sampler2D gVisPrev; uniform float gBlend;
+uniform sampler2D gLight; uniform sampler2D gMem;
+float gSeenVis(vec2 uv) {
+  vec4 v = gBlend >= 1.0 ? texture2D(gVis, uv) : mix(texture2D(gVisPrev, uv), texture2D(gVis, uv), gBlend);
+  vec4 L = texture2D(gLight, uv);
+  float bright = max(L.r, gAmbient > 1.5 ? 1.0 : 0.0);
+  float dim = max(max(L.g, bright), gAmbient > 0.5 ? 1.0 : 0.0);
+  float seenSight = clamp(v.r * (bright + (dim - bright) * v.g) + v.r * (dim - bright) * (1.0 - v.g)
+    + v.r * (1.0 - dim) * max(v.g, v.a), 0.0, 1.0);
+  return clamp(seenSight + v.b * (1.0 - seenSight), 0.0, 1.0);
+}
+float gSeenMem(vec2 xz) {
+  vec2 uv = (xz - gMemRect.xy) / gMemRect.zw;
+  vec2 o = gMemTexel * 0.75;
+  float m = 0.25 * (texture2D(gMem, uv + vec2(o.x, o.y)).r + texture2D(gMem, uv + vec2(-o.x, o.y)).r
+    + texture2D(gMem, uv + vec2(o.x, -o.y)).r + texture2D(gMem, uv + vec2(-o.x, -o.y)).r);
+  return smoothstep(0.2, 0.8, m);
+}
+float gloamSeen(vec2 xz) {
+  if (gMode < 0.5 || gDm > 0.5) return 1.0;
+  float mem = gSeenMem(xz);
+  if (gMode < 1.5) return mem;
+  vec2 uv = (xz - gRect.xy) / gRect.zw;
+  if (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) return 1.0;
+  float seen = gSeenVis(uv);
+  return max(seen, mem * 0.45);
+}
+`;
+
 // A pillar's top: its footprint is never seen from anywhere (graded where it stands it was always fog), so it takes the
 // best-seen of four points just outside the pillar: centre c, reach r (ft).
 const AROUND_IMPL = /* glsl */ `

@@ -295,13 +295,16 @@ void main() {
     float sp = abs(fract(sect + jitter) - 0.5) * 2.0;
     float aa = max(fwidth(sect), 1e-4) * 2.0;
     float spokes = 1.0 - smoothstep(0.02, 0.02 + aa, 1.0 - sp);
-    float sag = e * 20.0 + sin(fract(sect + jitter) * 3.14159) * 0.6;
+    float sag = e * 12.0 + sin(fract(sect + jitter) * 3.14159) * 0.6;
     float ringAa = max(fwidth(sag), 1e-4);
-    float rings = 1.0 - smoothstep(0.0, ringAa * 1.5, abs(fract(sag) - 0.5) - 0.44);
+    // A thread where sag crosses a whole number: |fract − ½| near ½, a line ~6 % of the band wide, anti-aliased
+    // (critic P9 r2 #4: the test was inverted — every band was filled but the thread, a white slab).
+    float rings = smoothstep(0.47 - ringAa * 1.5, 0.47, abs(fract(sag) - 0.5));
     float broken = step(0.22, noise(vec3(vP * 1.1, 7.0)));
     float middle = smoothstep(0.02, 0.2, e);
-    a = max(spokes * 0.8, rings) * broken * middle * 0.5;
-    col = mix(uGlow, uCore, 0.6);
+    // Its edge thinning out too (no hard square border).
+    a = max(spokes * 0.85, rings * 0.75) * broken * middle * (1.0 - smoothstep(0.85, 1.0, e)) * 0.7;
+    col = mix(uGlow, uCore, 0.7);
   } else if (uKind < 3.5) {
     // Thorns: dark, jagged strokes scattered through it.
     float t = step(0.78, noise(vec3(vP * 3.3, 11.0))) + step(0.8, noise(vec3(vP.yx * 2.7, 5.0)));
@@ -688,11 +691,15 @@ void main() {
   float tall = 0.65 + 0.35 * noise(vec3(vAlong * 0.12, uTime * 0.25, 11.0));
   float h2 = h / tall + (1.0 - ends) * 0.6;
   float body = smoothstep(h2 * 1.15 - 0.05, h2 * 1.15 + 0.25, n) * (1.0 - smoothstep(0.55, 1.0, h2));
-  float a = body * uOpacity * ends * smoothstep(0.0, 0.07, h);
+  // Its foot rises out of the floor unevenly along the wall (critic P9 r2 #7: a hard, ruler-straight bottom): the fade
+  // over its lowest part is deeper here, shallower there, and drifts.
+  float footN = noise(vec3(vAlong * 0.6, uTime * 0.4, 3.0));
+  float foot = smoothstep(0.0, 0.1 + 0.14 * footN, h);
+  float a = body * uOpacity * ends * foot;
   if (a < 0.01) discard;
-  // A pale heart at the roots, orange through the body, deepening toward the tips — drawn in its own colours (normal
-  // blending), so it reads as fire on a pale floor as on a dark one.
-  vec3 col = mix(uCore, uGlow, smoothstep(0.02, 0.4, h));
+  // A pale heart in the thick of the tongues, orange through the body, deepening toward the tips — drawn in its own
+  // colours (normal blending), so it reads as fire on a pale floor as on a dark one; thin flame is never the pale core.
+  vec3 col = mix(uCore, uGlow, clamp(smoothstep(0.02, 0.4, h) + (1.0 - body) * 0.6, 0.0, 1.0));
   col = mix(col, uEmber, smoothstep(0.45, 1.0, h) * 0.55);
   gl_FragColor = vec4(col, a);
   #include <colorspace_fragment>

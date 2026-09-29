@@ -11,9 +11,11 @@ import { type FeedRoll, isMasked, useRolls } from "../dice/state.ts";
 import { HandDieIcon, SparkIcon } from "../icons/dice.tsx";
 import { useTable } from "../net/table.ts";
 import { useBoard } from "../state/entities.ts";
+import { useTargeting } from "../state/targeting.ts";
 import { useUi } from "../state/ui.ts";
 import { BottomSheet } from "../ui/BottomSheet.tsx";
 import { IconButton } from "../ui/Button.tsx";
+import { FormulaText } from "../ui/FormulaText.tsx";
 import { WaxSeal } from "../ui/ornaments.tsx";
 import { Portrait } from "../ui/Portrait.tsx";
 import { D20Spinner } from "../ui/Spinner.tsx";
@@ -43,7 +45,9 @@ export function RollFeed() {
   const panel = useUi((s) => s.dock !== null);
   // On a phone, cards holding the bottom band stand where its pill would peek out (critic P7 r2 #7).
   const cards = useCardsAtBottom((s) => s.on);
-  if (feed.length === 0 || (phone && (panel || cards))) return null;
+  // A phone aiming a spell needs its board (critic P9 r2 #12): the feed waits under the targeting bar.
+  const aiming = useTargeting((s) => s.t !== null);
+  if (feed.length === 0 || (phone && (panel || cards || aiming))) return null;
   return phone ? <PhoneFeed feed={feed} /> : <DesktopFeed feed={feed} />;
 }
 
@@ -360,7 +364,7 @@ function RollCard({
         <span className="flex min-w-0 flex-1 flex-col">
           {/* Unlabelled: its formula is what it was (critic P8 r2 N3), the roller underneath as for any other. */}
           <span className="line-clamp-2 text-13 font-bold leading-snug text-bone [overflow-wrap:anywhere]">
-            {masked ? name : roll.label || roll.formula}
+            {masked ? name : keepPhrases(roll.label || roll.formula)}
           </span>
           {!masked || roll.manual || hidden ? (
             <span className="flex items-center gap-1.5 text-12 text-muted">
@@ -450,8 +454,8 @@ function Body({ roll, settled, expanded }: { roll: RollRecord; settled: boolean;
   const open = settled && expanded;
   return (
     <div className="flex flex-col gap-1">
-      <span className={`mono text-12 text-faint ${open ? "break-words" : "truncate"}`}>
-        {roll.normalized || roll.formula}
+      <span className={`text-12 text-faint ${open ? "break-words" : "truncate"}`}>
+        <FormulaText formula={roll.normalized || roll.formula} />
       </span>
       {open ? (
         <Breakdown roll={roll} />
@@ -609,4 +613,9 @@ function Chip({
       {chip}
     </span>
   );
+}
+
+/** "DEX save", "Wisdom check", "10 ft" kept on one line where a label wraps (critic P9 r2: a "DEX / save" widow). */
+function keepPhrases(text: string): string {
+  return text.replace(/ (save|check|saves|ft)\b/g, "\u00a0$1");
 }

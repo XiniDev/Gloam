@@ -10,11 +10,13 @@ import {
   castRevealDc,
   castRoll,
   castSet,
+  castSetDc,
   castSkip,
   castTarget,
   useSpells,
 } from "../../net/spells.ts";
 import { Button, IconButton } from "../../ui/Button.tsx";
+import { TypeChip } from "../../ui/FormulaText.tsx";
 import { toast } from "../../ui/Toast.tsx";
 import { keepHyphenated } from "../../ui/text.tsx";
 import { asksOf } from "./castHide.ts";
@@ -53,21 +55,6 @@ export function damageParts(formula: string): { formula: string; type: string | 
     m = re.exec(formula);
   }
   return out;
-}
-
-/** A damage type as a small chip in its own colour (§27.2 --dmg-*). */
-function TypeChip({ type }: { type: string }) {
-  return (
-    <span
-      className="inline-flex items-center rounded-[var(--radius-chip)] px-1.5 text-12 font-bold"
-      style={{
-        color: `var(--dmg-${type})`,
-        background: `color-mix(in srgb, var(--dmg-${type}) 16%, transparent)`,
-      }}
-    >
-      {type}
-    </span>
-  );
 }
 
 /** What gives an attack advantage or disadvantage, in words (the server's "target Restrained"). */
@@ -111,15 +98,19 @@ export function ResolutionCard({ c }: { c: CastView }) {
           </IconButton>
         ) : (
           // The caster's: hidden on their screen (the DM's card goes on); back when it asks something new of them.
-          <IconButton
-            label="Hide the card"
+          // Hide says so (critic P9 r2 #16: a bare X read as closing or cancelling the cast).
+          <Button
+            size="S"
+            variant="ghost"
+            icon={<EyeOff size={14} />}
+            title="Hide it on your screen — it's back when it asks something of you"
             onClick={() => {
               const s = useSpells.getState();
               s.set({ hiddenCasts: new Map(s.hiddenCasts).set(c.id, asksOf(c)) });
             }}
           >
-            <X size={16} />
-          </IconButton>
+            Hide
+          </Button>
         )}
       </header>
       {dm ? (
@@ -146,11 +137,13 @@ export function ResolutionCard({ c }: { c: CastView }) {
         <Row>
           <span className="min-w-0 flex-1 text-13 text-bone">
             <span className="font-bold">{ABILITY[c.save.ability]} save</span>
-            {c.save.dc !== undefined ? (
+            {dm ? (
+              // The DM always sees the DC and may set it — a creature with no sheet casts with none (critic P9 r2
+              // B1: "DEX save · half on a success" left the DM guessing): "DC — set".
               <span className="text-muted">
                 {" "}
-                · DC {c.save.dc}
-                {dm && !c.save.revealed ? (
+                · <DcEdit c={c} />
+                {c.save.dc !== undefined && !c.save.revealed ? (
                   <span title="Hidden from the players">
                     {" "}
                     <EyeOff size={12} className="inline align-[-1px]" aria-hidden />
@@ -158,6 +151,8 @@ export function ResolutionCard({ c }: { c: CastView }) {
                   </span>
                 ) : null}
               </span>
+            ) : c.save.dc !== undefined ? (
+              <span className="text-muted"> · DC {c.save.dc}</span>
             ) : null}
             <span className="text-muted">
               {c.save.onSuccess === "half"
@@ -462,12 +457,16 @@ function TargetRow({
       data-state={t.state}
     >
       <div className="flex items-center gap-2">
-        <span className="min-w-0 flex-1 truncate text-14 text-bone">
-          {keepHyphenated(t.name)}
-          {t.times > 1 ? <span className="text-muted"> ×{t.times}</span> : null}
+        {/* The name may be cut; the cover chip never is — it goes under the name when there's no room beside it
+            (critic P9 r2 #18: "½ cover · +2…" lost the number that matters). */}
+        <span className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-1.5 text-14 text-bone">
+          <span className="min-w-0 max-w-full truncate">
+            {keepHyphenated(t.name)}
+            {t.times > 1 ? <span className="text-muted"> ×{t.times}</span> : null}
+          </span>
           {t.cover !== "none" ? (
             <span
-              className="ml-1.5 whitespace-nowrap rounded-[var(--radius-chip)] bg-brass/15 px-1.5 text-12 text-brass"
+              className="shrink-0 whitespace-nowrap rounded-[var(--radius-chip)] bg-brass/15 px-1.5 text-12 text-brass"
               title={`Cover hint (§17.5): ${COVER[t.cover]}`}
             >
               {t.cover === "threeQuarters"
@@ -785,5 +784,47 @@ function Details({ c, t }: { c: CastView; t: CastTargetView }) {
         </Button>
       </div>
     </div>
+  );
+}
+
+/** The DM's DC on a card: shown, and set or changed in place (Enter keeps it, Esc lets it be). */
+function DcEdit({ c }: { c: CastView }) {
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState("");
+  const dc = c.save?.dc;
+  if (editing)
+    return (
+      <input
+        aria-label="Save DC"
+        inputMode="numeric"
+        // biome-ignore lint/a11y/noAutofocus: opened by the DM's own press on the DC, to type it at once
+        autoFocus
+        value={text}
+        onChange={(e) => setText(e.target.value.replace(/\D+/g, "").slice(0, 2))}
+        onBlur={() => setEditing(false)}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") setEditing(false);
+          if (e.key === "Enter") {
+            const n = Number(text);
+            setEditing(false);
+            if (n >= 1 && n <= 40) act(castSetDc(c.id, n), "Couldn't set the DC");
+          }
+        }}
+        className="tabular mx-0.5 inline-block h-6 w-10 rounded-[var(--radius-control)] border border-brass bg-ink-900 px-1 text-center text-13 text-bone focus:outline-none"
+      />
+    );
+  return (
+    <button
+      type="button"
+      data-testid="cast-dc"
+      title={dc === undefined ? "Set the save's DC" : "Change the DC"}
+      onClick={() => {
+        setText(dc === undefined ? "" : String(dc));
+        setEditing(true);
+      }}
+      className="underline decoration-dotted underline-offset-2 hover:text-bone"
+    >
+      {dc === undefined ? "DC — set" : `DC ${dc}`}
+    </button>
   );
 }

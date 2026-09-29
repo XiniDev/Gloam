@@ -48,15 +48,17 @@ export function Toggle({
         }`}
       >
         <span
-          className={`relative block h-6 w-11 rounded-full border transition-colors duration-[var(--dur-base)] ${
-            checked ? "border-brass-deep bg-brass-dark" : "border-line bg-ink-900"
+          // §27.5: a brass thumb on an ink track (critic P9 r2 B3: the off thumb was grey) — off, the thumb sits left and
+          // muted; on, it moves right, bright, with its glow and a brass rim to the track.
+          className={`relative block h-6 w-11 rounded-full border bg-ink-900 transition-colors duration-[var(--dur-base)] ${
+            checked ? "border-brass-deep" : "border-line-strong"
           }`}
         >
           <span
             className={`absolute top-[3px] block h-4 w-4 rounded-full transition-[left,background-color] duration-[var(--dur-base)] ease-[var(--ease-out)] ${
               checked
                 ? "left-[22px] bg-brass-bright shadow-[0_0_10px_var(--glow-brass)]"
-                : "left-[3px] bg-fog-dim"
+                : "left-[3px] bg-brass/55"
             }`}
           />
         </span>

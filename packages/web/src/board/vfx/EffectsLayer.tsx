@@ -1,3 +1,4 @@
+import { clipOutlineToRect, clipPolygonToRect } from "@gloam/shared/geometry";
 import type { EffectView } from "@gloam/shared/state";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useMemo } from "react";
@@ -8,6 +9,7 @@ import { prefersReducedMotion, useSettings } from "../../state/settings.ts";
 import { provideTestHook } from "../../test/hooks.ts";
 import { disposeLater } from "../dispose.ts";
 import { setAmbient } from "../frames.ts";
+import { boundsFromJson } from "../scene.ts";
 import { TIERS, useTier } from "../tiers.ts";
 import { Segments } from "../tools/marks.tsx";
 import { type Preset, VFX } from "./palette.ts";
@@ -47,6 +49,7 @@ export function EffectsLayer() {
 
 function EffectLook({ e, still }: { e: EffectView; still: boolean }) {
   const tokens = useBoard((d) => d.tokens);
+  const boundsJson = useBoard((d) => d.scene?.boundsJson);
   const tier = useTier((s) => s.name);
   // The DM sees into a cloud or darkness (their look is thinner): they have to see what's inside.
   const dm = useTable((s) => s.me?.role === "dm" || s.me?.role === "admin");
@@ -94,13 +97,18 @@ function EffectLook({ e, still }: { e: EffectView; still: boolean }) {
       disposeTree(look);
     };
   }, [look, e.id, e.name, preset]);
-  // Its extent: a faint fill of the footprint in its colour, and its edge (none for a wall: the curtain is its line).
-  // biome-ignore lint/correctness/useExhaustiveDependencies: rebuilt when the area moves (key)
+  // Its extent: a faint fill of the footprint in its colour, and its edge (none for a wall: the curtain is its line) —
+  // both cut to the scene, so neither runs onto the table round the map (critic P9 r2 #6: Darkness's body and every
+  // dashed edge did).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: rebuilt when the area moves (key) or the scene resizes
   const fill = useMemo(() => {
     if (!where?.f || where.f.kind === "strip") return null;
     const outline =
       where.f.kind === "circle" ? circleOutline(where.f.c.x, where.f.c.y, where.f.r) : where.f.points;
-    const s = new Shape(outline.map((p) => ({ x: p.x, y: -p.y }) as never));
+    const bounds = boundsFromJson(boundsJson);
+    const inside = clipPolygonToRect(outline, bounds);
+    if (inside.length < 3) return null;
+    const s = new Shape(inside.map((p) => ({ x: p.x, y: -p.y }) as never));
     const m = new Mesh(
       new ShapeGeometry(s),
       new MeshBasicMaterial({
@@ -115,8 +123,8 @@ function EffectLook({ e, still }: { e: EffectView; still: boolean }) {
     m.position.y = 0.065;
     m.renderOrder = 8;
     m.raycast = () => {};
-    return { mesh: m, edge: outline };
-  }, [key, preset, props.magicalDarkness]);
+    return { mesh: m, edge: clipOutlineToRect(outline, bounds) };
+  }, [key, preset, props.magicalDarkness, boundsJson]);
   useEffect(() => {
     if (!fill) return;
     return () => {
@@ -133,17 +141,9 @@ function EffectLook({ e, still }: { e: EffectView; still: boolean }) {
     <group name={`effect:${e.id}`} userData={{ effectId: e.id }}>
       {fill ? <primitive object={fill.mesh} /> : null}
       {fill ? (
-        <Segments
-          segs={fill.edge.map((a, i) => ({
-            a,
-            b: fill.edge[(i + 1) % fill.edge.length] as { x: number; y: number },
-          }))}
-          color={VFX[preset].glow}
-          width={1.5}
-          opacity={0.45}
-          order={8}
-          dashed
-        />
+        // In its own colour, strong enough to tell one effect's edge from another's (critic P9 r2 #8: nine faint
+        // rings read as one off-white).
+        <Segments segs={fill.edge} color={VFX[preset].glow} width={2} opacity={0.75} order={8} dashed />
       ) : null}
       {look ? <primitive object={look} /> : null}
     </group>

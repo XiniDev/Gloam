@@ -355,7 +355,7 @@ test.describe("P9 — spells (SPL)", () => {
     expect(rolled).toBeLessThanOrEqual(48);
     // Nothing more asked of him, he hides his card (a close control of his own, as the DM's X): gone from his screen,
     // still the DM's.
-    await his.getByRole("button", { name: "Hide the card" }).click();
+    await his.getByRole("button", { name: "Hide", exact: true }).click();
     await expect(his).toBeHidden();
 
     // The DM applies it all: each goblin down by all or half of it, by its save.
@@ -441,6 +441,10 @@ test.describe("P9 — spells (SPL)", () => {
     await expect(bar.getByTestId("targeting-why")).toHaveText(/clear|line|wall/i);
     await dave.mouse.click(behind.x, behind.y);
     await expect(bar).toBeVisible();
+    // The reason stays in the bar — no toast repeats it over the board (critic P9 r2 B2).
+    await dave.waitForTimeout(400);
+    await expect(dave.getByText(/Couldn't cast/)).toHaveCount(0);
+    await expect(bar.getByTestId("targeting-why")).toHaveText(/clear|line|wall/i);
     await dave.screenshot({ path: `${SHOTS}/web-blocked.png` });
     // In the open: cast.
     const open = await screen(dave, 40, 45, 0);
@@ -963,6 +967,11 @@ test.describe("P9 — spells (SPL)", () => {
     await dmg.getByLabel("Damage 1", { exact: true }).fill("3d8 +");
     await expect(admin.getByTestId("builder-errors")).toContainText("Damage 1");
     await expect(admin.getByTestId("builder-status")).toContainText("1 problem");
+    // Said on the field itself too, and the status press takes you there.
+    await expect(dmg.getByTestId("field-error")).toBeVisible();
+    await expect(dmg.getByLabel("Damage 1", { exact: true })).toHaveAttribute("aria-invalid", "true");
+    await admin.getByTestId("builder-status").click();
+    await expect(dmg.getByLabel("Damage 1", { exact: true })).toBeFocused();
     await dmg.getByLabel("Damage 1", { exact: true }).fill("3d8");
     await dmg.getByLabel("Type").selectOption("cold");
     await expect(admin.getByTestId("builder-status")).toHaveText("Valid");
@@ -984,7 +993,7 @@ test.describe("P9 — spells (SPL)", () => {
     await builder.getByTestId("damage-row").first().getByLabel("Type").selectOption("poison");
     // Its VFX follows the damage type (§8.13: chosen from it, overridable), so Poison Ball looks like poison.
     await expect(builder.getByLabel("VFX")).toHaveValue("poison");
-    await expect(builder.getByLabel("VFX").locator("option:checked")).toHaveText("Poison (its damage's)");
+    await expect(builder.getByLabel("VFX").locator("option:checked")).toHaveText("Poison · from the damage");
     await expect(builder.getByTestId("spell-card")).toContainText("poison");
     await admin.getByRole("button", { name: "Save spell" }).click();
     await expect(panel.locator('[data-testid="homebrew-row"][data-spell="poison-ball"]')).toBeVisible();

@@ -13,7 +13,7 @@ import { boardData, useEntities } from "../../state/entities.ts";
 import { aimKind, designates, useTargeting } from "../../state/targeting.ts";
 import { boardApi } from "../boardApi.ts";
 import { again } from "../frames.ts";
-import { barriersOfView } from "./TargetingLayer.tsx";
+import { aimOf, barriersOfView } from "./TargetingLayer.tsx";
 
 const STEP = 15;
 
@@ -48,7 +48,8 @@ export function targetMove(clientX: number, clientY: number): void {
   const shape = areaShape();
   if (shape === "emanation") return;
   const caster = boardData(useEntities.getState()).tokens.get(t.casterTokenId);
-  const patch: Partial<typeof t> = { at: { x: p.x, y: p.y } };
+  // Aimed somewhere new: the last refusal no longer applies.
+  const patch: Partial<typeof t> = { at: { x: p.x, y: p.y }, ...(t.refusal ? { refusal: null } : {}) };
   if (caster && facesPointer() && !t.turned)
     patch.dirDeg = (Math.atan2(p.y - caster.pos.y, p.x - caster.pos.x) * 180) / Math.PI - 90;
   s.set(patch);
@@ -82,8 +83,23 @@ export function targetDown(clientX: number, clientY: number): boolean {
   }
   const next = { ...t, at: { x: p.x, y: p.y } };
   useTargeting.getState().set({ at: next.at });
+  // Where the bar already says it can't go (out of range, no clear path), nothing is sent: the reason is on screen
+  // (critic P9 r2 B2: a toast repeated it over the board).
+  if (!aimHere(next).ok) {
+    again();
+    return true;
+  }
   void commitCast(next);
   return true;
+}
+
+/** The aim's verdict at a point, as the targeting bar shows it. */
+function aimHere(t: NonNullable<ReturnType<typeof useTargeting.getState>["t"]>) {
+  const d = boardData(useEntities.getState());
+  const table = useTable.getState();
+  const dm = table.me?.role === "dm" || table.me?.role === "admin";
+  const coverage = table.houseRules.areaCoverage === "centre" ? "centre" : "touches";
+  return aimOf(t, d.tokens, barriersOfView(d.walls.values()), coverage, dm);
 }
 
 /** A creature clicked while aiming: picked (a targeted spell), or where the area goes (on it). */

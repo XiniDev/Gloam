@@ -224,7 +224,9 @@ function Report({ r }: { r: ImportReport }) {
   // Brought into view as it comes (on a phone it lands below the fold, under the paste box).
   // biome-ignore lint/correctness/useExhaustiveDependencies: a new report is the cue to bring it into view
   useEffect(() => {
-    ref.current?.scrollIntoView({ block: "nearest", behavior: prefersReducedMotion() ? "auto" : "smooth" });
+    // Its top at the top of the dialog's body: every section under it in view as far as they fit (critic P9 r2 #15:
+    // "nearest" showed a phone only its summary and the start of Will import).
+    ref.current?.scrollIntoView({ block: "start", behavior: prefersReducedMotion() ? "auto" : "smooth" });
   }, [r]);
   return (
     <section

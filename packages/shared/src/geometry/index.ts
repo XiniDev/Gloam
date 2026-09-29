@@ -271,4 +271,70 @@ export function samplePath(points: P[], n: number): P[] {
   return out;
 }
 
+/** An axis-aligned rectangle (feet). */
+export interface Rect2 {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+}
+
+/** A polygon cut to a rectangle (Sutherland–Hodgman): the part of it inside — empty when none is. */
+export function clipPolygonToRect(poly: readonly P[], r: Rect2): P[] {
+  const edges: [(p: P) => boolean, (a: P, b: P) => P][] = [
+    [(p) => p.x >= r.minX, (a, b) => lerp(a, b, (r.minX - a.x) / (b.x - a.x))],
+    [(p) => p.x <= r.maxX, (a, b) => lerp(a, b, (r.maxX - a.x) / (b.x - a.x))],
+    [(p) => p.y >= r.minY, (a, b) => lerp(a, b, (r.minY - a.y) / (b.y - a.y))],
+    [(p) => p.y <= r.maxY, (a, b) => lerp(a, b, (r.maxY - a.y) / (b.y - a.y))],
+  ];
+  let out: P[] = [...poly];
+  for (const [inside, cut] of edges) {
+    if (!out.length) break;
+    const src = out;
+    out = [];
+    for (let i = 0; i < src.length; i++) {
+      const a = src[(i + src.length - 1) % src.length] as P;
+      const b = src[i] as P;
+      if (inside(b)) {
+        if (!inside(a)) out.push(cut(a, b));
+        out.push(b);
+      } else if (inside(a)) out.push(cut(a, b));
+    }
+  }
+  return out;
+}
+
+/**
+ * A closed outline's edges, each cut to a rectangle (Liang–Barsky): the parts inside, as segments — an effect's edge
+ * drawn only on the map, never across the table round it.
+ */
+export function clipOutlineToRect(poly: readonly P[], r: Rect2): Seg[] {
+  const out: Seg[] = [];
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i] as P;
+    const b = poly[(i + 1) % poly.length] as P;
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    let t0 = 0;
+    let t1 = 1;
+    let ok = true;
+    for (const [pp, q] of [
+      [-dx, a.x - r.minX],
+      [dx, r.maxX - a.x],
+      [-dy, a.y - r.minY],
+      [dy, r.maxY - a.y],
+    ] as const) {
+      if (pp === 0) {
+        if (q < 0) ok = false;
+        continue;
+      }
+      const t = q / pp;
+      if (pp < 0) t0 = Math.max(t0, t);
+      else t1 = Math.min(t1, t);
+    }
+    if (ok && t1 - t0 > EPS) out.push({ a: lerp(a, b, t0), b: lerp(a, b, t1) });
+  }
+  return out;
+}
+
 export * from "./visibility.ts";

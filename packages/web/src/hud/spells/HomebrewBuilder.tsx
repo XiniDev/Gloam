@@ -196,10 +196,44 @@ export function HomebrewBuilder({
     if (open) setView("edit");
   }, [open]);
   const problems = useRef<HTMLUListElement>(null);
+  // To the first field that says what's wrong (focused, in view), else to the list of problems (critic P9 r2 #14: at
+  // 1024 the list was below the fold and the press seemed to do nothing).
   const showProblems = () => {
+    const field = document.querySelector<HTMLInputElement>(
+      '[data-testid="homebrew-builder"] [aria-invalid="true"]',
+    );
+    if (field) {
+      if (phone) setView("edit");
+      requestAnimationFrame(() => {
+        field.scrollIntoView({ block: "center", behavior: "smooth" });
+        field.focus({ preventScroll: true });
+      });
+      return;
+    }
     if (phone) setView("preview");
-    requestAnimationFrame(() => problems.current?.scrollIntoView({ block: "nearest", behavior: "smooth" }));
+    requestAnimationFrame(() => problems.current?.scrollIntoView({ block: "center", behavior: "smooth" }));
   };
+  // Whether it's valid, with its icon; its problems a press away (critic P9 r1 #16). In the footer — on a phone beside
+  // the Edit/Preview switch, where it's read with the form (its stacked footer left it alone at the very bottom).
+  const status = errors.length ? (
+    <button
+      type="button"
+      onClick={showProblems}
+      data-testid="builder-status"
+      className="mr-auto inline-flex min-h-[var(--touch-min)] items-center gap-1.5 text-13 font-bold text-[var(--ember-400)] underline decoration-dotted underline-offset-2"
+    >
+      <CircleAlert size={15} aria-hidden />
+      {errors.length} {errors.length === 1 ? "problem" : "problems"}
+    </button>
+  ) : (
+    <span
+      className="mr-auto inline-flex items-center gap-1.5 text-13 font-bold text-[var(--hp-high)]"
+      data-testid="builder-status"
+    >
+      <CheckIcon size={15} aria-hidden />
+      Valid
+    </span>
+  );
   return (
     <Dialog
       open={open}
@@ -219,26 +253,7 @@ export function HomebrewBuilder({
       width={1100}
       footer={
         <div className="flex items-center justify-end gap-2">
-          {/* Whether it's valid, with its icon; its problems a press away (critic P9 r1 #16). */}
-          {errors.length ? (
-            <button
-              type="button"
-              onClick={showProblems}
-              data-testid="builder-status"
-              className="mr-auto inline-flex min-h-[var(--touch-min)] items-center gap-1.5 text-13 font-bold text-[var(--ember-400)] underline decoration-dotted underline-offset-2"
-            >
-              <CircleAlert size={15} aria-hidden />
-              {errors.length} {errors.length === 1 ? "problem" : "problems"}
-            </button>
-          ) : (
-            <span
-              className="mr-auto inline-flex items-center gap-1.5 text-13 font-bold text-[var(--hp-high)]"
-              data-testid="builder-status"
-            >
-              <CheckIcon size={15} aria-hidden />
-              Valid
-            </span>
-          )}
+          {phone ? null : status}
           <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
@@ -249,7 +264,8 @@ export function HomebrewBuilder({
       }
     >
       {phone ? (
-        <div className="mb-3">
+        <div className="mb-3 flex flex-col gap-1">
+          <div className="self-start">{status}</div>
           <Segmented
             label="Form or preview"
             fill
@@ -301,7 +317,7 @@ export function HomebrewBuilder({
                 options={VFX_PRESETS.map((v) => ({
                   value: v,
                   label:
-                    !vfxChosen && v === d.vfx && impliedVfx(d) === v ? `${cap(v)} (its damage's)` : cap(v),
+                    !vfxChosen && v === d.vfx && impliedVfx(d) === v ? `${cap(v)} · from the damage` : cap(v),
                 }))}
                 onChange={(v) => {
                   setVfxChosen(true);
@@ -547,23 +563,21 @@ export function HomebrewBuilder({
             </Row>
             <DamageRows d={d} set={set} level={level} />
             <Row>
-              <Txt
+              <FormulaTxt
                 label="Healing"
                 value={at(d, ["healing", "formula"])}
                 placeholder="e.g. 2d8 + @spellmod"
                 onChange={(v) =>
                   set(["healing"], v ? { ...((d.healing as Draft) ?? {}), formula: v } : undefined)
                 }
-                mono
                 wide
               />
               {d.healing && level > 0 ? (
-                <Txt
+                <FormulaTxt
                   label="+ per slot"
                   value={at(d, ["healing", "scaling", "perLevel"])}
                   placeholder="e.g. 2d8"
                   onChange={(v) => set(["healing", "scaling"], v ? { mode: "slot", perLevel: v } : undefined)}
-                  mono
                 />
               ) : null}
             </Row>
@@ -748,12 +762,11 @@ function DamageRows({ d, set, level }: { d: Draft; set: Set; level: number }) {
           data-testid="damage-row"
         >
           <Row>
-            <Txt
+            <FormulaTxt
               label={`Damage ${i + 1}`}
               value={r.formula}
               placeholder="e.g. 8d6"
               onChange={(v) => set(["damage", i, "formula"], v)}
-              mono
               wide
             />
             <Sel
@@ -770,12 +783,11 @@ function DamageRows({ d, set, level }: { d: Draft; set: Set; level: number }) {
             </IconButton>
           </Row>
           {level > 0 ? (
-            <Txt
+            <FormulaTxt
               label="+ per slot above"
               value={at(r, ["scaling", "perLevel"])}
               placeholder="e.g. 1d6"
               onChange={(v) => set(["damage", i, "scaling"], v ? { mode: "slot", perLevel: v } : undefined)}
-              mono
             />
           ) : (
             <Row>
@@ -1019,7 +1031,7 @@ function EffectFields({ d, set }: { d: Draft; set: Set }) {
             </IconButton>
           </Row>
           <Row>
-            <Txt
+            <FormulaTxt
               label="Damage"
               value={at(t, ["damage", "formula"])}
               placeholder="e.g. 2d10"
@@ -1029,7 +1041,6 @@ function EffectFields({ d, set }: { d: Draft; set: Set }) {
                   v ? { formula: v, type: String(at(t, ["damage", "type"]) ?? "fire") } : undefined,
                 )
               }
-              mono
             />
             {t.damage ? (
               <Sel
@@ -1091,6 +1102,7 @@ function Txt({
   placeholder,
   mono = false,
   wide = false,
+  error = null,
 }: {
   label: string;
   value: unknown;
@@ -1098,6 +1110,8 @@ function Txt({
   placeholder?: string;
   mono?: boolean;
   wide?: boolean;
+  /** What's wrong with it, said under it (its border in ember): the problem where it is (critic P9 r2 #14). */
+  error?: string | null;
 }) {
   const id = useId();
   return (
@@ -1108,10 +1122,24 @@ function Txt({
         value={typeof value === "string" ? value : ""}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
-        className={`${inputCls} ${mono ? "mono" : ""}`}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={error ? `${id}-error` : undefined}
+        className={`${inputCls} ${mono ? "mono" : ""} ${error ? "border-[var(--ember-400)] focus:border-[var(--ember-400)]" : ""}`}
       />
+      {error ? (
+        <span id={`${id}-error`} className="text-12 text-[var(--ember-400)]" data-testid="field-error">
+          {error}
+        </span>
+      ) : null}
     </label>
   );
+}
+
+/** A dice formula's field: checked as it's typed, its problem said under it. */
+function FormulaTxt(props: Omit<Parameters<typeof Txt>[0], "error" | "mono">) {
+  const v = typeof props.value === "string" ? props.value.trim() : "";
+  const error = v ? (checkFormula(v)?.message ?? null) : null;
+  return <Txt {...props} mono error={error} />;
 }
 function Num({
   label,

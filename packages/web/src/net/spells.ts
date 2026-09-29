@@ -119,6 +119,8 @@ export const castApply = (castId: string, targets?: string[]) =>
 export const castSkip = (castId: string, targetId: string) => request("cast.skip", { castId, targetId });
 export const castCancel = (castId: string) => request("cast.cancel", { castId });
 export const castClose = (castId: string) => request("cast.close", { castId });
+/** The DM sets (or changes) a card's save DC: saves already rolled are judged again against it. */
+export const castSetDc = (castId: string, dc: number) => request("cast.setDc", { castId, dc });
 /** A roll on the card: an attack at a row, or the damage (the card's, or a row's) — or a number entered. */
 export const castRoll = (
   castId: string,

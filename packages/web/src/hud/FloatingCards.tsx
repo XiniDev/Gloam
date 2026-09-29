@@ -11,6 +11,7 @@ import { promptArrived } from "../net/health.ts";
 import { requestArrived } from "../net/sheets.ts";
 import { useSpells } from "../net/spells.ts";
 import { prefersReducedMotion } from "../state/settings.ts";
+import { useTargeting } from "../state/targeting.ts";
 import { useUi } from "../state/ui.ts";
 import { Button, IconButton } from "../ui/Button.tsx";
 import { PromptCard, usePromptList } from "./health/PromptCards.tsx";
@@ -203,14 +204,18 @@ export function FloatingCards() {
 
   // A new card over the creatures it's about (no place on the free board clears them all — critic P9 r1 #5): the view
   // slides the least that brings them out from under it, on the free board. Once per new card, never as it's read.
+  // Measured once its place has held still for a moment (the placement is itself an effect: measured at once, the card
+  // was still at its default spot, and the view slid the creature under where the stack then went — found by the P6
+  // journey), and never while someone is working the board (a pointer held, a spell being aimed): the view is theirs.
   const nudged = useRef(new Set<string>());
   // biome-ignore lint/correctness/useExhaustiveDependencies: per new card (keys), after its place is settled
   useEffect(() => {
     if (!shown) return;
     const fresh = items.filter((i) => !nudged.current.has(i.key));
-    for (const i of items) nudged.current.add(i.key);
     if (!fresh.length) return;
-    const raf = requestAnimationFrame(() => {
+    const timer = window.setTimeout(() => {
+      for (const i of items) nudged.current.add(i.key);
+      if (pointerHeld() || useTargeting.getState().t) return;
       const el = ref.current;
       if (!el) return;
       const card = el.getBoundingClientRect();
@@ -263,8 +268,8 @@ export function FloatingCards() {
         t.z + (there.y - here.y),
         prefersReducedMotion() ? 0 : 420,
       );
-    });
-    return () => cancelAnimationFrame(raf);
+    }, 450);
+    return () => window.clearTimeout(timer);
   }, [keys, place, shown]);
 
   const atBottom = shown && phone;
@@ -301,7 +306,25 @@ export function FloatingCards() {
       <ol
         ref={ref}
         aria-label="Waiting for you"
-        className="pointer-events-none flex w-full max-w-[380px] flex-col gap-2"
+        // (Room round the cards for their shadows, which a scrolling list would otherwise cut: the cards stay 380 wide.)
+        className="pointer-events-none -m-3 flex w-[calc(100%+1.5rem)] max-w-[404px] flex-col gap-2 overflow-y-auto overscroll-contain p-3"
+        // Never past the screen's free height (critic P9 r2 #17: three cards ran under the dice button and off the
+        // foot): the stack scrolls instead, between the top HUD and the bottom band.
+        style={
+          phone
+            ? undefined
+            : {
+                maxHeight: Math.max(
+                  160,
+                  window.innerHeight -
+                    (foot ? 0 : top + banner + tracker + 8) -
+                    Math.max(bottom, PHONE_BOTTOM_BAND) -
+                    (foot ? top + banner + tracker + 16 : 16) +
+                    24,
+                ),
+              }
+        }
+        data-testid="card-stack"
       >
         {phone ? (
           // A phone's card as a sheet at §28's first snap (30 % of the screen), the board above it in view (critic P9
@@ -378,19 +401,9 @@ function PhoneCardSheet({ children }: { children: ReactNode }) {
     return () => ro.disconnect();
   });
   return (
-    <>
-      {more || tall ? (
-        <button
-          type="button"
-          aria-label={tall ? "Lower the card" : "Raise the card"}
-          aria-expanded={tall}
-          onClick={() => setTall((x) => !x)}
-          className="mx-auto mb-1 grid h-6 w-16 place-items-center rounded-chip"
-          data-testid="card-sheet-handle"
-        >
-          <span aria-hidden className="block h-1 w-10 rounded-full bg-[var(--border-strong)]" />
-        </button>
-      ) : null}
+    // Its handle sits in the sheet's top edge, over the card's own top margin — never on the board above it (critic P9
+    // r2 #11: floating there it read as a wall).
+    <div className="relative">
       <ol
         ref={box}
         className="flex flex-col gap-2 overflow-y-auto overscroll-contain"
@@ -400,6 +413,39 @@ function PhoneCardSheet({ children }: { children: ReactNode }) {
       >
         {children}
       </ol>
-    </>
+      {more || tall ? (
+        <button
+          type="button"
+          aria-label={tall ? "Lower the card" : "Raise the card"}
+          aria-expanded={tall}
+          onClick={() => setTall((x) => !x)}
+          className="absolute left-1/2 top-0 grid h-4 w-16 -translate-x-1/2 place-items-center rounded-b-chip"
+          data-testid="card-sheet-handle"
+        >
+          <span aria-hidden className="block h-1 w-10 rounded-full bg-[var(--border-strong)]" />
+        </button>
+      ) : null}
+    </div>
   );
 }
+
+/** Whether a pointer is held down anywhere on the page now (a drag, a press being made). */
+let held = 0;
+if (typeof window !== "undefined") {
+  window.addEventListener(
+    "pointerdown",
+    () => {
+      held++;
+    },
+    { capture: true },
+  );
+  const up = () => {
+    held = Math.max(0, held - 1);
+  };
+  window.addEventListener("pointerup", up, { capture: true });
+  window.addEventListener("pointercancel", up, { capture: true });
+  window.addEventListener("blur", () => {
+    held = 0;
+  });
+}
+const pointerHeld = (): boolean => held > 0;

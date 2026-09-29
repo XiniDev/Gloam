@@ -87,6 +87,21 @@ export default function TableRoute() {
       if (!campaignId) return navigate(m.session?.kind === "admin" ? "/admin" : "/join", { replace: true });
       if (m.session?.kind === "player" && m.session.status !== "admitted")
         return navigate("/wait", { replace: true });
+      // (Declared before the listeners: `tableEvents.on` replays a buffered event at once — a stale "left" from the
+      // page before ran the listener while this was still in its dead zone, and the table never set up.)
+      const rejoin = async (attempt: number): Promise<void> => {
+        await new Promise((r) => setTimeout(r, Math.min(10_000, 1000 * 2 ** attempt)));
+        if (cancelled || useTable.getState().room) return;
+        try {
+          await connectTable(campaignId);
+        } catch (err) {
+          if (cancelled) return;
+          const code = joinErrorCode(err);
+          // A seat that didn't survive (a player's session ended with the table): knock again.
+          if (code === "FORBIDDEN" || code === "UNAUTHENTICATED") navigate("/join", { replace: true });
+          else void rejoin(attempt + 1);
+        }
+      };
       // Subscribed before (re)joining; events that arrived during the waiting room's dissolve are replayed.
       offs.push(
         tableEvents.on("knock", (k) => {
@@ -122,22 +137,10 @@ export default function TableRoute() {
           else if (code === 4401) navigate("/join", { replace: true });
           // Lost for good (the SDK's reconnection gave up — the server went away and came back, SPEC §8.15
           // AC-PER-06): join again, backing off to 10 s, while the banner says so; the board resyncs from the join.
-          else if (code !== 1000) void rejoin(0);
+          // (1000 and 4000: a leave someone chose — this screen closing, a navigation.)
+          else if (code !== 1000 && code !== 4000) void rejoin(0);
         }),
       );
-      const rejoin = async (attempt: number): Promise<void> => {
-        await new Promise((r) => setTimeout(r, Math.min(10_000, 1000 * 2 ** attempt)));
-        if (cancelled || useTable.getState().room) return;
-        try {
-          await connectTable(campaignId);
-        } catch (err) {
-          if (cancelled) return;
-          const code = joinErrorCode(err);
-          // A seat that didn't survive (a player's session ended with the table): knock again.
-          if (code === "FORBIDDEN" || code === "UNAUTHENTICATED") navigate("/join", { replace: true });
-          else void rejoin(attempt + 1);
-        }
-      };
       try {
         await connectTable(campaignId);
       } catch (err) {

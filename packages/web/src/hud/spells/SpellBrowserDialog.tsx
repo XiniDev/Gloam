@@ -17,7 +17,8 @@ export function SpellBrowserDialog({
 }) {
   return (
     <Dialog open={open} onClose={onClose} title={title} width={960}>
-      <div className="flex h-[min(70dvh,720px)] min-h-0 flex-col">
+      {/* As far from the dialog's foot as from its sides, clear of its corner filigree (critic P9 r2). */}
+      <div className="flex h-[min(70dvh,720px)] min-h-0 flex-col pb-4">
         {open ? <SpellBrowser {...(actions ? { actions } : {})} /> : null}
       </div>
     </Dialog>

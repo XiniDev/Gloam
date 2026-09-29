@@ -86,6 +86,12 @@ export async function commitCast(t: Targeting, endConcentration = false): Promis
       });
       return false;
     }
+    // Still aiming: the reason goes in the bar, where the aim is (critic P9 r2 B2), not in a toast over the board.
+    const now = useTargeting.getState().t;
+    if (now && now.casterTokenId === t.casterTokenId && now.spell.id === t.spell.id) {
+      useTargeting.getState().set({ refusal: err.message });
+      return false;
+    }
     toast.warning(`Couldn't cast ${t.spell.name}`, err.message);
     return false;
   }

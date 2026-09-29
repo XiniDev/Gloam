@@ -181,8 +181,9 @@ describe("P9 — the VFX follow an area's footprint", () => {
 });
 
 describe("effects at the scene's edge", () => {
-  it("every VFX material — every preset's burst and lasting look, every shape — fades its alpha by the shared bounds", async () => {
+  it("every VFX material — every preset's burst and lasting look, every shape — fades its alpha by the shared bounds and the players' fog", async () => {
     const { VFX_BOUNDS, setVfxBounds } = await import("./bounds.ts");
+    const { fogUniforms } = await import("../vision/fogMaterial.ts");
     setVfxBounds({ minX: 0, minY: 0, maxX: 60, maxY: 40 });
     const mats: { uniforms?: Record<string, unknown>; fragmentShader?: string; vertexShader?: string }[] = [];
     const collect = (root: { traverse: (f: (o: unknown) => void) => void }) =>
@@ -216,7 +217,10 @@ describe("effects at the scene's edge", () => {
     }
     expect(mats.length).toBeGreaterThan(100);
     for (const m of mats) {
-      expect(m.fragmentShader).toContain("gl_FragColor.a *= boundsFade(vBoundsW)");
+      expect(m.fragmentShader).toContain("gl_FragColor.a *= boundsFade(vBoundsW) * gloamSeen(vBoundsW)");
+      // The players' fog: the same uniform objects as the composite's (drawn only where the viewer sees the table).
+      expect(m.uniforms?.gVis).toBe(fogUniforms.gVis);
+      expect(m.uniforms?.gMode).toBe(fogUniforms.gMode);
       expect(m.vertexShader).toContain("vBoundsW =");
       // The same uniform object: a scene change reaches every material at once.
       expect(m.uniforms?.uBounds).toBe(VFX_BOUNDS.uBounds);

@@ -453,8 +453,12 @@ test("P9 key screens", async ({ admin, browser, gloam, guardLog }, info) => {
     const builder = admin.getByTestId("homebrew-builder");
     await builder.getByTestId("damage-row").first().getByLabel("Damage 1", { exact: true }).fill("8d6 +");
     await expect(admin.getByTestId("builder-status")).toContainText("1 problem");
+    // The problem said on its field; the status press brings that field into view, focused.
+    const field = builder.getByTestId("damage-row").first().getByLabel("Damage 1", { exact: true });
+    await expect(builder.getByTestId("field-error").first()).toBeVisible();
     await admin.getByTestId("builder-status").click();
-    await expect(admin.getByTestId("builder-errors")).toBeInViewport();
+    await expect(field).toBeFocused();
+    await expect(field).toBeInViewport();
   });
   await admin.keyboard.press("Escape");
   await step("13-import-report", admin, async () => {

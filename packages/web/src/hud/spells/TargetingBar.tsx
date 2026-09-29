@@ -29,7 +29,8 @@ export function TargetingBar() {
   const me = useTable((s) => s.me);
   const dm = me?.role === "dm" || me?.role === "admin";
   const phone = useIsPhone();
-  const hudLeft = useHudInsets((s) => s.left);
+  // Right of the roll feed, as the tool option bars (critic P9 r2 #12: at 1024 the bar covered the feed's header).
+  const hudLeft = useHudInsets((s) => s.left + s.feed);
   const hudRight = useHudInsets((s) => s.right);
   const ref = useRef<HTMLDivElement>(null);
   useMeasuredInset("bottom", ref, insetMeasures.bottom, t !== null);
@@ -118,7 +119,7 @@ export function TargetingBar() {
               <span className="text-13 text-muted" data-testid="targeting-hint">
                 {hint}
               </span>
-              {kind === "creatures" && t.refusal ? (
+              {t.refusal ? (
                 <span className="text-13 text-ember" data-testid="targeting-why">
                   {t.refusal}
                 </span>
@@ -201,21 +202,30 @@ function heldWords(spell: string): string {
  */
 function InlineAsk() {
   const ask = useConcentrationAsk((s) => s.ask);
+  // A phone stacks it: the question across the bar, its two answers side by side under it, each half the width
+  // (critic P9 r2 #13: beside the buttons the text was squeezed into three lines).
+  const phone = useIsPhone();
   if (!ask) return null;
   return (
     <div
       role="group"
       aria-label="End concentration?"
       data-testid="concentration-ask"
-      className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-2"
+      className={
+        phone
+          ? "flex min-w-0 flex-1 flex-col gap-2"
+          : "flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-2"
+      }
     >
       <span className="flex min-w-0 flex-1 flex-col">
-        <span className="display text-18 leading-tight text-bone">End concentration on {ask.spell}?</span>
+        <span className={`display leading-tight text-bone ${phone ? "text-16" : "text-18"}`}>
+          End concentration on {ask.spell}?
+        </span>
         <span className="text-13 text-muted">
           {ask.name} is concentrating on {ask.spell}: casting this ends it{heldWords(ask.spell)}.
         </span>
       </span>
-      <span className="flex items-center gap-2">
+      <span className={phone ? "grid grid-cols-2 gap-2" : "flex items-center gap-2"}>
         <Button size="S" variant="ghost" onClick={() => useConcentrationAsk.getState().set(null)}>
           Keep {ask.spell}
         </Button>
@@ -277,7 +287,7 @@ function PickCounts() {
           }}
           data-testid="pick-count"
           data-token={id}
-          className="pointer-events-none fixed z-40 -translate-x-1/2 -translate-y-1/2 rounded-full border border-brass bg-ink-900 px-1.5 text-13 font-bold text-brass-bright shadow-[var(--shadow-float)]"
+          className="pointer-events-none fixed z-40 -translate-x-1/2 -translate-y-1/2 rounded-[var(--radius-chip)] border border-brass bg-ink-900 px-1.5 text-13 font-bold text-brass-bright shadow-[var(--shadow-float)]"
         >
           ×{n}
         </span>

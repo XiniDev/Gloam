@@ -576,22 +576,18 @@ export function areaLoop(
   // Lightly obscured (Web; a fog the DM thins): a haze — a low, translucent mist that hides nothing (AC-VIS-07) —
   // under whatever else it draws.
   if (props.obscurement === "light") {
-    if (fl.round) {
-      const haze = shell({
-        radius: R,
+    // A mist lying over its footprint, round or not (critic P9 r2 #5: a flattened rough shell read as crumpled glass
+    // with a hard rim); a web's is faint, its strands carrying the look.
+    g.add(
+      lying({
+        kind: "mist",
         life: 1,
         core: "#D8DEE6",
         glow: "#9AA6B4",
-        rough: 0.5,
-        additive: false,
-        opacity: 0.3,
         loop: true,
-        soft: true,
-      });
-      haze.scale.set(1, 0.28, 1);
-      g.add(place(haze, [w.c[0], w.c[1] + R * 0.05, w.c[2]]));
-    } else
-      g.add(lying({ kind: "mist", life: 1, core: "#D8DEE6", glow: "#9AA6B4", loop: true, opacity: 0.45 }));
+        opacity: props.difficult ? 0.18 : 0.45,
+      }),
+    );
     // Only a haze (a thinned fog): nothing of its preset's loop over it. (Web adds its strands below.)
     if (!props.difficult) return g;
   }
