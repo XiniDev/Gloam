@@ -22,10 +22,18 @@ export const cylinder = (top: number, bottom: number, h: number, seg = 48) =>
 export const torus = (r: number, tube: number, seg = 64) =>
   get(`tor:${key(r, tube, seg)}`, () => new TorusGeometry(r, tube, 10, seg));
 export const plane = (w: number, h: number) => get(`pln:${key(w, h)}`, () => new PlaneGeometry(w, h));
+/** A standee's foot (§8.5 "a small base"): a low slab the card stands in, rounded at its ends. */
+export const standeeFoot = (w: number, d: number, h: number) =>
+  get(`foot:${key(w, d, h)}`, () => {
+    const g = new CylinderGeometry(d / 2, d / 2, h, 24, 1, false);
+    // A stadium: the round slab stretched to the foot's width (ends stay round, the long sides flat enough).
+    g.scale(w / d, 1, 1);
+    return g;
+  });
 
 /** A standee card's thickness (SPEC §24: a 0.15-ft cardboard edge). */
 export const CARD_T = 0.15;
-const CARD_LAYERS = 6;
+const CARD_LAYERS = 10;
 /**
  * A standee card's edge: the card's shape stacked through its thickness (alpha-tested with the art's alpha, so a
  * cut-out drawing's edge follows its outline, not a rectangle), both ways round — one mesh, one draw call. The front

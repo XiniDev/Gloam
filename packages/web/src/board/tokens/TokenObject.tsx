@@ -50,7 +50,7 @@ import {
   underCover,
 } from "./declutter.ts";
 import { canRaise, heightLabel } from "./elevation.ts";
-import { CARD_T, cardEdge, cylinder, plane, torus } from "./geometries.ts";
+import { CARD_T, cardEdge, cylinder, plane, standeeFoot, torus } from "./geometries.ts";
 import { hiddenBadgeTexture, initialsTexture } from "./glyphs.ts";
 import { type MiniInstance, useAssetMeta, useAssetTexture, useMini } from "./hooks.ts";
 import {
@@ -68,6 +68,9 @@ import { atlasCell, customCell, statusAtlas } from "./statusAtlas.ts";
 /** Pitch above which Auto mode shows the coin (SPEC §8.5, AC-TOK-11) and the crossfade time. */
 
 const BASE_H = 0.14;
+/** A standee's foot: its depth (front to back) and height, ft. */
+const FOOT_D = 0.9;
+const FOOT_H = 0.14;
 const COIN_H = 0.2;
 /**
  * A plate leader's pieces, shared by every token: a unit strip along x (scaled to its length and to a few screen
@@ -255,6 +258,7 @@ export const TokenObject = memo(function TokenObject({
   const coinGroup = useRef<Group>(null);
   const miniGroup = useRef<Group>(null);
   const standeeCard = useRef<Group>(null);
+  const standeeFootRef = useRef<Mesh>(null);
   const selRing = useRef<Mesh>(null);
 
   // ── materials (per token, so hidden opacity never touches shared ones) ───────────────────────────────
@@ -283,6 +287,12 @@ export const TokenObject = memo(function TokenObject({
       alphaFromAlphaChannel(
         new MeshStandardMaterial({ color: C.cardboard, roughness: 0.95, alphaTest: 0.5 }),
       ),
+    [],
+    gradeAt,
+  );
+  // The standee's foot: plain cardboard (never cut by the art's outline, unlike the card's edge).
+  const standeeFootMat = useTransparentMaterial(
+    () => new MeshStandardMaterial({ color: C.cardboard, roughness: 0.9 }),
     [],
     gradeAt,
   );
@@ -507,6 +517,7 @@ export const TokenObject = memo(function TokenObject({
     setOpacity(standeeFront, o * (1 - cw));
     setOpacity(standeeBack, o * (1 - cw));
     setOpacity(standeeEdge, o * (1 - cw));
+    setOpacity(standeeFootMat, o * (1 - cw));
     setOpacity(baseMat, o);
     setOpacity(rimMat, o);
     boardDiag.tokenModes.set(token.id, {
@@ -533,6 +544,11 @@ export const TokenObject = memo(function TokenObject({
     if (miniGroup.current) {
       miniGroup.current.rotation.z = TIP * e;
       miniGroup.current.position.set(tipped.offset[0] * e, tipped.offset[1] * e, tipped.offset[2] * e);
+    }
+    // The foot stays standing as the card falls out of it (gone once the card lies flat).
+    if (standeeFootRef.current) {
+      standeeFootRef.current.visible = e < 0.98;
+      standeeFootRef.current.scale.setScalar(Math.max(0.01, 1 - e));
     }
     if (standeeCard.current) {
       standeeCard.current.rotation.x = (-Math.PI / 2) * e;
@@ -734,6 +750,15 @@ export const TokenObject = memo(function TokenObject({
             <group ref={standeeGroup} userData={{ part: "standee" }}>
               {/* Prone or dead: the card lies flat (face up, its top away from the camera), centred on the base and
                   no longer than the base is wide. Nested so the tip happens before the camera-facing turn. */}
+              {/* Its foot (§8.5 "a small base"): the card stands in it, a cardboard line between card and base. */}
+              <mesh
+                ref={standeeFootRef}
+                position={[0, BASE_H + FOOT_H / 2, 0]}
+                material={standeeFootMat}
+                geometry={standeeFoot(standeeW * 0.62, FOOT_D, FOOT_H)}
+                castShadow
+                dispose={null}
+              />
               <group ref={standeeCard}>
                 <mesh
                   position={[0, BASE_H + standeeH / 2, CARD_T / 2]}

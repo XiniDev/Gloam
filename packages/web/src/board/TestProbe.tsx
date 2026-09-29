@@ -270,6 +270,35 @@ export function TestProbe() {
     provideTestHook("plateCovers", () => plateCovers());
     // The HP feedback each token played (AC-HP-11: a hit's shake and flash, a heal's glow).
     provideTestHook("fxPlayed", () => fxPlayed.map((f) => ({ ...f })));
+    // Every mesh of a token as the renderer has it (diagnostics: a part that doesn't draw).
+    provideTestHook("tokenMeshes", (id: string) => {
+      const obj = scene.getObjectByName(`token:${id}`);
+      if (!obj) return null;
+      obj.updateWorldMatrix(true, true);
+      const out: Record<string, unknown>[] = [];
+      obj.traverse((o) => {
+        const m = o as Mesh;
+        if (!m.isMesh) return;
+        const mat = m.material as MeshStandardMaterial;
+        let shown = m.visible;
+        for (let p = m.parent; p && shown; p = p.parent) shown = p.visible;
+        const b = new Box3().setFromObject(m);
+        out.push({
+          part: m.userData.part ?? null,
+          color: mat.color ? `#${mat.color.getHexString()}` : null,
+          shown,
+          transparent: mat.transparent,
+          opacity: mat.opacity,
+          alphaTest: mat.alphaTest,
+          alphaMap: Boolean(mat.alphaMap),
+          map: Boolean(mat.map),
+          verts: m.geometry.getAttribute("position")?.count ?? 0,
+          min: b.min.toArray().map((v) => Math.round(v * 100) / 100),
+          max: b.max.toArray().map((v) => Math.round(v * 100) / 100),
+        });
+      });
+      return out;
+    });
     // The atlas cells made for custom markers ("glyph|#colour"), each with the badge colour its cell's centre shows.
     provideTestHook("customCells", () => {
       const a = statusAtlas();
