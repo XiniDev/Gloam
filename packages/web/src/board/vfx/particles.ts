@@ -5,8 +5,9 @@ import {
   Color,
   NormalBlending,
   Points,
-  ShaderMaterial,
+  type ShaderMaterial,
 } from "three";
+import { vfxMaterial } from "./bounds.ts";
 
 /**
  * The particle engine (SPEC §24.5): one Points draw per burst, each particle's path computed in the vertex shader from
@@ -55,6 +56,8 @@ void main() {
     float a = aSwirl.z * t;
     p.xz = aSwirl.xy + vec2(rel.x * cos(a) - rel.y * sin(a), rel.x * sin(a) + rel.y * cos(a));
   }
+  // Where it has drifted to (the scene's edge fades it: bounds.ts).
+  vBoundsW = (modelMatrix * vec4(p, 1.0)).xz;
   vec4 mv = modelViewMatrix * vec4(p, 1.0);
   float size = mix(aSize.x, aSize.y, aTime.w) * curve(uSizeCurve, u);
   gl_PointSize = clamp(uPx * size / -mv.z, 0.0, 256.0);
@@ -66,11 +69,25 @@ void main() {
 
 const FRAG = /* glsl */ `
 uniform vec3 uCore; uniform vec3 uGlow; uniform float uColorShift; uniform float uOpacity; uniform float uSoft;
+uniform float uPuff; uniform float uTime;
 varying float vAlpha; varying float vAge; varying float vShift;
+float h2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float n2(vec2 p) {
+  vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(h2(i), h2(i + vec2(1, 0)), f.x), mix(h2(i + vec2(0, 1)), h2(i + vec2(1, 1)), f.x), f.y);
+}
 void main() {
   vec2 c = gl_PointCoord - 0.5;
   float d = length(c) * 2.0;
   float a = (1.0 - smoothstep(uSoft, 1.0, d)) * vAlpha * uOpacity;
+  if (uPuff > 0.5) {
+    // A puff of cloud: its edge broken up by two octaves of noise, turning slowly (each its own pattern), densest in
+    // its middle — no disc's outline.
+    float ang = vShift * 6.2831 + uTime * 0.05;
+    vec2 q = mat2(cos(ang), -sin(ang), sin(ang), cos(ang)) * c * 3.2 + vShift * 17.0;
+    float n = n2(q) * 0.65 + n2(q * 2.3 + 5.0) * 0.35;
+    a *= smoothstep(0.25, 0.75, n + (1.0 - d) * 0.55) * (1.0 - smoothstep(0.55, 1.0, d));
+  }
   if (a < 0.003) discard;
   vec3 col = mix(uCore, uGlow, clamp(vAge * uColorShift + vShift * 0.15, 0.0, 1.0));
   gl_FragColor = vec4(col, a);
@@ -104,6 +121,8 @@ export interface ParticleOptions {
   seed?: number;
   /** Swirl centre (x, z) for emitters with a swirl. */
   swirlAt?: [number, number];
+  /** Cloud puffs: soft billboards with noise-broken edges (fog, gas, the storm), not discs. */
+  puff?: boolean;
 }
 
 /** Builds one burst's particles (one draw); dispose its geometry and material when it's done. */
@@ -139,7 +158,7 @@ export function particleBurst(emitters: EmitterSpec[], o: ParticleOptions, scale
   geo.setAttribute("aTime", new BufferAttribute(time, 4));
   geo.setAttribute("aSize", new BufferAttribute(size, 2));
   geo.setAttribute("aSwirl", new BufferAttribute(swirl, 3));
-  const mat = new ShaderMaterial({
+  const mat = vfxMaterial({
     vertexShader: VERT,
     fragmentShader: FRAG,
     transparent: true,
@@ -155,6 +174,7 @@ export function particleBurst(emitters: EmitterSpec[], o: ParticleOptions, scale
       uGlow: { value: new Color(o.glow) },
       uOpacity: { value: o.opacity ?? 1 },
       uSoft: { value: o.soft ?? 0.2 },
+      uPuff: { value: o.puff ? 1 : 0 },
       uLoop: { value: o.loop ? 1 : 0 },
       uPx: { value: 900 },
     },

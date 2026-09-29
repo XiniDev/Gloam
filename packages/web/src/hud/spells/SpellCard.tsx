@@ -12,7 +12,19 @@ import type { Spell } from "@gloam/shared/schemas";
 import type { ReactNode } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { Filigree } from "../../ui/ornaments.tsx";
 import { SrdLine } from "../../ui/SrdLine.tsx";
+
+/**
+ * The colour of a spell's header band (SPEC §28 "coloured by school or damage type"): its damage's (the first part's,
+ * or the one it's cast with), healing's, else the spell colour (arcane).
+ */
+export function bandColor(spell: Pick<Spell, "damage" | "healing">): string {
+  const t = spell.damage?.[0]?.type;
+  if (t) return `var(--dmg-${t})`;
+  if (spell.healing) return "var(--dmg-healing)";
+  return "var(--arcane-400)";
+}
 
 const ABILITY: Record<string, string> = {
   str: "Strength",
@@ -55,14 +67,24 @@ export function SpellCard({
     ? scaledFormula(spell.healing.formula, spell.healing.scaling, spell.level, level, casterLevel)
     : null;
   const srd = spell.source.pack.startsWith("srd");
+  const band = bandColor(spell);
   return (
     <article
-      className="parchment flex flex-col gap-2.5 p-4 text-paper-ink"
+      className="parchment relative flex flex-col gap-2.5 overflow-hidden p-4 text-paper-ink"
       data-testid="spell-card"
       data-spell={spell.id}
+      data-band={band}
       aria-label={spell.name}
     >
-      <header className="flex flex-col gap-0.5">
+      {/* Its header band, in the colour of what it does (a school's or its damage's), under the corner filigree. */}
+      <header
+        className="-mx-4 -mt-4 flex flex-col gap-0.5 px-4 pb-2.5 pt-4"
+        style={{
+          background: `linear-gradient(180deg, color-mix(in srgb, ${band} 34%, transparent), color-mix(in srgb, ${band} 14%, transparent))`,
+          borderBottom: `2px solid color-mix(in srgb, ${band} 62%, var(--parchment-ink))`,
+        }}
+        data-testid="spell-band"
+      >
         <div className="flex items-start gap-2">
           <h3 className="display min-w-0 flex-1 text-22 leading-tight">{spell.name}</h3>
           {spell.duration.concentration ? (
@@ -134,6 +156,7 @@ export function SpellCard({
         <p className="text-12 italic text-paper-muted">Homebrew</p>
       )}
       {footer}
+      <Filigree />
     </article>
   );
 }

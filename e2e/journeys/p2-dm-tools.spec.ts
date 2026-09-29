@@ -259,6 +259,34 @@ test.describe("P2 — DM tools: calibration, 3D maps, the Library (SCN-01, SCN-0
     await admin.locator('[data-asset="Goblin archer"]').getByLabel("Name").fill("Goblin archer (elite)");
     await admin.locator('[data-asset="Goblin archer"]').getByLabel("Name").press("Enter");
     await expect.poll(names).toContain("Goblin archer (elite)");
+    // A card's menu in the scrolling list follows its button as the list scrolls, and closes once the button has
+    // scrolled out of the list's view — never left adrift, never closed by the scroll that brought it into view.
+    const items = admin.getByRole("list", { name: "Library items" });
+    // The last card's, with the list scrolled to its foot.
+    await items.evaluate((el) => {
+      el.scrollTop = el.scrollHeight;
+    });
+    const lastMore = (await items.evaluate((el) => {
+      const all = el.querySelectorAll('[aria-label^="More for "]');
+      return (all[all.length - 1] as HTMLElement).getAttribute("aria-label");
+    })) as string;
+    await admin.getByRole("button", { name: lastMore, exact: true }).click();
+    const cardMenu = admin.getByRole("menu", { name: lastMore });
+    await expect(cardMenu).toBeVisible();
+    const menuY = async () => ((await cardMenu.boundingBox()) as { y: number }).y;
+    const y0 = await menuY();
+    await items.evaluate((el) => el.scrollBy(0, -20));
+    await expect.poll(menuY).toBeGreaterThan(y0 + 15);
+    await expect(cardMenu).toBeVisible();
+    const room = await items.evaluate((el, label) => {
+      const b = el.querySelector(`[aria-label="${label}"]`) as HTMLElement;
+      return { up: el.scrollTop, gap: el.getBoundingClientRect().bottom - b.getBoundingClientRect().top };
+    }, lastMore);
+    expect(room.up, "the list scrolls far enough to take the button out of view").toBeGreaterThan(room.gap);
+    await items.evaluate((el) => {
+      el.scrollTop = 0;
+    });
+    await expect(cardMenu).toBeHidden();
 
     // Drag onto the board: a token where it lands.
     const board = (await admin.getByTestId("board").boundingBox()) as {

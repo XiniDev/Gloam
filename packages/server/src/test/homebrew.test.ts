@@ -187,6 +187,14 @@ describe("P9 — homebrew spells and imports (AC-SPL-10/11)", () => {
     expect(d.valid).toBe(3);
     expect(d.invalid.map((x) => x.index)).toEqual([1]);
     expect(d.invalid[0]?.errors.join(" ")).toMatch(/level/);
+    // In plain words, not the validator's ("Too big: expected number to be <=9").
+    expect(d.invalid[0]?.errors).toContain("level must be 9 or less (it's 12)");
+    // Each valid spell and what would become of it (skip, the default).
+    expect(d.spells.map((x) => [x.index, x.id, x.outcome])).toEqual([
+      [0, "ember-storm", "import"],
+      [2, "fireball", "skip"],
+      [3, "poison-ball", "skip"],
+    ]);
     expect(d.conflicts.map((x) => [x.id, x.with])).toEqual([
       ["fireball", "srd"],
       ["poison-ball", "homebrew"],
@@ -208,6 +216,11 @@ describe("P9 — homebrew spells and imports (AC-SPL-10/11)", () => {
       { from: "fireball", to: "fireball-2" },
       { from: "poison-ball", to: "poison-ball-2" },
     ]);
+    expect(renamed.spells.map((x) => [x.index, x.id, x.name, x.outcome])).toEqual([
+      [0, "ember-storm", "Ember Storm", "import"],
+      [2, "fireball-2", "Fireball (ours)", "rename"],
+      [3, "poison-ball-2", "Poison Ball Mk II", "rename"],
+    ]);
     expect(count()).toBe(before + 3);
     // Overwrite: the homebrew clash replaced in place; the SRD one never — renamed instead.
     const over = (
@@ -221,6 +234,10 @@ describe("P9 — homebrew spells and imports (AC-SPL-10/11)", () => {
       ).json as { data: ImportReport }
     ).data;
     expect(over.overwritten).toEqual(["poison-ball"]);
+    expect(over.spells.map((x) => [x.id, x.outcome])).toEqual([
+      ["poison-ball", "overwrite"],
+      ["fireball-3", "rename"],
+    ]);
     expect(over.renamed).toEqual([{ from: "fireball", to: "fireball-3" }]);
     expect(
       room()

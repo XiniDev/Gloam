@@ -24,6 +24,7 @@ import {
   Vector3,
 } from "three";
 import { audio } from "../../audio/engine.ts";
+import { useCombat } from "../../net/combat.ts";
 import { request, useTable } from "../../net/table.ts";
 import { useSettings } from "../../state/settings.ts";
 import { useUi } from "../../state/ui.ts";
@@ -52,6 +53,7 @@ import {
   overlaysOff,
   PRIORITY,
   registerOverlay,
+  rimEntry,
   setOverlayBody,
   setOverlaySpots,
 } from "./declutter.ts";
@@ -1092,7 +1094,7 @@ function Overlay({
       opacity: 0.55,
       depthTest: false,
     });
-    const strokeMat = new MeshBasicMaterial({ color: C.brass400, transparent: true, depthTest: false });
+    const strokeMat = new MeshBasicMaterial({ color: C.brass300, transparent: true, depthTest: false });
     const halo = new Mesh(LEADER_STRIP, haloMat);
     const line = new Mesh(LEADER_STRIP, strokeMat);
     const dotHalo = new Mesh(LEADER_DOT, haloMat);
@@ -1224,6 +1226,8 @@ function Overlay({
       const ui = useUi.getState();
       if (ui.hover === t.id) return PRIORITY.hovered;
       if (ui.selection.includes(t.id)) return PRIORITY.selected;
+      const combat = useCombat.getState().view;
+      if (combat.begun && combat.entries[combat.activeIndex]?.tokenId === t.id) return PRIORITY.turn;
       if (t.ownerIds.includes(v.userId)) return PRIORITY.own;
       return t.disposition === "party" ? PRIORITY.party : PRIORITY.other;
     });
@@ -1370,11 +1374,14 @@ function Overlay({
       if (seg) {
         drawLeader = true;
         const px = 1 / pxPerPlate;
+        // Drawn to the token's rim, not onto its face (critic P9 r1 #23: a line and a dot over the art read as a
+        // scratch): where the layout's segment (checked into the part that shows) first meets the base's ellipse.
+        const rim = rimEntry(seg, body);
         // Into the plate's own units (origin at its anchor, y up).
         const sx = (seg.sx - ox) * px;
         const sy = -(seg.sy - oy) * px;
-        const ex = (seg.ex - ox) * px;
-        const ey = -(seg.ey - oy) * px;
+        const ex = (rim.x - ox) * px;
+        const ey = -(rim.y - oy) * px;
         const len = Math.hypot(ex - sx, ey - sy);
         const rot = Math.atan2(ey - sy, ex - sx);
         for (const [m, across] of [
@@ -1385,7 +1392,7 @@ function Overlay({
           m.rotation.z = rot;
           m.scale.set(len, across * px, 1);
         }
-        // A dot on the token end: 2.5 px, on a 4-px halo, whatever the zoom.
+        // A dot where it meets the rim: 2.5 px, on a 4-px halo, whatever the zoom.
         leader.dot.position.set(ex, ey, 0);
         leader.dot.scale.setScalar(2.5 * px);
         leader.dotHalo.position.set(ex, ey, 0);

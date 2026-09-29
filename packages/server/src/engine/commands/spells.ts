@@ -969,10 +969,11 @@ export function rowFormula(
 
 function subtitleOf(spell: Spell, level: number, mode: "slot" | "ritual" | "free"): string {
   const base = spell.level === 0 ? "cantrip" : `${SPELL_LEVEL_NAMES[level]} level`;
+  // One grammar with the rest of the card's header: parts joined by a middot ("2nd level · no slot").
   return mode === "ritual"
-    ? `${base}, as a ritual`
+    ? `${base} · as a ritual`
     : mode === "free" && spell.level > 0
-      ? `${base}, no slot`
+      ? `${base} · no slot`
       : base;
 }
 

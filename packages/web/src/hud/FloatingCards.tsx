@@ -1,12 +1,16 @@
 import type { DmPromptView, RequestCard } from "@gloam/shared/protocol";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Vector3 } from "three";
 import { create } from "zustand";
 import { audio } from "../audio/engine.ts";
+import { boardApi } from "../board/boardApi.ts";
+import { cameraRig } from "../board/CameraRig.tsx";
 import { bodyRects } from "../board/tokens/declutter.ts";
 import { promptArrived } from "../net/health.ts";
 import { requestArrived } from "../net/sheets.ts";
 import { useSpells } from "../net/spells.ts";
+import { prefersReducedMotion } from "../state/settings.ts";
 import { useUi } from "../state/ui.ts";
 import { Button, IconButton } from "../ui/Button.tsx";
 import { PromptCard, usePromptList } from "./health/PromptCards.tsx";
@@ -19,6 +23,7 @@ import {
   useObstacle,
 } from "./insets.ts";
 import { RequestGroupCard, useRequestGroups } from "./RequestCards.tsx";
+import { castHidden } from "./spells/castHide.ts";
 import { ResolutionCard } from "./spells/ResolutionCard.tsx";
 
 /** Below this width a screen shows two cards at once, then "Show n more" (critic P7 r2 #7). */
@@ -77,6 +82,7 @@ export function FloatingCards() {
   const groups = useRequestGroups();
   const prompts = usePromptList();
   const casts = useSpells((st) => st.casts);
+  const hiddenCasts = useSpells((st) => st.hiddenCasts);
   const phone = useIsPhone();
   const dockOpen = useUi((s) => s.dock !== null);
   const away = phone && dockOpen;
@@ -89,12 +95,14 @@ export function FloatingCards() {
         node: <PromptCard key={`p:${p.id}`} p={p} compact={false} />,
       })),
       // Resolution cards (§8.13): the DM's whole card, the caster's rolls — about the creatures they're aimed at.
-      ...[...casts.values()].map((c) => ({
-        key: `c:${c.id}`,
-        at: seenAt(`c:${c.id}`),
-        subjects: c.targets.map((t) => t.id),
-        node: <ResolutionCard key={`c:${c.id}`} c={c} />,
-      })),
+      ...[...casts.values()]
+        .filter((c) => !castHidden(c, hiddenCasts))
+        .map((c) => ({
+          key: `c:${c.id}`,
+          at: seenAt(`c:${c.id}`),
+          subjects: c.targets.map((t) => t.id),
+          node: <ResolutionCard key={`c:${c.id}`} c={c} />,
+        })),
       ...groups.map((rows: RequestCard[]) => {
         const first = rows[0] as RequestCard;
         return {
@@ -106,7 +114,7 @@ export function FloatingCards() {
       }),
     ];
     return out.sort((a, b) => a.at - b.at || (a.key < b.key ? -1 : 1));
-  }, [groups, prompts, casts]);
+  }, [groups, prompts, casts, hiddenCasts]);
   const shown = items.length > 0 && !away;
 
   const top = useHudInsets((s) => s.top);
@@ -193,6 +201,72 @@ export function FloatingCards() {
     });
   }, [keys, all, shown, phone, left, right, top, bottom, banner, tracker, feedRight]);
 
+  // A new card over the creatures it's about (no place on the free board clears them all — critic P9 r1 #5): the view
+  // slides the least that brings them out from under it, on the free board. Once per new card, never as it's read.
+  const nudged = useRef(new Set<string>());
+  // biome-ignore lint/correctness/useExhaustiveDependencies: per new card (keys), after its place is settled
+  useEffect(() => {
+    if (!shown) return;
+    const fresh = items.filter((i) => !nudged.current.has(i.key));
+    for (const i of items) nudged.current.add(i.key);
+    if (!fresh.length) return;
+    const raf = requestAnimationFrame(() => {
+      const el = ref.current;
+      if (!el) return;
+      const card = el.getBoundingClientRect();
+      const board = boardApi.element?.getBoundingClientRect();
+      const ox = board?.left ?? 0;
+      const oy = board?.top ?? 0;
+      const subjects = new Set(fresh.flatMap((i) => i.subjects));
+      const under = bodyRects()
+        .filter(({ id }) => subjects.has(id))
+        .map(({ r }) => ({ x0: r.x0 + ox, y0: r.y0 + oy, x1: r.x1 + ox, y1: r.y1 + oy }))
+        .filter((r) => r.x0 < card.right && r.x1 > card.left && r.y0 < card.bottom && r.y1 > card.top);
+      if (!under.length) return;
+      const u = {
+        x0: Math.min(...under.map((r) => r.x0)),
+        y0: Math.min(...under.map((r) => r.y0)),
+        x1: Math.max(...under.map((r) => r.x1)),
+        y1: Math.max(...under.map((r) => r.y1)),
+      };
+      // The free board: inside the HUD's columns and bands.
+      const free = {
+        x0: left + 12,
+        y0: top + banner + tracker + 12,
+        x1: window.innerWidth - right - 12,
+        y1: window.innerHeight - Math.max(bottom, PHONE_BOTTOM_BAND) - 12,
+      };
+      const GAP = 14;
+      const moves = [
+        { dx: card.left - GAP - u.x1, dy: 0 },
+        { dx: card.right + GAP - u.x0, dy: 0 },
+        { dx: 0, dy: card.top - GAP - u.y1 },
+        { dx: 0, dy: card.bottom + GAP - u.y0 },
+      ].filter(
+        (m) =>
+          u.x0 + m.dx >= free.x0 &&
+          u.x1 + m.dx <= free.x1 &&
+          u.y0 + m.dy >= free.y0 &&
+          u.y1 + m.dy <= free.y1,
+      );
+      if (!moves.length) return;
+      const m = moves.reduce((a, b) => (Math.hypot(a.dx, a.dy) <= Math.hypot(b.dx, b.dy) ? a : b));
+      // The table point that must come under the centre of the screen for everything to slide by (dx, dy).
+      const cx = (board?.left ?? 0) + (board?.width ?? window.innerWidth) / 2;
+      const cy = (board?.top ?? 0) + (board?.height ?? window.innerHeight) / 2;
+      const here = boardApi.groundAt(cx, cy);
+      const there = boardApi.groundAt(cx - m.dx, cy - m.dy);
+      const t = cameraRig.controls?.getTarget(new Vector3());
+      if (!here || !there || !t) return;
+      cameraRig.moveTargetTo(
+        t.x + (there.x - here.x),
+        t.z + (there.y - here.y),
+        prefersReducedMotion() ? 0 : 420,
+      );
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [keys, place, shown]);
+
   const atBottom = shown && phone;
   useEffect(() => {
     useCardsAtBottom.setState({ on: atBottom });
@@ -229,7 +303,15 @@ export function FloatingCards() {
         aria-label="Waiting for you"
         className="pointer-events-none flex w-full max-w-[380px] flex-col gap-2"
       >
-        {visible.map((i) => i.node)}
+        {phone ? (
+          // A phone's card as a sheet at §28's first snap (30 % of the screen), the board above it in view (critic P9
+          // r1 #18: a card covered it whole); its handle raises it to the next (60 %) and back.
+          <li className="pointer-events-auto flex flex-col">
+            <PhoneCardSheet key={visible[0]?.key}>{visible.map((i) => i.node)}</PhoneCardSheet>
+          </li>
+        ) : (
+          visible.map((i) => i.node)
+        )}
         {phone && items.length > 1 ? (
           <li className="self-center">
             <nav
@@ -277,5 +359,47 @@ export function FloatingCards() {
         ) : null}
       </ol>
     </div>
+  );
+}
+
+/** A phone's card, as high as a sheet's snap: 30 % of the screen, its handle raising it to 60 % while it has more. */
+function PhoneCardSheet({ children }: { children: ReactNode }) {
+  const [tall, setTall] = useState(false);
+  const [more, setMore] = useState(false);
+  const box = useRef<HTMLOListElement>(null);
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const measure = () => setMore(el.scrollHeight > el.clientHeight + 1);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    for (const c of el.children) ro.observe(c);
+    return () => ro.disconnect();
+  });
+  return (
+    <>
+      {more || tall ? (
+        <button
+          type="button"
+          aria-label={tall ? "Lower the card" : "Raise the card"}
+          aria-expanded={tall}
+          onClick={() => setTall((x) => !x)}
+          className="mx-auto mb-1 grid h-6 w-16 place-items-center rounded-chip"
+          data-testid="card-sheet-handle"
+        >
+          <span aria-hidden className="block h-1 w-10 rounded-full bg-[var(--border-strong)]" />
+        </button>
+      ) : null}
+      <ol
+        ref={box}
+        className="flex flex-col gap-2 overflow-y-auto overscroll-contain"
+        style={{ maxHeight: tall ? "60dvh" : "30dvh" }}
+        data-testid="card-sheet"
+        data-snap={tall ? "60" : "30"}
+      >
+        {children}
+      </ol>
+    </>
   );
 }

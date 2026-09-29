@@ -2,7 +2,8 @@ import { circlePolygon, type P } from "@gloam/shared/geometry";
 import { controlsToken } from "@gloam/shared/rules";
 import type { EffectControl, EffectView } from "@gloam/shared/state";
 import { type ThreeEvent, useFrame } from "@react-three/fiber";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { Group } from "three";
 import { actEffect, moveEffect } from "../../net/spells.ts";
 import { useTable } from "../../net/table.ts";
 import { useEffectUi } from "../../state/effectUi.ts";
@@ -14,6 +15,7 @@ import { C } from "../colors.ts";
 import { again } from "../frames.ts";
 import { setBoardMarks } from "../tokens/declutter.ts";
 import { Segments } from "../tools/marks.tsx";
+import { type Preset, VFX } from "./palette.ts";
 import { whereOf } from "./presets.ts";
 
 /** What can be done with an effect from the board, by this viewer. */
@@ -33,6 +35,8 @@ export interface Handle {
   strike: number | null;
   endable: boolean;
   drifts: boolean;
+  /** Its look (a VFX preset): a strike's aim is drawn in its colour. */
+  vfx: string;
 }
 
 function parse<T>(json: string): T | null {
@@ -74,6 +78,7 @@ export function handleOf(e: EffectView, dm: boolean, mine: (tokenId: string) => 
     strike,
     endable: dm || caster,
     drifts: control.drifts === true,
+    vfx: e.vfx,
   };
 }
 
@@ -88,6 +93,8 @@ let current: Handle[] = [];
  */
 /** A handle's half-size on screen, as the plates keep off it (its ring and a little room). */
 const HANDLE_PX = 14;
+/** The smallest a handle's disc is drawn, across (px). */
+const MIN_HANDLE_PX = 18;
 
 export function EffectHandles() {
   const effects = useBoard((d) => d.effects);
@@ -109,6 +116,9 @@ export function EffectHandles() {
         (t) => Math.hypot(t.pos.x - h.at.x, t.pos.y - h.at.y) < t.sizeFt / 2 + 1,
       );
       if (on) h.mark = { x: on.pos.x, y: on.pos.y + on.sizeFt / 2 + 1.6 };
+      // An object at its point (Flaming Sphere): the handle on the floor beside it, not on its face.
+      const body = parse<{ bodyFt?: number }>(e.propsJson)?.bodyFt;
+      if (body && !on) h.mark = { x: h.at.x, y: h.at.y + body / 2 + 1.6 };
       return [h];
     });
   }, [effects, tokens, dm, me]);
@@ -206,8 +216,20 @@ function HandleMark({ h, dm }: { h: Handle; dm: boolean }) {
     window.addEventListener("pointercancel", up);
   };
   const lit = hover || selected;
+  // Never a speck (critic P9 r1 #25): at least this many pixels across however far the camera stands.
+  const group = useRef<Group>(null);
+  useFrame(() => {
+    const g = group.current;
+    if (!g) return;
+    const a = boardApi.project(h.mark.x, h.mark.y, 0.14);
+    const b = boardApi.project(h.mark.x + 1, h.mark.y, 0.14);
+    const pxPerFt = a && b ? Math.hypot(b.sx - a.sx, b.sy - a.sy) : 0;
+    const k = pxPerFt > 0 ? Math.max(1, MIN_HANDLE_PX / (2 * 0.75 * pxPerFt)) : 1;
+    if (Math.abs(g.scale.x - k) > 1e-3) g.scale.setScalar(k);
+  });
   return (
     <group
+      ref={group}
       position={[h.mark.x, 0.14, h.mark.y]}
       userData={{ effectHandle: h.id }}
       onPointerDown={onDown}
@@ -232,13 +254,23 @@ function HandleMark({ h, dm }: { h: Handle; dm: boolean }) {
           toneMapped={false}
         />
       </mesh>
-      {/* A diamond: the effect's own mark (tokens' are round). */}
+      {/* A diamond: the effect's own mark (tokens' are round) — brass, rimmed in bone so it reads on any floor. */}
+      <mesh rotation-x={-Math.PI / 2} position-y={0.005} renderOrder={21}>
+        <circleGeometry args={[lit ? 0.74 : 0.52, 4]} />
+        <meshBasicMaterial
+          color={C.bone100}
+          transparent
+          opacity={lit ? 0.9 : 0.7}
+          depthTest={false}
+          toneMapped={false}
+        />
+      </mesh>
       <mesh rotation-x={-Math.PI / 2} position-y={0.01} renderOrder={21}>
-        <circleGeometry args={[lit ? 0.62 : 0.4, 4]} />
+        <circleGeometry args={[lit ? 0.62 : 0.42, 4]} />
         <meshBasicMaterial
           color={lit ? C.brass300 : C.brass400}
           transparent
-          opacity={lit ? 0.95 : 0.6}
+          opacity={lit ? 0.98 : 0.85}
           depthTest={false}
           toneMapped={false}
         />
@@ -334,15 +366,33 @@ function StrikeAim() {
   if (!strike?.at || !h) return null;
   const inside = h.outline ? pointIn(strike.at, h.outline) : true;
   const pts = circlePolygon(strike.at, strike.radius, 48, true);
+  // In the storm's own colour (critic P9 r1 #27: a brass ring vanished on a lit floor): a rim and a faint fill where
+  // it can strike; a dashed grey rim where it can't.
+  const tint = VFX[h.vfx as Preset]?.glow ?? C.brass300;
   return (
-    <Segments
-      segs={pts.map((a, i) => ({ a, b: pts[(i + 1) % pts.length] as P }))}
-      color={inside ? C.brass300 : C.fog400}
-      width={2}
-      opacity={inside ? 0.95 : 0.5}
-      order={22}
-      dashed={!inside}
-    />
+    <>
+      {inside ? (
+        <mesh position={[strike.at.x, 0.05, strike.at.y]} rotation-x={-Math.PI / 2} renderOrder={21}>
+          <circleGeometry args={[strike.radius, 48]} />
+          <meshBasicMaterial
+            color={tint}
+            transparent
+            opacity={0.14}
+            depthTest={false}
+            depthWrite={false}
+            toneMapped={false}
+          />
+        </mesh>
+      ) : null}
+      <Segments
+        segs={pts.map((a, i) => ({ a, b: pts[(i + 1) % pts.length] as P }))}
+        color={inside ? tint : C.fog400}
+        width={2}
+        opacity={inside ? 0.95 : 0.5}
+        order={22}
+        dashed={!inside}
+      />
+    </>
   );
 }
 

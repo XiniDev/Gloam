@@ -6,11 +6,14 @@ import {
   layoutOverlays,
   leaderFor,
   leaderSegment,
+  NAMES_FROM_PX,
   overlayClear,
   overlayCompact,
   overlayDiagnostics,
   overlayOffset,
+  PRIORITY,
   registerOverlay,
+  rimEntry,
   seenPart,
   setBoardMarks,
   setOverlayBody,
@@ -379,6 +382,34 @@ describe("overlay declutter", () => {
     expect(rect("g")).toEqual({ x0: 70, y0: 25, x1: 130, y1: 38 });
   });
 
+  it("zoomed out, a small creature shows its bar alone and its name only on hover, selection or its turn (critic P9 r1 #19)", () => {
+    // A 20-px goblin with room all round: at a wide view, its bar alone, in its own spot.
+    let p: number = PRIORITY.other;
+    const g = new Group();
+    const m = new Mesh(new BoxGeometry(40, 1, 10), mat);
+    m.position.set(100, 0, 30);
+    g.add(m);
+    scene.add(g);
+    undo.push(registerOverlay("far", g, () => p));
+    undo.push(() => scene.remove(g));
+    setOverlaySpots("far", { x0: 70, y0: 25, x1: 130, y1: 38 }, { x0: 90, y0: 32, x1: 110, y1: 38 });
+    setOverlayBody("far", { x0: 90, y0: 40, x1: 110, y1: 60 });
+    layoutOverlays(camera, W, H);
+    expect(overlayCompact("far")).toBe(true);
+    expect(rect("far")).toEqual({ x0: 90, y0: 32, x1: 110, y1: 38 });
+    // Its turn (or hovered, selected): its name comes back.
+    p = PRIORITY.turn;
+    layoutOverlays(camera, W, H);
+    expect(overlayCompact("far")).toBe(false);
+    p = PRIORITY.other;
+    layoutOverlays(camera, W, H);
+    expect(overlayCompact("far")).toBe(true);
+    // Zoomed in (the creature NAMES_FROM_PX across or more): the full plate.
+    setOverlayBody("far", { x0: 100 - NAMES_FROM_PX / 2, y0: 40, x1: 100 + NAMES_FROM_PX / 2, y1: 60 });
+    layoutOverlays(camera, W, H);
+    expect(overlayCompact("far")).toBe(false);
+  });
+
   it("measures a round token as the ellipse it is: a plate in the corner of its box (air) keeps its spot; the same corner of a card doesn't", () => {
     // A goblin's plate reaching 10 px into the corner of the box round an ogre's coin, clear of the coin itself.
     plate("gob", 100, 55, 1);
@@ -404,5 +435,26 @@ describe("overlay declutter", () => {
     setOverlayBody("hero", { x0: 0, y0: 0, x1: W, y1: H });
     layoutOverlays(camera, W, H);
     expect(overlayClear("goblin")).toBe(1);
+  });
+});
+
+describe("a leader's end (critic P9 r1 #23: drawn to the rim, not onto the token's face)", () => {
+  const body = { x0: 100, y0: 100, x1: 140, y1: 120 };
+  it("meets the ellipse its body's box holds, coming from the plate", () => {
+    // From the left, level with the centre: the rim's leftmost point.
+    const p = rimEntry({ sx: 40, sy: 110, ex: 125, ey: 110 }, body);
+    expect(p.x).toBeCloseTo(100, 6);
+    expect(p.y).toBeCloseTo(110, 6);
+    // From above: its top.
+    const q = rimEntry({ sx: 120, sy: 20, ex: 120, ey: 112 }, body);
+    expect(q.x).toBeCloseTo(120, 6);
+    expect(q.y).toBeCloseTo(100, 6);
+    // Diagonally: on the ellipse.
+    const r = rimEntry({ sx: 60, sy: 60, ex: 118, ey: 108 }, body);
+    expect(((r.x - 120) / 20) ** 2 + ((r.y - 110) / 10) ** 2).toBeCloseTo(1, 6);
+  });
+  it("keeps its end when the line never reaches the rim, and its start when it starts inside", () => {
+    expect(rimEntry({ sx: 0, sy: 0, ex: 50, ey: 50 }, body)).toEqual({ x: 50, y: 50 });
+    expect(rimEntry({ sx: 120, sy: 110, ex: 160, ey: 110 }, body)).toEqual({ x: 120, y: 110 });
   });
 });

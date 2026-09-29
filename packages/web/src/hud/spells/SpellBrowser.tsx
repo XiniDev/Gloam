@@ -7,8 +7,9 @@ import {
   spellRank,
 } from "@gloam/shared/rules";
 import type { Spell } from "@gloam/shared/schemas";
-import { Search, SlidersHorizontal, X } from "lucide-react";
+import { ChevronLeft, Search, SlidersHorizontal } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { StatusIcon } from "../../icons/status.tsx";
 import { allSpells, loadSrdSpells, useSpells } from "../../net/spells.ts";
 import { IconButton } from "../../ui/Button.tsx";
 import { EmptyState } from "../../ui/EmptyState.tsx";
@@ -110,114 +111,110 @@ export function SpellBrowser({
           <SlidersHorizontal size={17} />
         </IconButton>
       </div>
-      {showFilters ? (
-        // The filters scroll in their own band (never taking the list's room: the list keeps at least a few rows).
-        <div
-          className="flex max-h-[38vh] shrink-0 flex-col overflow-hidden rounded-[var(--radius-control)] border border-line"
-          data-testid="spell-filters"
-        >
-          <ScrollFade className="flex flex-col gap-2 p-2.5">
-            <Chips label="Level">
-              {SPELL_LEVEL_NAMES.map((n, i) => (
-                <Chip key={n} on={f.levels?.includes(i)} onClick={() => toggle("levels", i)}>
-                  {i === 0 ? "Cantrip" : String(i)}
-                </Chip>
-              ))}
-            </Chips>
-            <Chips label="School">
-              {SPELL_SCHOOLS.map((s) => (
-                <Chip key={s} on={f.schools?.includes(s)} onClick={() => toggle("schools", s)}>
-                  {cap(s)}
-                </Chip>
-              ))}
-            </Chips>
-            <Chips label="Class">
-              {classes.map((c) => (
-                <Chip key={c} on={f.classes?.includes(c)} onClick={() => toggle("classes", c)}>
-                  {cap(c)}
-                </Chip>
-              ))}
-            </Chips>
-            <Chips label="Casting time">
-              {TIMES.map((t) => (
-                <Chip key={t} on={f.castingTime?.includes(t)} onClick={() => toggle("castingTime", t)}>
-                  {TIME_LABEL[t]}
-                </Chip>
-              ))}
-            </Chips>
-            <Chips label="Concentration · ritual">
-              <Chip
-                on={f.concentration === true}
-                onClick={() =>
-                  setF((x) => ({ ...x, concentration: x.concentration === true ? undefined : true }))
-                }
-              >
-                Concentration
-              </Chip>
-              <Chip
-                on={f.concentration === false}
-                onClick={() =>
-                  setF((x) => ({ ...x, concentration: x.concentration === false ? undefined : false }))
-                }
-              >
-                No concentration
-              </Chip>
-              <Chip
-                on={f.ritual === true}
-                onClick={() => setF((x) => ({ ...x, ritual: x.ritual ? undefined : true }))}
-              >
-                Ritual
-              </Chip>
-            </Chips>
-            <Chips label="Damage">
-              {DAMAGE_TYPES.map((t) => (
-                <Chip key={t} on={f.damageTypes?.includes(t)} onClick={() => toggle("damageTypes", t)}>
-                  {cap(t)}
-                </Chip>
-              ))}
-            </Chips>
-            <Chips label="Save">
-              {ABILITIES.map((a) => (
-                <Chip key={a} on={f.saves?.includes(a)} onClick={() => toggle("saves", a)}>
-                  {a.toUpperCase()}
-                </Chip>
-              ))}
-            </Chips>
-            <Chips label="Area">
-              {SHAPES.map((s) => (
-                <Chip key={s} on={f.shapes?.includes(s)} onClick={() => toggle("shapes", s)}>
-                  {s === "none" ? "No area" : cap(s)}
-                </Chip>
-              ))}
-            </Chips>
-            <Chips label="Source">
-              {(["srd", "homebrew"] as const).map((s) => (
-                <Chip
-                  key={s}
-                  on={f.source === s}
-                  onClick={() => setF((x) => ({ ...x, source: x.source === s ? undefined : s }))}
-                >
-                  {s === "srd" ? "SRD 5.2.1" : "Homebrew"}
-                </Chip>
-              ))}
-            </Chips>
-            {active ? (
-              <button
-                type="button"
-                onClick={() => setF((x) => ({ q: x.q }))}
-                className="self-start text-13 text-muted underline decoration-dotted hover:text-bone"
-              >
-                Clear the filters
-              </button>
-            ) : null}
-          </ScrollFade>
-        </div>
-      ) : null}
       <p className="text-12 text-muted" data-testid="spell-count">
         {shown.length} {shown.length === 1 ? "spell" : "spells"}
       </p>
+      {/* The filters and the list scroll as one (critic P9 r1 #14: a band of its own sliced its last row and left the
+          list three rows): scrolled past, the filters give the list the whole column. */}
       <div className="flex min-h-48 flex-1 flex-col overflow-hidden rounded-[var(--radius-control)] border border-line">
         <ScrollFade>
+          {showFilters ? (
+            <div className="flex flex-col gap-2 border-b border-line p-2.5" data-testid="spell-filters">
+              <Chips label="Level">
+                {SPELL_LEVEL_NAMES.map((n, i) => (
+                  <Chip key={n} on={f.levels?.includes(i)} onClick={() => toggle("levels", i)}>
+                    {i === 0 ? "Cantrip" : String(i)}
+                  </Chip>
+                ))}
+              </Chips>
+              <Chips label="School">
+                {SPELL_SCHOOLS.map((s) => (
+                  <Chip key={s} on={f.schools?.includes(s)} onClick={() => toggle("schools", s)}>
+                    {cap(s)}
+                  </Chip>
+                ))}
+              </Chips>
+              <Chips label="Class">
+                {classes.map((c) => (
+                  <Chip key={c} on={f.classes?.includes(c)} onClick={() => toggle("classes", c)}>
+                    {cap(c)}
+                  </Chip>
+                ))}
+              </Chips>
+              <Chips label="Casting time">
+                {TIMES.map((t) => (
+                  <Chip key={t} on={f.castingTime?.includes(t)} onClick={() => toggle("castingTime", t)}>
+                    {TIME_LABEL[t]}
+                  </Chip>
+                ))}
+              </Chips>
+              <Chips label="Concentration · ritual">
+                <Chip
+                  on={f.concentration === true}
+                  onClick={() =>
+                    setF((x) => ({ ...x, concentration: x.concentration === true ? undefined : true }))
+                  }
+                >
+                  Concentration
+                </Chip>
+                <Chip
+                  on={f.concentration === false}
+                  onClick={() =>
+                    setF((x) => ({ ...x, concentration: x.concentration === false ? undefined : false }))
+                  }
+                >
+                  No concentration
+                </Chip>
+                <Chip
+                  on={f.ritual === true}
+                  onClick={() => setF((x) => ({ ...x, ritual: x.ritual ? undefined : true }))}
+                >
+                  Ritual
+                </Chip>
+              </Chips>
+              <Chips label="Damage">
+                {DAMAGE_TYPES.map((t) => (
+                  <Chip key={t} on={f.damageTypes?.includes(t)} onClick={() => toggle("damageTypes", t)}>
+                    {cap(t)}
+                  </Chip>
+                ))}
+              </Chips>
+              <Chips label="Save">
+                {ABILITIES.map((a) => (
+                  <Chip key={a} on={f.saves?.includes(a)} onClick={() => toggle("saves", a)}>
+                    {a.toUpperCase()}
+                  </Chip>
+                ))}
+              </Chips>
+              <Chips label="Area">
+                {SHAPES.map((s) => (
+                  <Chip key={s} on={f.shapes?.includes(s)} onClick={() => toggle("shapes", s)}>
+                    {s === "none" ? "No area" : cap(s)}
+                  </Chip>
+                ))}
+              </Chips>
+              <Chips label="Source">
+                {(["srd", "homebrew"] as const).map((s) => (
+                  <Chip
+                    key={s}
+                    on={f.source === s}
+                    onClick={() => setF((x) => ({ ...x, source: x.source === s ? undefined : s }))}
+                  >
+                    {s === "srd" ? "SRD 5.2.1" : "Homebrew"}
+                  </Chip>
+                ))}
+              </Chips>
+              {active ? (
+                <button
+                  type="button"
+                  onClick={() => setF((x) => ({ q: x.q }))}
+                  className="self-start text-13 text-muted underline decoration-dotted hover:text-bone"
+                >
+                  Clear the filters
+                </button>
+              ) : null}
+            </div>
+          ) : null}
           {shown.length ? (
             <ul className="flex flex-col" aria-label="Spells">
               {shown.map((s) => (
@@ -234,14 +231,19 @@ export function SpellBrowser({
                       {s.level === 0 ? "C" : s.level}
                     </span>
                     <span className="min-w-0 flex-1 truncate text-14 text-bone">{s.name}</span>
+                    {/* Concentration as its §30.2 icon; a ritual as a small word mark (critic P9 r1 #26: a bare "C"). */}
                     {s.duration.concentration ? (
-                      <span className="caps shrink-0 text-12 text-fog" title="Concentration">
-                        C
+                      <span className="shrink-0 text-fog" title="Concentration" data-mark="concentration">
+                        <StatusIcon id="concentrating" size={15} label="Concentration" />
                       </span>
                     ) : null}
                     {s.ritual ? (
-                      <span className="caps shrink-0 text-12 text-fog" title="Ritual">
-                        R
+                      <span
+                        className="caps shrink-0 rounded-[var(--radius-chip)] border border-line px-1 text-12 leading-4 text-fog"
+                        title="Ritual"
+                        data-mark="ritual"
+                      >
+                        Ritual
                       </span>
                     ) : null}
                     {s.source.pack.startsWith("srd") ? null : (
@@ -261,10 +263,17 @@ export function SpellBrowser({
   const card = current ? (
     <div className="flex min-h-0 flex-col gap-2" data-testid="spell-shown">
       {phone ? (
-        <div className="flex justify-end">
-          <IconButton label="Back to the list" onClick={() => setPicked(null)}>
-            <X size={17} />
-          </IconButton>
+        // Back to the results, at the left (the dialog's own X stays the only close: critic P9 r1 #15).
+        <div className="flex">
+          <button
+            type="button"
+            aria-label="Back to the results"
+            onClick={() => setPicked(null)}
+            className="-ml-1 inline-flex min-h-[var(--touch-min)] items-center gap-0.5 rounded-[var(--radius-control)] px-1 text-14 font-bold text-muted hover:text-bone"
+          >
+            <ChevronLeft size={17} aria-hidden />
+            Results
+          </button>
         </div>
       ) : null}
       <div className="min-h-0 overflow-y-auto">

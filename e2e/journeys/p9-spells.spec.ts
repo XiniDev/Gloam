@@ -353,11 +353,16 @@ test.describe("P9 — spells (SPL)", () => {
     const rolled = Number((await his.getByTestId("cast-rolled").innerText()).replace(/\D+/g, " ").trim());
     expect(rolled).toBeGreaterThanOrEqual(8);
     expect(rolled).toBeLessThanOrEqual(48);
+    // Nothing more asked of him, he hides his card (a close control of his own, as the DM's X): gone from his screen,
+    // still the DM's.
+    await his.getByRole("button", { name: "Hide the card" }).click();
+    await expect(his).toBeHidden();
 
     // The DM applies it all: each goblin down by all or half of it, by its save.
     await admin.bringToFront();
     await expect(card.getByTestId("cast-rolled")).toBeVisible();
-    const saved = async (id: string) => (await row(id).getByTestId("save-result").innerText()).includes("✓");
+    const saved = async (id: string) =>
+      (await row(id).getByTestId("save-result").getAttribute("data-success")) === "true";
     const expectHp = async (id: string) => 30 - ((await saved(id)) ? Math.floor(rolled / 2) : rolled);
     const want = { [g1]: await expectHp(g1), [g2]: await expectHp(g2) };
     await card.getByRole("button", { name: /^Apply( all)?$/ }).click();
@@ -394,11 +399,15 @@ test.describe("P9 — spells (SPL)", () => {
     // Magic Missile, 2nd-level slot: 4 darts (3 + 1 a slot level).
     await castFromSheet(dave, "Magic Missile", /2nd/, "Choose targets");
     const bar = dave.getByTestId("targeting-bar");
-    await expect(bar.getByTestId("targeting-hint")).toContainText("0 / 4");
+    // The darts counted at the bar's left; a creature picked twice marked ×2 by it on the board.
+    await expect(bar.getByTestId("targeting-picks")).toContainText("0 / 4");
+    await expect(bar.getByTestId("targeting-picks")).toContainText("darts");
     await click({ x: 45, y: 26 });
     await click({ x: 45, y: 26 });
+    await expect(dave.getByTestId("pick-count")).toHaveText("×2");
     await click({ x: 50, y: 36 });
-    await expect(bar.getByTestId("targeting-hint")).toContainText("3 / 4");
+    await expect(bar.getByTestId("targeting-picks")).toContainText("3 / 4");
+    await expect(dave.getByTestId("pick-count")).toHaveCount(1);
     await dave.screenshot({ path: `${SHOTS}/darts-picking.png` });
     await click({ x: 50, y: 36 });
     await expect(bar).toBeHidden();
@@ -448,6 +457,7 @@ test.describe("P9 — spells (SPL)", () => {
     const ask = dave.getByRole("dialog", { name: "End concentration?" });
     await expect(ask).toBeVisible();
     await expect(ask).toContainText("Web");
+    await expect(ask).toContainText("the Web on the board goes too");
     await dave.screenshot({ path: `${SHOTS}/concentration-ask.png` });
     await ask.getByRole("button", { name: "End it and cast" }).click();
     await expect
@@ -514,12 +524,12 @@ test.describe("P9 — spells (SPL)", () => {
     // Goblin 3 first: behind total cover — refused on the bar, the pick not taken.
     await clickAt({ x: 45, y: 52 });
     await expect(dave.getByTestId("targeting-why")).toHaveText(/total cover/);
-    await expect(dave.getByTestId("targeting-hint")).toContainText("0 / 1");
+    await expect(dave.getByTestId("targeting-picks")).toContainText("0 / 1");
     await clickAt({ x: 45, y: 42 });
     const hold = admin.getByTestId("resolution-card").filter({ hasText: "Hold Person" });
     const held = hold.locator(`[data-testid="cast-target"][data-token="${g2}"]`);
     await expect(held).toBeVisible();
-    await expect(held).toContainText("◐");
+    await expect(held).toContainText(/cover · \+\d AC/);
     await expect(hold.getByTestId("cover-note")).toBeVisible();
     await held.getByRole("button", { name: "More on Goblin 2" }).click();
     await held.getByRole("button", { name: "Failed" }).click();
@@ -547,10 +557,10 @@ test.describe("P9 — spells (SPL)", () => {
     // Skip: a second Hold Person (the first one's concentration ended for it), its target left with nothing.
     await castFromSheet(dave, "Hold Person", /2nd/, "Choose the target");
     await clickAt({ x: 30, y: 30 });
-    await dave
-      .getByRole("dialog", { name: "End concentration?" })
-      .getByRole("button", { name: "End it and cast" })
-      .click();
+    // Asked in the bar itself, where it's aimed (a modal hid what it was about): End it and cast.
+    const inline = dave.getByTestId("targeting-bar").getByRole("group", { name: "End concentration?" });
+    await expect(inline).toContainText("Hold Person");
+    await inline.getByRole("button", { name: "End it and cast" }).click();
     // The first one's Paralyzed ends with it.
     await expect
       .poll(async () => (await hook<{ conditions: string[] }>(admin, "token", g2))?.conditions)
@@ -642,7 +652,9 @@ test.describe("P9 — spells (SPL)", () => {
     const gAt = await screen(dave, 45, 42, 0.3);
     await dave.mouse.click(gAt.x, gAt.y);
     const dag = admin.getByTestId("resolution-card").filter({ hasText: "Dagger" });
-    await expect(dag.locator(`[data-testid="cast-target"][data-token="${g1}"]`)).toContainText("◐");
+    await expect(dag.locator(`[data-testid="cast-target"][data-token="${g1}"]`)).toContainText(
+      /cover · \+\d AC/,
+    );
     await expect(dag.getByTestId("cover-note")).toContainText("to its AC");
     await dag.getByRole("button", { name: "Close the card" }).click();
 
@@ -940,7 +952,7 @@ test.describe("P9 — spells (SPL)", () => {
     await panel.getByRole("button", { name: "New spell" }).click();
     const builder = admin.getByTestId("homebrew-builder");
     await expect(builder).toBeVisible();
-    await expect(admin.getByTestId("builder-status")).toContainText("to fix");
+    await expect(admin.getByTestId("builder-status")).toContainText(/\d+ problems?/);
     await builder.getByLabel("Name", { exact: true }).fill("Frost Nova");
     await expect(builder.getByLabel("Id", { exact: true })).toHaveValue("frost-nova");
     await builder
@@ -950,10 +962,10 @@ test.describe("P9 — spells (SPL)", () => {
     const dmg = builder.getByTestId("damage-row").first();
     await dmg.getByLabel("Damage 1", { exact: true }).fill("3d8 +");
     await expect(admin.getByTestId("builder-errors")).toContainText("Damage 1");
-    await expect(admin.getByTestId("builder-status")).toContainText("to fix");
+    await expect(admin.getByTestId("builder-status")).toContainText("1 problem");
     await dmg.getByLabel("Damage 1", { exact: true }).fill("3d8");
     await dmg.getByLabel("Type").selectOption("cold");
-    await expect(admin.getByTestId("builder-status")).toHaveText("Ready");
+    await expect(admin.getByTestId("builder-status")).toHaveText("Valid");
     await expect(builder.getByTestId("spell-card")).toContainText("Frost Nova");
     await expect(builder.getByTestId("spell-card")).toContainText("3d8");
     await admin.screenshot({ path: `${SHOTS}/homebrew-builder.png` });
@@ -970,7 +982,9 @@ test.describe("P9 — spells (SPL)", () => {
     await builder.getByLabel("Name", { exact: true }).fill("Poison Ball");
     await builder.getByLabel("Id", { exact: true }).fill("poison-ball");
     await builder.getByTestId("damage-row").first().getByLabel("Type").selectOption("poison");
-    await builder.getByLabel("VFX").selectOption("poison");
+    // Its VFX follows the damage type (§8.13: chosen from it, overridable), so Poison Ball looks like poison.
+    await expect(builder.getByLabel("VFX")).toHaveValue("poison");
+    await expect(builder.getByLabel("VFX").locator("option:checked")).toHaveText("Poison (its damage's)");
     await expect(builder.getByTestId("spell-card")).toContainText("poison");
     await admin.getByRole("button", { name: "Save spell" }).click();
     await expect(panel.locator('[data-testid="homebrew-row"][data-spell="poison-ball"]')).toBeVisible();
@@ -1024,6 +1038,14 @@ test.describe("P9 — spells (SPL)", () => {
     await expect(report).toContainText("Invalid (1)");
     await expect(report).toContainText(/level/);
     await expect(report).toContainText(/fireball/);
+    // What it would import, each clash's fate under the choice made, and why the invalid one is, in plain words.
+    await expect(report.getByTestId("import-will")).toContainText("Will import (1)");
+    await expect(report.getByTestId("import-will")).toContainText("Star Shard");
+    await expect(report.getByTestId("import-clashes")).toContainText("Fireball (ours)");
+    await expect(report.getByTestId("import-clashes")).toContainText(
+      "taken by an SRD spell · would be skipped",
+    );
+    await expect(report.getByTestId("import-invalid")).toContainText("level must be 9 or less (it's 12)");
     await admin.screenshot({ path: `${SHOTS}/import-dry-run.png` });
     // Rename for the clashes (a new strategy asks for a fresh dry run first), then import.
     await dialog
@@ -1032,6 +1054,8 @@ test.describe("P9 — spells (SPL)", () => {
       .click();
     await admin.getByRole("button", { name: "Dry run" }).click();
     await expect(report).toContainText("rename 2");
+    await expect(report.getByTestId("import-clashes")).toContainText("would be renamed fireball-2");
+    await expect(report.getByTestId("import-will")).toContainText("Will import (3)");
     await admin.getByRole("button", { name: "Import", exact: true }).click();
     await expect(report).toContainText("fireball-2");
     await expect(report).toContainText("poison-ball-2");

@@ -1,18 +1,26 @@
 import { ABILITIES, CONDITION_IDS, DAMAGE_TYPES, SPELL_SCHOOLS, VFX_PRESETS } from "@gloam/shared";
 import { checkFormula } from "@gloam/shared/dice";
-import { type Spell, SpellSchema } from "@gloam/shared/schemas";
-import { Minus, Plus } from "lucide-react";
-import { type ReactNode, useEffect, useId, useMemo, useState } from "react";
+import { issueText, type Spell, SpellSchema } from "@gloam/shared/schemas";
+import { Check as CheckIcon, CircleAlert, Minus, Plus } from "lucide-react";
+import { type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
 import { saveHomebrew, useSpells } from "../../net/spells.ts";
 import { useTable } from "../../net/table.ts";
 import { Button, IconButton } from "../../ui/Button.tsx";
-import { Toggle } from "../../ui/controls.tsx";
+import { Segmented, Toggle } from "../../ui/controls.tsx";
 import { Dialog } from "../../ui/Dialog.tsx";
 import { toast } from "../../ui/Toast.tsx";
+import { useIsPhone } from "../insets.ts";
 import { SpellCard } from "./SpellCard.tsx";
 
 /** The draft: the spell's input shape, loosely typed while it's being written (the schema checks it). */
 type Draft = Record<string, unknown>;
+
+/** The VFX preset a spell's effect implies (§8.13: "chosen from the damage type"): healing's, its first damage's. */
+function impliedVfx(d: Draft): string | null {
+  if (d.healing) return "healing";
+  const t = (d.damage as { type?: unknown }[] | undefined)?.[0]?.type;
+  return typeof t === "string" && (VFX_PRESETS as readonly string[]).includes(t) ? t : null;
+}
 
 const CLASSES = ["bard", "cleric", "druid", "paladin", "ranger", "sorcerer", "warlock", "wizard"];
 const SHAPES = ["sphere", "cylinder", "cone", "cube", "line", "emanation", "wall"] as const;
@@ -113,6 +121,8 @@ export function HomebrewBuilder({
   const dm = me?.role === "dm" || me?.role === "admin";
   const [d, setD] = useState<Draft>(BLANK);
   const [idTouched, setIdTouched] = useState(false);
+  // The VFX follows the damage type until it's chosen by hand (an override: §8.13 "can be overridden per spell").
+  const [vfxChosen, setVfxChosen] = useState(false);
   const [busy, setBusy] = useState(false);
   // The DM's own (an NPC's signature spell): no player sees it or casts it.
   const was = useSpells((s) => (replaces ? s.homebrew.find((h) => h.id === replaces) : undefined));
@@ -126,22 +136,31 @@ export function HomebrewBuilder({
       const { provenance: _p, ...rest } = initial as Spell & { provenance?: unknown };
       setD({ ...rest, source: { pack: "homebrew" } } as unknown as Draft);
       setIdTouched(true);
+      const implied = impliedVfx(rest as unknown as Draft);
+      setVfxChosen(implied !== null && implied !== initial.vfx);
     } else {
       setD(BLANK);
       setIdTouched(false);
+      setVfxChosen(false);
     }
   }, [open, initial]);
   const set = (path: (string | number)[], v: unknown) =>
     setD((x) => {
       let next = put(x, path, v);
       if (path[0] === "name" && !idTouched) next = put(next, ["id"], kebab(String(v)));
+      if ((path[0] === "damage" || path[0] === "healing") && !vfxChosen) {
+        const implied = impliedVfx(next);
+        if (implied) next = put(next, ["vfx"], implied);
+      }
       return next;
     });
   const parsed = useMemo(() => SpellSchema.safeParse(d), [d]);
   const errors = useMemo(() => {
     const out = parsed.success
       ? []
-      : parsed.error.issues.slice(0, 20).map((i) => `${i.path.join(".") || "The spell"}: ${i.message}`);
+      : parsed.error.issues
+          .slice(0, 20)
+          .map((i) => `${i.path.join(".") || "The spell"} ${issueText(i as never, d)}`);
     return [...out, ...formulaErrors(d)];
   }, [parsed, d]);
   const save = async () => {
@@ -170,6 +189,17 @@ export function HomebrewBuilder({
   const level = Number(d.level ?? 0);
   const hasArea = Boolean(d.area);
   const hasEffect = Boolean(d.effect);
+  const phone = useIsPhone();
+  // A phone has no room for the card beside the form: a Preview switch shows it instead (critic P9 r1 #16).
+  const [view, setView] = useState<"edit" | "preview">("edit");
+  useEffect(() => {
+    if (open) setView("edit");
+  }, [open]);
+  const problems = useRef<HTMLUListElement>(null);
+  const showProblems = () => {
+    if (phone) setView("preview");
+    requestAnimationFrame(() => problems.current?.scrollIntoView({ block: "nearest", behavior: "smooth" }));
+  };
   return (
     <Dialog
       open={open}
@@ -181,16 +211,34 @@ export function HomebrewBuilder({
             ? "Homebrew from a template"
             : "New spell"
       }
-      description="Every field of the spell schema; the card beside it is what the table will see."
+      description={
+        phone
+          ? "Every field of the spell schema; Preview shows the card the table will see."
+          : "Every field of the spell schema; the card beside it is what the table will see."
+      }
       width={1100}
       footer={
         <div className="flex items-center justify-end gap-2">
-          <span className="mr-auto text-13 text-muted" data-testid="builder-status">
-            {errors.length ? `${errors.length} to fix` : "Ready"}
-          </span>
-          {dm && was?.status !== "proposed" ? (
-            <Toggle inline checked={dmOnly} onChange={setDmOnly} label="DM only" />
-          ) : null}
+          {/* Whether it's valid, with its icon; its problems a press away (critic P9 r1 #16). */}
+          {errors.length ? (
+            <button
+              type="button"
+              onClick={showProblems}
+              data-testid="builder-status"
+              className="mr-auto inline-flex min-h-[var(--touch-min)] items-center gap-1.5 text-13 font-bold text-[var(--ember-400)] underline decoration-dotted underline-offset-2"
+            >
+              <CircleAlert size={15} aria-hidden />
+              {errors.length} {errors.length === 1 ? "problem" : "problems"}
+            </button>
+          ) : (
+            <span
+              className="mr-auto inline-flex items-center gap-1.5 text-13 font-bold text-[var(--hp-high)]"
+              data-testid="builder-status"
+            >
+              <CheckIcon size={15} aria-hidden />
+              Valid
+            </span>
+          )}
           <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
@@ -200,11 +248,25 @@ export function HomebrewBuilder({
         </div>
       }
     >
+      {phone ? (
+        <div className="mb-3">
+          <Segmented
+            label="Form or preview"
+            fill
+            value={view}
+            onChange={setView}
+            options={[
+              { value: "edit", label: "Edit" },
+              { value: "preview", label: "Preview" },
+            ]}
+          />
+        </div>
+      ) : null}
       <div
         className="grid gap-5 md:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]"
         data-testid="homebrew-builder"
       >
-        <div className="flex flex-col gap-4">
+        <div className={`flex flex-col gap-5 ${phone && view === "preview" ? "hidden" : ""}`}>
           <Group title="Basics">
             <Row>
               <Txt label="Name" value={d.name} onChange={(v) => set(["name"], v)} wide />
@@ -215,7 +277,6 @@ export function HomebrewBuilder({
                   setIdTouched(true);
                   set(["id"], v);
                 }}
-                mono
               />
             </Row>
             <Row>
@@ -237,8 +298,15 @@ export function HomebrewBuilder({
               <Sel
                 label="VFX"
                 value={String(d.vfx)}
-                options={VFX_PRESETS.map((v) => ({ value: v, label: cap(v) }))}
-                onChange={(v) => set(["vfx"], v)}
+                options={VFX_PRESETS.map((v) => ({
+                  value: v,
+                  label:
+                    !vfxChosen && v === d.vfx && impliedVfx(d) === v ? `${cap(v)} (its damage's)` : cap(v),
+                }))}
+                onChange={(v) => {
+                  setVfxChosen(true);
+                  set(["vfx"], v);
+                }}
               />
             </Row>
             <Chips
@@ -248,6 +316,14 @@ export function HomebrewBuilder({
               onChange={(v) => set(["classes"], v)}
             />
             <Check label="Ritual" checked={Boolean(d.ritual)} onChange={(v) => set(["ritual"], v)} />
+            {dm && was?.status !== "proposed" ? (
+              <Toggle
+                checked={dmOnly}
+                onChange={setDmOnly}
+                label="DM only"
+                description="Only you see it and cast it (an NPC's own spell); the players never do."
+              />
+            ) : null}
           </Group>
           <Group title="Casting">
             <Row>
@@ -545,7 +621,9 @@ export function HomebrewBuilder({
             {hasEffect ? <EffectFields d={d} set={set} /> : null}
           </Group>
         </div>
-        <aside className="flex min-w-0 flex-col gap-3 md:sticky md:top-0 md:self-start">
+        <aside
+          className={`flex min-w-0 flex-col gap-3 md:sticky md:top-0 md:self-start ${phone && view === "edit" ? "hidden" : ""}`}
+        >
           {parsed.success ? (
             <SpellCard spell={parsed.data} />
           ) : (
@@ -555,6 +633,7 @@ export function HomebrewBuilder({
           )}
           {errors.length ? (
             <ul
+              ref={problems}
               className="flex flex-col gap-1 rounded-[var(--radius-control)] border border-[var(--ember-400)]/50 p-3 text-13 text-[var(--ember-400)]"
               data-testid="builder-errors"
             >
@@ -995,7 +1074,7 @@ function EffectFields({ d, set }: { d: Draft; set: Set }) {
 function Group({ title, children }: { title: string; children: ReactNode }) {
   return (
     <fieldset className="flex flex-col gap-2.5">
-      <legend className="caps mb-1 text-12 text-brass">{title}</legend>
+      <legend className="display mb-1.5 w-full border-b border-line pb-1 text-16 text-bone">{title}</legend>
       {children}
     </fieldset>
   );
@@ -1100,7 +1179,7 @@ function Check({
   onChange: (v: boolean) => void;
 }) {
   return (
-    <label className="inline-flex min-h-[var(--touch-min)] items-center gap-1.5 text-14 text-bone">
+    <label className="relative inline-flex h-9 items-center gap-1.5 text-14 text-bone before:absolute before:-inset-y-1 before:inset-x-0 before:content-['']">
       <input
         type="checkbox"
         checked={checked}

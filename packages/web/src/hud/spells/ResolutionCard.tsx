@@ -1,5 +1,5 @@
 import type { CastTargetView, CastView } from "@gloam/shared/protocol";
-import { ChevronDown, ChevronUp, X } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, EyeOff, X } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { D20Icon } from "../../icons/dice.tsx";
 import {
@@ -12,10 +12,12 @@ import {
   castSet,
   castSkip,
   castTarget,
+  useSpells,
 } from "../../net/spells.ts";
 import { Button, IconButton } from "../../ui/Button.tsx";
 import { toast } from "../../ui/Toast.tsx";
 import { keepHyphenated } from "../../ui/text.tsx";
+import { asksOf } from "./castHide.ts";
 
 const ABILITY: Record<string, string> = {
   str: "STR",
@@ -39,6 +41,41 @@ const STEP_LABEL = {
 } as const;
 
 const act = (p: Promise<unknown>, what: string) => void p.catch((e: Error) => toast.danger(what, e.message));
+
+/** "8d6 [fire] + 2d6 [cold]" as its parts: each formula and its damage type (the card shows a chip, not the tag). */
+export function damageParts(formula: string): { formula: string; type: string | null }[] {
+  const out: { formula: string; type: string | null }[] = [];
+  const re = /\s*(.+?)\s*\[([a-z]+)\]\s*(?:\+|$)/g;
+  let m: RegExpExecArray | null = re.exec(formula);
+  if (!m) return [{ formula: formula.trim(), type: null }];
+  while (m) {
+    out.push({ formula: (m[1] ?? "").trim(), type: m[2] ?? null });
+    m = re.exec(formula);
+  }
+  return out;
+}
+
+/** A damage type as a small chip in its own colour (§27.2 --dmg-*). */
+function TypeChip({ type }: { type: string }) {
+  return (
+    <span
+      className="inline-flex items-center rounded-[var(--radius-chip)] px-1.5 text-12 font-bold"
+      style={{
+        color: `var(--dmg-${type})`,
+        background: `color-mix(in srgb, var(--dmg-${type}) 16%, transparent)`,
+      }}
+    >
+      {type}
+    </span>
+  );
+}
+
+/** What gives an attack advantage or disadvantage, in words (the server's "target Restrained"). */
+function hintWords(h: string, target: string, attacker: string): string {
+  if (h === "target outlined") return `${target} is outlined`;
+  if (h.startsWith("target ")) return `${target} is ${h.slice(7)}`;
+  return `${attacker} is ${h}`;
+}
 
 /**
  * A resolution card (SPEC §8.13 Resolution card, §29.5; AC-SPL-04/05/12/13): what was cast (or swung) and at whom —
@@ -72,19 +109,37 @@ export function ResolutionCard({ c }: { c: CastView }) {
           <IconButton label="Close the card" onClick={() => act(castClose(c.id), "Couldn't close it")}>
             <X size={16} />
           </IconButton>
-        ) : null}
+        ) : (
+          // The caster's: hidden on their screen (the DM's card goes on); back when it asks something new of them.
+          <IconButton
+            label="Hide the card"
+            onClick={() => {
+              const s = useSpells.getState();
+              s.set({ hiddenCasts: new Map(s.hiddenCasts).set(c.id, asksOf(c)) });
+            }}
+          >
+            <X size={16} />
+          </IconButton>
+        )}
       </header>
       {dm ? (
+        // Where the card stands: the steps done (a check), the one under way (underlined), those to come (muted).
         <ol className="flex flex-wrap items-center gap-1 text-12 text-muted" aria-label="Steps">
-          {c.steps.map((s, i) => (
-            <li key={s} className="flex items-center gap-1">
-              {i ? <span aria-hidden>→</span> : null}
-              <span className={i === 0 ? "text-bone" : ""}>
-                {STEP_LABEL[s]}
-                {s === "targets" ? ` ${waiting.length}` : ""}
-              </span>
-            </li>
-          ))}
+          {c.steps.map((s, i) => {
+            const state = stepState(c, s);
+            return (
+              <li key={s} className="flex items-center gap-1" data-step={s} data-state={state}>
+                {i ? <span aria-hidden>→</span> : null}
+                <span
+                  className={`inline-flex items-center gap-0.5 ${state === "done" ? "text-[var(--hp-high)]" : state === "now" ? "border-b border-brass text-bone" : ""}`}
+                >
+                  {state === "done" ? <Check size={12} aria-hidden /> : null}
+                  {STEP_LABEL[s]}
+                  {s === "targets" ? ` ${waiting.length}` : ""}
+                </span>
+              </li>
+            );
+          })}
         </ol>
       ) : null}
       {c.save ? (
@@ -95,7 +150,13 @@ export function ResolutionCard({ c }: { c: CastView }) {
               <span className="text-muted">
                 {" "}
                 · DC {c.save.dc}
-                {dm ? (c.save.revealed ? " (shown)" : " (hidden from players)") : ""}
+                {dm && !c.save.revealed ? (
+                  <span title="Hidden from the players">
+                    {" "}
+                    <EyeOff size={12} className="inline align-[-1px]" aria-hidden />
+                    <span className="sr-only">hidden from the players</span>
+                  </span>
+                ) : null}
               </span>
             ) : null}
             <span className="text-muted">
@@ -131,7 +192,13 @@ export function ResolutionCard({ c }: { c: CastView }) {
         <Row>
           <span className="min-w-0 flex-1 text-13 text-bone">
             <span className="font-bold">{c.damage.healing ? "Healing" : "Damage"}</span>{" "}
-            <span className="mono text-12 text-muted">{c.damage.formula}</span>
+            {damageParts(c.damage.formula).map((p, i) => (
+              <span key={`${p.formula}${i}`} className="inline-flex items-center gap-1">
+                {i ? <span className="text-muted">+</span> : null}
+                <span className="mono text-12 text-muted">{p.formula}</span>
+                {p.type && !c.damage?.healing ? <TypeChip type={p.type} /> : null}
+              </span>
+            ))}
             {rolled ? (
               <span className="ml-1.5 text-bone" data-testid="cast-rolled">
                 · rolled <span className="tabular font-bold">{rolled.total}</span>
@@ -165,14 +232,74 @@ export function ResolutionCard({ c }: { c: CastView }) {
             {c.slot ? "Cancel & refund slot" : "Cancel"}
           </Button>
         ) : null}
-        {dm && waiting.length ? (
-          <Button size="S" variant="primary" onClick={() => act(castApply(c.id), "Couldn't apply it")}>
-            {waiting.length === 1 ? "Apply" : "Apply all"}
-          </Button>
-        ) : null}
+        {dm && waiting.length
+          ? (() => {
+              const r = readiness(c, waiting);
+              return (
+                <Button
+                  size="S"
+                  variant={r.ready ? "primary" : "secondary"}
+                  disabled={r.nothing}
+                  title={r.why ?? undefined}
+                  onClick={() => act(castApply(c.id), "Couldn't apply it")}
+                >
+                  {r.nothing ? r.why : r.ready ? (waiting.length === 1 ? "Apply" : "Apply all") : "Apply now"}
+                </Button>
+              );
+            })()
+          : null}
       </footer>
     </li>
   );
+}
+
+/** A step of the card: done, the one under way, or to come. */
+function stepState(c: CastView, s: CastView["steps"][number]): "done" | "now" | "later" {
+  const order = c.steps;
+  const done = (x: CastView["steps"][number]): boolean => {
+    const rows = c.targets.filter((t) => t.state === "in");
+    switch (x) {
+      case "targets":
+        return true;
+      case "attacks":
+        return rows.every((t) => t.attack?.total !== undefined);
+      case "saves":
+        return rows.every(
+          (t) => !t.save || t.save.total !== undefined || typeof t.save.success === "boolean",
+        );
+      case "damage":
+        return c.damage?.per === "cast"
+          ? Boolean(c.damage.roll)
+          : rows.every((t) => t.roll || (c.attack && t.attack?.hit === false));
+      case "apply":
+        return !rows.length;
+    }
+  };
+  if (done(s)) return "done";
+  const first = order.find((x) => !done(x));
+  return first === s ? "now" : "later";
+}
+
+/** Whether Apply has what it needs: its damage rolled, its saves in — else what's missing (and whether it's nothing). */
+function readiness(
+  c: CastView,
+  rows: CastTargetView[],
+): { ready: boolean; nothing: boolean; why: string | null } {
+  const damageIn = !c.damage || (c.damage.per === "cast" ? Boolean(c.damage.roll) : rows.some((t) => t.roll));
+  const savesLeft = rows.filter(
+    (t) => t.save && t.save.total === undefined && typeof t.save.success !== "boolean",
+  ).length;
+  const lands = rows.some((t) => t.conditions.some((x) => x.on));
+  if (c.damage && !damageIn && !lands) return { ready: false, nothing: true, why: "Roll the damage first" };
+  if (!damageIn)
+    return { ready: false, nothing: false, why: "The damage isn't rolled: only what lands without it" };
+  if (savesLeft)
+    return {
+      ready: false,
+      nothing: false,
+      why: `${savesLeft} ${savesLeft === 1 ? "save isn't" : "saves aren't"} in: they count as failed`,
+    };
+  return { ready: true, nothing: false, why: null };
 }
 
 function Row({ children }: { children: ReactNode }) {
@@ -271,9 +398,14 @@ function TargetRow({
         <span
           className={`tabular text-13 font-bold ${saved.success ? "text-[var(--hp-high)]" : "text-ember"}`}
           data-testid="save-result"
+          data-success={saved.success ? "true" : "false"}
         >
           {saved.autoFail ? "fails" : (saved.total ?? (saved.success ? "saves" : "fails"))}{" "}
-          {saved.success ? "✓" : "✗"}
+          {saved.success ? (
+            <Check size={13} className="inline align-[-2px]" aria-label="saved" />
+          ) : (
+            <X size={13} className="inline align-[-2px]" aria-label="failed" />
+          )}
         </span>
       ) : null
     ) : null;
@@ -334,8 +466,15 @@ function TargetRow({
           {keepHyphenated(t.name)}
           {t.times > 1 ? <span className="text-muted"> ×{t.times}</span> : null}
           {t.cover !== "none" ? (
-            <span className="ml-1 text-12 text-brass" title={`Cover hint (§17.5): ${COVER[t.cover]}`}>
-              ◐ {t.cover === "threeQuarters" ? "¾" : t.cover === "half" ? "½" : "total"}
+            <span
+              className="ml-1.5 whitespace-nowrap rounded-[var(--radius-chip)] bg-brass/15 px-1.5 text-12 text-brass"
+              title={`Cover hint (§17.5): ${COVER[t.cover]}`}
+            >
+              {t.cover === "threeQuarters"
+                ? "¾ cover · +5 AC"
+                : t.cover === "half"
+                  ? "½ cover · +2 AC"
+                  : "total cover"}
             </span>
           ) : null}
         </span>
@@ -363,7 +502,13 @@ function TargetRow({
         ) : null}
       </div>
       {hints && !atk && c.can.roll && t.state === "in" ? (
-        <AttackHintLine hints={hints} mode={mode} onMode={setPicked} />
+        <AttackHintLine
+          hints={hints}
+          mode={mode}
+          onMode={setPicked}
+          target={t.name}
+          attacker={c.casterName}
+        />
       ) : null}
       {dm && t.hp && !done ? (
         <span className="tabular pl-0.5 text-12 text-muted" data-testid="hp-change">
@@ -384,16 +529,20 @@ function AttackHintLine({
   hints,
   mode,
   onMode,
+  target,
+  attacker,
 }: {
   hints: NonNullable<CastTargetView["attackHints"]>;
   mode: "none" | "adv" | "dis";
   onMode: (m: "none" | "adv" | "dis") => void;
+  target: string;
+  attacker: string;
 }) {
   const why = [
-    ...hints.adv.map((x) => `advantage: ${x}`),
-    ...hints.dis.map((x) => `disadvantage: ${x}`),
-    ...(hints.penalty ? [`${hints.penalty} Exhaustion`] : []),
-    ...(hints.critOnHit ? [`a hit is a critical hit (${hints.critOnHit})`] : []),
+    ...hints.adv.map((x) => `Advantage — ${hintWords(x, target, attacker)}`),
+    ...hints.dis.map((x) => `Disadvantage — ${hintWords(x, target, attacker)}`),
+    ...(hints.penalty ? [`${hints.penalty} from Exhaustion`] : []),
+    ...(hints.critOnHit ? [`a hit is a critical hit (${target} is ${hints.critOnHit})`] : []),
   ];
   return (
     <div className="flex flex-wrap items-center gap-x-2 gap-y-1 pl-0.5" data-testid="attack-hints">
@@ -407,6 +556,9 @@ function AttackHintLine({
             className={`min-h-[var(--touch-min)] rounded-[var(--radius-chip)] border px-2 text-12 font-bold ${mode === m ? "border-brass text-brass-bright" : "border-line text-muted"}`}
           >
             {m === "none" ? "Normal" : m === "adv" ? "Advantage" : "Disadvantage"}
+            {m === hints.mode && m !== "none" ? (
+              <span className="font-normal text-muted"> · suggested</span>
+            ) : null}
           </button>
         ))}
       </span>

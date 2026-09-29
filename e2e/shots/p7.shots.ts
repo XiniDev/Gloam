@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
 import {
@@ -13,6 +13,7 @@ import {
   req,
   uploadVia,
 } from "../fixtures/board.ts";
+import { freshShotsDir } from "../fixtures/shotsDir.ts";
 import { expect, test } from "../fixtures/test.ts";
 
 /**
@@ -23,7 +24,7 @@ import { expect, test } from "../fixtures/test.ts";
  */
 test("P7 key screens", async ({ admin, browser, gloam, guardLog }, info) => {
   const dir = join("artifacts", "screens", "p7", info.project.name);
-  mkdirSync(dir, { recursive: true });
+  freshShotsDir(dir);
   const notes: string[] = [];
   const viewport = info.project.use.viewport as { width: number; height: number };
   const phone = viewport.width < 640;

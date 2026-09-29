@@ -6,8 +6,8 @@
  * them: one that takes a single target goes at once, others when they're all picked (or Cast now). Esc cancels.
  */
 import { coverHint } from "@gloam/shared/aoe";
-import { areaAtSlot, castArea, targetingKind } from "@gloam/shared/rules";
-import { commitCast } from "../../hud/spells/casting.ts";
+import { areaAtSlot, castArea } from "@gloam/shared/rules";
+import { commitCast, useConcentrationAsk } from "../../hud/spells/casting.ts";
 import { useTable } from "../../net/table.ts";
 import { boardData, useEntities } from "../../state/entities.ts";
 import { aimKind, designates, useTargeting } from "../../state/targeting.ts";
@@ -16,6 +16,9 @@ import { again } from "../frames.ts";
 import { barriersOfView } from "./TargetingLayer.tsx";
 
 const STEP = 15;
+
+/** The bar is asking whether to end a concentration: the board waits for the answer. */
+const asking = (): boolean => useConcentrationAsk.getState().ask !== null;
 
 /** The template's area kind now (its alternative form's, when one is chosen). */
 function areaShape(): string | null {
@@ -39,7 +42,7 @@ function facesPointer(): boolean {
 export function targetMove(clientX: number, clientY: number): void {
   const s = useTargeting.getState();
   const t = s.t;
-  if (!t || t.busy) return;
+  if (!t || t.busy || asking()) return;
   const p = boardApi.groundAt(clientX, clientY);
   if (!p) return;
   const shape = areaShape();
@@ -55,7 +58,7 @@ export function targetMove(clientX: number, clientY: number): void {
 /** A press on the board's floor (not on a creature): cast the area there, or lay a wall's point. */
 export function targetDown(clientX: number, clientY: number): boolean {
   const t = useTargeting.getState().t;
-  if (!t || t.busy) return false;
+  if (!t || t.busy || asking()) return false;
   const p = boardApi.groundAt(clientX, clientY);
   if (!p) return true;
   const kind = aimKind(t);
@@ -86,7 +89,7 @@ export function targetDown(clientX: number, clientY: number): boolean {
 /** A creature clicked while aiming: picked (a targeted spell), or where the area goes (on it). */
 export function targetToken(tokenId: string): void {
   const t = useTargeting.getState().t;
-  if (!t || t.busy) return;
+  if (!t || t.busy || asking()) return;
   const kind = aimKind(t);
   if (kind === "area") {
     const tok = boardData(useEntities.getState()).tokens.get(tokenId);
@@ -148,14 +151,15 @@ export function targetKey(e: KeyboardEvent): boolean {
   const t = useTargeting.getState().t;
   if (!t) return false;
   if (e.key === "Escape") {
-    // A wall's last point first, then the whole cast.
-    if (t.points.length) useTargeting.getState().set({ points: t.points.slice(0, -1) });
+    // The question first (Esc keeps the other spell, as the dialog's close does), a wall's last point, the whole cast.
+    if (asking()) useConcentrationAsk.getState().set(null);
+    else if (t.points.length) useTargeting.getState().set({ points: t.points.slice(0, -1) });
     else useTargeting.getState().stop();
     again();
     return true;
   }
   if (e.key === "Enter") {
-    if (!t.busy) void commitCast(t);
+    if (!t.busy && !asking()) void commitCast(t);
     return true;
   }
   if (e.key === "[" || e.key === "]") {

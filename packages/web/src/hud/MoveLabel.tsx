@@ -6,6 +6,7 @@ import { useMove } from "../board/move/drag.ts";
 import { useTable } from "../net/table.ts";
 import { boardData, useEntities } from "../state/entities.ts";
 import { useSettings } from "../state/settings.ts";
+import { coarsePointer } from "../ui/pointer.ts";
 import { useBesideLabel } from "./placement.ts";
 
 /** A path's line on screen, a point every ~8 px (what the label keeps off). */
@@ -27,7 +28,7 @@ function pathOnScreen(points: readonly P[]): { x: number; y: number }[] {
 }
 
 /** Touch first: there is no Enter key to mention. */
-const coarse = () => typeof matchMedia !== "undefined" && matchMedia("(pointer: coarse)").matches;
+const coarse = coarsePointer;
 
 /**
  * The movement pill (SPEC §8.6 The path line): how far the planned move goes in the campaign's units (or the

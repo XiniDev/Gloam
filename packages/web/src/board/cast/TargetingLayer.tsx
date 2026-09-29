@@ -213,7 +213,9 @@ export function TargetingLayer() {
         : null;
     });
   }, []);
-  const color = t ? (aim?.ok ? VFX[t.spell.vfx].glow : C.ember400) : C.bone100;
+  // Where it may go: the spell's colour, a solid rim; where it may not: blood, a dashed rim and a thinner fill — never
+  // two oranges to tell apart (a fire spell's is itself ember-ish; critic P9 r1 #8).
+  const color = t ? (aim?.ok ? VFX[t.spell.vfx].glow : C.blood500) : C.bone100;
   const fillMat = useMemo(
     () =>
       new MeshBasicMaterial({
@@ -227,6 +229,7 @@ export function TargetingLayer() {
   );
   useEffect(() => () => disposeLater(fillMat), [fillMat]);
   fillMat.color.set(color);
+  fillMat.opacity = aim?.ok === false ? 0.08 : 0.16;
   const fillGeo = useMemo(() => {
     if (!aim?.fill || aim.fill.length < 3) return null;
     const s = new Shape(aim.fill.map((p) => ({ x: p.x, y: -p.y }) as never));
@@ -276,6 +279,7 @@ export function TargetingLayer() {
           width={2.5}
           opacity={0.95}
           order={10}
+          dashed={aim.ok === false}
         />
       ))}
       <Dots
@@ -286,7 +290,8 @@ export function TargetingLayer() {
       />
       {/* Those it spares (Spirit Guardians' designated creatures): a quiet ring of their own. */}
       {t.spare?.length ? <Dots points={marks(t.spare)} kind="ring" px={30} color={C.verdigris400} /> : null}
-      <Dots points={marks(aim.blocked)} kind="ring" px={22} color={C.fog400} />
+      {/* Cut off by a wall: a cross, not a ring (a ring means picked or in). */}
+      <Dots points={marks(aim.blocked)} kind="cross" px={20} color={C.fog400} />
       <Dots points={marks(picked)} kind="ring" px={30} color={VFX[t.spell.vfx].glow} />
       {t.points.length ? <Dots points={t.points} kind="diamond" px={14} color={C.brass300} /> : null}
     </group>

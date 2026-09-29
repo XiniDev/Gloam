@@ -1,6 +1,7 @@
 import { ClipboardCopy, Upload } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { post } from "../../net/http.ts";
+import { prefersReducedMotion } from "../../state/settings.ts";
 import { Button } from "../../ui/Button.tsx";
 import { copyText } from "../../ui/clipboard.ts";
 import { Segmented } from "../../ui/controls.tsx";
@@ -18,6 +19,8 @@ interface ImportReport {
   overwritten: string[];
   renamed: { from: string; to: string }[];
   skipped: string[];
+  /** Each valid spell: its id as it goes in (renamed, if it was) and what becomes of it. */
+  spells?: { index: number; id: string; name: string; outcome: "import" | "overwrite" | "rename" | "skip" }[];
 }
 
 /** The AI prompt of Appendix F.2, the schema marker filled in (the clipboard never carries a marker). */
@@ -119,14 +122,6 @@ export function ImportSpellsDialog({ open, onClose }: { open: boolean; onClose: 
       width={760}
       footer={
         <div className="flex flex-wrap items-center justify-end gap-2">
-          <Button
-            variant="ghost"
-            icon={<ClipboardCopy size={15} />}
-            onClick={() => void copyPrompt()}
-            className="mr-auto"
-          >
-            Copy AI prompt
-          </Button>
           <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
@@ -166,6 +161,15 @@ export function ImportSpellsDialog({ open, onClose }: { open: boolean; onClose: 
             />
           </label>
           <span className="text-12 text-muted">or paste below</span>
+          <Button
+            variant="ghost"
+            size="S"
+            icon={<ClipboardCopy size={15} />}
+            onClick={() => void copyPrompt()}
+            className="ml-auto"
+          >
+            Copy AI prompt
+          </Button>
         </div>
         <textarea
           aria-label="Spells as JSON"
@@ -196,7 +200,7 @@ export function ImportSpellsDialog({ open, onClose }: { open: boolean; onClose: 
             ]}
           />
           <span className="text-12 text-muted">
-            SRD spells are never overwritten: a clash with one is renamed.
+            Overwrite never replaces an SRD spell; those clashes are renamed instead.
           </span>
         </div>
         {report ? <Report r={report} /> : null}
@@ -205,10 +209,27 @@ export function ImportSpellsDialog({ open, onClose }: { open: boolean; onClose: 
   );
 }
 
+/** What happens to a clash under the choice made (the SRD's are never overwritten: renamed instead). */
+function clashOutcome(r: ImportReport, c: ImportReport["conflicts"][number]): string {
+  const to = r.spells?.find((x) => x.index === c.index);
+  const would = r.dryRun ? "would be " : "";
+  if (to?.outcome === "rename") return `${would}renamed ${to.id}`;
+  if (to?.outcome === "overwrite") return r.dryRun ? "would replace it" : "replaced it";
+  return `${would}skipped`;
+}
+
 function Report({ r }: { r: ImportReport }) {
+  const going = (r.spells ?? []).filter((x) => x.outcome !== "skip");
+  const ref = useRef<HTMLElement>(null);
+  // Brought into view as it comes (on a phone it lands below the fold, under the paste box).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a new report is the cue to bring it into view
+  useEffect(() => {
+    ref.current?.scrollIntoView({ block: "nearest", behavior: prefersReducedMotion() ? "auto" : "smooth" });
+  }, [r]);
   return (
     <section
-      className="flex flex-col gap-2 rounded-[var(--radius-control)] border border-line p-3 text-13"
+      ref={ref}
+      className="flex flex-col gap-3 rounded-[var(--radius-control)] border border-line p-3 text-13"
       data-testid="import-report"
     >
       <p className="text-bone">
@@ -219,23 +240,42 @@ function Report({ r }: { r: ImportReport }) {
         {r.renamed.length ? ` · rename ${r.renamed.length}` : ""}
         {r.skipped.length ? ` · skip ${r.skipped.length}` : ""}
       </p>
+      {going.length ? (
+        <div data-testid="import-will">
+          <h4 className="caps text-12 text-[var(--hp-high)]">
+            {r.dryRun ? "Will import" : "Imported"} ({going.length})
+          </h4>
+          <ul className="flex flex-col gap-0.5">
+            {going.map((x) => (
+              <li key={x.index} className="flex flex-wrap items-baseline gap-x-2">
+                <span className="text-bone">{x.name}</span>
+                <span className="mono text-12 text-muted">{x.id}</span>
+                {x.outcome === "overwrite" ? (
+                  <span className="text-12 text-muted">over the homebrew one</span>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
       {r.conflicts.length ? (
-        <div>
-          <h4 className="caps text-12 text-fog">Clashes</h4>
-          <ul className="list-inside list-disc text-muted">
+        <div data-testid="import-clashes">
+          <h4 className="caps text-12 text-fog">Clashes ({r.conflicts.length})</h4>
+          <ul className="flex flex-col gap-0.5">
             {r.conflicts.map((c) => (
-              <li key={`${c.index}-${c.id}`}>
-                {c.name} (“{c.id}”) — {c.with === "srd" ? "an SRD spell" : "a homebrew spell"}
-                {r.renamed.find((x) => x.from === c.id)
-                  ? ` → “${r.renamed.find((x) => x.from === c.id)?.to}”`
-                  : ""}
+              <li key={`${c.index}-${c.id}`} className="flex flex-wrap items-baseline gap-x-2 text-muted">
+                <span className="text-bone">{c.name}</span>
+                <span className="mono text-12">{c.id}</span>
+                <span>
+                  taken by {c.with === "srd" ? "an SRD spell" : "a homebrew spell"} · {clashOutcome(r, c)}
+                </span>
               </li>
             ))}
           </ul>
         </div>
       ) : null}
       {r.invalid.length ? (
-        <div>
+        <div data-testid="import-invalid">
           <h4 className="caps text-12 text-[var(--ember-400)]">Invalid ({r.invalid.length})</h4>
           <ul className="flex flex-col gap-1">
             {r.invalid.map((x) => (
@@ -244,7 +284,8 @@ function Report({ r }: { r: ImportReport }) {
                   #{x.index + 1}
                   {x.name ? ` ${x.name}` : ""}
                 </span>
-                : {x.errors.join("; ")}
+                {" — "}
+                {x.errors.join("; ")}
               </li>
             ))}
           </ul>

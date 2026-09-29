@@ -1,6 +1,6 @@
 import { type RefObject, useEffect, useLayoutEffect, useRef } from "react";
 import { boardApi, elementRect } from "../board/boardApi.ts";
-import { shownOverlayRects } from "../board/tokens/declutter.ts";
+import { bodyRects, shownOverlayRects } from "../board/tokens/declutter.ts";
 import { useBoardCovers, useHudInsets, useHudObstacles } from "./insets.ts";
 
 export interface Rect {
@@ -28,6 +28,9 @@ export function boardObstacles(): Rect[] {
   const el = boardApi.element;
   const o = el ? elementRect(el) : { left: 0, top: 0 };
   for (const r of shownOverlayRects())
+    out.push({ x0: r.x0 + o.left, y0: r.y0 + o.top, x1: r.x1 + o.left, y1: r.y1 + o.top });
+  // The creatures themselves (an effect's chip hid the tokens round it — critic P9 r1 #5).
+  for (const { r } of bodyRects())
     out.push({ x0: r.x0 + o.left, y0: r.y0 + o.top, x1: r.x1 + o.left, y1: r.y1 + o.top });
   const hud = useHudInsets.getState();
   if (hud.active && typeof window !== "undefined") {

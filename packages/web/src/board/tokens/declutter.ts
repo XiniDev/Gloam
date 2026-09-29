@@ -316,6 +316,32 @@ export function leaderSegment(q: Placed, end: Placed): Segment {
   return { sx: Math.min(q.x1, Math.max(q.x0, ex)), sy: Math.min(q.y1, Math.max(q.y0, ey)), ex, ey };
 }
 
+/**
+ * Where a leader first meets its token's rim — the ellipse its body's box holds — coming from the plate: the point a
+ * leader is drawn to (the layout checks the whole segment, into the part of the body that shows). Its end when the
+ * segment never reaches the ellipse.
+ */
+export function rimEntry(s: Segment, body: Placed): { x: number; y: number } {
+  const cx = (body.x0 + body.x1) / 2;
+  const cy = (body.y0 + body.y1) / 2;
+  const rx = Math.max(1e-6, (body.x1 - body.x0) / 2);
+  const ry = Math.max(1e-6, (body.y1 - body.y0) / 2);
+  // |P(t) − c|² in the ellipse's units = 1, P(t) = s + t·(e − s).
+  const px = (s.sx - cx) / rx;
+  const py = (s.sy - cy) / ry;
+  const dx = (s.ex - s.sx) / rx;
+  const dy = (s.ey - s.sy) / ry;
+  const a = dx * dx + dy * dy;
+  const b = 2 * (px * dx + py * dy);
+  const c = px * px + py * py - 1;
+  if (c <= 0) return { x: s.sx, y: s.sy };
+  const disc = b * b - 4 * a * c;
+  if (a === 0 || disc < 0) return { x: s.ex, y: s.ey };
+  const t = (-b - Math.sqrt(disc)) / (2 * a);
+  if (t < 0 || t > 1) return { x: s.ex, y: s.ey };
+  return { x: s.sx + t * (s.ex - s.sx), y: s.sy + t * (s.ey - s.sy) };
+}
+
 /** Where a segment runs through a box's inside, as [enter, leave] along it (0–1), or null (Liang–Barsky). */
 function clip(s: Segment, r: Placed): [number, number] | null {
   if (r.x0 >= r.x1 || r.y0 >= r.y1) return null;
@@ -614,7 +640,13 @@ function place(
     const full = plan(it.r, false);
     const small = it.rc ? plan(it.rc, true) : null;
     let chosen: { slot: number; tier: number; compact: boolean; s: Spot } | null = null;
-    for (const [compact, tier] of steps) {
+    const zoomedOut =
+      steps === STEPS &&
+      small !== null &&
+      b !== undefined &&
+      b.x1 - b.x0 < NAMES_FROM_PX &&
+      it.p < PRIORITY.turn;
+    for (const [compact, tier] of zoomedOut ? ZOOMED_OUT_STEPS : steps) {
       const p = compact ? small : full;
       if (!p) continue;
       // The spot it had, if still free at this step and its own isn't (no hopping) — a nudge or a clamp is worked
@@ -850,7 +882,22 @@ export function leaderSegments(): Segment[] {
 }
 
 /** Overlay priorities (higher wins a spot on screen). */
-export const PRIORITY = { hovered: 5, selected: 4, own: 3, party: 2, other: 1 } as const;
+export const PRIORITY = { hovered: 6, selected: 5, turn: 4, own: 3, party: 2, other: 1 } as const;
+
+/**
+ * Zoomed out, a creature smaller than this on screen (px across) shows its bar alone first — its name on hover,
+ * selection or its turn (critic P9 r1 #19: at a wide view full plates were five times a token's size and hid what the
+ * spells touched). Its full plate stays the fallback when the bar finds no room.
+ */
+export const NAMES_FROM_PX = 34;
+const ZOOMED_OUT_STEPS: readonly (readonly [compact: boolean, tier: number])[] = [
+  [true, 0],
+  [true, 1],
+  [false, 0],
+  [false, 1],
+  [false, 2],
+  [false, 3],
+];
 
 /** Diagnostics for the test hooks: every overlay's verdict, rectangle, tier, leader and flip count. */
 export function overlayDiagnostics() {

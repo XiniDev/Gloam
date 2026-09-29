@@ -4,6 +4,7 @@ import { type ReactNode, useEffect, useRef } from "react";
 import { create } from "zustand";
 import { type ScreenArea, useBoardCovers, useCover, useHudInsets } from "../hud/insets.ts";
 import { provideTestHook } from "../test/hooks.ts";
+import { useModalOpen } from "./Dialog.tsx";
 import { keepHyphenated } from "./text.tsx";
 
 export type ToastKind = "info" | "success" | "warning" | "danger" | "knock";
@@ -119,17 +120,31 @@ export function Toaster() {
   // Never in a band with the cards (critic P7 r2 #2): where the stack of cards reaches into the toasts' column at the
   // top, the toasts stand under it.
   const covers = useBoardCovers((s) => s.rects);
+  // The cards' column, when the cards stand in the top right: the toasts share its edges (critic P9 r1 #5).
+  const cards = covers.cards;
   const columnW = Math.min(380, window.innerWidth - right - 12);
-  const x1 = window.innerWidth - right;
-  const x0 = phoneTable ? 12 : x1 - columnW;
+  const inCards =
+    !phoneTable &&
+    cards &&
+    cards.right > window.innerWidth - right - columnW - 8 &&
+    cards.top < window.innerHeight / 3;
+  const x1 = inCards && cards ? cards.right - 4 : window.innerWidth - right;
+  const x0 = phoneTable ? 12 : inCards && cards ? cards.left + 4 : x1 - columnW;
+  // A dialog open: the stack keeps out of it (its header, a phone's whole width) — at the foot.
+  const modal = useModalOpen((s) => s.count > 0);
   // The stack is HUD over the board while it holds a toast: plates keep out from under it (critic P7 r2 #2).
   const ref = useRef<HTMLDivElement>(null);
   useCover("toasts", ref, table && items.length > 0);
   // Never over other HUD (critic P7 r2 #2, P8 r2 I3): the stack starts below whatever stands in its column where it
   // would reach — the turn tracker, the "your turn" banner, the cards, a phone's tools button.
-  const top = table
+  const under = table
     ? stackTop(phoneTable ? cornerLeft : 72, x0, x1, covers, ref.current?.offsetHeight ?? 0)
     : null;
+  // Never in the middle of the board (§27.6): below cards that reach past a third of the screen, or over a dialog, the
+  // stack stands at the foot of the column instead, above the bottom band.
+  const atFoot = table && (modal || (under !== null && under > window.innerHeight * 0.35));
+  const top = atFoot ? null : under;
+  const bottomBand = useHudInsets((s) => s.bottom);
   // Tests: a toast on demand (where it stands beside the HUD).
   useEffect(() => provideTestHook("toast", (title: unknown) => toast.info(String(title))), []);
   return (
@@ -141,13 +156,17 @@ export function Toaster() {
         phoneTable
           ? // (With a page of the dock open across the phone, the stack takes the width, over the page.)
             {
-              top: top ?? cornerLeft,
+              ...(atFoot ? { top: "auto", bottom: bottomBand + 12 } : { top: top ?? cornerLeft }),
               left: 12,
               right: right < window.innerWidth / 2 ? right : 12,
               width: "auto",
             }
           : table
-            ? { right, width: `min(380px, calc(100vw - ${right + 12}px))`, ...(top !== null ? { top } : {}) }
+            ? {
+                right: window.innerWidth - x1,
+                width: x1 - x0,
+                ...(atFoot ? { top: "auto", bottom: bottomBand + 12 } : top !== null ? { top } : {}),
+              }
             : undefined
       }
     >

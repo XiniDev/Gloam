@@ -76,6 +76,7 @@ import { WallToolLayer } from "./tools/WallToolLayer.tsx";
 import { useWallTool, wallsDoubleClick, wallsDown, wallsKey, wallsMove, wallsUp } from "./tools/walls.ts";
 import { ZoneToolLayer } from "./tools/ZoneToolLayer.tsx";
 import { zonesDoubleClick, zonesDown, zonesKey, zonesMove, zonesUp } from "./tools/zones.ts";
+import { setVfxBounds } from "./vfx/bounds.ts";
 import { EffectHandles } from "./vfx/EffectHandles.tsx";
 import { EffectsLayer } from "./vfx/EffectsLayer.tsx";
 import { VfxLayer } from "./vfx/VfxLayer.tsx";
@@ -166,6 +167,8 @@ export default function Board() {
   const tier = TIERS[tierName];
   const boundsJson = scene?.boundsJson;
   const bounds = useMemo(() => boundsFromJson(boundsJson), [boundsJson]);
+  // The spell effects fade out at the map's edge (vfx/bounds.ts).
+  useEffect(() => setVfxBounds(bounds), [bounds]);
   const me = useTable((s) => s.me);
   const dm = me?.role === "dm" || me?.role === "admin";
   const [box, setBox] = useState<Box | null>(null);

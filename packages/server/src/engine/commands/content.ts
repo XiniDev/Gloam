@@ -1,7 +1,7 @@
 import { checkFormula } from "@gloam/shared/dice";
 import { GloamError } from "@gloam/shared/protocol";
 import { isDm } from "@gloam/shared/rules";
-import { type Spell, SpellSchema } from "@gloam/shared/schemas";
+import { issueText, type Spell, SpellSchema } from "@gloam/shared/schemas";
 import { z } from "zod";
 import { newId } from "../../ids.ts";
 import type { ContentEntity } from "../codecs.ts";
@@ -114,7 +114,10 @@ function parseSpell(raw: unknown): { spell: Spell } | { errors: string[] } {
   const r = SpellSchema.safeParse(raw);
   if (!r.success)
     return {
-      errors: r.error.issues.slice(0, 12).map((i) => `${i.path.join(".") || "(the spell)"}: ${i.message}`),
+      // In plain words (SPEC §8.10 "readable errors"): "level must be 9 or less (it's 12)".
+      errors: r.error.issues
+        .slice(0, 12)
+        .map((i) => `${i.path.join(".") || "The spell"} ${issueText(i as never, raw)}`),
     };
   const bad = formulaIssues(r.data);
   if (bad.length) return { errors: bad };
@@ -298,6 +301,8 @@ export interface ImportReport {
   overwritten: string[];
   renamed: { from: string; to: string }[];
   skipped: string[];
+  /** Each valid spell by its place in the list: its id as it goes in (renamed, if it was) and what becomes of it. */
+  spells: { index: number; id: string; name: string; outcome: "import" | "overwrite" | "rename" | "skip" }[];
 }
 
 export const ContentSpellImport = z.strictObject({
@@ -328,6 +333,7 @@ export const contentSpellImport: CommandDef<z.infer<typeof ContentSpellImport>, 
       overwritten: [],
       renamed: [],
       skipped: [],
+      spells: [],
     };
     const ops: Op[] = [];
     // Ids taken so far: the SRD's, the campaign's, and those this import has given out.
@@ -358,6 +364,7 @@ export const contentSpellImport: CommandDef<z.infer<typeof ContentSpellImport>, 
       }
       report.valid++;
       let spell = parsed.spell;
+      let outcome: "import" | "rename" = "import";
       const srd = ctx.app.content.spellById.has(spell.id);
       const own = srd ? undefined : homebrewBySlug(ctx, spell.id);
       const dup = !srd && !own && taken.has(spell.id);
@@ -366,10 +373,12 @@ export const contentSpellImport: CommandDef<z.infer<typeof ContentSpellImport>, 
         const strategy = srd && p.strategy === "overwrite" ? "rename" : p.strategy;
         if (strategy === "skip") {
           report.skipped.push(spell.id);
+          report.spells.push({ index, id: spell.id, name: spell.name, outcome: "skip" });
           return;
         }
         if (strategy === "overwrite" && own) {
           report.overwritten.push(spell.id);
+          report.spells.push({ index, id: spell.id, name: spell.name, outcome: "overwrite" });
           if (!p.dryRun)
             ops.push(
               ...setOps("content", own, {
@@ -384,9 +393,11 @@ export const contentSpellImport: CommandDef<z.infer<typeof ContentSpellImport>, 
         const to = fresh(spell.id);
         report.renamed.push({ from: spell.id, to });
         spell = { ...spell, id: to };
+        outcome = "rename";
       }
       taken.add(spell.id);
       report.imported.push(spell.id);
+      report.spells.push({ index, id: spell.id, name: spell.name, outcome });
       if (!p.dryRun)
         ops.push(
           createOp("content", {

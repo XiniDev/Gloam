@@ -8,6 +8,7 @@ import { useTable } from "../../net/table.ts";
 import { useEffectUi } from "../../state/effectUi.ts";
 import { useBoard } from "../../state/entities.ts";
 import { Button, IconButton } from "../../ui/Button.tsx";
+import { coarsePointer } from "../../ui/pointer.ts";
 import { toast } from "../../ui/Toast.tsx";
 import { useBesideLabel } from "../placement.ts";
 
@@ -67,7 +68,9 @@ export function EffectChip() {
       {how ? <p className="text-13 text-muted">{how}</p> : null}
       {strike?.effectId === e.id ? (
         <p className="text-13 text-bone" data-testid="strike-hint">
-          Click a point under it to strike · Esc to stop
+          {coarsePointer() ? "Tap" : "Click"} a point{" "}
+          {e.vfx === "lightning" ? "under the storm" : "within it"} to strike
+          {coarsePointer() ? "" : " · Esc to stop"}
         </p>
       ) : null}
       {h.strike !== null || h.endable ? (

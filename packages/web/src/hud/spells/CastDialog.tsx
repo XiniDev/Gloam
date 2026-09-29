@@ -153,20 +153,19 @@ export function CastDialog({ req, onClose }: { req: CastRequest | null; onClose:
             ) : (
               <p className="text-13 text-muted">No slot of level {spell.level} or higher is left.</p>
             )}
-            <div className="flex flex-wrap gap-x-6 gap-y-1">
+            {/* The ways around a slot, as rows like Narrative only's (critic P9 r1: one kind of toggle row). */}
+            <div className="mt-1 flex flex-col gap-3">
               {spell.ritual ? (
                 <Toggle
-                  inline
-                  compact
-                  label="As a ritual (no slot, 10 minutes longer)"
+                  label="As a ritual"
+                  description="No slot; it takes 10 minutes longer to cast."
                   checked={mode === "ritual"}
                   onChange={(on) => setMode(on ? "ritual" : canSlot ? "slot" : "free")}
                 />
               ) : null}
               <Toggle
-                inline
-                compact
                 label="Without a slot"
+                description="A free cast: a scroll, an item, a feature — or the DM's say."
                 checked={mode === "free"}
                 onChange={(on) => setMode(on ? "free" : canSlot ? "slot" : spell.ritual ? "ritual" : "free")}
               />
@@ -212,7 +211,7 @@ export function CastDialog({ req, onClose }: { req: CastRequest | null; onClose:
         ) : null}
         <Toggle
           label="Narrative only"
-          description="Post the spell's card to the table without aiming it (the slot is still spent)."
+          description={`Post the spell's card to the table without aiming it${spell.level > 0 && mode === "slot" ? " (the slot is still spent)" : ""}.`}
           checked={narrative}
           onChange={setNarrative}
         />

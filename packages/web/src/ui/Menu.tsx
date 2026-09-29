@@ -84,12 +84,20 @@ export function Menu({
   }, [open, up, align, placeKey]);
   useEffect(() => {
     if (!open) return;
-    // What it's anchored to scrolled away (a panel it's in scrolled): it closes rather than float adrift. A scroll
-    // elsewhere — the page settling as it opens, the feed — leaves it be; a resize places it again.
+    // The panel it's anchored in scrolled: it follows its button — and closes once the button has scrolled out of the
+    // panel's view, rather than float adrift. (Not at the first scroll: one still settling as it opened — a fling's
+    // tail, a button scrolled into view to be clicked — would close it as it opens.) A scroll elsewhere — the page, the
+    // feed — leaves it be; a resize places it again.
     const onScroll = (e: Event) => {
       const target = e.target as Node | null;
-      if (!target || list.current?.contains(target)) return;
-      if (target !== document && button.current && target.contains?.(button.current)) setOpen(false);
+      const b = button.current;
+      if (!target || !b || list.current?.contains(target)) return;
+      if (target === document || !(target instanceof Element) || !target.contains(b)) return;
+      const r = b.getBoundingClientRect();
+      const v = target.getBoundingClientRect();
+      const gone = r.bottom <= v.top || r.top >= v.bottom || r.right <= v.left || r.left >= v.right;
+      if (gone) setOpen(false);
+      else setPlaceKey((k) => k + 1);
     };
     const onResize = () => setPlaceKey((k) => k + 1);
     window.addEventListener("resize", onResize);

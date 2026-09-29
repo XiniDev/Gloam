@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
 import {
@@ -12,6 +12,7 @@ import {
   introDone,
   req,
 } from "../fixtures/board.ts";
+import { freshShotsDir } from "../fixtures/shotsDir.ts";
 import { expect, test } from "../fixtures/test.ts";
 
 interface P {
@@ -29,7 +30,7 @@ interface P {
  */
 test("P9 key screens", async ({ admin, browser, gloam, guardLog }, info) => {
   const dir = join("artifacts", "screens", "p9", info.project.name);
-  mkdirSync(dir, { recursive: true });
+  freshShotsDir(dir);
   const notes: string[] = [];
   const viewport = info.project.use.viewport as { width: number; height: number };
   const phone = viewport.width < 640;
@@ -269,7 +270,7 @@ test("P9 key screens", async ({ admin, browser, gloam, guardLog }, info) => {
       const a = await screen(dave, 55, 30, 0.3);
       await dave.mouse.click(a.x, a.y);
     }
-    await expect(dave.getByTestId("targeting-hint")).toContainText("2 / 4");
+    await expect(dave.getByTestId("targeting-picks")).toContainText("2 / 4");
   });
   await dave.keyboard.press("Escape");
 
@@ -291,10 +292,10 @@ test("P9 key screens", async ({ admin, browser, gloam, guardLog }, info) => {
     await closeDock(dave);
     const a = await screen(dave, 61, 36, 0.3);
     await dave.mouse.click(a.x, a.y);
-    await expect(dave.getByRole("dialog", { name: "End concentration?" })).toBeVisible();
+    await expect(dave.getByRole("group", { name: "End concentration?" })).toBeVisible();
   });
   await dave
-    .getByRole("dialog", { name: "End concentration?" })
+    .getByRole("group", { name: "End concentration?" })
     .getByRole("button", { name: /^Keep/ })
     .click()
     .catch(() => {});
@@ -311,7 +312,7 @@ test("P9 key screens", async ({ admin, browser, gloam, guardLog }, info) => {
     });
     const card = admin.getByTestId("resolution-card").filter({ hasText: "Hold Person" });
     await expect(card).toBeVisible();
-    await expect(card).toContainText("◐");
+    await expect(card).toContainText(/cover · \+\d AC/);
   });
   await closeCards(admin);
 
@@ -375,10 +376,17 @@ test("P9 key screens", async ({ admin, browser, gloam, guardLog }, info) => {
 
   // ── Dave's view: the darkness and the fog in the way (what his client is sent) ──
   await step("10-player-view", dave, async () => {
+    // Real evidence of what a player is sent (critic P9 r1 #1/A): the scene under dynamic fog in daylight — only what
+    // Dave's creature sees and remembers, the darkness and the fog cutting his view.
+    await req(admin, "scene.update", { sceneId, fogMode: "dynamic", ambientLevel: "bright" });
+    await expect.poll(async () => (await hook<{ fogMode: string }>(dave, "scene"))?.fogMode).toBe("dynamic");
     await closeDock(dave);
     await dave.mouse.move(1, 1);
     await dave.waitForTimeout(1500);
   });
+
+  // (Back to no fog for the steps after: they show the DM's and caster's cards, not what fog hides.)
+  await req(admin, "scene.update", { sceneId, fogMode: "off" });
 
   // ── Call Lightning for Mira: its chip — Strike again, the bolt's ring under the cloud ──
   await step("11-effect-chip", dave, async () => {
@@ -436,6 +444,17 @@ test("P9 key screens", async ({ admin, browser, gloam, guardLog }, info) => {
     await builder.getByLabel("Id", { exact: true }).fill("poison-ball");
     await builder.getByTestId("damage-row").first().getByLabel("Type").selectOption("poison");
     await expect(builder.getByTestId("spell-card")).toContainText("Poison Ball");
+    // A phone shows the card through its Preview switch.
+    if (phone) await admin.getByRole("radio", { name: "Preview" }).click();
+  });
+  // …and in trouble: a formula it can't read — the status says how many problems, a press shows them.
+  await step("12b-builder-problems", admin, async () => {
+    if (phone) await admin.getByRole("radio", { name: "Edit" }).click();
+    const builder = admin.getByTestId("homebrew-builder");
+    await builder.getByTestId("damage-row").first().getByLabel("Damage 1", { exact: true }).fill("8d6 +");
+    await expect(admin.getByTestId("builder-status")).toContainText("1 problem");
+    await admin.getByTestId("builder-status").click();
+    await expect(admin.getByTestId("builder-errors")).toBeInViewport();
   });
   await admin.keyboard.press("Escape");
   await step("13-import-report", admin, async () => {

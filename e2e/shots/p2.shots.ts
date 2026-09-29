@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
 import {
@@ -12,6 +12,7 @@ import {
   req,
   uploadVia,
 } from "../fixtures/board.ts";
+import { freshShotsDir } from "../fixtures/shotsDir.ts";
 import { expect, knockAsNew, newPlayerContext, openTableAs, test } from "../fixtures/test.ts";
 
 async function dmPanel(page: Page, tab: "Scenes" | "Library" | "Approvals"): Promise<void> {
@@ -31,7 +32,7 @@ async function closeDock(page: Page): Promise<void> {
  */
 test("P2 key screens", async ({ admin, browser, gloam, guardLog }, info) => {
   const dir = join("artifacts", "screens", "p2", info.project.name);
-  mkdirSync(dir, { recursive: true });
+  freshShotsDir(dir, (f) => f === "00-setup.png");
   const notes: string[] = [];
   const viewport = info.project.use.viewport as { width: number; height: number };
   const shot = async (page: Page, name: string) => {
@@ -254,7 +255,7 @@ test("P2 key screens", async ({ admin, browser, gloam, guardLog }, info) => {
 
 test("P2 first-run setup", async ({ gloam, browser, guardLog }, info) => {
   const dir = join("artifacts", "screens", "p2", info.project.name);
-  mkdirSync(dir, { recursive: true });
+  freshShotsDir(dir, (f) => f !== "00-setup.png");
   const viewport = info.project.use.viewport as { width: number; height: number };
   const { page } = await newPlayerContext(browser, gloam.url, guardLog, { viewport });
   await page.goto(gloam.bootstrapLink);

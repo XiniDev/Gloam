@@ -629,34 +629,36 @@ export function areaLoop(
           ? { core: "#DCE6F0", glow: "#8FA3B8" }
           : { core: "#C9D0D8", glow: "#8492A6" };
     const thin = extra.dm ? 0.65 : 1;
-    if (fl.round) {
-      const body = shell({
-        radius: R,
-        life: 1,
-        core: gas.core,
-        glow: gas.glow,
-        // A gentle swell (a hard, folded silhouette read as a plastic sheet, not a cloud).
-        rough: 0.3,
-        additive: false,
-        opacity: 0.6 * thin,
-        loop: true,
-        soft: true,
-      });
-      body.scale.set(1, 0.42, 1);
-      g.add(place(body, [w.c[0], w.c[1] + R * 0.12, w.c[2]]));
-    } else
-      g.add(
-        lying({ kind: "mist", life: 1, core: gas.core, glow: gas.glow, loop: true, opacity: 0.8 * thin }),
-      );
+    // A mist lying on the ground over its whole footprint (its edge fading, no outline), and puffs of cloud through
+    // its volume at several heights — densest low and in the middle, drifting slowly; no dome with a silhouette
+    // (critic P9 r1 #6: it read as frosted glass).
+    g.add(lying({ kind: "mist", life: 1, core: gas.core, glow: gas.glow, loop: true, opacity: 0.75 * thin }));
+    const tall = fl.round ? Math.min(R * 0.6, 14) : 8;
     g.add(
       particleBurst(
         [
-          drift(Math.round(R * 1.6), 0.2, [6, 9], [R * 0.5, R * 0.85], {
-            sizeCurve: [0.7, 1, 0.9],
-            alphaCurve: [0, 0.7, 0],
-          }),
+          {
+            ...drift(Math.round(R * 2.6), 0.15, [7, 11], [R * 0.3, R * 0.62], {
+              sizeCurve: [0.75, 1, 0.9],
+              alphaCurve: [0, 0.75, 0],
+            }),
+            origin: (_i, r) => {
+              const q = inside(w, r);
+              const lift = r() * r() * tall;
+              return [q[0], q[1] + 1 + lift, q[2]];
+            },
+          },
         ],
-        { seed, loop: true, core: gas.core, glow: gas.glow, additive: false, opacity: 0.5 * thin },
+        {
+          seed,
+          loop: true,
+          core: gas.core,
+          glow: gas.glow,
+          additive: false,
+          opacity: 0.42 * thin,
+          soft: 0,
+          puff: true,
+        },
         // Billboards this big cost fill, not count: a floor under the tier's share, or the cloud comes apart.
         Math.max(scale, 0.6),
       ),
@@ -713,46 +715,72 @@ export function areaLoop(
     return g;
   }
   if (props.speedHalved) {
-    // Spirit Guardians: spectral motes orbiting the caster.
+    // Spirit Guardians: dozens of spectral motes circling the caster at three heights, each with fainter ones just
+    // behind it on its orbit (a short trail), and a faint ring on the ground where they reach (critic P9 r1 #7).
+    const motes = Math.round(R * 7);
+    const orbit = (i: number, r: () => number, lag: number): [number, number, number] => {
+      // The same mote's place on its orbit, `lag` radians behind (its trail), by its index.
+      const rr = seeded(seed + i * 7919);
+      const a = rr() * Math.PI * 2 - lag;
+      const d = R * (0.35 + rr() * 0.6);
+      const band = [1.2, 3.2, 5.4][i % 3] as number;
+      void r;
+      return [w.c[0] + Math.cos(a) * d, w.c[1] + band + rr() * 0.8, w.c[2] + Math.sin(a) * d];
+    };
+    const spec = (lag: number, size: [number, number]): EmitterSpec => ({
+      count: motes,
+      origin: (i, r) => orbit(i, r, lag),
+      velocity: (_i, r) => [0, (r() - 0.5) * 0.3, 0],
+      life: [4, 6],
+      delay: [0, 6],
+      size,
+      alphaCurve: [0, 1, 0],
+      swirl: 0.9,
+    });
     g.add(
       particleBurst(
-        [
-          {
-            count: Math.round(R * 4),
-            origin: (_i, r) => {
-              const a = r() * Math.PI * 2;
-              const d = R * (0.35 + r() * 0.6);
-              return [w.c[0] + Math.cos(a) * d, w.c[1] + 1 + r() * 4, w.c[2] + Math.sin(a) * d];
-            },
-            velocity: (_i, r) => [0, (r() - 0.5) * 0.4, 0],
-            life: [3, 5],
-            delay: [0, 5],
-            size: [0.3, 0.6],
-            alphaCurve: [0, 1, 0],
-            swirl: 0.9,
-          },
-        ],
+        [spec(0, [0.35, 0.7])],
         { core: p.core, glow: p.glow, loop: true, seed, swirlAt: [w.c[0], w.c[2]] },
         scale,
       ),
     );
+    g.add(
+      particleBurst(
+        [spec(0.12, [0.25, 0.45]), spec(0.24, [0.15, 0.3])],
+        { core: p.glow, glow: p.glow, loop: true, seed, swirlAt: [w.c[0], w.c[2]], opacity: 0.5 },
+        scale,
+      ),
+    );
+    g.add(ringOver({ life: 1, core: p.core, glow: p.glow, loop: true, opacity: 0.22, width: 0.03 }));
     return g;
   }
   if (props.silence) {
-    // Silence: a faint, muted dome.
+    // Silence: a hush, not a cloud (critic P9 r1 #6) — the faintest shell, only its rim catching the light, and a
+    // slow ripple settling inward from the edge along the floor.
     g.add(
       place(
         shell({
           radius: R,
           life: 1,
-          core: "#A9B4C2",
-          glow: "#4A5A70",
+          core: "#6F7F95",
+          glow: "#3E4B5E",
           rough: 0.02,
-          opacity: 0.18,
+          opacity: 0.09,
           loop: true,
         }),
         w.c,
       ),
+    );
+    g.add(
+      ringOver({
+        life: 1,
+        core: "#A9B4C2",
+        glow: "#5A6B80",
+        loop: true,
+        opacity: 0.28,
+        width: 0.04,
+        inward: true,
+      }),
     );
     return g;
   }
@@ -778,14 +806,15 @@ export function areaLoop(
     };
     g.add(curtain({ ...fire, height, opacity: 0.85 }));
     // The burning ground along it (light on the floor): seen from above, where the curtain is edge-on.
-    g.add(curtain({ ...fire, height: 0, opacity: 0.55, floor: 1.2, additive: true }));
+    g.add(curtain({ ...fire, height: 0, opacity: 0.32, floor: 1.2, additive: true }));
     const segs = wallPoints.slice(1).map((b, i) => [wallPoints[i] as { x: number; y: number }, b] as const);
     const total = segs.reduce((s, [a, b]) => s + Math.hypot(b.x - a.x, b.y - a.y), 0) || 1;
     g.add(
       loopBurst(
         [
           {
-            count: Math.round(total * 5),
+            // Embers: many and small (a few px at the table's zoom — not bokeh).
+            count: Math.round(total * 9),
             origin: (_i, r) => {
               let d = r() * total;
               for (const [a, b] of segs) {
@@ -801,7 +830,7 @@ export function areaLoop(
             velocity: (_i, r) => [(r() - 0.5) * 0.4, 5 + r() * 5, (r() - 0.5) * 0.4],
             life: [0.6, 1.3],
             delay: [0, 1.3],
-            size: [0.8, 1.6],
+            size: [0.15, 0.35],
             sizeCurve: [0.6, 1, 0.3],
             alphaCurve: [0, 1, 0],
           },
@@ -819,14 +848,16 @@ export function areaLoop(
           radius: R,
           height: 30,
           life: 1,
-          core: "#EEF4FF",
-          glow: "#9FB8E8",
-          opacity: 0.45,
+          core: "#D6E2F7",
+          glow: "#8FA8D8",
+          opacity: 0.26,
           loop: true,
         }),
         floor,
       ),
     );
+    // The dim light it throws round its foot.
+    g.add(place(glowDisc({ radius: R + 3, color: "#AFC4EC", opacity: 0.3 }), floor));
     return g;
   }
   if (props.outline) {

@@ -2,6 +2,7 @@ import { X } from "lucide-react";
 import { AnimatePresence, motion, useIsPresent } from "motion/react";
 import { type ReactNode, type RefObject, useEffect, useId, useRef } from "react";
 import { createPortal } from "react-dom";
+import { create } from "zustand";
 import { IconButton } from "./Button.tsx";
 import { Filigree } from "./ornaments.tsx";
 import { ScrollFade } from "./ScrollFade.tsx";
@@ -112,9 +113,16 @@ export function Dialog({
   );
 }
 
+/** How many modal dialogs are open (the toasts keep out of them). */
+export const useModalOpen = create<{ count: number }>(() => ({ count: 0 }));
+
 /** The scrim and the layer the dialog sits in: nothing under it is clickable — until it starts to leave. */
 function DialogLayer({ children }: { children: ReactNode }) {
   const present = useIsPresent();
+  useEffect(() => {
+    useModalOpen.setState((s) => ({ count: s.count + 1 }));
+    return () => useModalOpen.setState((s) => ({ count: Math.max(0, s.count - 1) }));
+  }, []);
   return (
     <motion.div
       className={`fixed inset-0 z-[900] grid place-items-center p-4 ${present ? "" : "pointer-events-none"}`}

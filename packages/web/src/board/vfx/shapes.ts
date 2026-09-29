@@ -15,8 +15,8 @@ import {
   NormalBlending,
   PlaneGeometry,
   RingGeometry,
-  ShaderMaterial,
 } from "three";
+import { vfxMaterial } from "./bounds.ts";
 import { seeded } from "./particles.ts";
 
 /**
@@ -84,7 +84,7 @@ export function shell(o: {
   /** A cloud: dense in the middle, fading to nothing at its rim (not a bubble's bright skin). */
   soft?: boolean;
 }): Mesh {
-  const mat = new ShaderMaterial({
+  const mat = vfxMaterial({
     vertexShader: SHELL_VERT,
     fragmentShader: SHELL_FRAG,
     transparent: true,
@@ -119,7 +119,7 @@ varying vec2 vUv; varying vec2 vP;
 void main() { vUv = uv; vP = position.xy; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
 const RING_FRAG = /* glsl */ `
 uniform float uTime; uniform float uLife; uniform float uRadius; uniform vec3 uCore; uniform vec3 uGlow; uniform float uOpacity;
-uniform float uLoop; uniform float uRunes; uniform float uWidth;
+uniform float uLoop; uniform float uRunes; uniform float uWidth; uniform float uInward;
 varying vec2 vUv; varying vec2 vP;
 float hash(float x) { return fract(sin(x * 127.1) * 43758.5453); }
 /** A band of width w round r0, anti-aliased by the pixel's footprint (no hard, stepped edges at any zoom). */
@@ -132,7 +132,7 @@ void main() {
   float r = length(vP) / uRadius;
   // A ring sweeping out (a shockwave, frost), or standing: a runic circle — an outer and an inner line and, between
   // them, a slow-turning band of glyphs (short strokes and dots, each anti-aliased), in the preset's colour.
-  float front = uRunes > 0.5 ? 0.93 : (uLoop > 0.5 ? 0.35 + 0.6 * u : 0.15 + 0.85 * (1.0 - pow(1.0 - u, 2.0)));
+  float front = uRunes > 0.5 ? 0.93 : uInward > 0.5 ? 1.0 - 0.35 * u : (uLoop > 0.5 ? 0.35 + 0.6 * u : 0.15 + 0.85 * (1.0 - pow(1.0 - u, 2.0)));
   float band = uRunes > 0.5 ? line(r, front, 0.008) : 1.0 - smoothstep(0.0, uWidth, abs(r - front));
   float inner = uRunes > 0.5 ? line(r, 0.77, 0.005) * 0.7 : 0.0;
   float glyphs = 0.0;
@@ -167,8 +167,10 @@ export function floorRing(o: {
   width?: number;
   /** The area's footprint (from `footprintGeometry`, about the ring's centre): the ring sweeps out inside it. */
   geometry?: BufferGeometry;
+  /** Sweeping in from the rim instead (a hush settling: Silence). */
+  inward?: boolean;
 }): Mesh {
-  const mat = new ShaderMaterial({
+  const mat = vfxMaterial({
     vertexShader: RING_VERT,
     fragmentShader: RING_FRAG,
     transparent: true,
@@ -185,6 +187,7 @@ export function floorRing(o: {
       uLoop: { value: o.loop ? 1 : 0 },
       uRunes: { value: o.runes ? 1 : 0 },
       uWidth: { value: o.width ?? 0.06 },
+      uInward: { value: o.inward ? 1 : 0 },
     },
   });
   const m = new Mesh(o.geometry ?? new CircleGeometry(o.radius, 96), mat);
@@ -212,7 +215,7 @@ varying vec2 vUv; varying float vFres;
 void main() {
   float u = uLoop > 0.5 ? 0.5 : clamp(uTime / uLife, 0.0, 1.0);
   float fade = uLoop > 0.5 ? 0.8 + 0.2 * sin(uTime * 1.3) : smoothstep(0.0, 0.1, u) * (1.0 - smoothstep(0.5, 1.0, u));
-  float top = 1.0 - smoothstep(0.55, 1.0, vUv.y);
+  float top = 1.0 - smoothstep(0.2, 1.0, vUv.y);
   float shimmer = 0.85 + 0.15 * sin(vUv.y * 40.0 - uTime * 6.0);
   float a = (0.25 + 0.75 * (1.0 - vFres)) * top * fade * shimmer * uOpacity;
   if (a < 0.004) discard;
@@ -229,7 +232,7 @@ export function pillar(o: {
   opacity?: number;
   loop?: boolean;
 }): Mesh {
-  const mat = new ShaderMaterial({
+  const mat = vfxMaterial({
     vertexShader: PILLAR_VERT,
     fragmentShader: PILLAR_FRAG,
     transparent: true,
@@ -282,13 +285,23 @@ void main() {
     a = edge * (0.45 + 0.4 * spots);
     col = mix(uGlow, uCore, spots);
   } else if (uKind < 2.5) {
-    // A web's strands: spokes from its middle and rings following its edge (a square web in a cube), a few broken.
+    // A web's strands: anchor lines out from its middle at irregular angles, threads sagging between them following
+    // its edge (a square web in a cube), some broken; thin (anti-aliased), grey-bone, fading toward the middle — no
+    // bright knot where they meet.
     float ang = atan(vP.y, vP.x);
-    float spokes = 1.0 - smoothstep(0.0, 0.06, abs(sin(ang * 8.0)));
-    float rings = 1.0 - smoothstep(0.0, 0.08, abs(sin(e * 26.0)));
-    float broken = step(0.25, noise(vec3(vP * 1.1, 7.0)));
-    a = max(spokes, rings) * broken * 0.55;
-    col = uCore;
+    float sect = ang * 1.591549; // 10 sectors
+    float si = floor(sect);
+    float jitter = (hash(vec3(si, 3.0, 1.0)) - 0.5) * 0.5;
+    float sp = abs(fract(sect + jitter) - 0.5) * 2.0;
+    float aa = max(fwidth(sect), 1e-4) * 2.0;
+    float spokes = 1.0 - smoothstep(0.02, 0.02 + aa, 1.0 - sp);
+    float sag = e * 20.0 + sin(fract(sect + jitter) * 3.14159) * 0.6;
+    float ringAa = max(fwidth(sag), 1e-4);
+    float rings = 1.0 - smoothstep(0.0, ringAa * 1.5, abs(fract(sag) - 0.5) - 0.44);
+    float broken = step(0.22, noise(vec3(vP * 1.1, 7.0)));
+    float middle = smoothstep(0.02, 0.2, e);
+    a = max(spokes * 0.8, rings) * broken * middle * 0.5;
+    col = mix(uGlow, uCore, 0.6);
   } else if (uKind < 3.5) {
     // Thorns: dark, jagged strokes scattered through it.
     float t = step(0.78, noise(vec3(vP * 3.3, 11.0))) + step(0.8, noise(vec3(vP.yx * 2.7, 5.0)));
@@ -320,7 +333,7 @@ export function decal(o: {
   loop?: boolean;
   geometry?: BufferGeometry;
 }): Mesh {
-  const mat = new ShaderMaterial({
+  const mat = vfxMaterial({
     vertexShader: DECAL_VERT,
     fragmentShader: DECAL_FRAG,
     transparent: true,
@@ -423,8 +436,8 @@ uniform float uTime; uniform float uRadius;
 varying float vFres; varying vec3 vObj;
 ${NOISE}
 void main() {
-  float n = noise(normal * 3.0 + vec3(0.0, -uTime * 1.2, 0.0));
-  vec3 p = normal * uRadius * (1.0 + (n - 0.5) * 0.16);
+  float n = noise(normal * 6.5 + vec3(0.0, -uTime * 1.8, 0.0)) * 0.6 + noise(normal * 13.0 + vec3(0.0, -uTime * 3.0, 4.0)) * 0.4;
+  vec3 p = normal * uRadius * (1.0 + (n - 0.5) * 0.1);
   vObj = normal;
   vec4 mv = modelViewMatrix * vec4(p, 1.0);
   vec3 nv = normalize(normalMatrix * normal);
@@ -439,8 +452,8 @@ void main() {
   // Flames crawling up over it (two octaves scrolled upward in its own space); hot at its heart, the side facing you,
   // deepening to embers at its limb, the noise breaking the bands into tongues. Normal blending: a ball of fire, not a
   // white bloom on a pale floor.
-  vec3 q = vObj * 2.4 + vec3(0.0, -uTime * 1.5, 0.0);
-  float n = noise(q) * 0.65 + noise(q * 2.3 + 5.0) * 0.35;
+  vec3 q = vObj * 5.0 + vec3(0.0, -uTime * 2.2, 0.0);
+  float n = noise(q) * 0.5 + noise(q * 2.3 + 5.0) * 0.3 + noise(q * 5.1 + 9.0) * 0.2;
   float heat = clamp(1.05 - vFres * 1.25 + (n - 0.5) * 0.7, 0.0, 1.0);
   vec3 col = heat > 0.55 ? mix(uGlow, uCore, (heat - 0.55) / 0.45) : mix(uEmber, uGlow, heat / 0.55);
   float a = (1.0 - smoothstep(0.72, 1.0, vFres + (0.5 - n) * 0.35)) * uOpacity;
@@ -479,7 +492,7 @@ export function orb(o: {
   const g = new Group();
   const ball = new Mesh(
     new IcosahedronGeometry(1, 4),
-    new ShaderMaterial({
+    vfxMaterial({
       vertexShader: ORB_VERT,
       fragmentShader: ORB_FRAG,
       transparent: true,
@@ -499,7 +512,7 @@ export function orb(o: {
   ball.renderOrder = 12;
   const halo = new Mesh(
     new PlaneGeometry(2, 2),
-    new ShaderMaterial({
+    vfxMaterial({
       vertexShader: HALO_VERT,
       fragmentShader: HALO_FRAG,
       transparent: true,
@@ -538,7 +551,7 @@ void main() {
 export function glowDisc(o: { radius: number; color: string; opacity?: number; flicker?: boolean }): Mesh {
   const m = new Mesh(
     new CircleGeometry(o.radius, 64),
-    new ShaderMaterial({
+    vfxMaterial({
       vertexShader: RING_VERT,
       fragmentShader: GLOW_FRAG,
       transparent: true,
@@ -625,7 +638,7 @@ export function bolt(
   b: [number, number, number],
   o: { life: number; core: string; seed: number },
 ): LineSegments {
-  const mat = new ShaderMaterial({
+  const mat = vfxMaterial({
     vertexShader: "void main() { gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
     fragmentShader: BOLT_FRAG,
     transparent: true,
@@ -671,9 +684,11 @@ void main() {
     + noise(vec3(vAlong * 0.9, vUv.y * 5.0 - uTime * 3.1, 7.0)) * 0.35;
   float h = vUv.y;
   float ends = uLen > 0.0 ? smoothstep(0.0, 2.5, vAlong) * smoothstep(0.0, 2.5, uLen - vAlong) : 1.0;
-  float h2 = h + (1.0 - ends) * 0.6;
+  // Tall and low tongues along it (not one height repeated), and its foot fading into the floor.
+  float tall = 0.65 + 0.35 * noise(vec3(vAlong * 0.12, uTime * 0.25, 11.0));
+  float h2 = h / tall + (1.0 - ends) * 0.6;
   float body = smoothstep(h2 * 1.15 - 0.05, h2 * 1.15 + 0.25, n) * (1.0 - smoothstep(0.55, 1.0, h2));
-  float a = body * uOpacity * ends;
+  float a = body * uOpacity * ends * smoothstep(0.0, 0.07, h);
   if (a < 0.01) discard;
   // A pale heart at the roots, orange through the body, deepening toward the tips — drawn in its own colours (normal
   // blending), so it reads as fire on a pale floor as on a dark one.
@@ -767,7 +782,7 @@ export function curtain(o: {
   g.setAttribute("along", new BufferAttribute(along, 1));
   g.setIndex(index);
   g.computeBoundingSphere();
-  const mat = new ShaderMaterial({
+  const mat = vfxMaterial({
     vertexShader: CURTAIN_VERT,
     fragmentShader: o.look === "pane" ? PANE_FRAG : CURTAIN_FRAG,
     transparent: true,

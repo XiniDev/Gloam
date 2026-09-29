@@ -179,3 +179,48 @@ describe("P9 — the VFX follow an area's footprint", () => {
     }
   });
 });
+
+describe("effects at the scene's edge", () => {
+  it("every VFX material — every preset's burst and lasting look, every shape — fades its alpha by the shared bounds", async () => {
+    const { VFX_BOUNDS, setVfxBounds } = await import("./bounds.ts");
+    setVfxBounds({ minX: 0, minY: 0, maxX: 60, maxY: 40 });
+    const mats: { uniforms?: Record<string, unknown>; fragmentShader?: string; vertexShader?: string }[] = [];
+    const collect = (root: { traverse: (f: (o: unknown) => void) => void }) =>
+      root.traverse((o) => {
+        const m = (o as { material?: unknown }).material;
+        if (m) mats.push(m as never);
+      });
+    const looks = [{}, { obscurement: "heavy" }, { silence: true }, { magicalDarkness: true }, { bodyFt: 5 }];
+    for (const [name, shape] of Object.entries(SHAPES)) {
+      const w = whereOf(shape, null, noBody);
+      if (!w) continue;
+      for (const preset of PRESETS) {
+        collect(areaBurst(preset, w, 1, 7).root);
+        for (const props of looks)
+          collect(
+            areaLoop(
+              preset,
+              w,
+              props,
+              "Test",
+              name,
+              1,
+              7,
+              name === "wall" ? (shape.points as never) : undefined,
+              {
+                height: 20,
+              },
+            ),
+          );
+      }
+    }
+    expect(mats.length).toBeGreaterThan(100);
+    for (const m of mats) {
+      expect(m.fragmentShader).toContain("gl_FragColor.a *= boundsFade(vBoundsW)");
+      expect(m.vertexShader).toContain("vBoundsW =");
+      // The same uniform object: a scene change reaches every material at once.
+      expect(m.uniforms?.uBounds).toBe(VFX_BOUNDS.uBounds);
+    }
+    expect(VFX_BOUNDS.uBounds.value.toArray()).toEqual([0, 0, 60, 40]);
+  });
+});

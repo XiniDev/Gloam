@@ -40,6 +40,8 @@ interface SpellsStore {
   homebrew: HomebrewSpell[];
   /** Open resolution cards this person has, by id. */
   casts: Map<string, CastView>;
+  /** Cards a player hid (the DM's stay theirs to close), with what they asked of them then: one asking more is back. */
+  hiddenCasts: Map<string, string[]>;
   set(p: Partial<Omit<SpellsStore, "set">>): void;
 }
 
@@ -49,6 +51,7 @@ export const useSpells = create<SpellsStore>((set) => ({
   failed: null,
   homebrew: [],
   casts: new Map(),
+  hiddenCasts: new Map(),
   set: (p) => set(p),
 }));
 
@@ -190,7 +193,12 @@ function onMessage(type: string, payload: unknown): void {
       const next = new Map(s.casts);
       if (v.status === "open") next.set(v.id, v);
       else next.delete(v.id);
-      s.set({ casts: next });
+      // A closed card's hiding goes with it.
+      if (v.status !== "open" && s.hiddenCasts.has(v.id)) {
+        const hidden = new Map(s.hiddenCasts);
+        hidden.delete(v.id);
+        s.set({ casts: next, hiddenCasts: hidden });
+      } else s.set({ casts: next });
       return;
     }
     case "cast.views": {
@@ -203,10 +211,11 @@ function onMessage(type: string, payload: unknown): void {
       castFx.fire(payload as CastFxMessage);
       return;
     case "cast.line": {
-      const l = payload as { text: string; castId: string | null };
-      lines.push({ ...l, at: Date.now() });
+      const l = payload as { text: string; castId: string | null; card?: boolean };
+      lines.push({ text: l.text, castId: l.castId, at: Date.now() });
       if (lines.length > 50) lines.shift();
-      toast.info(l.text);
+      // Its card says it to whoever has one (critic P9 r1 #5: a toast over the board besides the card).
+      if (!l.card) toast.info(l.text);
       return;
     }
     case "content.spells":

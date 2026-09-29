@@ -528,10 +528,14 @@ export class CastFlow {
   private line(f: CastFollowup): void {
     const l = f.line;
     if (!l) return;
+    const c = f.castId ? this.cast(f.castId) : undefined;
+    const holders = c ? this.casterUsers(c.data) : [];
     for (const v of this.host.viewers()) {
       if (!v.dm && !v.perceives(l.casterTokenId)) continue;
       const seen = v.dm ? l.targets : l.targets.filter((x) => v.perceives(x.id));
-      v.send("cast.line", { text: castLineText(l, seen), castId: f.castId });
+      // Whoever has its card (the DM, the caster's players) is told by the card: the line goes to their log only.
+      const card = Boolean(c && (v.dm || holders.includes(v.userId)));
+      v.send("cast.line", { text: castLineText(l, seen), castId: f.castId, ...(card ? { card: true } : {}) });
     }
   }
 
