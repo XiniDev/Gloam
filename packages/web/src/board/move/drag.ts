@@ -258,6 +258,21 @@ function withSpaces(base: MoveWorld, t: TokenView): MoveWorld {
   return world;
 }
 
+/**
+ * What the movement range overlay measures for a token (§8.6, §16.6): the world a move of its would be planned in
+ * (with the creatures' spaces where they shape a player's move), its clearance and crawl, and its budget — the
+ * movement left on its turn in combat, else one move at its speed.
+ */
+export function rangeInputs(
+  t: TokenView,
+): { world: MoveWorld; rc: number; crawl: boolean; budget: number } | null {
+  const base = clientMoveWorld({ swim: false });
+  if (!base || !t.own) return null;
+  const world = spacesApply() ? withSpaces(base, t) : base;
+  const left = budgetFor(t);
+  return { world, ...optionsFor(t), budget: left ?? t.own.budgetFt };
+}
+
 /** Recomputes the preview for the current goal, waypoints and mode. */
 function compute(): void {
   const s = useMove.getState();

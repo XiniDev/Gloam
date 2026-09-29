@@ -49,6 +49,8 @@ export interface UiStore {
   lineWidthFt: number;
   /** The dice tray is open (SPEC §8.9, hotkey D). */
   diceTray: boolean;
+  /** The movement range overlay for the selected creature (SPEC §8.6, hotkey G). */
+  rangeOverlay: boolean;
   /** The character the Sheet panel shows (null: your own, or the selected token's). */
   sheetActor: string | null;
   /** The Sheet panel's tab. */
@@ -120,6 +122,7 @@ export const useUi = create<UiStore>((set, get) => ({
   measureShape: "ruler",
   lineWidthFt: 5,
   diceTray: false,
+  rangeOverlay: false,
   sheetActor: null,
   sheetTab: "overview",
   requestTargets: null,

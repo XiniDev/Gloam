@@ -613,10 +613,10 @@
       "code": "MOV",
       "phase": "P8",
       "text": "The movement range overlay shows the reachable region around walls and difficult terrain (remaining budget in combat, speed in exploration), with the limit isoline within 1 ft of the true geodesic limit in test scenes.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p8-range.spec.ts › 'AC-MOV-10: with G, the selected creature's reachable floor round walls and through difficult ground, its limit within 1 ft of the true geodesic — one move at its speed outside combat, what's left of its turn in it' (open ground: limit 30 ft ± 1; behind a wall: the field's cost within 1 ft of the tangent–arc–tangent geodesic round its end; rubble: 30 ft reached 20 ft out; the bright limit line on the board where the field puts it; G toggles; in combat after a 10-ft move: budget 20, limit 20 ft ± 1 round where it stands; screenshots artifacts/screens/p8/range-overlay*.png); packages/shared/src/movement/range.test.ts (open ground, round a wall's end, into difficult terrain, against the true geodesics); pnpm bench › range (60-ft field on the 500-wall bench scene: p95 7.5 ms < 30 ms)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-29T04:31:39.759Z"
     },
     {
       "id": "AC-MOV-11",

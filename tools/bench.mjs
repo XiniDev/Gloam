@@ -1,14 +1,17 @@
 #!/usr/bin/env node
 // `pnpm bench`: the performance budgets (SPEC §37) measured on this machine. Each part runs in its own process and
 // prints one JSON line; the report (with the host's CPU, memory and OS) goes to artifacts/bench/report.json. The run
-// fails when any part is over budget or fails to run. Parts so far: server vision recomputation (AC-VIS-12).
+// fails when any part is over budget or fails to run. Parts so far: server vision recomputation (AC-VIS-12); the movement range field (§16.6, AC-MOV-10).
 import { spawnSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { cpus, platform, release, totalmem } from "node:os";
 import { join } from "node:path";
 import { ROOT } from "./features-lib.mjs";
 
-const PARTS = [{ name: "vision", file: join("packages", "server", "src", "bench", "vision.ts") }];
+const PARTS = [
+  { name: "vision", file: join("packages", "server", "src", "bench", "vision.ts") },
+  { name: "range", file: join("packages", "server", "src", "bench", "range.ts") },
+];
 
 const report = {
   at: new Date().toISOString(),

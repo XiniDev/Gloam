@@ -7,6 +7,7 @@ import { Tooltip } from "../ui/Tooltip.tsx";
 import { TurnControls } from "./combat/TurnControls.tsx";
 import { ElevationControl } from "./ElevationControl.tsx";
 import { insetMeasures, useCover, useMeasuredInset } from "./insets.ts";
+import { RangeToggle } from "./RangeToggle.tsx";
 
 const typing = (t: EventTarget | null) => {
   const el = t as HTMLElement | null;
@@ -50,6 +51,7 @@ function Bar({ tray }: { tray: boolean }) {
       {/* The creature's controls in their own panel; the dice button stands on its own, round (no tile round it). */}
       <div ref={ref} data-testid="action-bar" className="flex items-center gap-2">
         <TurnControls />
+        <RangeToggle />
         <ElevationControl />
         <DiceButton open={tray} />
       </div>

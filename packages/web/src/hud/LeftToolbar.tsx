@@ -187,7 +187,7 @@ function PhoneTools({ tool, dm }: { tool: Tool; dm: boolean }) {
   );
 }
 
-/** The toolbar's keys (Appendix H): V, M, H, W / Shift+W, Z, I, B, R, Q. */
+/** The toolbar's keys (Appendix H): V, M, H, G, W / Shift+W, Z, I, B, R, Q. */
 function useToolKeys(dm: boolean): void {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -205,6 +205,7 @@ function useToolKeys(dm: boolean): void {
       if (e.code === "KeyV") ui.set({ tool: "select" });
       else if (e.code === "KeyM") ui.set({ tool: ui.tool === "measure" ? "select" : "measure" });
       else if (e.code === "KeyH") void request("hand.toggle", {}).catch(() => {});
+      else if (e.code === "KeyG") ui.set({ rangeOverlay: !ui.rangeOverlay });
       else if (e.code === "KeyW" && dm) drawWalls("wall");
       else if (e.code === "KeyZ" && dm) ui.set({ tool: "zones" });
       else if (e.code === "KeyI" && dm) ui.set({ tool: "lights" });

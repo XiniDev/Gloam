@@ -268,6 +268,29 @@ export function TestProbe() {
       }));
     });
     provideTestHook("plateCovers", () => plateCovers());
+    // The brightest pixel of the board within r px of a screen point (luminance 0–255), read from the drawing buffer
+    // (kept in test builds) — no screenshot, so no waiting on a compositor frame.
+    provideTestHook("boardPixels", (sx: number, sy: number, radius?: number) => {
+      const r = radius ?? 4;
+      const el = gl.domElement;
+      const rect = el.getBoundingClientRect();
+      const dpr = gl.getPixelRatio();
+      const ctx = gl.getContext();
+      const size = Math.round((2 * r + 1) * dpr);
+      const x = Math.round((sx - rect.left - r) * dpr);
+      const y = Math.round(el.height - (sy - rect.top + r + 1) * dpr);
+      const buf = new Uint8Array(size * size * 4);
+      ctx.readPixels(x, y, size, size, ctx.RGBA, ctx.UNSIGNED_BYTE, buf);
+      let best = 0;
+      for (let i = 0; i < size * size; i++) {
+        const l =
+          0.2126 * (buf[i * 4] as number) +
+          0.7152 * (buf[i * 4 + 1] as number) +
+          0.0722 * (buf[i * 4 + 2] as number);
+        if (l > best) best = l;
+      }
+      return best;
+    });
     // The HP feedback each token played (AC-HP-11: a hit's shake and flash, a heal's glow).
     provideTestHook("fxPlayed", () => fxPlayed.map((f) => ({ ...f })));
     // Every mesh of a token as the renderer has it (diagnostics: a part that doesn't draw).

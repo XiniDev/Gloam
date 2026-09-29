@@ -41,6 +41,7 @@ import { WallsLayer } from "./map/WallsLayer.tsx";
 import { ZonesLayer } from "./map/ZonesLayer.tsx";
 import { clickFloor, hoverBoard, leaveBoard, moveKey } from "./move/input.ts";
 import { MoveLayer } from "./move/MoveLayer.tsx";
+import { RangeOverlay } from "./move/RangeOverlay.tsx";
 import { PingLayer } from "./PingLayer.tsx";
 import { PostFX } from "./PostFX.tsx";
 import { frameStarted, measureTask } from "./perf.ts";
@@ -566,6 +567,7 @@ export default function Board() {
         </Contained>
         <Contained>
           <MoveLayer />
+          <RangeOverlay />
         </Contained>
         <Contained>
           <PingLayer />
