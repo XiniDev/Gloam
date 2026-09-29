@@ -14,6 +14,7 @@ import {
 import { useTable } from "../../net/table.ts";
 import { useUi } from "../../state/ui.ts";
 import { Button, IconButton } from "../../ui/Button.tsx";
+import { Menu } from "../../ui/Menu.tsx";
 import { Portrait } from "../../ui/Portrait.tsx";
 import { toast } from "../../ui/Toast.tsx";
 import { insetMeasures, useCover, useHudInsets, useIsPhone, useMeasuredInset } from "../insets.ts";
@@ -38,7 +39,10 @@ export function TurnTracker() {
   const left = useHudInsets((s) => s.left);
   const right = useHudInsets((s) => s.right);
   const ref = useRef<HTMLDivElement>(null);
-  const shown = view.active;
+  // A phone's open panel takes the screen: the tracker steps back (the DM's Combat panel shows the same, and a
+  // player's panel is what they opened) instead of lying over the panel's header.
+  const dockOpen = useUi((s) => s.dock !== null);
+  const shown = view.active && !(phone && dockOpen);
   useMeasuredInset("tracker", ref, insetMeasures.tracker, shown);
   useCover("tracker", ref, shown);
   const [dragging, setDragging] = useState<string | null>(null);
@@ -113,7 +117,39 @@ export function TurnTracker() {
             <li className="self-center text-12 text-fog">+{order.length - 3}</li>
           ) : null}
         </ol>
-        {dm ? (
+        {dm && phone ? (
+          // A phone keeps the row for the portraits: the next step itself, the rest in a menu.
+          <div className="flex shrink-0 items-center gap-0.5 border-l border-line pl-1">
+            {view.begun ? (
+              <IconButton label="Next turn (N)" onClick={() => act(nextTurn(), "Couldn't go on")}>
+                <ChevronRight size={18} />
+              </IconButton>
+            ) : (
+              <IconButton label="Begin" onClick={() => act(beginTurns(), "Couldn't begin")}>
+                <Play size={16} />
+              </IconButton>
+            )}
+            <Menu
+              label="Combat controls"
+              up={false}
+              items={[
+                ...(view.begun
+                  ? [
+                      { label: "Previous turn", onSelect: () => act(previousTurn(), "Couldn't go back") },
+                      {
+                        label: view.freeMovement ? "Back to turn order" : "Free movement for everyone",
+                        onSelect: () => act(setFreeMovement(!view.freeMovement), "Couldn't change that"),
+                      },
+                    ]
+                  : view.entries.some((e) => e.pending)
+                    ? [{ label: "Roll NPCs", onSelect: () => act(rollRemaining(false), "Couldn't roll") }]
+                    : []),
+                { label: "Stop combat", onSelect: () => act(stopCombat(), "Couldn't stop") },
+              ]}
+            />
+          </div>
+        ) : null}
+        {dm && !phone ? (
           <div className="flex shrink-0 items-center gap-0.5 border-l border-line pl-1.5">
             {view.begun ? (
               <>

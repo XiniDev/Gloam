@@ -47,6 +47,7 @@ export function Dock() {
   const asideRef = useRef<HTMLElement>(null);
   const phone = useIsPhone();
   const banner = useHudInsets((s) => s.banner);
+  const tracker = useHudInsets((s) => s.tracker);
   const actionBand = useHudInsets((s) => s.bottom);
   useMeasuredInset("right", asideRef, insetMeasures.right);
   // What of it is drawn over the board: the open panel and the rail (the dock's own box is an invisible column the
@@ -103,7 +104,8 @@ export function Dock() {
       // prop would drop.)
       style={{
         ...order.style,
-        top: 68 + (phone ? banner : 0),
+        // (A phone's rail steps down below the combat tracker, which spans the width under the top bar.)
+        top: 68 + (phone ? banner + (page ? 0 : tracker) : 0),
         bottom: phone ? Math.max(12, actionBand) : 12,
       }}
       data-hud="dock"

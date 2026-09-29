@@ -6,7 +6,7 @@ import { useUi } from "../state/ui.ts";
 import { Tooltip } from "../ui/Tooltip.tsx";
 import { TurnControls } from "./combat/TurnControls.tsx";
 import { ElevationControl } from "./ElevationControl.tsx";
-import { insetMeasures, useCover, useMeasuredInset } from "./insets.ts";
+import { insetMeasures, useCover, useIsPhone, useMeasuredInset } from "./insets.ts";
 import { RangeToggle } from "./RangeToggle.tsx";
 
 const typing = (t: EventTarget | null) => {
@@ -43,17 +43,26 @@ export function ActionBar() {
 
 function Bar({ tray }: { tray: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
+  const phone = useIsPhone();
   // Its band along the bottom is the HUD's: the camera frames above it.
   useMeasuredInset("bottom", ref, insetMeasures.bottom);
   useCover("actions", ref);
+  // Above the roll feed (z-40): its questions (Dash anyway?) are the player's to answer.
   return (
-    <div className="pointer-events-none absolute bottom-4 left-1/2 z-30 flex -translate-x-1/2 items-end gap-2">
+    <div className="pointer-events-none absolute bottom-4 left-1/2 z-40 flex -translate-x-1/2 items-end gap-2">
       {/* The creature's controls in their own panel; the dice button stands on its own, round (no tile round it). */}
-      <div ref={ref} data-testid="action-bar" className="flex items-center gap-2">
+      {/* A phone's width holds the turn controls alone: they take a row of their own above the rest. */}
+      <div
+        ref={ref}
+        data-testid="action-bar"
+        className={phone ? "flex flex-col items-center gap-2" : "flex items-center gap-2"}
+      >
         <TurnControls />
-        <RangeToggle />
-        <ElevationControl />
-        <DiceButton open={tray} />
+        <div className="flex items-center gap-2">
+          <RangeToggle />
+          <ElevationControl />
+          <DiceButton open={tray} />
+        </div>
       </div>
     </div>
   );

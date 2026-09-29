@@ -7,7 +7,7 @@ import { boardData, useEntities } from "../../state/entities.ts";
 import { prefersReducedMotion, useSettings } from "../../state/settings.ts";
 import { provideTestHook } from "../../test/hooks.ts";
 import { keepHyphenated } from "../../ui/text.tsx";
-import { useHudInsets } from "../insets.ts";
+import { useHudInsets, useIsPhone } from "../insets.ts";
 
 /** How long the banner stays (ms). */
 const SHOW_MS = 2600;
@@ -24,6 +24,7 @@ const announced: { tokenId: string; round: number; focused: boolean; at: number 
 export function TurnBanner() {
   const [shown, setShown] = useState<{ name: string; round: number; key: number } | null>(null);
   const top = useHudInsets((s) => s.top + s.banner + s.tracker);
+  const phone = useIsPhone();
   useEffect(() => {
     if (__GLOAM_TEST__) provideTestHook("turnsAnnounced", () => announced.map((a) => ({ ...a })));
     return yourTurn.on((t) => {
@@ -47,8 +48,9 @@ export function TurnBanner() {
   }, [shown]);
   return (
     <div
-      className="pointer-events-none absolute inset-x-0 z-40 flex justify-center"
-      style={{ top: top + 12 }}
+      className="pointer-events-none absolute z-40 flex justify-center"
+      // A phone: between its corner clusters (the tools button, the dock's rail), on two lines if it must.
+      style={phone ? { top: top + 12, left: 84, right: 84 } : { top: top + 12, left: 0, right: 0 }}
     >
       <AnimatePresence>
         {shown ? (
@@ -61,7 +63,11 @@ export function TurnBanner() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -4, transition: { duration: 0.2 } }}
             transition={{ type: "spring", stiffness: 420, damping: 32 }}
-            className="panel flex items-baseline gap-3 border-brass/70 px-5 py-2.5 shadow-[0_0_0_2px_var(--glow-brass),var(--shadow-float)]"
+            className={`panel flex border-brass/70 shadow-[0_0_0_2px_var(--glow-brass),var(--shadow-float)] ${
+              phone
+                ? "flex-col items-center gap-0.5 px-4 py-2 text-center"
+                : "items-baseline gap-3 px-5 py-2.5"
+            }`}
           >
             <span className="display text-22 text-brass-bright">Your turn</span>
             <span className="text-16 font-bold text-bone">{keepHyphenated(shown.name)}</span>

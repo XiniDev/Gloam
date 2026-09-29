@@ -5,6 +5,8 @@ import { boardData, useEntities } from "../../state/entities.ts";
 import { useSettings } from "../../state/settings.ts";
 import { useUi } from "../../state/ui.ts";
 import { boardApi } from "../boardApi.ts";
+import { boundsFromJson } from "../scene.ts";
+import { plateCovers } from "../tokens/declutter.ts";
 import { addWaypoint, beginMove, cancelMove, commitMove, pointerAt, useMove } from "./drag.ts";
 
 /**
@@ -76,8 +78,21 @@ export function hoverBoard(clientX: number, clientY: number, overToken: boolean)
     if (s.tokenId && !s.waypoints.length) cancelMove();
     return;
   }
+  // Only over the scene's floor and clear of the HUD: off the map (the table round it) or under a panel there's
+  // nowhere to plan to — no "No path" chasing the pointer out there.
+  const p = boardApi.groundAt(clientX, clientY);
+  const scene = boardData(useEntities.getState()).scene;
+  const b = scene ? boundsFromJson(scene.boundsJson) : null;
+  const off = !p || !b || p.x < b.minX || p.x > b.maxX || p.y < b.minY || p.y > b.maxY;
+  if (
+    off ||
+    plateCovers().some((c) => clientX > c.x0 && clientX < c.x1 && clientY > c.y0 && clientY < c.y1)
+  ) {
+    if (s.tokenId && !s.waypoints.length) cancelMove();
+    return;
+  }
   if (s.tokenId !== t.id) beginMove(t.id, { dragging: false });
-  pointerAt(boardApi.groundAt(clientX, clientY), { x: clientX, y: clientY }, false);
+  pointerAt(p, { x: clientX, y: clientY }, false);
 }
 
 /** The pointer left the board: a bare hover preview goes with it. */

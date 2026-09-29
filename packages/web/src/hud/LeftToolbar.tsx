@@ -130,6 +130,8 @@ function Rail({ tool, dm }: { tool: Tool; dm: boolean }) {
 function PhoneTools({ tool, dm }: { tool: Tool; dm: boolean }) {
   const [open, setOpen] = useState(false);
   const banner = useHudInsets((s) => s.banner);
+  // In combat the tracker spans a phone's width under the top bar: the corner steps down below it.
+  const tracker = useHudInsets((s) => s.tracker);
   const aligning = useUi((s) => s.mapTool !== null);
   const navRef = useRef<HTMLElement>(null);
   const buttonRef = useRef<HTMLDivElement>(null);
@@ -165,7 +167,7 @@ function PhoneTools({ tool, dm }: { tool: Tool; dm: boolean }) {
       aria-label="Board tools"
       data-hud="toolbar"
       className="panel pointer-events-auto absolute left-3 z-30 flex flex-col items-center gap-1 p-1.5"
-      style={{ ...order.style, top: 68 + banner }}
+      style={{ ...order.style, top: 68 + banner + tracker }}
     >
       <div ref={buttonRef}>
         <IconButton

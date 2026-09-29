@@ -80,41 +80,61 @@ export function TurnControls() {
       onSelect: () => act(resetMove(mine.id), "Couldn't reset the move"),
     },
   ];
+  const pips = (
+    <span className="flex items-center gap-1" role="group" aria-label="Action pips">
+      {PIPS.map((p) => (
+        <Pip key={p.id} t={mine} pip={p} />
+      ))}
+    </span>
+  );
+  const meter = (
+    <span className="flex flex-col items-start leading-tight" data-testid="move-budget">
+      <span className="tabular text-14 text-bone">
+        {left} <span className="text-muted">/ {bonus > 0 ? `${budget - bonus} + ${bonus}` : budget} ft</span>
+      </span>
+      <span className="block h-1 w-20 overflow-hidden rounded-chip bg-ink-950" aria-hidden>
+        <span
+          className="block h-full bg-[var(--verdigris-400)]"
+          style={{ width: `${budget > 0 ? (left / budget) * 100 : 0}%` }}
+        />
+      </span>
+    </span>
+  );
+  const end = (
+    <Button size="S" variant="primary" onClick={() => act(endTurn(mine.id), "Couldn't end the turn")}>
+      End turn
+    </Button>
+  );
   return (
     <div
-      className="panel pointer-events-auto relative flex items-center gap-2 px-2.5 py-1.5"
+      className={`panel pointer-events-auto relative px-2.5 py-1.5 ${phone ? "flex flex-col gap-1" : "flex items-center gap-2"}`}
       data-testid="turn-controls"
       data-token={mine.id}
     >
-      <span className="flex items-center gap-1" role="group" aria-label="Action pips">
-        {PIPS.map((p) => (
-          <Pip key={p.id} t={mine} pip={p} />
-        ))}
-      </span>
-      <span className="flex flex-col items-start leading-tight" data-testid="move-budget">
-        <span className="tabular text-14 text-bone">
-          {left}{" "}
-          <span className="text-muted">/ {bonus > 0 ? `${budget - bonus} + ${bonus}` : budget} ft</span>
-        </span>
-        <span className="block h-1 w-20 overflow-hidden rounded-chip bg-ink-950" aria-hidden>
-          <span
-            className="block h-full bg-[var(--verdigris-400)]"
-            style={{ width: `${budget > 0 ? (left / budget) * 100 : 0}%` }}
-          />
-        </span>
-      </span>
       {phone ? (
-        <Menu label="Turn actions" items={secondary} up />
+        // A phone: two rows — what's left and End turn; the pips (touch-sized) and the rest in a menu.
+        <>
+          <span className="flex items-center justify-between gap-3">
+            {meter}
+            {end}
+          </span>
+          <span className="flex items-center justify-between gap-2">
+            {pips}
+            <Menu label="Turn actions" items={secondary} up />
+          </span>
+        </>
       ) : (
-        secondary.map((s) => (
-          <Button key={s.label} size="S" variant="ghost" disabled={s.disabled} onClick={s.onSelect}>
-            {s.label}
-          </Button>
-        ))
+        <>
+          {pips}
+          {meter}
+          {secondary.map((s) => (
+            <Button key={s.label} size="S" variant="ghost" disabled={s.disabled} onClick={s.onSelect}>
+              {s.label}
+            </Button>
+          ))}
+          {end}
+        </>
       )}
-      <Button size="S" variant="primary" onClick={() => act(endTurn(mine.id), "Couldn't end the turn")}>
-        End turn
-      </Button>
       {asking === "dash" ? (
         <div
           role="alertdialog"
