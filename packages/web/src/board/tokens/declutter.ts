@@ -444,7 +444,8 @@ export function layoutOverlays(
   }
   // The board's marks (effects' handles) count as bodies: a plate steps aside from one as from a creature.
   for (const [key, rects] of marks)
-    rects.forEach((r, i) => bodies.push({ id: `mark:${key}:${i}`, r, parts: [{ kind: "box", ...r }] }));
+    for (const [i, r] of rects.entries())
+      bodies.push({ id: `mark:${key}:${i}`, r, parts: [{ kind: "box", ...r }] });
   for (const [id, e] of entries) {
     if (!e.group.parent) continue;
     if (e.spots) {
