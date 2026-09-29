@@ -183,15 +183,30 @@ describe("overlay declutter", () => {
     expect(r && r.x0 >= 90).toBe(true);
   });
 
-  it("brings a visible token's plate down onto the free board when its own spot is off the top or under the HUD", () => {
+  it("puts a plate whose own spot is off the top or under the HUD under its base, not over its own token", () => {
     // Mira's standee reaches past the top of the screen: her plate's own spot is above it.
     plate("mira", 100, -3, 2);
     setOverlayBody("mira", { x0: 70, y0: -20, x1: 130, y1: 60 });
     layoutOverlays(camera, W, H);
     expect(overlayClear("mira")).toBe(1);
+    expect(rect("mira")?.y0).toBeCloseTo(60 + 6, 3);
+    expect(overlayOffset("mira").dx).toBe(0);
+    // A card over her plate's spot (the DM's prompt, a request): under her base too — never pushed onto her face.
+    layoutOverlays(camera, W, H, [{ x0: 60, y0: 0, x1: 140, y1: 12 }]);
+    expect(overlayClear("mira")).toBe(1);
+    expect(rect("mira")?.y0).toBeCloseTo(66, 3);
+  });
+
+  it("brings a visible token's plate down onto the free board when its own spot is off the top and under its base is taken", () => {
+    // As above, with a bar along the bottom of the screen where the spot under her base would be.
+    plate("mira", 100, -3, 2);
+    setOverlayBody("mira", { x0: 70, y0: -20, x1: 130, y1: 60 });
+    const bottom = { x0: 0, y0: 62, x1: W, y1: H };
+    layoutOverlays(camera, W, H, [bottom]);
+    expect(overlayClear("mira")).toBe(1);
     expect(rect("mira")?.y0).toBeCloseTo(4, 3);
     // With a top bar over its column: just under the bar.
-    layoutOverlays(camera, W, H, [{ x0: 0, y0: 0, x1: W, y1: 14 }]);
+    layoutOverlays(camera, W, H, [{ x0: 0, y0: 0, x1: W, y1: 14 }, bottom]);
     expect(overlayClear("mira")).toBe(1);
     expect(rect("mira")?.y0).toBeCloseTo(17, 3);
     // Its token wholly above the free board: nothing to bring it down onto.

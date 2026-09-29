@@ -39,7 +39,7 @@ export function StatusPicker() {
   const [source, setSource] = useState("");
   const [rounds, setRounds] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
-  const [custom, setCustom] = useState({ name: "", color: "violet", glyph: "custom", rounds: "" });
+  const [custom, setCustom] = useState({ name: "", color: "orchid", glyph: "custom", rounds: "" });
   const close = () => {
     useUi.getState().set({ statusPicker: null });
     setQ("");

@@ -260,8 +260,11 @@ function RollCard({
     >
       <div className="flex w-full items-center gap-2">
         {byDm ? <WaxSeal size={24} label="DM" /> : <RollerPortrait roll={roll} />}
-        <span className="min-w-0 truncate text-13 font-bold text-bone">{name}</span>
-        {roll.label ? <span className="min-w-0 truncate text-13 text-bone/80">{roll.label}</span> : null}
+        {/* Who rolled keeps its width (up to half the row); what it was for takes the rest and truncates first. */}
+        <span className="min-w-0 max-w-[50%] shrink-0 truncate text-13 font-bold text-bone">{name}</span>
+        {roll.label ? (
+          <span className="min-w-0 flex-1 truncate text-13 text-bone/80">{roll.label}</span>
+        ) : null}
         {roll.manual ? (
           <HandDieIcon
             size={15}

@@ -1,6 +1,7 @@
 import { HP_BAND_HIDDEN, HP_BAND_LABELS, statusName } from "@gloam/shared/rules";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { boardApi } from "../board/boardApi.ts";
+import { bodyRectOf, plateRectOf } from "../board/tokens/declutter.ts";
 import { StatusIcon } from "../icons/status.tsx";
 import { useBoard } from "../state/entities.ts";
 import { useUi } from "../state/ui.ts";
@@ -33,20 +34,31 @@ export function HoverCard() {
     return () => window.clearTimeout(t);
   }, [hover]);
   const token = useBoard((d) => (shown ? d.tokens.get(shown) : undefined));
-  const [at, setAt] = useState<{ x: number; y: number } | null>(null);
+  // What the card keeps beside: the token on screen and its plate (never over either — the plate says the same).
+  const [at, setAt] = useState<Box | null>(null);
   useEffect(() => {
     if (!token) return;
     let raf = 0;
     const place = () => {
       const p = boardApi.project(token.pos.x, token.pos.y, token.elevation);
-      setAt((a) =>
-        p && (!a || Math.abs(a.x - p.sx) > 0.5 || Math.abs(a.y - p.sy) > 0.5) ? { x: p.sx, y: p.sy } : a,
-      );
+      const parts = [bodyRectOf(token.id), plateRectOf(token.id)].filter((r): r is Box => Boolean(r));
+      const box = parts.length
+        ? {
+            x0: Math.min(...parts.map((r) => r.x0)),
+            y0: Math.min(...parts.map((r) => r.y0)),
+            x1: Math.max(...parts.map((r) => r.x1)),
+            y1: Math.max(...parts.map((r) => r.y1)),
+          }
+        : p
+          ? { x0: p.sx - 28, y0: p.sy - 28, x1: p.sx + 28, y1: p.sy + 28 }
+          : null;
+      setAt((a) => (box && (!a || moved(a, box)) ? box : a));
       raf = requestAnimationFrame(place);
     };
     place();
     return () => cancelAnimationFrame(raf);
   }, [token]);
+  const card = useRef<HTMLDivElement>(null);
   if (!token || !at || radial || phone || window.matchMedia?.("(hover: none)").matches) return null;
   const hp =
     token.hp !== undefined
@@ -59,11 +71,22 @@ export function HoverCard() {
     const [id, label, color, glyph] = s.split("|") as [string, string, string, string];
     return { id, label, color, glyph };
   });
+  // Right of the token and its plate, else left of them, else (no room either side) as near as fits; level with the
+  // top of them, kept on the screen below the top bar.
   const W = 240;
-  const left = Math.min(window.innerWidth - W - 12, Math.max(12, at.x + 28));
-  const top = Math.min(window.innerHeight - 180, Math.max(64, at.y - 60));
+  const GAP = 12;
+  const h = card.current?.offsetHeight ?? 200;
+  const vw = window.innerWidth;
+  const left =
+    at.x1 + GAP + W <= vw - GAP
+      ? at.x1 + GAP
+      : at.x0 - GAP - W >= GAP
+        ? at.x0 - GAP - W
+        : Math.min(vw - W - GAP, Math.max(GAP, at.x1 + GAP));
+  const top = Math.min(window.innerHeight - h - GAP, Math.max(64, at.y0));
   return (
     <div
+      ref={card}
       role="tooltip"
       data-testid="hover-card"
       data-token={token.id}
@@ -117,3 +140,16 @@ export function HoverCard() {
     </div>
   );
 }
+
+interface Box {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+
+const moved = (a: Box, b: Box) =>
+  Math.abs(a.x0 - b.x0) > 0.5 ||
+  Math.abs(a.y0 - b.y0) > 0.5 ||
+  Math.abs(a.x1 - b.x1) > 0.5 ||
+  Math.abs(a.y1 - b.y1) > 0.5;

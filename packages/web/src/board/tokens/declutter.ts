@@ -311,13 +311,15 @@ function place(
       !Number.isNaN(shift(k)[0]) &&
       free(at(k)) &&
       (!clearOfTokens || !covers(at(k), k === 0 || k === SLID || k === CLAMPED ? BURIED : ASIDE));
+    // Its own spot, a small shift, under its base; brought down onto its own token only when under the base isn't
+    // free (brought down under a HUD piece, a plate lies over its own token's face — critic P7 r1).
     const order = [
       0,
       SLID,
-      CLAMPED,
       ...nudges.map((_, i) => NUDGE + i),
       BELOW,
       ...belowNudges.map((_, i) => BELOW_NUDGE + i),
+      CLAMPED,
       ...TRY_ORDER.slice(2),
     ];
     let slot = -1;

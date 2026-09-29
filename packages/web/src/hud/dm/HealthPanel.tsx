@@ -95,52 +95,75 @@ export function HealthPanel() {
             : t.hpBand !== HP_BAND_HIDDEN
               ? HP_BAND_LABELS[t.hpBand]
               : "—";
-          const statuses = [...t.conditions, ...t.markers.filter((m) => !m.startsWith("custom:"))];
+          // As its plate shows them: conditions, Exhaustion (with its level), concentration, then markers.
+          const statuses = [
+            ...t.conditions,
+            ...(t.exhaustion > 0 && !t.conditions.includes("exhaustion") ? ["exhaustion"] : []),
+            ...(t.concentrating && !t.markers.includes("concentrating") ? ["concentrating"] : []),
+            ...t.markers.filter((m) => !m.startsWith("custom:")),
+          ];
+          const named = (id: string) =>
+            id === "exhaustion" ? `${statusName(id)} ${t.exhaustion}` : statusName(id);
           return (
             <li
               key={t.id}
-              className="flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-line/60 py-1.5"
+              className="flex flex-col gap-0.5 border-t border-line/60 py-1.5"
               data-testid="health-row"
               data-token={t.id}
             >
-              <span className="min-w-0 flex-1 truncate text-14 text-bone">
-                {t.name}
-                {t.dead ? <span className="caps ml-1.5 text-12 text-danger-text">dead</span> : null}
-              </span>
-              <span className="tabular text-13 text-fog">{hp}</span>
-              <span
-                role="img"
-                className="flex items-center gap-0.5"
-                aria-label={statuses.map(statusName).join(", ") || "No conditions"}
-              >
-                {statuses.slice(0, 6).map((id) => (
-                  <StatusIcon key={id} id={id} size={16} badge label="" />
-                ))}
-              </span>
-              <span className="flex items-center">
-                <Button
-                  size="S"
-                  variant="ghost"
-                  icon={<HeartPulse size={14} />}
-                  aria-label={`${t.name}: damage or heal`}
-                  onClick={() => hpFor([t.id], "damage")}
+              {/* Two lines, so a long name keeps its width and the HP and actions line up down the list. */}
+              <div className="flex items-baseline gap-3">
+                <span className="min-w-0 flex-1 truncate text-14 text-bone">
+                  {t.name}
+                  {t.dead ? <span className="caps ml-1.5 text-12 text-danger-text">dead</span> : null}
+                </span>
+                <span className="tabular shrink-0 text-13 text-fog">{hp}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span
+                  role="img"
+                  className="flex min-w-0 flex-1 items-center gap-0.5"
+                  aria-label={statuses.map(named).join(", ") || "No conditions"}
                 >
-                  HP
-                </Button>
-                <Button
-                  size="S"
-                  variant="ghost"
-                  aria-label={`${t.name}: conditions`}
-                  onClick={() => useUi.getState().set({ statusPicker: { tokenId: t.id } })}
-                >
-                  Conditions
-                </Button>
-                {dying(t) ? (
-                  <Button size="S" variant="ghost" onClick={() => void deathSaves([t.id])}>
-                    Death save
+                  {statuses.slice(0, 6).map((id) => (
+                    <StatusIcon
+                      key={id}
+                      id={id}
+                      size={16}
+                      badge
+                      label=""
+                      level={id === "exhaustion" ? t.exhaustion : undefined}
+                    />
+                  ))}
+                  {statuses.length > 6 ? (
+                    <span className="tabular ml-0.5 text-12 text-fog">+{statuses.length - 6}</span>
+                  ) : null}
+                </span>
+                <span className="-mr-2 flex shrink-0 items-center">
+                  <Button
+                    size="S"
+                    variant="ghost"
+                    icon={<HeartPulse size={14} />}
+                    aria-label={`${t.name}: damage or heal`}
+                    onClick={() => hpFor([t.id], "damage")}
+                  >
+                    HP
                   </Button>
-                ) : null}
-              </span>
+                  <Button
+                    size="S"
+                    variant="ghost"
+                    aria-label={`${t.name}: conditions`}
+                    onClick={() => useUi.getState().set({ statusPicker: { tokenId: t.id } })}
+                  >
+                    Conditions
+                  </Button>
+                  {dying(t) ? (
+                    <Button size="S" variant="ghost" onClick={() => void deathSaves([t.id])}>
+                      Death save
+                    </Button>
+                  ) : null}
+                </span>
+              </div>
             </li>
           );
         })}

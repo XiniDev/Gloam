@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { roll } from "./evaluate.ts";
+import { normalizeFormula, roll } from "./evaluate.ts";
 import { checkFormula, DICE_LIMITS, DiceError, parseFormula } from "./parse.ts";
 import { DEFAULT_SKIN, type RollRecord, type RollVisibility, viewOfRoll } from "./record.ts";
 import { seededDie, xoshiro128ss } from "./rng.ts";
@@ -109,6 +109,14 @@ describe("dice formulas (SPEC §18.1, AC-DICE-01)", () => {
     expect(d.normalized).toBe("2d20kl1 + 5");
     expect(err("2d6 adv").message).toMatch(/d20/);
     expect(checkFormula("1d8 adv")?.message).toMatch(/d20/);
+  });
+
+  it("normalizeFormula: the formula as it will roll, without rolling — the same form as a roll's normalized", () => {
+    expect(normalizeFormula("1d20 - 4 dis")).toBe("2d20kl1 - 4");
+    expect(normalizeFormula("1d20+5 adv")).toBe(r("1d20+5 adv", 4, 17).normalized);
+    expect(normalizeFormula("1d20 + 3")).toBe("1d20 + 3");
+    expect(normalizeFormula("2d6 + 1 [fire]")).toBe(r("2d6 + 1 [fire]", 3, 4).normalized);
+    expect(() => normalizeFormula("2d6 adv")).toThrow(DiceError);
   });
 
   it("damage types: a tag on dice types that term; a trailing tag types every untagged term; the rest is untyped", () => {

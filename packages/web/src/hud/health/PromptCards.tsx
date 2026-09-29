@@ -162,7 +162,15 @@ function PromptCard({ p, compact }: { p: DmPromptView; compact: boolean }) {
         <span className="min-w-0 flex-1">
           <span className="caps block text-12 text-brass">Your call</span>
           <span className="block text-18 font-bold leading-tight text-bone">{p.title}</span>
-          {p.detail ? <span className="block text-13 text-muted">{p.detail}</span> : null}
+          {p.detail ? (
+            <span className="block text-13 text-muted">
+              {p.detail}
+              {/* A player's damage: how it was rolled (the title already says whose). */}
+              {damage?.halved ? " · half (saved)" : ""}
+              {damage?.crit ? " · critical hit" : ""}
+              {damage?.label ? ` — ${damage.label}` : ""}
+            </span>
+          ) : null}
         </span>
         {compact ? (
           <IconButton label="Fold away" onClick={() => setOpen(false)} aria-expanded>
@@ -171,30 +179,22 @@ function PromptCard({ p, compact }: { p: DmPromptView; compact: boolean }) {
         ) : null}
       </div>
       {damage ? (
-        <>
-          <p className="text-13 text-muted">
-            From {damage.byName}
-            {damage.label ? ` — ${damage.label}` : ""}
-            {damage.halved ? " · half (saved)" : ""}
-            {damage.crit ? " · critical hit" : ""}
-          </p>
-          {row ? (
-            <ul className="rounded-[var(--radius-control)] border border-line">
-              <PreviewRow
-                row={row}
-                kind={damage.kind}
-                dm
-                deciding
-                total={total}
-                onTotal={setTotal}
-                decision={dec}
-                onDecision={setDec}
-                tempChoice="best"
-                onTempChoice={() => undefined}
-              />
-            </ul>
-          ) : null}
-        </>
+        row ? (
+          <ul className="rounded-[var(--radius-control)] border border-line">
+            <PreviewRow
+              row={row}
+              kind={damage.kind}
+              dm
+              deciding
+              total={total}
+              onTotal={setTotal}
+              decision={dec}
+              onDecision={setDec}
+              tempChoice="best"
+              onTempChoice={() => undefined}
+            />
+          </ul>
+        ) : null
       ) : (
         <ul className="flex flex-col gap-1.5" data-testid="dm-prompt-items">
           {p.items.map((i) => {

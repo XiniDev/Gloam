@@ -161,6 +161,29 @@ test.describe("P7 — HP, conditions and death (§8.11)", () => {
     // It falls (unconscious: it lies down, animated), its icon under the plate (AC-TOK-04).
     await expect.poll(async () => (await tokenState(dave, goblin))?.lie).toBeCloseTo(1, 2);
     await expect.poll(() => statusIcons(dave, goblin)).toEqual(["unconscious"]);
+    // A hit of two types: its two numbers side by side and apart, never run together ("−3−2"; critic P7 r1).
+    await dave.bringToFront();
+    await req(admin, "hp.apply", {
+      targets: [hero],
+      kind: "damage",
+      parts: [
+        { type: "fire", amount: 3 },
+        { type: "cold", amount: 2 },
+      ],
+    });
+    await expect
+      .poll(() =>
+        dave.evaluate(() => {
+          const shown = [...document.querySelectorAll<HTMLElement>('[data-testid="hp-number"]')]
+            .filter((e) => (e.textContent === "−3" || e.textContent === "−2") && Number(e.style.opacity) > 0)
+            .map((e) => e.getBoundingClientRect())
+            .sort((a, b) => a.left - b.left);
+          const [a, b] = shown;
+          return shown.length === 2 && a && b ? Math.round(b.left - a.right) : null;
+        }),
+      )
+      .toBeGreaterThanOrEqual(8);
+    await req(admin, "hp.apply", { targets: [hero], kind: "heal", amount: 5 });
 
     // ── Conditions from the token menu (AC-HP-04): the picker's grid, each with its name and summary. ──
     await radial(admin, goblin, "Conditions");
@@ -207,6 +230,25 @@ test.describe("P7 — HP, conditions and death (§8.11)", () => {
       tokenId: goblin,
       remove: ["blinded", "charmed", "deafened", "frightened", "grappled"],
     });
+    // A custom marker from the picker (§8.11): its own glyph on its own colour — on the board too, in a cell of its
+    // own; on a light colour (Citrine) its glyph takes ink, as bone wouldn't read.
+    await radial(admin, goblin, "Conditions");
+    await picker.getByText("A custom marker…").click();
+    await picker.getByPlaceholder("Hexed").fill("Hexed");
+    await picker.getByRole("radio", { name: "Citrine" }).click();
+    await picker.getByRole("radio", { name: "Frightened", exact: true }).click();
+    await picker.getByRole("button", { name: "Add the marker" }).click();
+    await expect.poll(async () => (await tokenOf(admin, goblin))?.markers).toContain("custom:hexed");
+    await expect(picker.getByRole("button", { name: "Hexed" }).locator("[data-icon]")).toHaveCSS(
+      "color",
+      "rgb(7, 9, 12)",
+    );
+    await admin.getByRole("dialog").getByRole("button", { name: "Done" }).click();
+    await expect.poll(async () => (await statusIcons(dave, goblin)).includes("custom:hexed")).toBe(true);
+    await expect
+      .poll(() => hook<{ key: string; badge: string }[]>(dave, "customCells"))
+      .toContainEqual({ key: "frightened|#f2e266", badge: "#f2e266" });
+    await req(admin, "status.change", { tokenId: goblin, remove: ["custom:hexed"] });
     // HP display per token (AC-TOK-04): what Dave's client holds of the DM's goblin in each mode.
     // (Back above 0: the DM keeps what follows — it comes round — in the same breath, no prompt.)
     await req(admin, "hp.apply", {
@@ -251,6 +293,17 @@ test.describe("P7 — HP, conditions and death (§8.11)", () => {
     await dave.getByRole("dialog").getByRole("button", { name: "Done" }).click();
     await expect(sheet.getByTestId("sheet-conditions")).toContainText("Prone");
     await expect.poll(() => statusIcons(admin, hero)).toEqual(["prone", "exhaustion"]);
+    // Its level on the sheet too, in the badge's corner notch (Appendix G), and on the plate's (a notch of its own).
+    const onSheet = sheet.getByTestId("sheet-exhaustion");
+    await expect(onSheet).toContainText("Exhaustion 2");
+    await expect(onSheet.locator("[data-level]")).toHaveText("2");
+    await expect
+      .poll(
+        async () =>
+          (await hook<{ parts: Record<string, { visible: boolean }> } | null>(admin, "tokenState", hero))
+            ?.parts["level:exhaustion"]?.visible,
+      )
+      .toBe(true);
 
     // ── From the DM panel: Health, every creature on the scene (AC-HP-04). ──
     await admin.getByRole("button", { name: /^DM panel/ }).click();
@@ -291,6 +344,20 @@ test.describe("P7 — HP, conditions and death (§8.11)", () => {
     await expect
       .poll(() => admin.getByTestId("hover-card").evaluate((e) => getComputedStyle(e).opacity))
       .toBe("1");
+    // Beside the token and its plate, over neither (critic P7 r1: it covered the plate).
+    const cardBox = await admin.getByTestId("hover-card").boundingBox();
+    const plates = await hook<
+      { id: string; clear: number; rect?: { x0: number; y0: number; x1: number; y1: number } }[]
+    >(admin, "overlays");
+    const heroPlate = plates.find((o) => o.id === hero && o.clear === 1)?.rect;
+    expect(cardBox && heroPlate).toBeTruthy();
+    if (cardBox && heroPlate)
+      expect(
+        cardBox.x < heroPlate.x1 &&
+          cardBox.x + cardBox.width > heroPlate.x0 &&
+          cardBox.y < heroPlate.y1 &&
+          cardBox.y + cardBox.height > heroPlate.y0,
+      ).toBe(false);
     await admin.screenshot({ path: `${SHOTS}/journey-hover-card.png` });
     await dave.bringToFront();
     const goblinAt = await screenOf(dave, goblin);
@@ -408,9 +475,14 @@ test.describe("P7 — HP, conditions and death (§8.11)", () => {
     const hint = dave.getByTestId("roll-hint");
     await expect(hint).toContainText("Disadvantage");
     await expect(hint).toContainText("Poisoned");
+    // The card shows the roll as it will be made: two d20s, the lower kept — one again once set aside.
+    const shown = dave.getByTestId("request-card").getByTestId("request-formula");
+    await expect(shown).toContainText("2d20kl1");
     await settle(dave);
     await dave.screenshot({ path: `${SHOTS}/journey-roll-hint.png` });
     await hint.getByRole("button", { name: "Set aside" }).click();
+    await expect(shown).toContainText("1d20");
+    await expect(shown).not.toContainText("2d20");
     const feed = () => hook<{ formula?: string; label?: string }[]>(dave, "rollFeed");
     const before = (await feed()).length;
     await dave.getByTestId("request-card").getByRole("button", { name: "Roll", exact: true }).click();

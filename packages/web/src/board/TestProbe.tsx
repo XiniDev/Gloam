@@ -33,6 +33,7 @@ import { TIERS, TierGovernor, useTier } from "./tiers.ts";
 import { overlayDiagnostics, plateCovers } from "./tokens/declutter.ts";
 import { createHpBarMaterial, setHpBar } from "./tokens/hpBar.ts";
 import { fxPlayed, lieOf } from "./tokens/hpFx.tsx";
+import { statusAtlas } from "./tokens/statusAtlas.ts";
 import { hpBarState, overlayFade } from "./tokens/TokenObject.tsx";
 import { current as currentMeasure, measuredFt, useMeasure } from "./tools/measure.ts";
 import { useWallTool } from "./tools/walls.ts";
@@ -269,6 +270,18 @@ export function TestProbe() {
     provideTestHook("plateCovers", () => plateCovers());
     // The HP feedback each token played (AC-HP-11: a hit's shake and flash, a heal's glow).
     provideTestHook("fxPlayed", () => fxPlayed.map((f) => ({ ...f })));
+    // The atlas cells made for custom markers ("glyph|#colour"), each with the badge colour its cell's centre shows.
+    provideTestHook("customCells", () => {
+      const a = statusAtlas();
+      const g = a.canvas.getContext("2d") as CanvasRenderingContext2D;
+      return [...a.custom].map(([key, { cell }]) => {
+        const x = Math.round(cell.u0 * a.canvas.width) + 6;
+        const y = Math.round((1 - cell.v1) * a.canvas.height) + 6;
+        const [r, gr, b] = g.getImageData(x, y, 1, 1).data;
+        const hex = (n = 0) => n.toString(16).padStart(2, "0");
+        return { key, badge: `#${hex(r)}${hex(gr)}${hex(b)}` };
+      });
+    });
     provideTestHook("ui", () => {
       const u = useUi.getState();
       return { selection: u.selection, hover: u.hover, tool: u.tool, radial: u.radial };

@@ -1,3 +1,4 @@
+import { normalizeFormula, withHint } from "@gloam/shared/dice";
 import type { RequestCard } from "@gloam/shared/protocol";
 import { ArrowDown, ArrowUp, ChevronUp, Heart, SkipForward, Skull, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -53,6 +54,15 @@ function Row({ c, onAnswered }: { c: RequestCard; onAnswered: () => void }) {
     return () => window.clearTimeout(t);
   }, [pending, key]);
   const outcome = c.success === undefined ? "text-bone" : c.success ? "text-success" : "text-danger-text";
+  // The formula as it will roll: with its conditions' advantage or disadvantage unless set aside ("2d20kl1 - 4").
+  const formula = useMemo(() => {
+    if (!pending || !c.hint || !useHint) return c.formula;
+    try {
+      return normalizeFormula(withHint(c.formula, c.hint.mode));
+    } catch {
+      return c.formula;
+    }
+  }, [pending, c.formula, c.hint, useHint]);
   return (
     <li
       className="flex flex-col gap-1.5 border-line/60 pt-2 first:pt-0 [&+&]:border-t"
@@ -64,7 +74,12 @@ function Row({ c, onAnswered }: { c: RequestCard; onAnswered: () => void }) {
     >
       <div className="flex min-w-0 items-center gap-2 text-13">
         <span className="min-w-0 truncate text-14 font-bold text-bone">{c.targetName}</span>
-        <span className="mono shrink-0 rounded-chip bg-ink-950/70 px-2 py-0.5 text-bone">{c.formula}</span>
+        <span
+          className="mono shrink-0 rounded-chip bg-ink-950/70 px-2 py-0.5 text-bone"
+          data-testid="request-formula"
+        >
+          {formula}
+        </span>
       </div>
       {c.deathSaves ? <DeathSavePips {...c.deathSaves} /> : null}
       {pending && c.hint ? (

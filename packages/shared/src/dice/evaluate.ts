@@ -58,14 +58,27 @@ export function roll(formula: string, input: RollInput): RollOutcome {
   return rollParsed(formula, parsed, input);
 }
 
+/** A parsed formula's expression with its advantage word applied: its d20 rolled twice, keeping one. */
+function withAdvantage(formula: string, parsed: ParsedFormula): DiceNode {
+  const expr = parsed.expr;
+  if (!parsed.adv) return expr;
+  const d20 = findD20(expr);
+  if (!d20) throw new DiceError("Advantage needs a single d20 (1d20) in the formula.", 0, formula.length);
+  const mod: Modifier = { k: "keep", high: parsed.adv === "adv", n: 1 };
+  return replaceNode(expr, d20, { ...d20, count: { k: "num", v: 2, at: d20.at }, mods: [mod] });
+}
+
+/**
+ * A formula as it will roll, without rolling it — "1d20 - 4 dis" → "2d20kl1 - 4" (the roll feed's normalized form).
+ * Throws DiceError for an invalid formula.
+ */
+export function normalizeFormula(formula: string): string {
+  const parsed = parseFormula(formula);
+  return formatNode(withAdvantage(formula, parsed)) + (parsed.tag ? ` [${parsed.tag}]` : "");
+}
+
 export function rollParsed(formula: string, parsed: ParsedFormula, input: RollInput): RollOutcome {
-  let expr = parsed.expr;
-  if (parsed.adv) {
-    const d20 = findD20(expr);
-    if (!d20) throw new DiceError("Advantage needs a single d20 (1d20) in the formula.", 0, formula.length);
-    const mod: Modifier = { k: "keep", high: parsed.adv === "adv", n: 1 };
-    expr = replaceNode(expr, d20, { ...d20, count: { k: "num", v: 2, at: d20.at }, mods: [mod] });
-  }
+  const expr = withAdvantage(formula, parsed);
   const ctx = new Ctx(input);
   const total = ctx.eval(expr);
   // Damage types: each top-level summand's value goes to its type (its dice's, else the trailing one).

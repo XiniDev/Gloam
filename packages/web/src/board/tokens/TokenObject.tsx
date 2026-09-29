@@ -62,7 +62,7 @@ import {
 } from "./hpBar.ts";
 import { lieOf, tokenFx } from "./hpFx.tsx";
 import { CHIP_GEOMETRY, createChipMaterial, setChip } from "./plateChip.ts";
-import { atlasCell, statusAtlas } from "./statusAtlas.ts";
+import { atlasCell, customCell, statusAtlas } from "./statusAtlas.ts";
 
 /** Pitch above which Auto mode shows the coin (SPEC §8.5, AC-TOK-11) and the crossfade time. */
 
@@ -73,6 +73,8 @@ const COIN_H = 0.2;
  * pixels across — a GL line is 1 px, too faint to tie a plate to its token), and the dot at its token end.
  */
 const LEADER_STRIP = new PlaneGeometry(1, 1).translate(0.5, 0, 0);
+/** A unit quad, scaled to size (exhaustion's notch). Shared: never disposed. */
+const UNIT_PLANE = new PlaneGeometry(1, 1);
 const LEADER_DOT = new CircleGeometry(1, 16);
 /** A troika text mesh (drei's <Text>): its opacities apply at render, no re-layout. */
 type TroikaText = Mesh & {
@@ -171,6 +173,14 @@ const ICON_MAX = 6;
 const ICON = 0.9;
 const ICON_GAP = 0.1;
 const ICON_ROW_GAP = 0.14;
+/**
+ * Exhaustion's level (Appendix G: "the level digit in a corner notch"): an ink notch over the badge's bottom-right
+ * corner, reaching past it so the digit keeps the numbers' size (≥ 12 px, §27.3) — the row leaves room for the reach.
+ */
+const NOTCH_H = 0.72;
+const NOTCH_PAD = 0.1;
+const NOTCH_REACH = 0.24;
+const NOTCH_DROP = 0.1;
 /** Between the bar and the temporary HP beside it. */
 const TEMP_GAP = 0.18;
 
@@ -1001,12 +1011,27 @@ function Overlay({
   useEffect(() => () => disposeLater(iconMat), [iconMat]);
   const iconGeos = useMemo(() => Array.from({ length: ICON_MAX }, () => new PlaneGeometry(1, 1)), []);
   useEffect(() => () => disposeLater(...iconGeos), [iconGeos]);
-  // Each slot's UVs point at its icon's cell.
+  // A DM's custom markers: the glyph each borrows and its colour ("id|label|colour|glyph").
+  const customKey = token.customMarkers.join("\n");
+  const customs = useMemo(
+    () =>
+      new Map(
+        (customKey ? customKey.split("\n") : []).map((s) => {
+          const [id, , color, glyph] = s.split("|") as [string, string, string, string];
+          return [id, { color, glyph }] as const;
+        }),
+      ),
+    [customKey],
+  );
+  // Each slot's UVs point at its icon's cell (a custom marker's own, drawn once for its glyph and colour).
   useEffect(() => {
     for (const [i, g] of iconGeos.entries()) {
       const id = statuses[i];
       if (!id) continue;
-      const c = atlasCell(id);
+      const custom = id.startsWith("custom:") ? customs.get(id) : undefined;
+      const made = custom ? customCell(custom.glyph, custom.color) : null;
+      if (made) void made.ready.then(() => again());
+      const c = made ? made.cell : atlasCell(id);
       const uv = g.getAttribute("uv");
       // PlaneGeometry's corners: top-left, top-right, bottom-left, bottom-right.
       uv.setXY(0, c.u0, c.v1);
@@ -1016,10 +1041,16 @@ function Overlay({
       uv.needsUpdate = true;
     }
     again();
-  }, [statuses, iconGeos]);
+  }, [statuses, iconGeos, customs]);
   const iconMeshes = useRef<(Mesh | null)[]>([]);
   const moreText = useRef<TroikaText>(null);
   const levelText = useRef<TroikaText>(null);
+  const levelNotch = useRef<Mesh>(null);
+  const notchMat = useMemo(
+    () => new MeshBasicMaterial({ color: C.ink950, transparent: true, depthTest: false, depthWrite: false }),
+    [],
+  );
+  useEffect(() => () => disposeLater(notchMat), [notchMat]);
   const shownIcons = statuses.slice(0, ICON_MAX);
   const moreIcons = statuses.length - shownIcons.length;
 
@@ -1080,11 +1111,14 @@ function Overlay({
     const plate = pxPerPlate / pxPerWorld;
     g.scale.setScalar(plate);
     layoutPlate();
-    // The numbers read on either part of the bar: ink over the fill (verdigris, brass, ember or temp cyan — bone
-    // there was ~1.7:1), bone over the dark track; the split follows the fill's edge.
+    // The numbers read on either part of the bar: ink over the light part (the fill — verdigris, brass, ember — temp
+    // cyan and the pale damage ghost while it drains; bone there was ~1.7:1), bone over the dark track; the split
+    // follows the light part's edge.
     if (numText.current || numInk.current) {
       const w = barWidth.current;
-      const edge = -w / 2 + w * Math.min(1, Math.max(0, frac) + Math.max(0, temp));
+      const lit = Math.max(0, frac) + Math.max(0, temp);
+      const light = Math.max(lit, ghost.current.value(performance.now()));
+      const edge = -w / 2 + w * Math.min(1, light / Math.max(1, lit));
       const setClip = (t: TroikaText | null, r: [number, number, number, number]) => {
         if (!t) return;
         const c = t.clipRect as number[] | null;
@@ -1194,6 +1228,7 @@ function Overlay({
       }
     if (badge.current) badge.current.opacity = fade;
     iconMat.opacity = a;
+    notchMat.opacity = a;
     for (const t of [moreText.current, levelText.current])
       if (t && (t.fillOpacity !== a || t.outlineOpacity !== a)) {
         t.fillOpacity = a;
@@ -1265,7 +1300,12 @@ function Overlay({
     if (shownIcons.length) {
       const moreB = moreText.current?.textRenderInfo?.blockBounds;
       const moreW = moreIcons > 0 && moreB ? moreB[2] - moreB[0] + ICON_GAP : 0;
-      iconsW = shownIcons.length * ICON + (shownIcons.length - 1) * ICON_GAP + moreW;
+      // Exhaustion's notch: as wide as its digit needs, reaching past the badge's corner (room left after it).
+      const exhausted = shownIcons.includes("exhaustion");
+      const levelB = exhausted ? levelText.current?.textRenderInfo?.blockBounds : null;
+      const notchW = levelB ? Math.max(NOTCH_H * 0.8, levelB[2] - levelB[0] + 2 * NOTCH_PAD) : 0;
+      const reach = exhausted ? NOTCH_REACH : 0;
+      iconsW = shownIcons.length * ICON + (shownIcons.length - 1) * ICON_GAP + moreW + reach;
       const y = bottom - ICON_ROW_GAP - ICON / 2;
       let x = -iconsW / 2 + ICON / 2;
       for (let i = 0; i < shownIcons.length; i++) {
@@ -1274,12 +1314,18 @@ function Overlay({
           m.position.set(x, y, 0.005);
           m.scale.set(ICON, ICON, 1);
         }
-        if (shownIcons[i] === "exhaustion")
-          levelText.current?.position.set(x + ICON / 2 - 0.04, y - ICON / 2 + 0.02, 0.02);
+        if (shownIcons[i] === "exhaustion") {
+          const cx = x + ICON / 2 + NOTCH_REACH - notchW / 2;
+          const cy = y - ICON / 2 - NOTCH_DROP + NOTCH_H / 2;
+          levelNotch.current?.position.set(cx, cy, 0.008);
+          levelNotch.current?.scale.set(Math.max(0.01, notchW), NOTCH_H, 1);
+          levelText.current?.position.set(cx, cy, 0.012);
+          x += NOTCH_REACH;
+        }
         x += ICON + ICON_GAP;
       }
       moreText.current?.position.set(x - ICON / 2, y, 0.01);
-      bottom = y - ICON / 2;
+      bottom = y - ICON / 2 - (exhausted ? NOTCH_DROP : 0);
     }
     const gaugeW = pins.length ? Math.max(barW || BAR_W, pinW) : 0;
     for (let i = 0; i < pins.length; i++) {
@@ -1440,19 +1486,27 @@ function Overlay({
             />
           ))}
           {shownIcons.includes("exhaustion") ? (
-            <BoardText
-              ref={levelText}
-              font={NUMBER_FONT}
-              fontSize={0.5}
-              color={C.bone100}
-              outlineWidth={0.06}
-              outlineColor={C.ink950}
-              anchorX="right"
-              anchorY="bottom"
-              raycast={() => null}
-            >
-              {String(token.exhaustion)}
-            </BoardText>
+            <>
+              <mesh
+                ref={levelNotch}
+                geometry={UNIT_PLANE}
+                material={notchMat}
+                raycast={() => null}
+                dispose={null}
+                userData={{ part: "level:exhaustion" }}
+              />
+              <BoardText
+                ref={levelText}
+                font={NUMBER_FONT}
+                fontSize={NUM_SIZE}
+                color={C.bone100}
+                anchorX="center"
+                anchorY="middle"
+                raycast={() => null}
+              >
+                {String(token.exhaustion)}
+              </BoardText>
+            </>
           ) : null}
           {moreIcons > 0 ? (
             <BoardText

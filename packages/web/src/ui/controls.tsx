@@ -19,7 +19,11 @@ export function Toggle({
 }) {
   const id = useId();
   return (
-    <div className={`flex justify-between ${compact ? "items-center gap-2" : "items-start gap-4"}`}>
+    // The switch centres on a one-line label; beside a description it centres on the label's line (its hit area
+    // reaching above, not pushing the switch down).
+    <div
+      className={`flex justify-between ${compact ? "items-center gap-2" : description ? "items-start gap-4" : "items-center gap-4"}`}
+    >
       <div className="min-w-0">
         <label
           htmlFor={id}
@@ -36,7 +40,9 @@ export function Toggle({
         aria-checked={checked}
         disabled={disabled}
         onClick={() => onChange(!checked)}
-        className={`hit relative mt-0.5 inline-flex shrink-0 items-center justify-center disabled:opacity-45`}
+        className={`hit relative inline-flex shrink-0 items-center justify-center disabled:opacity-45 ${
+          description && !compact ? "-mt-[calc((var(--hit-target)-1.5rem)/2)]" : ""
+        }`}
       >
         <span
           className={`relative block h-6 w-11 rounded-full border transition-colors duration-[var(--dur-base)] ${

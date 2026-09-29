@@ -386,7 +386,7 @@ export const hpApply: CommandDef<z.infer<typeof HpApply>, { applied: number; sen
           actorId: h.actor?.id ?? null,
           name: h.name,
           title: `${ctx.actor.name}'s damage to ${h.name}`,
-          detail: p.parts ? partsText(p.parts) : String(p.amount ?? 0),
+          detail: `${p.parts ? partsText(p.parts) : (p.amount ?? 0)} damage`,
           items: [],
           damage,
         });

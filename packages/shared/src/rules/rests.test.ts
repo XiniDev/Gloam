@@ -89,7 +89,7 @@ describe("rests (§8.11, §34.2; SRD 5.2.1 pp. 185, 187; AC-HP-13)", () => {
 
   it("no rest at 0 HP; the next Hit Die to spend is the largest left; each heals at least 1", () => {
     expect(restPlan(sheet({ hp: { max: 20, current: 0 } }), EMPTY_STATUS, "long", "srd-5.2.1")).toEqual({
-      blocked: "At 0 HP — it needs at least 1 HP to rest",
+      blocked: "At 0 HP — a creature needs at least 1 HP to rest",
       items: [],
     });
     expect(nextHitDie(hurt)).toEqual({ die: "d10", left: 2 });

@@ -229,7 +229,7 @@ function HpForm({ d, open }: { d: NonNullable<UiStore["hpDialog"]>; open: boolea
                 ) : null}
               </div>
             ))}
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <div className="flex">
               <Button
                 size="S"
                 variant="ghost"
@@ -238,6 +238,8 @@ function HpForm({ d, open }: { d: NonNullable<UiStore["hpDialog"]>; open: boolea
               >
                 Another type
               </Button>
+            </div>
+            <div className="grid gap-x-8 gap-y-1 sm:grid-cols-2">
               <Toggle checked={halved} onChange={setHalved} label="Half (a successful save)" />
               <Toggle checked={crit} onChange={setCrit} label="Critical hit" />
             </div>
@@ -364,8 +366,8 @@ export function PreviewRow({
         </p>
       ) : null}
       {kind === "temp" && r.temp ? (
-        <div className="flex flex-col gap-1">
-          <span className="text-13 text-muted">Temporary HP don't stack:</span>
+        <div className="flex flex-col items-start gap-1.5">
+          <span className="text-13 text-muted">Temporary HP don't stack — which stays?</span>
           <Segmented
             label="Temporary HP"
             size="S"

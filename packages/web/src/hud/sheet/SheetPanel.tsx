@@ -610,44 +610,96 @@ function useSheetTarget(actorId: string): { tokenId?: string; actorId?: string }
   return tokenId ? { tokenId } : { actorId };
 }
 
+const CHIP =
+  "inline-flex h-7 items-center gap-1 rounded-chip border border-parchment-edge bg-parchment-deep pl-0.5 text-13 text-paper-ink";
+
+/**
+ * What the character is under (§8.11), as its token shows it: conditions, Exhaustion with its level, what it
+ * concentrates on, and its markers (the token's, a DM's custom ones in their colour) — each removable where the sheet
+ * is editable; Exhaustion and concentration open the picker, where they're set.
+ */
 function Conditions({ ctx }: { ctx: SheetCtx }) {
   const c = ctx.sheet.core;
   const target = useSheetTarget(ctx.actor.id);
+  const token = useBoard((d) => (target.tokenId ? d.tokens.get(target.tokenId) : undefined));
+  const customs = new Map(
+    (token?.customMarkers ?? []).map((s) => {
+      const [id, label, color, glyph] = s.split("|") as [string, string, string, string];
+      return [id, { label, color, glyph }] as const;
+    }),
+  );
+  const markers = (token?.markers ?? []).filter((m) => m !== "concentrating");
+  const picker = () => useUi.getState().set({ statusPicker: target });
   // Through the conditions command (§8.11): what follows (concentration ending on Incapacitated) follows.
   const remove = (id: string) =>
     void changeStatus({ ...target, remove: [id] }).catch((e: Error) =>
       toast.danger("Couldn't remove it", e.message),
     );
+  const removable = (id: string, name: string) =>
+    ctx.canEdit ? (
+      <button
+        type="button"
+        aria-label={`Remove ${name}`}
+        onClick={() => remove(id)}
+        className="grid h-7 w-6 place-items-center text-paper-muted hover:text-wax pointer-coarse:h-[var(--touch-min)] pointer-coarse:w-[var(--touch-min)]"
+      >
+        <X size={12} />
+      </button>
+    ) : (
+      <span className="w-1" />
+    );
+  const opener = `${CHIP} pr-2 ${ctx.canEdit ? "hover:border-paper-ink" : ""}`;
   return (
     <div className="mt-2 flex flex-wrap items-center gap-1.5" data-testid="sheet-conditions">
       <span className="caps text-12 text-paper-muted">Conditions</span>
       {c.conditions.map((id) => (
-        <span
-          key={id}
-          title={statusSummary(id)}
-          className="inline-flex h-7 items-center gap-1 rounded-chip border border-parchment-edge bg-parchment-deep pl-0.5 text-13 text-paper-ink"
-        >
+        <span key={id} title={statusSummary(id)} className={CHIP}>
           <StatusIcon id={id} size={22} badge label="" />
           {statusName(id)}
-          {ctx.canEdit ? (
-            <button
-              type="button"
-              aria-label={`Remove ${statusName(id)}`}
-              onClick={() => remove(id)}
-              className="grid h-7 w-6 place-items-center text-paper-muted hover:text-wax pointer-coarse:h-[var(--touch-min)] pointer-coarse:w-[var(--touch-min)]"
-            >
-              <X size={12} />
-            </button>
-          ) : (
-            <span className="w-1" />
-          )}
+          {removable(id, statusName(id))}
         </span>
       ))}
+      {c.exhaustion > 0 ? (
+        <button
+          type="button"
+          disabled={!ctx.canEdit}
+          onClick={picker}
+          title={statusSummary("exhaustion")}
+          className={opener}
+          data-testid="sheet-exhaustion"
+        >
+          <StatusIcon id="exhaustion" size={22} badge label="" level={c.exhaustion} />
+          Exhaustion {c.exhaustion}
+        </button>
+      ) : null}
+      {c.concentration ? (
+        <button
+          type="button"
+          disabled={!ctx.canEdit}
+          onClick={picker}
+          title={statusSummary("concentrating")}
+          className={opener}
+        >
+          <StatusIcon id="concentrating" size={22} badge label="" />
+          Concentrating · {c.concentration}
+        </button>
+      ) : null}
+      {markers.map((id) => {
+        const custom = customs.get(id);
+        const name = custom?.label || statusName(id);
+        return (
+          <span key={id} title={custom ? undefined : statusSummary(id)} className={CHIP}>
+            <StatusIcon id={id} size={22} badge label="" glyph={custom?.glyph} color={custom?.color} />
+            {name}
+            {removable(id, name)}
+          </span>
+        );
+      })}
       {ctx.canEdit ? (
         <button
           type="button"
           aria-label="Add a condition"
-          onClick={() => useUi.getState().set({ statusPicker: target })}
+          onClick={picker}
           className="inline-flex h-7 min-h-[var(--touch-min)] items-center gap-1 rounded-chip border border-dashed border-paper-muted px-2 text-13 text-paper-muted hover:border-paper-ink hover:text-paper-ink"
         >
           <Plus size={13} aria-hidden />

@@ -8,6 +8,8 @@ import { provideTestHook } from "../test/hooks.ts";
 
 /** How long a number floats (ms). */
 const FLOAT_MS = 1300;
+/** The space between one hit's numbers (px), e.g. "−6" slashing and "−4" fire. */
+const NUMBER_GAP = 14;
 
 interface Floater {
   key: number;
@@ -16,8 +18,8 @@ interface Floater {
   /** A colour token: the damage type's, healing's verdigris, temp HP's ice. */
   color: string;
   at: number;
-  /** Sideways offset (px) so two numbers at once don't sit on each other. */
-  dx: number;
+  /** One HP change's numbers share a group: laid out side by side, centred, by their measured widths. */
+  group: number;
 }
 
 /** The numbers an HP change shows: each damage type in its colour (largest first), healing with a "+", temp HP. */
@@ -52,14 +54,14 @@ export function HpNumbers() {
     () =>
       hpFx.on((f) => {
         const now = performance.now();
-        const nums = numbersOf(f);
-        const add = nums.map((n, i) => ({
+        const group = ++seq;
+        const add = numbersOf(f).map((n, i) => ({
           key: ++seq,
           tokenId: f.tokenId,
           text: n.text,
           color: n.color,
           at: now + i * 110,
-          dx: (i - (nums.length - 1) / 2) * 30,
+          group,
         }));
         if (add.length) setFloaters((fs) => [...fs, ...add]);
         if (__GLOAM_TEST__)
@@ -75,6 +77,19 @@ export function HpNumbers() {
     const tick = () => {
       const now = performance.now();
       let done = false;
+      // Each group's numbers in a row: every number's centre offset from the row's centre.
+      const dx = new Map<number, number>();
+      const rows = new Map<number, Floater[]>();
+      for (const f of floaters) rows.set(f.group, [...(rows.get(f.group) ?? []), f]);
+      for (const row of rows.values()) {
+        const widths = row.map((f) => els.current.get(f.key)?.offsetWidth ?? 0);
+        let x = -(widths.reduce((a, b) => a + b, 0) + NUMBER_GAP * (row.length - 1)) / 2;
+        row.forEach((f, i) => {
+          const w = widths[i] as number;
+          dx.set(f.key, x + w / 2);
+          x += w + NUMBER_GAP;
+        });
+      }
       for (const f of floaters) {
         const el = els.current.get(f.key);
         if (!el) continue;
@@ -91,12 +106,18 @@ export function HpNumbers() {
           el.style.opacity = "0";
           continue;
         }
-        const x = (anchor.x0 + anchor.x1) / 2 + f.dx;
+        const x = (anchor.x0 + anchor.x1) / 2 + (dx.get(f.key) ?? 0);
         const rise = reduced ? 0 : 42 * (1 - (1 - t) ** 2);
         el.style.transform = `translate(${x}px, ${anchor.y0 - 8 - rise}px) translate(-50%, -100%)`;
         el.style.opacity = String(t < 0.7 ? 1 : 1 - (t - 0.7) / 0.3);
       }
-      if (done) setFloaters((fs) => fs.filter((f) => now - f.at <= FLOAT_MS));
+      // A hit's numbers go together (so the last one doesn't jump as the row re-centres).
+      if (done)
+        setFloaters((fs) => {
+          const live = new Set(fs.filter((f) => now - f.at <= FLOAT_MS).map((f) => f.group));
+          const next = fs.filter((f) => live.has(f.group));
+          return next.length === fs.length ? fs : next;
+        });
       raf = requestAnimationFrame(tick);
     };
     tick();

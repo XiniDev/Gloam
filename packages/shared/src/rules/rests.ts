@@ -55,7 +55,7 @@ function hitDiceBack(sheet: Sheet, pack: RulesPack): { die: string; back: number
 /** What a rest would give this character now. */
 export function restPlan(sheet: Sheet, status: TokenStatusT, kind: RestKind, pack: RulesPack): RestPlan {
   const c = sheet.core;
-  if (c.hp.current < 1) return { blocked: "At 0 HP — it needs at least 1 HP to rest", items: [] };
+  if (c.hp.current < 1) return { blocked: "At 0 HP — a creature needs at least 1 HP to rest", items: [] };
   const items: RestItem[] = [];
   const features = c.features.filter((f) => f.uses && f.uses.used > 0 && rechargesOn(f.uses.recharge, kind));
   if (kind === "long") {

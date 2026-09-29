@@ -1,5 +1,6 @@
 import { type IconCategory, STATUS_ICONS, type StatusIconSource } from "@gloam/shared/icons";
 import { useId } from "react";
+import { glyphInk } from "./badgeInk.ts";
 
 const BY_ID = new Map<string, StatusIconSource>(STATUS_ICONS.map((i) => [i.id, i]));
 
@@ -24,10 +25,13 @@ export function StatusIcon({
   className = "",
   glyph: glyphId,
   color,
+  level,
 }: {
   id: string;
   size?: number;
   badge?: boolean;
+  /** Exhaustion's level: its digit in a notch over the badge's corner (Appendix G), reaching past it at 12 px. */
+  level?: number | undefined;
   /** A DM's custom marker: the icon it borrows and its own badge colour. */
   glyph?: string | undefined;
   color?: string | undefined;
@@ -46,17 +50,41 @@ export function StatusIcon({
       `width="${glyph}" height="${glyph}" aria-hidden="true" focusable="false"`,
     );
   const name = label ?? (id.startsWith("custom:") ? id.slice(7).replaceAll("-", " ") : src.name);
-  const cls = `inline-grid shrink-0 place-items-center ${badge ? "rounded-chip text-bone" : ""} ${className}`;
+  const notched = badge && level !== undefined && level > 0;
+  const cls = `inline-grid shrink-0 place-items-center ${badge ? "rounded-chip text-bone" : ""} ${notched ? "relative mr-1" : ""} ${className}`;
+  const notch = notched ? (
+    <span
+      aria-hidden
+      data-level={level}
+      className="tabular absolute -bottom-1 -right-1 grid h-[14px] min-w-3 place-items-center rounded-chip bg-ink-950 text-12 leading-none text-bone"
+    >
+      {level}
+    </span>
+  ) : null;
+  // A custom colour's glyph takes whichever ink reads on it (bone on a light badge is ~1.2:1).
   const style = badge
-    ? { width: size, height: size, background: color || badgeColour(src.category) }
+    ? {
+        width: size,
+        height: size,
+        background: color || badgeColour(src.category),
+        ...(color && glyphInk(color) === "ink" ? { color: "var(--ink-950)" } : {}),
+      }
     : { width: size, height: size };
   return name ? (
-    <span role="img" aria-label={name} data-icon={src.id} className={cls} style={style}>
+    <span
+      role="img"
+      aria-label={notched ? `${name} ${level}` : name}
+      data-icon={src.id}
+      className={cls}
+      style={style}
+    >
       <Glyph svg={svg} />
+      {notch}
     </span>
   ) : (
     <span aria-hidden data-icon={src.id} className={cls} style={style}>
       <Glyph svg={svg} />
+      {notch}
     </span>
   );
 }
