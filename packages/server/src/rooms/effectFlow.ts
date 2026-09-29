@@ -269,6 +269,18 @@ export class EffectFlow {
         if (stretches > 0) this.fire(fx, "per5ft", [t.id], stretches);
       }
     }
+    // A light or darkness it carries (an emanation from it) meets whatever light or darkness it walked into.
+    for (const fx of model.inScene("effect", t.sceneId))
+      if (
+        fx.shape.kind === "emanation" &&
+        fx.shape.sourceTokenId === t.id &&
+        (fx.props.light || fx.props.magicalDarkness)
+      )
+        try {
+          this.host.bus().execute("effect.recheck", { effectId: fx.id }, SYSTEM_ACTOR);
+        } catch (err) {
+          roomCtx().log.error({ err, effect: fx.id }, "an effect's light check failed");
+        }
     // Its own emanations came along: whoever they reached on the way that they didn't reach where it set out — every
     // creature it passed, not only those by where it stopped (SRD p. 164: "whenever the Emanation enters a creature's
     // space"). The path in 1-ft steps.

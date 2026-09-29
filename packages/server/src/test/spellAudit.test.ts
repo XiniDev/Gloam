@@ -285,4 +285,117 @@ describe("P9 — the rules audit's fixes on the card", () => {
     await cmd(dm, "effect.remove", { effectId: sil.effectId });
     await place(sera, { x: 10, y: 20 });
   });
+
+  it("I10: light and darkness both ways — a Light cast into a Darkness goes; a Darkness cast into a Daylight goes; a Light carried into a Darkness goes", async () => {
+    await fresh();
+    const effect = (id: string | null) => (id ? room().model.get("effect", id) : undefined);
+    const dark = await cmd<{ effectId: string }>(dm, "spell.cast", {
+      casterTokenId: mage,
+      spellId: "darkness",
+      mode: "free",
+      level: 2,
+      placement: { origin: { x: 45, y: 10, z: 0 }, dirDeg: 0 },
+      endConcentration: true,
+    });
+    expect(effect(dark.effectId)).toBeTruthy();
+    // A Light on a stone put down inside it: dispelled as it comes.
+    const lit = await cmd<{ effectId: string | null }>(dm, "spell.cast", {
+      casterTokenId: ogre,
+      spellId: "light",
+      placement: { origin: { x: 45, y: 12, z: 0 }, dirDeg: 0 },
+    });
+    expect(lit.effectId).toBeNull();
+    await cmd(dm, "effect.remove", { effectId: dark.effectId });
+    // A Daylight standing: a Darkness cast into it goes (3rd level or lower).
+    const day = await cmd<{ effectId: string }>(dm, "spell.cast", {
+      casterTokenId: mage,
+      spellId: "daylight",
+      mode: "free",
+      level: 3,
+      placement: { origin: { x: 45, y: 10, z: 0 }, dirDeg: 0 },
+      endConcentration: true,
+    });
+    const dk2 = await cmd<{ effectId: string | null }>(dm, "spell.cast", {
+      casterTokenId: ogre,
+      spellId: "darkness",
+      mode: "free",
+      level: 2,
+      placement: { origin: { x: 50, y: 20, z: 0 }, dirDeg: 0 },
+      endConcentration: true,
+    });
+    expect(dk2.effectId).toBeNull();
+    expect(effect(day.effectId)).toBeTruthy();
+    await cmd(dm, "effect.remove", { effectId: day.effectId });
+    // Carried: in a long hall (a Light reaches 40 ft, so they start well apart), a lamp-bearer walks toward a
+    // Darkness — once its light reaches the dark, the Light goes.
+    const hall = (
+      await cmd<{ sceneId: string }>(dm, "scene.create", {
+        name: "Long hall",
+        mapKind: "procedural",
+        floorStyle: "stone",
+        widthFt: 140,
+        heightFt: 40,
+      })
+    ).sceneId;
+    await cmd(dm, "scene.activate", { sceneId: hall });
+    const tok = async (name: string, pos: { x: number; y: number }) =>
+      (await cmd<{ tokenId: string }>(dm, "token.create", { sceneId: hall, name, pos })).tokenId;
+    const bearer = await tok("Lamp-bearer", { x: 5, y: 20 });
+    const shade = await tok("Shade", { x: 130, y: 20 });
+    const lamp = await cmd<{ effectId: string }>(dm, "spell.cast", {
+      casterTokenId: bearer,
+      spellId: "light",
+      placement: { origin: { x: 5, y: 20, z: 0 }, dirDeg: 0, attachTo: bearer },
+    });
+    const gloom = await cmd<{ effectId: string }>(dm, "spell.cast", {
+      casterTokenId: shade,
+      spellId: "darkness",
+      mode: "free",
+      level: 2,
+      placement: { origin: { x: 120, y: 20, z: 0 }, dirDeg: 0 },
+    });
+    expect(effect(lamp.effectId)).toBeTruthy();
+    await cmd(dm, "move.commit", {
+      tokenId: bearer,
+      points: [
+        { x: 5, y: 20 },
+        { x: 70, y: 20 },
+      ],
+    });
+    await waitFor(() => !effect(lamp.effectId));
+    expect(effect(gloom.effectId)).toBeTruthy();
+    await cmd(dm, "scene.activate", { sceneId });
+  });
+
+  it("m7 / m13: a save not rolled when the DM applies counts as failed for its conditions too; an attack counts the target's cover (half: +2)", async () => {
+    await fresh();
+    await place(sera, { x: 10, y: 20 });
+    await place(ogre, { x: 30, y: 30 });
+    const hp = await cmd<{ castId: string }>(dm, "spell.cast", {
+      casterTokenId: mage,
+      spellId: "hold-person",
+      mode: "free",
+      level: 2,
+      targets: [ogre],
+      endConcentration: true,
+    });
+    await cmd(dm, "cast.apply", { castId: hp.castId });
+    await waitFor(() => statusOf(ogre).status.conditions.some((c) => c.id === "paralyzed"));
+    await cmd(dm, "status.change", { tokenId: ogre, remove: ["paralyzed"] });
+    // The ogre stands between the Mage and Sera: half cover. Sera's AC is 10: an 11 misses her (it needs 12).
+    await place(ogre, { x: 25, y: 20 });
+    const fb = await cmd<{ castId: string }>(dm, "spell.cast", {
+      casterTokenId: mage,
+      spellId: "fire-bolt",
+      mode: "slot",
+      targets: [sera],
+    });
+    const row = room().model.get("cast", fb.castId)?.data.targets[0];
+    expect(row?.cover).toBe("half");
+    expect(statusOf(sera).stats.ac).toBe(10);
+    await cmd(dm, "cast.roll", { castId: fb.castId, what: "attack", targetId: sera, entered: 11 });
+    expect(room().model.get("cast", fb.castId)?.data.targets[0]?.attack?.hit).toBe(false);
+    await closeAll();
+    await place(ogre, { x: 30, y: 30 });
+  });
 });

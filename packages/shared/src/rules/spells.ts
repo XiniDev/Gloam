@@ -312,7 +312,9 @@ export function saveOutcome(
   success: boolean | null,
 ): "full" | "half" | "none" {
   if (success !== true) return "full";
-  return onSuccess === "half" ? "half" : "none";
+  // "special": the save is for something else (Heat Metal's dropping the object, Searing Smite's burning) — the
+  // damage stands either way (rules audit m1).
+  return onSuccess === "half" ? "half" : onSuccess === "special" ? "full" : "none";
 }
 
 /** The VFX preset (§24.5): the spell's own, else from its first damage type, healing, or arcane. */

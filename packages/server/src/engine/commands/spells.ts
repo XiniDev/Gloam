@@ -8,6 +8,7 @@ import {
   contains,
   coverHint,
   dirOf,
+  type Footprint,
   footprint,
   footprintsOverlap,
   overlaps,
@@ -30,6 +31,7 @@ import {
   EffectRemove,
   EffectUpdate,
   GloamError,
+  Id,
   SpellCast,
 } from "@gloam/shared/protocol";
 import {
@@ -461,7 +463,8 @@ function areaTargets(
     barriers,
     { coverage, sourceId: opts.sourceId, includeSource: opts.includeSource },
   );
-  const origin = originPoint(ctx, sh);
+  // Cover is measured from the area's origin — a wall has none (its first point means nothing; rules audit m9).
+  const origin = sh.kind === "wall" ? null : originPoint(ctx, sh);
   const out: CastTargetData[] = [];
   for (const w of who) {
     if (!w.affected && !w.blocked) continue;
@@ -720,23 +723,70 @@ function makeEffect(
  * Light and darkness undo each other (SRD 5.2.1 p. 122): Daylight dispels any spell Darkness of level 3 or lower its
  * area overlaps; Darkness dispels spell light of level 2 or lower it overlaps. The dispelled effects, as delete ops.
  */
-function dispelOps(ctx: CommandCtx, e: EffectEntity): Op[] {
-  const mine = effectArea(ctx, e);
-  if (!mine) return [];
-  const daylight = e.props.light?.pierceDarkness === true && e.props.light.bright > 0;
-  const darkness = e.props.magicalDarkness === true;
-  if (!daylight && !darkness) return [];
-  const ops: Op[] = [];
-  const f = footprint(mine);
+/**
+ * Light and darkness meeting (SRD p. 122, both spells' texts; rules audit I10), whichever came last: a Darkness
+ * overlapping the light of a spell of level 2 or lower dispels that spell; a Daylight overlapping a Darkness of level
+ * 3 or lower dispels the Darkness. So a Darkness cast (or moved) into a Daylight of 3rd level or lower goes itself, and
+ * a light of 2nd level or lower cast, moved or carried into a Darkness goes itself. A light's area is where it
+ * shines (bright and dim, from its source's edge), not its body. `e` is the effect as it now is (created or moved);
+ * `self`: whether it is dispelled itself.
+ */
+function dispelOps(ctx: CommandCtx, e: EffectEntity): Op[] & { self?: boolean } {
+  const ops: Op[] & { self?: boolean } = [];
+  const lvl = (x: EffectEntity) => (x.source.kind === "spell" ? (x.source.slot ?? 0) : 99);
+  const isDaylight = (x: EffectEntity) => x.props.light?.pierceDarkness === true && x.props.light.bright > 0;
+  const isDark = (x: EffectEntity) => x.props.magicalDarkness === true;
+  const isLight = (x: EffectEntity) => Boolean(x.props.light);
+  const mineDark = isDark(e) ? darkArea(ctx, e) : null;
+  const mineLit = isLight(e) ? litArea(ctx, e) : null;
+  if (!mineDark && !mineLit) return ops;
   for (const o of ctx.model.inScene("effect", e.sceneId)) {
     if (o.id === e.id || o.source.kind !== "spell") continue;
-    const lvl = o.source.slot ?? 0;
-    const hit = daylight ? o.props.magicalDarkness === true && lvl <= 3 : Boolean(o.props.light) && lvl <= 2;
-    if (!hit) continue;
-    const other = effectArea(ctx, o);
-    if (other && footprintsOverlap(f, footprint(other))) ops.push(...endEffectOps(ctx, o));
+    // This darkness meets that light.
+    if (mineDark && isLight(o)) {
+      const lit = litArea(ctx, o);
+      if (lit && footprintsOverlap(mineDark, lit)) {
+        if (lvl(o) <= 2) ops.push(...endEffectOps(ctx, o));
+        // A Daylight (3rd) standing there dispels a Darkness of 3rd level or lower coming into it.
+        else if (isDaylight(o) && lvl(e) <= 3) ops.self = true;
+      }
+    }
+    // This light meets that darkness.
+    if (mineLit && isDark(o)) {
+      const dark = darkArea(ctx, o);
+      if (dark && footprintsOverlap(mineLit, dark)) {
+        if (isDaylight(e) && lvl(o) <= 3) ops.push(...endEffectOps(ctx, o));
+        else if (lvl(e) <= 2) ops.self = true;
+      }
+    }
   }
   return ops;
+}
+
+/** A darkness effect's area on the map. */
+function darkArea(ctx: CommandCtx, e: EffectEntity): Footprint | null {
+  const a = effectArea(ctx, e);
+  return a ? footprint(a) : null;
+}
+
+/** Where an effect's light shines (bright and dim), as a disc round its centre — from its source's edge. */
+function litArea(ctx: CommandCtx, e: EffectEntity): Footprint | null {
+  const light = e.props.light;
+  const a = effectArea(ctx, e);
+  if (!light || !a) return null;
+  const f = footprint(a);
+  const c =
+    f.kind === "circle"
+      ? f.c
+      : f.kind === "poly"
+        ? {
+            x: f.points.reduce((s, p) => s + p.x, 0) / f.points.length,
+            y: f.points.reduce((s, p) => s + p.y, 0) / f.points.length,
+          }
+        : (f.points[0] ?? { x: 0, y: 0 });
+  const src = e.shape.kind === "emanation" ? ctx.model.get("token", e.shape.sourceTokenId) : undefined;
+  const base = src ? src.sizeFt / 2 : e.props.bodyFt ? e.props.bodyFt / 2 : 0;
+  return { kind: "circle", c, r: base + light.bright + light.dim };
 }
 
 /**
@@ -1122,7 +1172,15 @@ export const spellCast: CommandDef<
         if (effect) effects.push(effect);
       }
     }
-    for (const e of effects) ops.push(...dispelOps(ctx, e), createOp("effect", e));
+    const dispelled = new Set<string>();
+    for (const e of effects) {
+      const d = dispelOps(ctx, e);
+      ops.push(...d);
+      // Cast into what dispels it (a Light into a Darkness): the slot is spent, nothing stays.
+      if (d.self) dispelled.add(e.id);
+      else ops.push(createOp("effect", e));
+    }
+    if (effect && dispelled.has(effect.id)) effect = null;
 
     // The caster: its slot, its concentration (the old one's effects go after this commit — concentration.cleanup).
     const concentration = spell.duration.concentration
@@ -1580,7 +1638,8 @@ export function rowInstances(
 /** The conditions a row's hit (or failed save) lands (the DM's choice, else the spell's). */
 export function conditionsFor(c: CastData, t: CastTargetData): ConditionId[] {
   if (t.conditions) return t.conditions;
-  const failed = c.save ? (t.save?.autoFail ? true : t.save?.success === false) : true;
+  // A save not rolled when the DM applies counts as failed — for the conditions as for the damage (rules audit m7).
+  const failed = c.save ? (t.save?.autoFail ? true : t.save?.success !== true) : true;
   const hit = c.attack ? t.attack?.hit === true : true;
   return c.conditions.filter((x) => (x.onFailedSave ? failed && hit : hit)).map((x) => x.id);
 }
@@ -2121,7 +2180,10 @@ export const effectMove: CommandDef<z.infer<typeof EffectMove>, { ok: true }> = 
         }
       : undefined;
     const ops = setOps("effect", e, used ? { shape, used } : { shape });
-    ops.push(...dispelOps(ctx, { ...e, shape }));
+    const d = dispelOps(ctx, { ...e, shape });
+    ops.push(...d);
+    // Moved into what dispels it: it goes.
+    if (d.self) ops.push(...endEffectOps(ctx, e));
     return {
       ops,
       summary: ram ? `${e.name} rolled into ${ram.name}` : `${e.name} moved`,
@@ -2378,7 +2440,8 @@ function triggerCard(
   const origin = from0 ?? effectAt(e);
   const barriers = barriersOf(ctx, e.sceneId);
   const all = ctx.model.inScene("token", e.sceneId);
-  const from = origin ?? (casterTok ? casterTok.pos : null);
+  // (A wall's trigger has no point to measure cover from.)
+  const from = e.shape.kind === "wall" && !from0 ? null : (origin ?? (casterTok ? casterTok.pos : null));
   const targets = tokens.map((t) => {
     const row = targetRow(ctx, t, from, barriers, all, "in");
     return trig.save
@@ -2525,6 +2588,33 @@ export const effectAct: CommandDef<z.infer<typeof EffectAct>, { castId: string |
   },
 };
 
+export const EffectRecheck = z.strictObject({ effectId: Id });
+/**
+ * `effect.recheck` (internal): a lasting light or darkness carried by a creature, where the creature now stands
+ * (rules audit I10: a Light carried into a Darkness goes; a Darkness carried into a light of 2nd level or lower
+ * dispels it).
+ */
+export const effectRecheck: CommandDef<z.infer<typeof EffectRecheck>, { ok: true }> = {
+  type: "effect.recheck",
+  schema: EffectRecheck,
+  undoable: false,
+  internal: true,
+  authorize(ctx, p) {
+    mustGet(ctx, "effect", p.effectId);
+  },
+  plan(ctx, p) {
+    const e = mustGet(ctx, "effect", p.effectId);
+    const d = dispelOps(ctx, e);
+    const ops: Op[] = [...d, ...(d.self ? endEffectOps(ctx, e) : [])];
+    return {
+      ops,
+      summary: ops.length ? `${e.name}: light and darkness met` : "",
+      sceneId: e.sceneId,
+      result: { ok: true },
+    };
+  },
+};
+
 export const SPELL_COMMANDS = [
   spellCast,
   attackStart,
@@ -2542,4 +2632,5 @@ export const SPELL_COMMANDS = [
   concentrationCleanup,
   castTrigger,
   effectAct,
+  effectRecheck,
 ] as unknown as CommandDef<never, unknown>[];

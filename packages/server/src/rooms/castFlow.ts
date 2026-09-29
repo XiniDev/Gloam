@@ -538,8 +538,11 @@ export class CastFlow {
     const c = this.cast(r.purpose.castId);
     if (c?.status !== "open") return;
     const autoFail = (t.autoFail?.length ?? 0) > 0;
-    const success = autoFail ? false : r.dc !== undefined ? res.total >= r.dc : null;
-    const pc = c.data.targets.find((x) => x.id === t.id)?.pc ?? false;
+    const row = c.data.targets.find((x) => x.id === t.id);
+    // Cover adds to a Dexterity save (§17.5; rules audit m13) — the card's hint, the DM's to overturn.
+    const cover = c.data.save?.ability === "dex" && row ? (COVER_BONUS[row.cover] ?? 0) : 0;
+    const success = autoFail ? false : r.dc !== undefined ? res.total + cover >= r.dc : null;
+    const pc = row?.pc ?? false;
     this.host.bus().execute(
       "cast.record",
       {
@@ -642,7 +645,10 @@ export class CastFlow {
           : this.host.roll(actor.userId, { formula, ...where });
       const natural = p.entered !== undefined ? null : (roll.natural ?? null);
       const target = holderOf(this.ctx(), { tokenId: row.id });
-      const hit = natural === 20 ? true : natural === 1 ? false : roll.total >= target.stats.ac;
+      // Against its AC and its cover (the card's hint: +2 half, +5 three-quarters; rules audit m13) — the DM can
+      // overturn the hit on the card.
+      const ac = target.stats.ac + (COVER_BONUS[row.cover] ?? 0);
+      const hit = natural === 20 ? true : natural === 1 ? false : roll.total >= ac;
       // A natural 20; or a hit that the target's state makes critical (a melee hit within 5 ft of the Paralyzed).
       const crit = natural === 20 || (hit && hints.critOnHit !== null);
       const entered = p.entered !== undefined || p.dice !== undefined;

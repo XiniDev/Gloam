@@ -102,6 +102,8 @@ describe("spells at the table (§8.13)", () => {
     expect(saveOutcome("half", false)).toBe("full");
     expect(saveOutcome("none", true)).toBe("none");
     expect(saveOutcome("half", null)).toBe("full");
+    // A "special" save is for something else (Heat Metal's grip, Searing Smite's burning): the damage stands.
+    expect(saveOutcome("special", true)).toBe("full");
   });
 
   it("the browser's filters (AC-SPL-02): level, school, class, casting time, concentration, ritual, damage type, save, shape, source, words", () => {
