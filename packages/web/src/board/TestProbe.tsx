@@ -5,10 +5,13 @@ import {
   Color,
   Mesh,
   type MeshStandardMaterial,
+  type Object3D,
   OrthographicCamera,
   PlaneGeometry,
+  Raycaster,
   Scene,
   SRGBColorSpace,
+  Vector2,
   Vector3,
   WebGLRenderTarget,
 } from "three";
@@ -211,6 +214,31 @@ export function TestProbe() {
     provideTestHook("project", (x: number, y: number, elevation?: number) =>
       boardApi.project(x, y, elevation ?? 0),
     );
+    // What a press at a screen point would hit, nearest first (its object's type, name and what it belongs to).
+    provideTestHook("pickAt", (sx: number, sy: number) => {
+      const cam = cameraRig.controls?.camera;
+      if (!cam) return [];
+      const r = gl.domElement.getBoundingClientRect();
+      const ray = new Raycaster();
+      ray.setFromCamera(
+        new Vector2(((sx - r.left) / r.width) * 2 - 1, -((sy - r.top) / r.height) * 2 + 1),
+        cam,
+      );
+      return ray
+        .intersectObjects(scene.children, true)
+        .slice(0, 12)
+        .map((h) => {
+          let owner = "";
+          for (let o: Object3D | null = h.object; o && !owner; o = o.parent)
+            owner = o.name || (o.userData.effectHandle ? `handle:${o.userData.effectHandle}` : "");
+          return {
+            type: h.object.type,
+            name: h.object.name,
+            owner,
+            distance: Math.round(h.distance * 10) / 10,
+          };
+        });
+    });
     provideTestHook("boardScene", () => {
       const e = useEntities.getState();
       return {

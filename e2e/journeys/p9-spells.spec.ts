@@ -706,6 +706,14 @@ test.describe("P9 — spells (SPL)", () => {
     });
     await expect.poll(async () => (await handle(cl.effectId))?.strike).toBe(5);
     const h = await handle(cl.effectId);
+    // Drawn and under the pointer (the board draws on demand: a handle's data comes before its frame).
+    await expect
+      .poll(async () =>
+        (await hook<{ owner: string }[]>(dave, "pickAt", h.sx, h.sy)).some(
+          (x) => x.owner === `handle:${cl.effectId}`,
+        ),
+      )
+      .toBe(true);
     await dave.mouse.click(h.sx, h.sy);
     const chip = dave.getByTestId("effect-chip");
     await expect(chip).toBeVisible();

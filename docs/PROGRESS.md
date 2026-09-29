@@ -458,3 +458,25 @@ P1 28/28 · P2 32/32 · P3 16/17 · P4 12/12 · P5 9/9 · P6 14/14 · P7 1/17 ·
   effect/concentration, attack/cover/card controls, saves/healing/handles, VFX and the 16 effects, builder/import).
 - ACs: SPL-02…13, VIS-06/07/08 — P9 16/16. PASSING 166/224. `pnpm check`: 558 tests.
 - Next: P9 key screens, the visual critic (≤ 2 rounds), the rules-auditor and security review; then P10.
+
+## 2026-09-29 — P9 reviews: security (4 HIGH, 7 MEDIUM, 9 LOW) and rules audit (1 BLOCKER, 13 IMPORTANT, 13 MINOR) — all fixed
+
+- Security: effects reach a player only where their area meets what they see or have explored, an unseen creature's
+  area as a per-viewer stand-in (no id, its centre to the foot), no token ids in public effect props (spared creatures
+  on the spared token for its controllers); `spell.cast` checks what it's put on, the scene in play, the area's size,
+  free casts; a cast's line only to those who perceive the caster, counting what each perceives; trigger cards name
+  only perceived creatures; effect moves by the turn, in range with a clear line; Call Lightning once a turn; the
+  import route gated (admitted DM at this sitting, before its 4 MB body is read); card attacks entered by their d20;
+  roll labels without names; familiars save on their player's card; bounded proposals and cards; homebrew as
+  patches; proposals hold no id; DM-only homebrew; a DM-hidden Silence stays hidden.
+- Rules: every attack, ray and dart is its own damage (death saves, massive damage, Concentration saves); attack hints
+  from both creatures (and Exhaustion), crits within 5 ft of the Paralyzed, the DM's crit, "max plus a roll"; cover
+  counted in hits and Dex saves; incapacitating conditions end Concentration; trigger conditions end with their
+  spell; Thunder does nothing in Silence; Light and Darkness dispel both ways; choice, staged and judged conditions;
+  next-turn durations; round 3D spheres and emanations; Ice Knife's burst; Light cast from the table; Spirit
+  Guardians' designated creatures; the entered damage split by type; rituals at their level.
+- VFX: floor pieces follow cones, lines, cubes and walls; Flaming Sphere a burning orb; Wall of Fire as tall as the
+  wall, panes for the others; soft clouds; the DM's darkness thinner.
+- Tests: spellSecurity (16), spellAudit (10), presets (7), homebrew (+2), conditions/aoe/spellRules units.
+  `pnpm check`: 597 tests.
+- Next: the P9 journeys and key screens again, the visual critic (≤ 2 rounds); then P10.

@@ -392,6 +392,14 @@ test("P9 key screens", async ({ admin, browser, gloam, guardLog }, info) => {
       .poll(async () => (await hook<H[]>(dave, "effectHandles")).some((h) => h.id === r.effectId))
       .toBe(true);
     const h = (await hook<H[]>(dave, "effectHandles")).find((x) => x.id === r.effectId) as H;
+    // Drawn and under the pointer (a handle's data comes before the frame that draws it).
+    await expect
+      .poll(async () =>
+        (await hook<{ owner: string }[]>(dave, "pickAt", h.sx, h.sy)).some(
+          (x) => x.owner === `handle:${r.effectId}`,
+        ),
+      )
+      .toBe(true);
     await dave.mouse.click(h.sx, h.sy);
     await dave.getByTestId("effect-chip").getByRole("button", { name: "Strike again" }).click();
     const bolt = await screen(dave, 55, 30, 0);
