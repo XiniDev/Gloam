@@ -346,5 +346,11 @@ export interface EffectEntity {
     maxFt?: Ft;
     drift?: { ft: Ft; direction: "awayFromCaster" | "chosen" };
   } | null;
+  /**
+   * What its caster has done with it on the turn under way (in combat; `turn` = "combat:round:index"): the feet it
+   * moved (Moonbeam's 60, Flaming Sphere's 30 a turn), whether it stopped (Flaming Sphere after ramming a creature),
+   * whether its action was taken again (Call Lightning's bolt).
+   */
+  used?: { turn: string; movedFt: number; stopped?: boolean; acted?: boolean };
   createdAt: number;
 }

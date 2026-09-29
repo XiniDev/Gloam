@@ -71,17 +71,17 @@
   "overlays": {
     "spell-areas.json": "fc70a2c308850b7a1442b1c2b05da577ffc71f1738380dccc034d5560d61fa8d",
     "spell-light.json": "578cd8427ebb8929f8a0eff7094a222b32faf08b321dad14e508ea1ce57755cf",
-    "spell-effects.json": "1e55fa1cd30c20d0e25ed4c33ccbd2e48a308b598d64c287a68231cf2f34bba4",
+    "spell-effects.json": "81a519562fc2fa3f546dc09cc53e00f63ed8ec7480d756e55e29b29e58685fed",
     "spell-mechanics.json": "27773d2b8d72a71e58edd8492f51871a03c8b5c3d154654a4c55090bb46e5f58",
     "spell-vfx.json": "c991961179ac8c2dde0c7ad3161a4212f894b2e4a89edd7fb422641d7ad07451",
     "hyphenation.json": "60912c3a92a35a90bf29360b2f4998ad995ed0459eb7532d2843dbc1f2f3555e",
     "light-sources.json": "5de113cd5a42093d2d8867639d96887e380b4e6070e6955d0b7a2982429da906"
   },
   "files": {
-    "spells.json": "85ad3d0a214d58f094f49e7780b9f1e12a4c42bfeeed9bd8df8193f8c9f046ee",
+    "spells.json": "21bf043331d249a58653b3e3a5deb876bcfd92872d58184dbd0cb197efb0a4a6",
     "light-sources.json": "79db4aff7081d31180decdf8b844c0a72356e9a283d6b7db285cbb83113e86de",
     "conditions.json": "60fd1f139d491a3cd36a3b75389ecf0c63b629923b8723dea7d41f3a3f440df3",
     "ATTRIBUTION.md": "954b70ff01688c53fbaf11bca9aaab8e26eaaa2ac23fc80b18c4b7678485098b"
   },
-  "generatedAt": "2026-09-29T09:15:51.100Z"
+  "generatedAt": "2026-09-29T11:58:07.558Z"
 }

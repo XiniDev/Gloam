@@ -1,4 +1,4 @@
-import { areaPolygon, resolveArea } from "@gloam/shared/aoe";
+import { areaPolygon, resolveViewArea } from "@gloam/shared/aoe";
 import type { P } from "@gloam/shared/geometry";
 import { buildMoveWorld, type MoveWorld, navFor, type WorldZoneShape } from "@gloam/shared/movement";
 import type { AreaShape as StoredShape } from "@gloam/shared/schemas";
@@ -23,7 +23,7 @@ let cached: {
 
 interface EffectGround {
   id: string;
-  props: { difficult?: boolean; speedHalved?: boolean; exempt?: string[]; opaque?: boolean };
+  props: { difficult?: boolean; speedHalved?: boolean; opaque?: boolean };
   shape: StoredShape;
 }
 
@@ -38,11 +38,14 @@ function groundOf(e: EffectView): EffectGround | null {
   }
 }
 
-function bodyOf(tokens: Map<string, TokenView>) {
-  return (id: string) => {
-    const t = tokens.get(id);
-    return t ? { pos: t.pos, r: t.sizeFt / 2, z: t.elevation, height: Math.max(t.sizeFt, 2.5) } : null;
-  };
+/** The effects a creature is spared (Spirit Guardians' designated creatures): on its token, for its controllers. */
+function sparedBy(t: TokenView | undefined): Set<string> {
+  try {
+    const ids = JSON.parse(t?.own?.spared || "[]") as unknown;
+    return new Set(Array.isArray(ids) ? ids.filter((x): x is string => typeof x === "string") : []);
+  } catch {
+    return new Set();
+  }
 }
 
 export function clientMoveWorld(
@@ -51,13 +54,8 @@ export function clientMoveWorld(
   const d = boardData(useEntities.getState());
   if (!d.scene) return null;
   const ground = [...d.effects.values()].flatMap((e) => groundOf(e) ?? []);
-  // What the effects are, and where the creatures carrying emanations stand (their area moves with them).
-  const fx = ground
-    .map((g) => {
-      const src = g.shape.kind === "emanation" ? d.tokens.get(g.shape.sourceTokenId) : null;
-      return `${g.id}:${JSON.stringify(g.shape)}:${JSON.stringify(g.props)}:${src ? `${src.pos.x},${src.pos.y}` : ""}`;
-    })
-    .join("|");
+  // What the effects are and where (an emanation's shape carries where its creature stands: it moves with it).
+  const fx = ground.map((g) => `${g.id}:${JSON.stringify(g.shape)}:${JSON.stringify(g.props)}`).join("|");
   if (
     !cached ||
     cached.walls !== d.walls ||
@@ -66,17 +64,15 @@ export function clientMoveWorld(
     cached.effects !== fx
   )
     cached = { walls: d.walls, zones: d.zones, bounds: d.scene.boundsJson, effects: fx, byKind: new Map() };
+  // The effects this creature is spared (its controllers are told, on the token: the effect names no one, §13.4).
+  const spared = sparedBy(creature.id ? d.tokens.get(creature.id) : undefined);
   const slowing = ground.filter(
-    (g) =>
-      g.shape.kind !== "wall" &&
-      (g.props.difficult || g.props.speedHalved) &&
-      !(creature.id && g.props.exempt?.includes(creature.id)),
+    (g) => g.shape.kind !== "wall" && (g.props.difficult || g.props.speedHalved) && !spared.has(g.id),
   );
   // Creatures spared by the same effects share a world.
   const key = `${creature.swim ? "swim" : "walk"}|${slowing.map((g) => g.id).join(",")}`;
   let world = cached.byKind.get(key);
   if (!world) {
-    const body = bodyOf(d.tokens);
     const solid: { a: P; b: P; id: string }[] = [];
     for (const g of ground) {
       const sh = g.shape;
@@ -85,7 +81,8 @@ export function clientMoveWorld(
         solid.push({ a: sh.points[i] as P, b: sh.points[(i + 1) % sh.points.length] as P, id: g.id });
     }
     const slow = slowing.flatMap((g) => {
-      const area = resolveArea(g.shape, body);
+      // As sent (§13.4): an emanation where its creature stands, without naming it.
+      const area = resolveViewArea(g.shape);
       const poly = area ? areaPolygon(area, 48) : null;
       return poly ? [{ poly, difficult: !!g.props.difficult, halved: !!g.props.speedHalved }] : [];
     });

@@ -1,3 +1,4 @@
+import type { Footprint } from "@gloam/shared/aoe";
 import {
   AdditiveBlending,
   BufferAttribute,
@@ -6,10 +7,13 @@ import {
   Color,
   CylinderGeometry,
   DoubleSide,
+  FrontSide,
+  Group,
   IcosahedronGeometry,
   LineSegments,
   Mesh,
   NormalBlending,
+  PlaneGeometry,
   RingGeometry,
   ShaderMaterial,
 } from "three";
@@ -17,9 +21,11 @@ import { seeded } from "./particles.ts";
 
 /**
  * The VFX pieces that aren't particles (SPEC §24.5): shells (noise-displaced spheres that swell and thin out — a
- * fireball's heart, a force dome), floor rings (a shockwave, frost, a runic circle), pillars of light, fading decals (a
- * scorch, a puddle, a web's strands, thorns), and forked bolts (midpoint displacement). Each is one mesh with its own
- * small shader, driven by `uTime` (s since it began) and `uLife`; `uLoop` for a lasting area's slow motion.
+ * fireball's heart, a force dome), a burning orb (Flaming Sphere) and the light it throws on the floor, floor rings (a
+ * shockwave, frost, a runic circle), pillars of light, fading decals (a scorch, a puddle, a web's strands, thorns, a
+ * mist), curtains (flames, or a pane: ice, stone, force) and forked bolts (midpoint displacement). Each is one mesh with
+ * its own small shader, driven by `uTime` (s since it began) and `uLife`; `uLoop` for a lasting area's slow motion.
+ * Floor pieces take an area's own footprint (`footprintGeometry`) — a cone, a line, a cube, a wall — not a disc round it.
  */
 
 const NOISE = /* glsl */ `
@@ -49,7 +55,7 @@ void main() {
 }`;
 const SHELL_FRAG = /* glsl */ `
 uniform float uTime; uniform float uLife; uniform vec3 uCore; uniform vec3 uGlow; uniform float uOpacity; uniform float uLoop;
-uniform float uFacet;
+uniform float uFacet; uniform float uSoft;
 varying float vFres; varying float vN;
 void main() {
   float u = uLoop > 0.5 ? 0.5 : clamp(uTime / uLife, 0.0, 1.0);
@@ -57,7 +63,10 @@ void main() {
   // A force shell's facets (a hex-ish lattice from the noise's steps), a fireball's heart hotter at the middle.
   float lattice = uFacet > 0.5 ? step(0.82, fract(vN * 9.0)) * 0.8 : 0.0;
   vec3 col = mix(uCore, uGlow, clamp(vFres + u * 0.6, 0.0, 1.0));
-  float a = (mix(0.35, 1.0, vFres) + lattice) * fade * uOpacity;
+  // A shell's rim is its densest (a bubble of force, a fireball's skin); a cloud's is its thinnest — dense in the
+  // middle, thinning to nothing at its edge, never a glassy outline.
+  float body = uSoft > 0.5 ? (1.0 - smoothstep(0.3, 1.0, vFres)) * (0.8 + 0.4 * (vN - 0.5)) : mix(0.35, 1.0, vFres);
+  float a = (body + lattice) * fade * uOpacity;
   gl_FragColor = vec4(col, a);
   #include <colorspace_fragment>
 }`;
@@ -72,6 +81,8 @@ export function shell(o: {
   facet?: boolean;
   loop?: boolean;
   additive?: boolean;
+  /** A cloud: dense in the middle, fading to nothing at its rim (not a bubble's bright skin). */
+  soft?: boolean;
 }): Mesh {
   const mat = new ShaderMaterial({
     vertexShader: SHELL_VERT,
@@ -90,6 +101,7 @@ export function shell(o: {
       uOpacity: { value: o.opacity ?? 0.9 },
       uLoop: { value: o.loop ? 1 : 0 },
       uFacet: { value: o.facet ? 1 : 0 },
+      uSoft: { value: o.soft ? 1 : 0 },
     },
   });
   // Finer for a big one (a 20-ft cloud's outline showed its facets at detail 4).
@@ -153,12 +165,15 @@ export function floorRing(o: {
   runes?: boolean;
   loop?: boolean;
   width?: number;
+  /** The area's footprint (from `footprintGeometry`, about the ring's centre): the ring sweeps out inside it. */
+  geometry?: BufferGeometry;
 }): Mesh {
   const mat = new ShaderMaterial({
     vertexShader: RING_VERT,
     fragmentShader: RING_FRAG,
     transparent: true,
     depthWrite: false,
+    side: DoubleSide,
     blending: AdditiveBlending,
     uniforms: {
       uTime: { value: 0 },
@@ -172,7 +187,7 @@ export function floorRing(o: {
       uWidth: { value: o.width ?? 0.06 },
     },
   });
-  const m = new Mesh(new CircleGeometry(o.radius, 96), mat);
+  const m = new Mesh(o.geometry ?? new CircleGeometry(o.radius, 96), mat);
   m.rotation.x = -Math.PI / 2;
   m.position.y = 0.09;
   m.renderOrder = 10;
@@ -240,40 +255,50 @@ export function pillar(o: {
 
 // ── decals ───────────────────────────────────────────────────────────────────────────────────────────────
 
+const DECAL_VERT = /* glsl */ `
+attribute float edge;
+varying vec2 vP; varying float vEdge;
+void main() { vP = position.xy; vEdge = edge; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
 const DECAL_FRAG = /* glsl */ `
 uniform float uTime; uniform float uLife; uniform vec3 uCore; uniform vec3 uGlow; uniform float uOpacity; uniform float uLoop;
 uniform float uKind; uniform float uRadius;
-varying vec2 vUv; varying vec2 vP;
+varying vec2 vP; varying float vEdge;
 ${NOISE}
 void main() {
-  float r = length(vP) / uRadius;
+  // e: 0 in the footprint's middle, 1 on its edge (a disc's radius, a cone's, a wall's width: its shape, not a circle).
+  float e = clamp(1.0 - vEdge, 0.0, 1.0);
   float u = uLoop > 0.5 ? 0.0 : clamp(uTime / uLife, 0.0, 1.0);
   float fade = uLoop > 0.5 ? 1.0 : smoothstep(0.0, 0.05, u) * (1.0 - smoothstep(0.35, 1.0, u));
   float n = noise(vec3(vP * 0.6, 0.0)) * 0.6 + noise(vec3(vP * 1.7, 3.0)) * 0.4;
-  float edge = 1.0 - smoothstep(0.55 + n * 0.35, 1.0, r);
+  float edge = 1.0 - smoothstep(0.55 + n * 0.35, 1.0, e);
   float a; vec3 col;
   if (uKind < 0.5) {
     // A scorch: charred toward the middle, a glow of embers at its rim while it's fresh.
     a = edge * (0.55 + 0.35 * n);
-    col = mix(uCore, uGlow, smoothstep(0.6, 1.0, r) * (1.0 - u));
+    col = mix(uCore, uGlow, smoothstep(0.6, 1.0, e) * (1.0 - u));
   } else if (uKind < 1.5) {
     // A puddle (acid): bubbling spots on a slick.
     float spots = step(0.72, noise(vec3(vP * 2.5, uTime * 0.8)));
     a = edge * (0.45 + 0.4 * spots);
     col = mix(uGlow, uCore, spots);
   } else if (uKind < 2.5) {
-    // A web's strands: radial spokes and rings, a few broken.
+    // A web's strands: spokes from its middle and rings following its edge (a square web in a cube), a few broken.
     float ang = atan(vP.y, vP.x);
     float spokes = 1.0 - smoothstep(0.0, 0.06, abs(sin(ang * 8.0)));
-    float rings = 1.0 - smoothstep(0.0, 0.08, abs(sin(r * 26.0)));
+    float rings = 1.0 - smoothstep(0.0, 0.08, abs(sin(e * 26.0)));
     float broken = step(0.25, noise(vec3(vP * 1.1, 7.0)));
-    a = max(spokes, rings) * broken * step(r, 1.0) * 0.55;
+    a = max(spokes, rings) * broken * 0.55;
     col = uCore;
-  } else {
+  } else if (uKind < 3.5) {
     // Thorns: dark, jagged strokes scattered through it.
     float t = step(0.78, noise(vec3(vP * 3.3, 11.0))) + step(0.8, noise(vec3(vP.yx * 2.7, 5.0)));
-    a = clamp(t, 0.0, 1.0) * step(r, 1.0) * 0.7;
+    a = clamp(t, 0.0, 1.0) * (1.0 - smoothstep(0.85, 1.0, e)) * 0.7;
     col = mix(uGlow, uCore, n);
+  } else {
+    // A mist lying in it (a light haze over a cube or a line): slow, soft noise, thinning toward its edge.
+    float m = noise(vec3(vP * 0.22, uTime * 0.12)) * 0.6 + noise(vec3(vP * 0.6, uTime * 0.2 + 4.0)) * 0.4;
+    a = (1.0 - smoothstep(0.45, 1.0, e)) * (0.3 + 0.5 * m);
+    col = mix(uGlow, uCore, m);
   }
   a *= fade * uOpacity;
   if (a < 0.004) discard;
@@ -281,10 +306,10 @@ void main() {
   #include <colorspace_fragment>
 }`;
 
-export type DecalKind = "scorch" | "puddle" | "web" | "thorns";
-const DECAL_KIND: Record<DecalKind, number> = { scorch: 0, puddle: 1, web: 2, thorns: 3 };
+export type DecalKind = "scorch" | "puddle" | "web" | "thorns" | "mist";
+const DECAL_KIND: Record<DecalKind, number> = { scorch: 0, puddle: 1, web: 2, thorns: 3, mist: 4 };
 
-/** A decal on the floor: a disc (`radius`) or any flat shape given as its geometry. */
+/** A decal on the floor: a disc (`radius`) or an area's footprint (`footprintGeometry`, about where it's placed). */
 export function decal(o: {
   kind: DecalKind;
   radius: number;
@@ -296,10 +321,11 @@ export function decal(o: {
   geometry?: BufferGeometry;
 }): Mesh {
   const mat = new ShaderMaterial({
-    vertexShader: RING_VERT,
+    vertexShader: DECAL_VERT,
     fragmentShader: DECAL_FRAG,
     transparent: true,
     depthWrite: false,
+    side: DoubleSide,
     blending: NormalBlending,
     uniforms: {
       uTime: { value: 0 },
@@ -312,9 +338,223 @@ export function decal(o: {
       uRadius: { value: o.radius },
     },
   });
-  const m = new Mesh(o.geometry ?? new CircleGeometry(o.radius, 64), mat);
+  const m = new Mesh(
+    o.geometry ?? footprintGeometry({ kind: "circle", c: { x: 0, y: 0 }, r: o.radius }, { x: 0, y: 0 }),
+    mat,
+  );
   m.rotation.x = -Math.PI / 2;
   m.position.y = 0.075;
+  m.renderOrder = 9;
+  m.raycast = () => {};
+  return m;
+}
+
+// ── footprints ───────────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * An area's footprint as a flat mesh in a floor piece's plane (x, −y about `at`, where the piece is placed), with an
+ * `edge` attribute — 1 in its middle, 0 on its edge — so a scorch, a web, a mist or a sweeping ring follows a cone, a
+ * line, a cube or a wall as the rules draw it, not a disc round its centre. Discs and polygons (all convex) are fans
+ * from their middle; a wall's strip is a ribbon along its line, at least `minHalf` ft either side (burnt ground).
+ */
+export function footprintGeometry(f: Footprint, at: { x: number; y: number }, minHalf = 0): BufferGeometry {
+  const pos: number[] = [];
+  const edge: number[] = [];
+  const index: number[] = [];
+  const v = (x: number, y: number, e: number) => {
+    pos.push(x - at.x, -(y - at.y), 0);
+    edge.push(e);
+    return edge.length - 1;
+  };
+  if (f.kind === "strip") {
+    const closed = f.closed && f.points.length > 2;
+    const pts = closed ? [...f.points, f.points[0] as { x: number; y: number }] : f.points;
+    const n = pts.length;
+    const half = Math.max(f.halfWidth, minHalf);
+    for (let i = 0; i < n; i++) {
+      const p = pts[i] as { x: number; y: number };
+      // The line's direction here (a closed ring's ends wrap round to each other).
+      const q = pts[i < n - 1 ? i + 1 : closed ? 1 : i] as { x: number; y: number };
+      const r = pts[i > 0 ? i - 1 : closed ? n - 2 : i] as { x: number; y: number };
+      const dx = q.x - r.x;
+      const dy = q.y - r.y;
+      const len = Math.hypot(dx, dy) || 1;
+      const nx = -dy / len;
+      const ny = dx / len;
+      v(p.x + nx * half, p.y + ny * half, 0);
+      v(p.x, p.y, 1);
+      v(p.x - nx * half, p.y - ny * half, 0);
+      if (i < n - 1) {
+        const a = i * 3;
+        index.push(a, a + 3, a + 1, a + 1, a + 3, a + 4, a + 1, a + 4, a + 2, a + 2, a + 4, a + 5);
+      }
+    }
+  } else {
+    const rim =
+      f.kind === "circle"
+        ? Array.from({ length: 72 }, (_, i) => {
+            const a = (i / 72) * Math.PI * 2;
+            return { x: f.c.x + Math.cos(a) * f.r, y: f.c.y + Math.sin(a) * f.r };
+          })
+        : f.points;
+    const c =
+      f.kind === "circle"
+        ? f.c
+        : {
+            x: rim.reduce((s, p) => s + p.x, 0) / rim.length,
+            y: rim.reduce((s, p) => s + p.y, 0) / rim.length,
+          };
+    const mid = v(c.x, c.y, 1);
+    for (const p of rim) v(p.x, p.y, 0);
+    for (let i = 0; i < rim.length; i++) index.push(mid, mid + 1 + i, mid + 1 + ((i + 1) % rim.length));
+  }
+  const g = new BufferGeometry();
+  g.setAttribute("position", new BufferAttribute(new Float32Array(pos), 3));
+  g.setAttribute("edge", new BufferAttribute(new Float32Array(edge), 1));
+  g.setIndex(index);
+  g.computeBoundingSphere();
+  return g;
+}
+
+// ── a burning orb (Flaming Sphere) and the light it throws ───────────────────────────────────────────────
+
+const ORB_VERT = /* glsl */ `
+uniform float uTime; uniform float uRadius;
+varying float vFres; varying vec3 vObj;
+${NOISE}
+void main() {
+  float n = noise(normal * 3.0 + vec3(0.0, -uTime * 1.2, 0.0));
+  vec3 p = normal * uRadius * (1.0 + (n - 0.5) * 0.16);
+  vObj = normal;
+  vec4 mv = modelViewMatrix * vec4(p, 1.0);
+  vec3 nv = normalize(normalMatrix * normal);
+  vFres = 1.0 - abs(dot(nv, normalize(-mv.xyz)));
+  gl_Position = projectionMatrix * mv;
+}`;
+const ORB_FRAG = /* glsl */ `
+uniform float uTime; uniform vec3 uCore; uniform vec3 uGlow; uniform vec3 uEmber; uniform float uOpacity;
+varying float vFres; varying vec3 vObj;
+${NOISE}
+void main() {
+  // Flames crawling up over it (two octaves scrolled upward in its own space); hot at its heart, the side facing you,
+  // deepening to embers at its limb, the noise breaking the bands into tongues. Normal blending: a ball of fire, not a
+  // white bloom on a pale floor.
+  vec3 q = vObj * 2.4 + vec3(0.0, -uTime * 1.5, 0.0);
+  float n = noise(q) * 0.65 + noise(q * 2.3 + 5.0) * 0.35;
+  float heat = clamp(1.05 - vFres * 1.25 + (n - 0.5) * 0.7, 0.0, 1.0);
+  vec3 col = heat > 0.55 ? mix(uGlow, uCore, (heat - 0.55) / 0.45) : mix(uEmber, uGlow, heat / 0.55);
+  float a = (1.0 - smoothstep(0.72, 1.0, vFres + (0.5 - n) * 0.35)) * uOpacity;
+  if (a < 0.01) discard;
+  gl_FragColor = vec4(col, a);
+  #include <colorspace_fragment>
+}`;
+const HALO_VERT = /* glsl */ `
+uniform float uSize;
+varying vec2 vQ;
+void main() {
+  vQ = position.xy;
+  vec4 mv = modelViewMatrix * vec4(0.0, 0.0, 0.0, 1.0);
+  mv.xy += position.xy * uSize;
+  gl_Position = projectionMatrix * mv;
+}`;
+const HALO_FRAG = /* glsl */ `
+uniform float uTime; uniform vec3 uGlow; uniform float uOpacity;
+varying vec2 vQ;
+void main() {
+  float flick = 0.88 + 0.12 * sin(uTime * 7.3) * sin(uTime * 3.1 + 1.0);
+  float a = pow(max(0.0, 1.0 - length(vQ)), 2.2) * uOpacity * flick;
+  if (a < 0.004) discard;
+  gl_FragColor = vec4(uGlow, a);
+  #include <colorspace_fragment>
+}`;
+
+/** A burning ball `radius` ft (Flaming Sphere): the orb and, round it, the glow of its heat (a camera-facing halo). */
+export function orb(o: {
+  radius: number;
+  core: string;
+  glow: string;
+  ember: string;
+  opacity?: number;
+}): Group {
+  const g = new Group();
+  const ball = new Mesh(
+    new IcosahedronGeometry(1, 4),
+    new ShaderMaterial({
+      vertexShader: ORB_VERT,
+      fragmentShader: ORB_FRAG,
+      transparent: true,
+      depthWrite: false,
+      side: FrontSide,
+      blending: NormalBlending,
+      uniforms: {
+        uTime: { value: 0 },
+        uRadius: { value: o.radius },
+        uCore: { value: new Color(o.core) },
+        uGlow: { value: new Color(o.glow) },
+        uEmber: { value: new Color(o.ember) },
+        uOpacity: { value: o.opacity ?? 0.97 },
+      },
+    }),
+  );
+  ball.renderOrder = 12;
+  const halo = new Mesh(
+    new PlaneGeometry(2, 2),
+    new ShaderMaterial({
+      vertexShader: HALO_VERT,
+      fragmentShader: HALO_FRAG,
+      transparent: true,
+      depthWrite: false,
+      blending: AdditiveBlending,
+      uniforms: {
+        uTime: { value: 0 },
+        uSize: { value: o.radius * 2.4 },
+        uGlow: { value: new Color(o.glow) },
+        uOpacity: { value: 0.45 },
+      },
+    }),
+  );
+  halo.renderOrder = 11;
+  for (const m of [ball, halo]) {
+    m.raycast = () => {};
+    m.frustumCulled = false;
+    g.add(m);
+  }
+  return g;
+}
+
+const GLOW_FRAG = /* glsl */ `
+uniform float uTime; uniform float uRadius; uniform vec3 uGlow; uniform float uOpacity; uniform float uFlicker;
+varying vec2 vUv; varying vec2 vP;
+void main() {
+  float r = length(vP) / uRadius;
+  float flick = 1.0 - uFlicker * (0.1 + 0.1 * sin(uTime * 6.1) * sin(uTime * 2.3 + 0.7));
+  float a = pow(max(0.0, 1.0 - r), 1.8) * uOpacity * flick;
+  if (a < 0.004) discard;
+  gl_FragColor = vec4(uGlow, a);
+  #include <colorspace_fragment>
+}`;
+
+/** Light thrown on the floor round something that burns or shines: a soft pool, brightest under it (additive). */
+export function glowDisc(o: { radius: number; color: string; opacity?: number; flicker?: boolean }): Mesh {
+  const m = new Mesh(
+    new CircleGeometry(o.radius, 64),
+    new ShaderMaterial({
+      vertexShader: RING_VERT,
+      fragmentShader: GLOW_FRAG,
+      transparent: true,
+      depthWrite: false,
+      blending: AdditiveBlending,
+      uniforms: {
+        uTime: { value: 0 },
+        uRadius: { value: o.radius },
+        uGlow: { value: new Color(o.color) },
+        uOpacity: { value: o.opacity ?? 0.35 },
+        uFlicker: { value: o.flicker ? 1 : 0 },
+      },
+    }),
+  );
+  m.rotation.x = -Math.PI / 2;
+  m.position.y = 0.08;
   m.renderOrder = 9;
   m.raycast = () => {};
   return m;
@@ -421,26 +661,51 @@ void main() {
 }`;
 
 const CURTAIN_FRAG = /* glsl */ `
-uniform float uTime; uniform vec3 uCore; uniform vec3 uGlow; uniform float uOpacity;
+uniform float uTime; uniform vec3 uCore; uniform vec3 uGlow; uniform vec3 uEmber; uniform float uOpacity; uniform float uLen;
 varying vec2 vUv; varying float vAlong;
 ${NOISE}
 void main() {
-  // Tongues of flame rising along the line: noise scrolled upward, thinning toward the top.
+  // Tongues of flame rising along the line: noise scrolled upward, thinning toward the top; its ends burn down to
+  // nothing over a couple of feet (an open wall: no hard, square cut).
   float n = noise(vec3(vAlong * 0.35, vUv.y * 2.2 - uTime * 1.6, uTime * 0.3)) * 0.65
     + noise(vec3(vAlong * 0.9, vUv.y * 5.0 - uTime * 3.1, 7.0)) * 0.35;
   float h = vUv.y;
-  float body = smoothstep(h * 1.15 - 0.05, h * 1.15 + 0.25, n) * (1.0 - smoothstep(0.55, 1.0, h));
-  float a = body * uOpacity;
+  float ends = uLen > 0.0 ? smoothstep(0.0, 2.5, vAlong) * smoothstep(0.0, 2.5, uLen - vAlong) : 1.0;
+  float h2 = h + (1.0 - ends) * 0.6;
+  float body = smoothstep(h2 * 1.15 - 0.05, h2 * 1.15 + 0.25, n) * (1.0 - smoothstep(0.55, 1.0, h2));
+  float a = body * uOpacity * ends;
   if (a < 0.01) discard;
-  // Orange-bodied flames, only their roots near white (additive: a white body burns out to a line).
-  vec3 col = mix(mix(uCore, uGlow, 0.55), uGlow, smoothstep(0.05, 0.6, h));
+  // A pale heart at the roots, orange through the body, deepening toward the tips — drawn in its own colours (normal
+  // blending), so it reads as fire on a pale floor as on a dark one.
+  vec3 col = mix(uCore, uGlow, smoothstep(0.02, 0.4, h));
+  col = mix(col, uEmber, smoothstep(0.45, 1.0, h) * 0.55);
+  gl_FragColor = vec4(col, a);
+  #include <colorspace_fragment>
+}`;
+
+const PANE_FRAG = /* glsl */ `
+uniform float uTime; uniform vec3 uCore; uniform vec3 uGlow; uniform float uOpacity; uniform float uSolid;
+varying vec2 vUv; varying float vAlong;
+${NOISE}
+void main() {
+  // A sheet standing along the line (ice, stone, thorns, a barrier of force or wind): its body faint for one you can
+  // see through, dense for an opaque one, a slow grain drifting in it, its top and foot edged brighter.
+  float h = vUv.y;
+  float n = noise(vec3(vAlong * 0.4, h * 3.0 - uTime * 0.25, uTime * 0.1)) * 0.7
+    + noise(vec3(vAlong * 1.3, h * 9.0, 3.0)) * 0.3;
+  float rim = smoothstep(0.94, 1.0, h) + (1.0 - smoothstep(0.0, 0.05, h)) * 0.6;
+  float body = mix(0.16, 0.82, uSolid) * (0.75 + 0.25 * n);
+  float a = clamp(body + rim * 0.45, 0.0, 1.0) * uOpacity;
+  if (a < 0.01) discard;
+  vec3 col = mix(uGlow, uCore, clamp(n * 0.6 + rim * 0.4, 0.0, 1.0));
   gl_FragColor = vec4(col, a);
   #include <colorspace_fragment>
 }`;
 
 /**
- * A curtain of flame along a line (Wall of Fire, §24.5 "flame curtain along the wall line"): a vertical ribbon `height`
- * ft tall over the wall's points, tongues of fire rising in its shader — one draw, whatever the tier.
+ * A curtain along a line: flames (Wall of Fire, §24.5 "flame curtain along the wall line" — tongues of fire rising in
+ * its shader) or a pane (every other wall: ice, stone, thorns, force; `solid` for an opaque one) — a vertical ribbon
+ * `height` ft tall over the wall's points, or flat on the floor along it (`floor`); one draw, whatever the tier.
  */
 export function curtain(o: {
   points: { x: number; y: number }[];
@@ -451,6 +716,13 @@ export function curtain(o: {
   opacity?: number;
   /** A flat ribbon on the ground instead, this wide (ft): the line burning, seen from above. */
   floor?: number;
+  look?: "flame" | "pane";
+  /** A pane you can't see through (Wall of Stone, of Thorns). */
+  solid?: boolean;
+  /** Flames' tips (a deep red): the flame look's third colour. */
+  ember?: string;
+  /** Light added to what's under it (the burning ground) rather than drawn over it. */
+  additive?: boolean;
 }): Mesh {
   const pts =
     o.closed && o.points.length > 2 ? [...o.points, o.points[0] as { x: number; y: number }] : o.points;
@@ -497,16 +769,20 @@ export function curtain(o: {
   g.computeBoundingSphere();
   const mat = new ShaderMaterial({
     vertexShader: CURTAIN_VERT,
-    fragmentShader: CURTAIN_FRAG,
+    fragmentShader: o.look === "pane" ? PANE_FRAG : CURTAIN_FRAG,
     transparent: true,
     depthWrite: false,
     side: DoubleSide,
-    blending: AdditiveBlending,
+    blending: o.additive ? AdditiveBlending : NormalBlending,
     uniforms: {
       uTime: { value: 0 },
       uCore: { value: new Color(o.core) },
       uGlow: { value: new Color(o.glow) },
+      uEmber: { value: new Color(o.ember ?? o.glow) },
       uOpacity: { value: o.opacity ?? 0.9 },
+      uSolid: { value: o.solid ? 1 : 0 },
+      // Its length (the ends taper); a closed ring has none.
+      uLen: { value: o.closed ? -1 : d },
     },
   });
   const m = new Mesh(g, mat);

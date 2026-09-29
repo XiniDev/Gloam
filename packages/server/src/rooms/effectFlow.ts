@@ -35,10 +35,31 @@ function areaOf(model: CampaignModel, e: EffectEntity): Area | null {
 
 /** Whether a creature's base is in an area (any part of it, as for a spell's area, §17.3). */
 function inside(a: Area, t: TokenEntity): boolean {
-  const f = footprint(a);
-  const r = t.sizeFt / 2;
-  if (f.kind === "circle") return Math.hypot(t.pos.x - f.c.x, t.pos.y - f.c.y) < f.r + r;
-  return contains(f, t.pos) || sampleRim(t.pos, r).some((p) => contains(f, p));
+  return baseIn(footprint(a), t.pos, t.sizeFt / 2);
+}
+
+/**
+ * Whether a creature's base standing at `p` is in a footprint: any part of it (§17.3) — but a wall's own space only
+ * with its centre in it (a creature beside a wall drawn on a grid line isn't in the wall, SRD Wall of Fire p. 172:
+ * "the other side of the wall deals no damage").
+ */
+function baseIn(f: ReturnType<typeof footprint>, p: P, r: number): boolean {
+  if (f.kind === "circle") return Math.hypot(p.x - f.c.x, p.y - f.c.y) < f.r + r;
+  if (f.kind === "strip") return contains(f, p);
+  return contains(f, p) || sampleRim(p, r).some((q) => contains(f, q));
+}
+
+/** Whether a step from p to q crosses a wall's line (walking through a 1-ft wall between two samples). */
+function crossesStrip(f: ReturnType<typeof footprint>, p: P, q: P): boolean {
+  if (f.kind !== "strip") return false;
+  const pts = f.closed && f.points.length > 2 ? [...f.points, f.points[0] as P] : f.points;
+  const o = (u: P, v: P, w: P) => (v.x - u.x) * (w.y - u.y) - (v.y - u.y) * (w.x - u.x);
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1] as P;
+    const b = pts[i] as P;
+    if (o(a, b, p) * o(a, b, q) < 0 && o(p, q, a) * o(p, q, b) < 0) return true;
+  }
+  return false;
 }
 
 /**
@@ -91,15 +112,18 @@ export class EffectFlow {
     times = 1,
   ) {
     if (!e.triggers.some((t) => t.when === when)) return;
-    // "A creature makes this save only once per turn" (Spirit Guardians, Moonbeam, Cloudkill): whichever trigger.
-    const tokenIds = e.props.oncePerTurn
-      ? ids.filter((id) => {
-          const key = `${e.id}|${id}|once`;
-          if (this.firedThisTurn.has(key)) return false;
-          this.firedThisTurn.add(key);
-          return true;
-        })
-      : ids;
+    // "A creature makes this save only once per turn" (Spirit Guardians, Moonbeam, Cloudkill): whichever trigger — in
+    // combat; out of it there are no turns, and each time counts.
+    const turns = this.inCombat(e.sceneId);
+    const tokenIds =
+      e.props.oncePerTurn && turns
+        ? ids.filter((id) => {
+            const key = `${e.id}|${id}|once`;
+            if (this.firedThisTurn.has(key)) return false;
+            this.firedThisTurn.add(key);
+            return true;
+          })
+        : ids;
     if (!tokenIds.length) return;
     try {
       this.host.bus().execute("cast.trigger", { effectId: e.id, when, tokenIds, times }, SYSTEM_ACTOR);
@@ -213,8 +237,8 @@ export class EffectFlow {
       const a = areaOf(model, fx);
       if (!a) continue;
       const f = footprint(a);
-      const at = (p: P) =>
-        f.kind === "circle" ? Math.hypot(p.x - f.c.x, p.y - f.c.y) < f.r + t.sizeFt / 2 : contains(f, p);
+      // Any part of its base (a wall: its centre in the wall's space, or stepping through it).
+      const at = (p: P) => baseIn(f, p, t.sizeFt / 2);
       // Walked the path in 1-ft steps: where it came in, and how far it went inside.
       let was = at(path[0] as P);
       let entered = false;
@@ -224,12 +248,14 @@ export class EffectFlow {
         const q = path[i] as P;
         const len = Math.hypot(q.x - p.x, q.y - p.y);
         const n = Math.max(1, Math.ceil(len));
+        let prev = p;
         for (let k = 1; k <= n; k++) {
           const s = { x: p.x + ((q.x - p.x) * k) / n, y: p.y + ((q.y - p.y) * k) / n };
           const now = at(s);
-          if (now && !was) entered = true;
+          if ((now && !was) || (!was && crossesStrip(f, prev, s))) entered = true;
           if (now) feet += len / n;
           was = now;
+          prev = s;
         }
       }
       // (Its own emanation goes with it: that isn't walking into it — the spirits reaching others is below.)
@@ -243,8 +269,18 @@ export class EffectFlow {
         if (stretches > 0) this.fire(fx, "per5ft", [t.id], stretches);
       }
     }
-    // Its own emanations came along: whoever they now reach that they didn't before.
+    // Its own emanations came along: whoever they reached on the way that they didn't reach where it set out — every
+    // creature it passed, not only those by where it stopped (SRD p. 164: "whenever the Emanation enters a creature's
+    // space"). The path in 1-ft steps.
     const start = path[0] as P;
+    const steps: P[] = [];
+    for (let i = 1; i < path.length; i++) {
+      const p = path[i - 1] as P;
+      const q = path[i] as P;
+      const n = Math.max(1, Math.ceil(Math.hypot(q.x - p.x, q.y - p.y)));
+      for (let k = 1; k <= n; k++)
+        steps.push({ x: p.x + ((q.x - p.x) * k) / n, y: p.y + ((q.y - p.y) * k) / n });
+    }
     for (const fx of model.inScene("effect", t.sceneId)) {
       if (fx.shape.kind !== "emanation" || fx.shape.sourceTokenId !== t.id) continue;
       const r = fx.shape.distance + t.sizeFt / 2;
@@ -253,10 +289,8 @@ export class EffectFlow {
         .filter((o) => o.id !== t.id && !fx.props.exempt?.includes(o.id))
         .filter((o) => {
           const rr = r + o.sizeFt / 2;
-          return (
-            Math.hypot(o.pos.x - t.pos.x, o.pos.y - t.pos.y) < rr &&
-            Math.hypot(o.pos.x - start.x, o.pos.y - start.y) >= rr
-          );
+          const reaches = (s: P) => Math.hypot(o.pos.x - s.x, o.pos.y - s.y) < rr;
+          return !reaches(start) && steps.some(reaches);
         })
         .map((o) => o.id);
       for (const id of took) this.once(fx, "enter", id);
@@ -286,11 +320,19 @@ export class EffectFlow {
     }
   }
 
-  /** Enter fires once a turn for a creature (SRD "the first time … on a turn"). */
+  /** Enter fires once a turn for a creature (SRD "the first time … on a turn") — in combat; out of it, each time. */
   private once(fx: EffectEntity, when: "enter", tokenId: string): void {
     const key = `${fx.id}|${tokenId}|${when}`;
-    if (this.firedThisTurn.has(key)) return;
-    this.firedThisTurn.add(key);
+    if (this.inCombat(fx.sceneId)) {
+      if (this.firedThisTurn.has(key)) return;
+      this.firedThisTurn.add(key);
+    }
     this.fire(fx, when, [tokenId]);
+  }
+
+  /** Whether a combat is running on the scene (its turns are what "once a turn" counts). */
+  private inCombat(sceneId: string): boolean {
+    const c = combatOn(this.host.model(), sceneId);
+    return Boolean(c && dataOf(c).begun);
   }
 }

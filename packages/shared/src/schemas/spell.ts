@@ -222,6 +222,12 @@ export const EffectTemplate = z
       .describe(
         "A creature makes its save only once per turn, whichever trigger (Spirit Guardians, Moonbeam)",
       ),
+    recastEnds: z
+      .boolean()
+      .optional()
+      .describe(
+        'Casting it again ends the caster\'s earlier one (Light: "the spell ends if you cast it again")',
+      ),
     bodyFt: Ft.optional().describe(
       "An object's diameter at the effect's centre (Flaming Sphere: 5): its area reaches round the object, and it's what moves into a creature's space",
     ),

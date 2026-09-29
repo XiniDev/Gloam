@@ -50,6 +50,7 @@ export const TokenOwner = schema(
     freeMovement: t.boolean(),
     lockMovement: t.boolean(),
     stuck: t.string(), // why it can't move at all: a condition id, "speed0" or "locked" (stuckName); "" when it can
+    spared: t.string(), // JSON: the effects whose slowing ground it's spared (Spirit Guardians' designated creatures)
   },
   "TokenOwner",
 );

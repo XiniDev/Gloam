@@ -37,6 +37,10 @@ export interface Perception {
   seesLight?(userId: string | null, lightId: string): boolean;
   glowsFor?(userId: string | null): { id: string }[];
   sensedFor?(userId: string | null): { id: string }[];
+  /** Whether an effect's area meets what the user sees now or has explored (§13.4); absent: every effect. */
+  seesEffect?(userId: string | null, effectId: string): boolean;
+  /** Effects the user sees only by their area (their creature unperceived), as stand-in ids. */
+  glimpsesFor?(userId: string | null): { id: string }[];
 }
 
 /** No vision engine: every token that isn't DM-hidden is perceivable. */
@@ -149,20 +153,31 @@ export class ViewManager {
     for (const z of m.inScene("zone", activeSceneId))
       if (dm) out.zones.set(z.id, TAG_DM);
       else if (z.visible) out.zones.set(z.id, VISIBLE);
+    // Effects (§13.4): the DM's own (visibility "dm") never; one held up by a creature the viewer doesn't hold only as
+    // its stand-in, while its area meets their sight (glimpses, below: where, never whose); any other when its area
+    // meets what they see or have explored — or always when it involves a token they control (its caster, a creature
+    // it spares). The link (its creature and caster) only while those are perceivable.
+    const who = spectator ? null : viewer.userId;
     for (const e of m.inScene("effect", activeSceneId)) {
       if (dm) {
         out.effects.set(e.id, TAG_LINK);
         continue;
       }
+      if (e.visibility !== "everyone") continue;
+      const anchor = e.shape.kind === "emanation" ? e.shape.sourceTokenId : e.attachedTokenId;
+      if (anchor && !visibleTokens.has(anchor)) continue;
       const involvesMine =
-        (e.attachedTokenId && this.controls(viewer, e.attachedTokenId)) ||
-        (e.source.casterTokenId && this.controls(viewer, e.source.casterTokenId));
-      if (e.visibility !== "everyone" && !involvesMine) continue;
+        !spectator &&
+        ((e.source.casterTokenId && this.controls(viewer, e.source.casterTokenId)) ||
+          (anchor && this.controls(viewer, anchor)) ||
+          (e.props.exempt ?? []).some((id) => this.controls(viewer, id)));
+      if (!involvesMine && this.perception.seesEffect && !this.perception.seesEffect(who, e.id)) continue;
       const linkVisible =
         (!e.attachedTokenId || visibleTokens.has(e.attachedTokenId)) &&
         (!e.source.casterTokenId || visibleTokens.has(e.source.casterTokenId));
       out.effects.set(e.id, linkVisible ? TAG_LINK : VISIBLE);
     }
+    if (!dm) for (const g of this.perception.glimpsesFor?.(who) ?? []) out.effects.set(g.id, VISIBLE);
     return out;
   }
 

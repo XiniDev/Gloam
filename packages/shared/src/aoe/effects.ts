@@ -84,6 +84,33 @@ export function resolveArea(shape: StoredShape, source: (tokenId: string) => Bod
 const pt = (v: { x: number; y: number }): P => ({ x: v.x, y: v.y });
 
 /**
+ * An effect's area as clients get it (SPEC §13.4): an emanation is placed where its source stands (`at`, the base's
+ * radius) rather than naming the creature; any other shape as stored. Null for an emanation whose source is gone.
+ */
+export function resolveViewArea(shape: unknown): AreaShape | null {
+  const s = shape as {
+    kind?: string;
+    distance?: number;
+    at?: { x: number; y: number; z?: number } | null;
+    baseRadius?: number;
+  } | null;
+  if (!s?.kind) return null;
+  if (s.kind === "emanation") {
+    if (!s.at) return null;
+    const r = s.baseRadius ?? 2.5;
+    return {
+      kind: "emanation",
+      source: { x: s.at.x, y: s.at.y },
+      sourceRadius: r,
+      z: s.at.z ?? 0,
+      sourceHeight: Math.max(r * 2, 2.5),
+      distance: s.distance ?? 0,
+    };
+  }
+  return resolveArea(s as StoredShape, () => null);
+}
+
+/**
  * The area's outline as a polygon (circles as `n`-gons that contain the circle), for the vision engine and the
  * movement world; a wall is its segments' business, not an outline (null).
  */

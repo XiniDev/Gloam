@@ -1,14 +1,16 @@
+import { contains, type Footprint, footprint, resolveArea } from "@gloam/shared/aoe";
 import {
   type P,
   pathLength,
   pointAtLength,
   samplePath,
   type VisPoly,
+  visContains,
   visOverlap,
 } from "@gloam/shared/geometry";
 import { maxMoveLength } from "@gloam/shared/movement";
 import { GloamError } from "@gloam/shared/protocol";
-import type { SceneEntity, TokenEntity } from "@gloam/shared/schemas";
+import type { EffectEntity, SceneEntity, TokenEntity } from "@gloam/shared/schemas";
 import {
   type CellRect,
   coneOf,
@@ -30,9 +32,10 @@ import {
 } from "@gloam/shared/vision";
 import type { FogApplier } from "../engine/commandBus.ts";
 import { moveDurationMs } from "../engine/commands/move.ts";
+import { bodyOf } from "../engine/commands/spells.ts";
 import type { CampaignModel } from "../engine/model.ts";
 import type { Op, Rect } from "../engine/ops.ts";
-import { newId } from "../ids.ts";
+import { type IdPrefix, newId } from "../ids.ts";
 import type { Perception } from "../rooms/views.ts";
 import { FogStore } from "./fogStore.ts";
 import { sceneEffects, sceneLights, sceneWalls, tokenCreature, tokenViewer } from "./sources.ts";
@@ -98,6 +101,25 @@ interface Player {
   reach: Map<string, Reach>;
   /** The player's glows: each light in `lights` → its opaque stand-in id (a new one each time it comes back). */
   glows: Map<string, string>;
+  /** Effects in view by their area: it meets what they see now or have explored (§13.4). */
+  effects: Set<string>;
+  /** Effects held up by a creature they don't perceive whose area meets what they see now — seen only as that. */
+  glimpses: Set<string>;
+  /** Each glimpse → its opaque stand-in id (a new one each time it comes back). */
+  glimpseIds: Map<string, string>;
+  /** Whether each effect's area met their sight or memory, by what it was worked out from. */
+  fxSeen: Map<string, FxSeen>;
+}
+
+/** An effect's area against a player's sight and memory, and what that was worked out from. */
+interface FxSeen {
+  key: string;
+  sights: readonly (VisPoly | null)[];
+  fog: number;
+  /** It meets what they see now. */
+  now: boolean;
+  /** It meets what they see now or have explored. */
+  seen: boolean;
 }
 
 /** A carried light's reach for one player, and what it was worked out from (the fog version for painted fog). */
@@ -127,12 +149,23 @@ const newPlayer = (): Player => ({
   marked: UNMARKED,
   reach: new Map(),
   glows: new Map(),
+  effects: new Set(),
+  glimpses: new Set(),
+  glimpseIds: new Map(),
+  fxSeen: new Map(),
 });
 
-/** Stand-in ids for glows: kept while a light stays a glow, new when it becomes one again (nothing to link across). */
-function rekey(lights: ReadonlySet<string>, was: ReadonlyMap<string, string>): Map<string, string> {
+/**
+ * Stand-in ids for glows and glimpses: kept while a light (an effect) stays one, new when it becomes one again
+ * (nothing to link across).
+ */
+function rekey(
+  ids: ReadonlySet<string>,
+  was: ReadonlyMap<string, string>,
+  prefix: IdPrefix = "lgt",
+): Map<string, string> {
   const out = new Map<string, string>();
-  for (const id of lights) out.set(id, was.get(id) ?? newId("lgt"));
+  for (const id of ids) out.set(id, was.get(id) ?? newId(prefix));
   return out;
 }
 
@@ -234,6 +267,31 @@ export class VisionService implements Perception, FogApplier {
     if (!this.scene || this.scene.fogMode === "off") return [];
     const p = this.player(userId ?? SPECTATORS);
     return [...p.glows].map(([lightId, id]) => ({ id, lightId }));
+  }
+
+  /**
+   * Whether a player's view holds an effect by its area (§13.4): it meets what they see now or have explored (fog off:
+   * every effect). One held up by a creature they don't perceive comes, if at all, as a glimpse (`glimpsesFor`).
+   */
+  seesEffect(userId: string | null, effectId: string): boolean {
+    if (!this.scene || this.scene.fogMode === "off") return true;
+    return this.player(userId ?? SPECTATORS).effects.has(effectId);
+  }
+
+  /** The effects a user sees only by their area — each as an opaque stand-in id, never the effect's own. */
+  glimpsesFor(userId: string | null): { id: string; effectId: string }[] {
+    if (!this.scene || this.scene.fogMode === "off") return [];
+    const p = this.player(userId ?? SPECTATORS);
+    return [...p.glimpseIds].map(([effectId, id]) => ({ id, effectId }));
+  }
+
+  /** Every effect stand-in any user holds (the state carries exactly these). */
+  allGlimpses(): { id: string; effectId: string }[] {
+    if (!this.scene || this.scene.fogMode === "off") return [];
+    const out: { id: string; effectId: string }[] = [];
+    for (const p of this.players.values())
+      for (const [effectId, id] of p.glimpseIds) out.push({ id, effectId });
+    return out;
   }
 
   /** Every stand-in any user holds (the state carries exactly these). */
@@ -488,13 +546,82 @@ export class VisionService implements Perception, FogApplier {
       this.markExplored(userId, p);
     }
     const lights = this.lightsReaching(userId, p, perceived);
+    const fx = this.effectsFor(userId, p, perceived);
     const changed =
-      !sameSet(perceived, p.perceived) || !sameSensed(sensed, p.sensed) || !sameSet(lights, p.lights);
+      !sameSet(perceived, p.perceived) ||
+      !sameSensed(sensed, p.sensed) ||
+      !sameSet(lights, p.lights) ||
+      !sameSet(fx.seen, p.effects) ||
+      !sameSet(fx.glimpses, p.glimpses);
     p.perceived = perceived;
     p.sensed = sensed;
     p.lights = lights;
     p.glows = rekey(lights, p.glows);
+    p.effects = fx.seen;
+    p.glimpses = fx.glimpses;
+    p.glimpseIds = rekey(fx.glimpses, p.glimpseIds, "eff");
     return changed;
+  }
+
+  /**
+   * The effects a player's view holds by their area (SPEC §13.4): one whose area meets what they see now (dynamic:
+   * their viewers' sight; painted: the cells revealed to them) or have explored. One held up by a creature they don't
+   * perceive — an emanation's source, a light's holder — only while its area meets what they see now, and then as a
+   * glimpse: where it is, never whose (a DM-hidden or invisible creature's Spirit Guardians give no position, no id).
+   * Its area is sampled on a grid (and along its edge); a result is kept while neither side of it changed, and an
+   * area once seen stays seen until it moves (explored memory only grows; a reset bumps the fog version).
+   */
+  private effectsFor(
+    userId: string,
+    p: Player,
+    perceived: ReadonlySet<string>,
+  ): { seen: Set<string>; glimpses: Set<string> } {
+    const seen = new Set<string>();
+    const glimpses = new Set<string>();
+    const scene = this.scene;
+    if (!scene || scene.fogMode === "off") return { seen, glimpses };
+    const revealed = scene.fogMode === "painted" ? this.revealedFor(userId) : null;
+    const explored = scene.fogMode === "dynamic" ? this.exploredOf(userId, p) : null;
+    const sights = revealed ? [] : p.viewers.map((v) => v.sight);
+    const nowAt = (x: number, y: number) =>
+      revealed ? revealed(x, y) : sights.some((s) => s !== null && visContains(s, x, y));
+    const cache = new Map<string, FxSeen>();
+    for (const e of this.model.inScene("effect", this.sceneId)) {
+      if (e.visibility !== "everyone") continue;
+      const area = resolveArea(e.shape, (id) => {
+        const t = this.model.get("token", id);
+        return t ? bodyOf(t) : null;
+      });
+      if (!area) continue;
+      const key = JSON.stringify(area);
+      const was = p.fxSeen.get(e.id);
+      let r: FxSeen;
+      if (was && was.key === key && was.fog === this.fogVersion && sameSights(was.sights, sights)) r = was;
+      else {
+        const pts = footprintSamples(footprint(area), Math.max(2.5, scene.fogCellFt));
+        const now = pts.some((q) => nowAt(q.x, q.y));
+        // Explored memory only grows: an area already seen stays seen while it stays where it is.
+        const kept = was !== undefined && was.key === key && was.fog === this.fogVersion && was.seen;
+        const seenNow = now || kept || (explored !== null && pts.some((q) => explored.at(q.x, q.y) !== 0));
+        r = { key, sights, fog: this.fogVersion, now, seen: seenNow };
+      }
+      cache.set(e.id, r);
+      const anchor = anchorOf(e);
+      if (anchor && !this.anchorSeen(userId, anchor, perceived)) {
+        if (r.now) glimpses.add(e.id);
+      } else if (r.seen) seen.add(e.id);
+    }
+    p.fxSeen = cache;
+    return { seen, glimpses };
+  }
+
+  /** Whether a player holds the creature an effect hangs on (as views.ts decides it: never a DM-hidden one). */
+  private anchorSeen(userId: string, tokenId: string, perceived: ReadonlySet<string>): boolean {
+    const t = this.model.get("token", tokenId);
+    if (!t || t.hidden) return false;
+    if (t.ownerIds.includes(userId)) return true;
+    if (t.revealTo === "all" || (Array.isArray(t.revealTo) && t.revealTo.includes(userId))) return true;
+    return perceived.has(tokenId);
   }
 
   /**
@@ -589,10 +716,23 @@ export class VisionService implements Perception, FogApplier {
         if (carrier && !perceivedByAny.has(carrier)) lights.add(id);
       }
     }
-    const changed = !sameSensed(sensed, p.sensed) || !sameSet(lights, p.lights);
+    // Effects: any player's; a glimpse unless some player holds the effect itself (then spectators hold it too).
+    const effects = new Set<string>();
+    for (const [u, q] of this.players) if (u !== SPECTATORS) for (const id of q.effects) effects.add(id);
+    const glimpses = new Set<string>();
+    for (const [u, q] of this.players)
+      if (u !== SPECTATORS) for (const id of q.glimpses) if (!effects.has(id)) glimpses.add(id);
+    const changed =
+      !sameSensed(sensed, p.sensed) ||
+      !sameSet(lights, p.lights) ||
+      !sameSet(effects, p.effects) ||
+      !sameSet(glimpses, p.glimpses);
     p.sensed = sensed;
     p.lights = lights;
     p.glows = rekey(lights, p.glows);
+    p.effects = effects;
+    p.glimpses = glimpses;
+    p.glimpseIds = rekey(glimpses, p.glimpseIds, "eff");
     return changed;
   }
 
@@ -960,6 +1100,62 @@ function viewerKey(v: ViewerSight): string {
   const s = v.v.senses;
   return `${v.v.x},${v.v.y},${v.v.elevation},${s.darkvision},${s.blindsight},${s.truesight},${s.tremorsense},${v.v.blinded ? 1 : 0}${v.v.unconscious ? 1 : 0}${v.v.flying ? 1 : 0},${v.v.sizeFt ?? ""}`;
 }
+function sameSights(a: readonly (VisPoly | null)[], b: readonly (VisPoly | null)[]): boolean {
+  return a.length === b.length && a.every((s, i) => s === b[i]);
+}
+
+/** The creature an effect hangs on: an emanation's source, or the creature (or holder) it's attached to. */
+export function anchorOf(e: EffectEntity): string | null {
+  if (e.shape.kind === "emanation") return e.shape.sourceTokenId;
+  return e.attachedTokenId;
+}
+
+/**
+ * Points spread over a footprint, to meet a sight or a raster: a grid `step` ft apart (coarser for a huge area, at
+ * most ~2000), its middle, and its edge (a wall: along its line) every `step` ft.
+ */
+function footprintSamples(f: Footprint, step0: number): P[] {
+  const out: P[] = [];
+  if (f.kind === "strip") {
+    const pts = f.closed && f.points.length > 2 ? [...f.points, f.points[0] as P] : f.points;
+    for (let i = 1; i < pts.length; i++) {
+      const a = pts[i - 1] as P;
+      const b = pts[i] as P;
+      const n = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / step0));
+      for (let k = 0; k <= n; k++)
+        out.push({ x: a.x + ((b.x - a.x) * k) / n, y: a.y + ((b.y - a.y) * k) / n });
+    }
+    return out;
+  }
+  const edge = f.kind === "circle" ? circleEdge(f.c, f.r * 0.98, step0) : polyEdge(f.points, step0);
+  out.push(...edge);
+  const xs = edge.map((q) => q.x);
+  const ys = edge.map((q) => q.y);
+  const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+  out.push({ x: (x0 + x1) / 2, y: (y0 + y1) / 2 });
+  const step = Math.max(step0, Math.sqrt(((x1 - x0) * (y1 - y0)) / 2000));
+  for (let x = x0 + step / 2; x < x1; x += step)
+    for (let y = y0 + step / 2; y < y1; y += step) if (contains(f, { x, y })) out.push({ x, y });
+  return out;
+}
+function circleEdge(c: P, r: number, step: number): P[] {
+  const n = Math.max(12, Math.ceil((2 * Math.PI * r) / step));
+  return Array.from({ length: n }, (_, i) => ({
+    x: c.x + Math.cos((i / n) * 2 * Math.PI) * r,
+    y: c.y + Math.sin((i / n) * 2 * Math.PI) * r,
+  }));
+}
+function polyEdge(pts: readonly P[], step: number): P[] {
+  const out: P[] = [];
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[i] as P;
+    const b = pts[(i + 1) % pts.length] as P;
+    const n = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / step));
+    for (let k = 0; k < n; k++) out.push({ x: a.x + ((b.x - a.x) * k) / n, y: a.y + ((b.y - a.y) * k) / n });
+  }
+  return out;
+}
+
 function sameSet(a: Set<string>, b: Set<string>): boolean {
   if (a.size !== b.size) return false;
   for (const x of a) if (!b.has(x)) return false;

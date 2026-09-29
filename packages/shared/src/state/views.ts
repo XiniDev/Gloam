@@ -36,6 +36,11 @@ export interface TokenOwnerView {
   lockMovement: boolean;
   /** Why it can't move at all — a condition id ("grappled"), "speed0" or "locked" (`stuckName`) — or "" (§8.6). */
   stuck: string;
+  /**
+   * JSON: the effects whose slowing ground it's spared (Spirit Guardians' designated creatures) — its controllers'
+   * to know; the effect itself names no creature (§13.4).
+   */
+  spared: string;
 }
 
 export interface TokenVisionView {

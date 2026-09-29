@@ -65,6 +65,8 @@ export interface CastData {
     effectId: string;
     when: "enter" | "startTurn" | "endTurn" | "per5ft" | "moveInto" | "action";
     note?: string;
+    /** What the creatures did ("entered it", "moved 10 ft in it"): each reader's subtitle names only those it perceives. */
+    verb?: string;
   };
   createdBy: string;
 }

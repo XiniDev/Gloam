@@ -1,9 +1,19 @@
 import { contains, type Footprint, footprint, resolveArea } from "@gloam/shared/aoe";
 import type { AreaShape } from "@gloam/shared/schemas";
-import { Group, type Object3D } from "three";
+import { type BufferGeometry, Group, type Object3D } from "three";
 import { type Preset, VFX } from "./palette.ts";
 import { type EmitterSpec, particleBurst, seeded } from "./particles.ts";
-import { bolt, curtain, decal, floorRing, pillar, shell } from "./shapes.ts";
+import {
+  bolt,
+  curtain,
+  decal,
+  floorRing,
+  footprintGeometry,
+  glowDisc,
+  orb,
+  pillar,
+  shell,
+} from "./shapes.ts";
 
 /**
  * The twelve VFX presets (SPEC §24.5): what a cast looks like — a burst over its area, a projectile to each creature it
@@ -27,15 +37,43 @@ export interface Where {
   /** The way a cone or line points (unit, x and z), from its origin. */
   dir?: [number, number];
   origin?: V3;
+  /** The area's shape (a line's bolt runs along it). */
+  kind?: string;
 }
 
-/** A point in an area's footprint (rejection sampling in its box; the centre after a few misses). */
+/** A point along a polyline (by length), and the line's unit normal there. */
+function alongLine(pts: { x: number; y: number }[], closed: boolean, t: number) {
+  const ring = closed && pts.length > 2 ? [...pts, pts[0] as { x: number; y: number }] : pts;
+  const segs = ring.slice(1).map((b, i) => [ring[i] as { x: number; y: number }, b] as const);
+  const total = segs.reduce((s, [a, b]) => s + Math.hypot(b.x - a.x, b.y - a.y), 0);
+  let d = t * total;
+  for (const [a, b] of segs) {
+    const l = Math.hypot(b.x - a.x, b.y - a.y);
+    if (d <= l && l > 0)
+      return {
+        x: a.x + ((b.x - a.x) * d) / l,
+        y: a.y + ((b.y - a.y) * d) / l,
+        nx: -(b.y - a.y) / l,
+        ny: (b.x - a.x) / l,
+      };
+    d -= l;
+  }
+  const last = ring[ring.length - 1] ?? { x: 0, y: 0 };
+  return { x: last.x, y: last.y, nx: 0, ny: 0 };
+}
+
+/** A point in an area's footprint (a wall's along its line; others by rejection sampling in their box). */
 function inside(w: Where, rnd: () => number): V3 {
   const f = w.f;
   if (!f || f.kind === "circle") {
     const a = rnd() * Math.PI * 2;
     const d = Math.sqrt(rnd()) * w.r;
     return [w.c[0] + Math.cos(a) * d, w.c[1], w.c[2] + Math.sin(a) * d];
+  }
+  if (f.kind === "strip") {
+    const q = alongLine(f.points, f.closed, rnd());
+    const off = (rnd() * 2 - 1) * f.halfWidth;
+    return [q.x + q.nx * off, w.c[1], q.y + q.ny * off];
   }
   const pts = f.points;
   const xs = pts.map((p) => p.x);
@@ -46,6 +84,43 @@ function inside(w: Where, rnd: () => number): V3 {
     if (contains(f, p)) return [p.x, w.c[1], p.y];
   }
   return w.c;
+}
+
+/** A point on an area's edge: a disc's rim, a polygon's sides, a wall's line. */
+function onEdge(w: Where, rnd: () => number): V3 {
+  const f = w.f;
+  if (!f || f.kind === "circle") {
+    const a = rnd() * Math.PI * 2;
+    return [w.c[0] + Math.cos(a) * w.r, w.c[1], w.c[2] + Math.sin(a) * w.r];
+  }
+  const q = alongLine(f.points, f.kind === "poly" || f.closed, rnd());
+  return [q.x, w.c[1], q.y];
+}
+
+/**
+ * How a floor piece lies over an area: a disc about its centre for a round one; any other, its own footprint about
+ * its origin (a cone's apex, a line's start: a sweeping ring runs out from there) or its middle, and how far that
+ * reaches. A wall's strip is at least `minHalf` ft either side of its line.
+ */
+function floorOf(w: Where, minHalf = 0) {
+  const f = w.f;
+  if (!f || f.kind === "circle")
+    return {
+      round: true,
+      at: [w.c[0], 0, w.c[2]] as V3,
+      reach: w.r,
+      geometry: (): BufferGeometry | undefined => undefined,
+    };
+  const o = w.origin ?? w.c;
+  const at: V3 = [o[0], 0, o[2]];
+  const pad = f.kind === "strip" ? Math.max(f.halfWidth, minHalf) : 0;
+  const reach = Math.max(2.5, ...f.points.map((p) => Math.hypot(p.x - at[0], p.y - at[2]) + pad));
+  return {
+    round: false,
+    at,
+    reach,
+    geometry: (): BufferGeometry | undefined => footprintGeometry(f, { x: at[0], y: at[2] }, minHalf),
+  };
 }
 
 /** An area's where: an effect's shape resolved (an emanation from its creature), or a cast's shape as sent. */
@@ -76,13 +151,21 @@ export function whereOf(
   const cx = pts.reduce((a, p) => a + p.x, 0) / pts.length;
   const cy = pts.reduce((a, p) => a + p.y, 0) / pts.length;
   const r = Math.max(...pts.map((p) => Math.hypot(p.x - cx, p.y - cy)));
-  const out: Where = { c: [cx, z, cy], r, f };
+  const out: Where = { c: [cx, z, cy], r, f, kind: area.kind };
   if ("origin" in area && "dirDeg" in area) {
     const a = ((area.dirDeg + 90) * Math.PI) / 180;
     out.dir = [Math.cos(a), Math.sin(a)];
     out.origin = [area.origin.x, z, area.origin.y];
   }
   return out;
+}
+
+/** Two colours mixed (`t` of the way from a to b), as a hex string. */
+function mixHex(a: string, b: string, t: number): string {
+  const ca = Number.parseInt(a.slice(1), 16);
+  const cb = Number.parseInt(b.slice(1), 16);
+  const ch = (s: number) => Math.round(((ca >> s) & 255) * (1 - t) + ((cb >> s) & 255) * t);
+  return `#${((ch(16) << 16) | (ch(8) << 8) | ch(0)).toString(16).padStart(6, "0")}`;
 }
 
 const place = (o: Object3D, at: V3) => {
@@ -118,11 +201,17 @@ function areaEmitter(
   };
 }
 
-/** A cast's burst over an area (§24.5 "Cast / impact"). */
+/**
+ * A cast's burst over an area (§24.5 "Cast / impact"). A round area (a sphere, a cylinder, an emanation) gets its
+ * shells and pillars; any other — a cone, a line, a cube, a wall — only pieces that keep to its footprint: its rings
+ * sweep out from its origin clipped to its shape, its scorch or puddle is its shape, a line's lightning runs along it.
+ */
 export function areaBurst(preset: Preset, w: Where, scale: number, seed: number): Piece {
   const p = VFX[preset];
   const g = new Group();
   const R = Math.max(2.5, w.r);
+  const fl = floorOf(w);
+  const round = fl.round;
   let life = 1.5;
   const add = (o: Object3D, l: number) => {
     g.add(o);
@@ -130,13 +219,28 @@ export function areaBurst(preset: Preset, w: Where, scale: number, seed: number)
   };
   const burst = (e: EmitterSpec[], o: Parameters<typeof particleBurst>[1]) =>
     particleBurst(e, { seed, ...o }, scale);
+  /** A ring sweeping out over the area: a disc's `r` for a round one, its footprint (from its origin) for any other. */
+  const sweep = (o: Omit<Parameters<typeof floorRing>[0], "radius" | "geometry">, r = R) => {
+    const geometry = fl.geometry();
+    return place(
+      floorRing({ ...o, radius: geometry ? fl.reach : r, ...(geometry ? { geometry } : {}) }),
+      fl.at,
+    );
+  };
+  /** A decal over the area: a disc of `r` for a round one (about its centre), its footprint for any other. */
+  const stain = (o: Omit<Parameters<typeof decal>[0], "radius" | "geometry">, r: number, minHalf = 0) => {
+    const f = floorOf(w, minHalf);
+    const geometry = f.geometry();
+    return place(decal({ ...o, radius: r, ...(geometry ? { geometry } : {}) }), f.at);
+  };
   switch (preset) {
     case "fire":
-      add(place(shell({ radius: R, life: 1.1, core: p.core, glow: p.glow, rough: 0.45 }), w.c), 1.1);
+      if (round)
+        add(place(shell({ radius: R, life: 1.1, core: p.core, glow: p.glow, rough: 0.45 }), w.c), 1.1);
       add(
         burst(
           [
-            areaEmitter(w, 170, R * 0.9, 10, [0.7, 1.6], [0.5, 1.1], {
+            areaEmitter(w, 170, round ? R * 0.9 : 1.5, 10, [0.7, 1.6], [0.5, 1.1], {
               sizeCurve: [1, 0.8, 0.2],
               alphaCurve: [0, 1, 0],
             }),
@@ -145,28 +249,15 @@ export function areaBurst(preset: Preset, w: Where, scale: number, seed: number)
         ),
         1.8,
       );
-      add(
-        place(decal({ kind: "scorch", radius: R * 0.9, life: 5, core: p.shadow, glow: p.glow }), [
-          w.c[0],
-          0,
-          w.c[2],
-        ]),
-        5,
-      );
+      // The ground it burnt: a wall's a band either side of its line.
+      add(stain({ kind: "scorch", life: 5, core: p.shadow, glow: p.glow }, R * 0.9, 2), 5);
       break;
     case "cold":
-      add(
-        place(floorRing({ radius: R, life: 1.1, core: p.core, glow: p.glow, width: 0.08 }), [
-          w.c[0],
-          0,
-          w.c[2],
-        ]),
-        1.1,
-      );
+      add(sweep({ life: 1.1, core: p.core, glow: p.glow, width: 0.08 }), 1.1);
       add(
         burst(
           [
-            areaEmitter(w, 90, R * 1.6, 3, [0.4, 0.9], [0.3, 0.6], {
+            areaEmitter(w, 90, round ? R * 1.6 : 2, 3, [0.4, 0.9], [0.3, 0.6], {
               sizeCurve: [1, 1, 0.4],
               colorShift: 0.5,
             }),
@@ -185,14 +276,30 @@ export function areaBurst(preset: Preset, w: Where, scale: number, seed: number)
       );
       break;
     case "lightning":
-      add(place(shell({ radius: R * 0.45, life: 0.3, core: p.core, glow: p.glow, rough: 0.2 }), w.c), 0.3);
-      for (let k = 0; k < 3; k++) {
-        const r = seeded(seed + k);
-        const a = inside(w, r);
-        add(bolt([a[0], 14, a[2]], [a[0], 0.1, a[2]], { life: 0.4, core: p.core, seed: seed + k }), 0.4);
-      }
+      if (round)
+        add(place(shell({ radius: R * 0.45, life: 0.3, core: p.core, glow: p.glow, rough: 0.2 }), w.c), 0.3);
+      if (w.kind === "line" && w.dir && w.origin && w.f?.kind === "poly") {
+        // A line (Lightning Bolt): the bolt itself, from the caster's hand to the line's end, and a second fork.
+        const o = w.origin;
+        const d = w.dir;
+        const far = Math.max(...w.f.points.map((q) => (q.x - o[0]) * d[0] + (q.y - o[2]) * d[1]));
+        for (let k = 0; k < 2; k++)
+          add(
+            bolt([o[0], 3, o[2]], [o[0] + d[0] * far, 3, o[2] + d[1] * far], {
+              life: 0.45,
+              core: p.core,
+              seed: seed + k,
+            }),
+            0.45,
+          );
+      } else
+        for (let k = 0; k < 3; k++) {
+          const r = seeded(seed + k);
+          const a = inside(w, r);
+          add(bolt([a[0], 14, a[2]], [a[0], 0.1, a[2]], { life: 0.4, core: p.core, seed: seed + k }), 0.4);
+        }
       add(
-        burst([areaEmitter(w, 50, R, 6, [0.2, 0.5], [0.15, 0.3])], {
+        burst([areaEmitter(w, 50, round ? R : 3, 6, [0.2, 0.5], [0.15, 0.3])], {
           core: p.core,
           glow: p.glow,
           gravity: 12,
@@ -201,18 +308,11 @@ export function areaBurst(preset: Preset, w: Where, scale: number, seed: number)
       );
       break;
     case "thunder":
-      add(
-        place(floorRing({ radius: R * 1.1, life: 0.8, core: p.core, glow: p.glow, width: 0.14 }), [
-          w.c[0],
-          0,
-          w.c[2],
-        ]),
-        0.8,
-      );
+      add(sweep({ life: 0.8, core: p.core, glow: p.glow, width: 0.14 }, R * 1.1), 0.8);
       add(
         burst(
           [
-            areaEmitter(w, 80, R * 0.7, 2, [1.0, 1.8], [1.2, 2.2], {
+            areaEmitter(w, 80, round ? R * 0.7 : 2, 2, [1.0, 1.8], [1.2, 2.2], {
               sizeCurve: [0.5, 1, 1.3],
               alphaCurve: [0, 0.5, 0],
             }),
@@ -224,26 +324,20 @@ export function areaBurst(preset: Preset, w: Where, scale: number, seed: number)
       break;
     case "acid":
       add(
-        burst([areaEmitter(w, 90, R * 0.6, 14, [0.6, 1.1], [0.3, 0.6])], {
+        burst([areaEmitter(w, 90, round ? R * 0.6 : 2, 14, [0.6, 1.1], [0.3, 0.6])], {
           core: p.core,
           glow: p.glow,
           gravity: 26,
         }),
         1.1,
       );
-      add(
-        place(
-          decal({ kind: "puddle", radius: Math.max(2.5, R * 0.7), life: 4, core: p.core, glow: p.glow }),
-          [w.c[0], 0, w.c[2]],
-        ),
-        4,
-      );
+      add(stain({ kind: "puddle", life: 4, core: p.core, glow: p.glow }, Math.max(2.5, R * 0.7), 1.5), 4);
       break;
     case "poison":
       add(
         burst(
           [
-            areaEmitter(w, 38, R * 0.25, 1, [1.6, 2.6], [2.5, 4.5], {
+            areaEmitter(w, 38, round ? R * 0.25 : 1, 1, [1.6, 2.6], [2.5, 4.5], {
               sizeCurve: [0.4, 1, 1.2],
               alphaCurve: [0, 0.7, 0],
             }),
@@ -253,7 +347,7 @@ export function areaBurst(preset: Preset, w: Where, scale: number, seed: number)
         2.6,
       );
       add(
-        burst([areaEmitter(w, 40, R * 0.4, 2, [0.8, 1.6], [0.2, 0.4])], {
+        burst([areaEmitter(w, 40, round ? R * 0.4 : 1.5, 2, [0.8, 1.6], [0.2, 0.4])], {
           core: p.core,
           glow: p.glow,
           seed: seed + 1,
@@ -261,20 +355,23 @@ export function areaBurst(preset: Preset, w: Where, scale: number, seed: number)
         1.6,
       );
       break;
-    case "necrotic":
+    case "necrotic": {
+      // Wisps drawn in from its edge to its middle (for any shape: its sides, then straight in — they stay inside it).
+      const rnd = seeded(seed + 5);
+      const from = Array.from({ length: 120 }, () => onEdge(w, rnd));
       add(
         burst(
           [
             {
-              count: 120,
-              origin: (_i, r) => {
-                const a = r() * Math.PI * 2;
-                return [w.c[0] + Math.cos(a) * R, w.c[1] + r() * 2, w.c[2] + Math.sin(a) * R];
+              count: from.length,
+              origin: (i, r) => {
+                const q = from[i] as V3;
+                return [q[0], w.c[1] + r() * 2, q[2]];
               },
               velocity: (i, r) => {
-                const a = ((i * 2.399) % (Math.PI * 2)) + r() * 0.2;
-                const s = R * (0.9 + r() * 0.3);
-                return [-Math.cos(a) * s, 0.5, -Math.sin(a) * s];
+                const q = from[i] as V3;
+                const k = 0.9 + r() * 0.3;
+                return [(w.c[0] - q[0]) * k, 0.5, (w.c[2] - q[2]) * k];
               },
               life: [0.8, 1.2],
               size: [0.35, 0.7],
@@ -285,42 +382,66 @@ export function areaBurst(preset: Preset, w: Where, scale: number, seed: number)
         ),
         1.2,
       );
-      add(
-        place(
-          shell({ radius: R * 0.5, life: 1.2, core: p.core, glow: p.shadow, additive: false, opacity: 0.6 }),
-          w.c,
-        ),
-        1.2,
-      );
+      if (round)
+        add(
+          place(
+            shell({
+              radius: R * 0.5,
+              life: 1.2,
+              core: p.core,
+              glow: p.shadow,
+              additive: false,
+              opacity: 0.6,
+            }),
+            w.c,
+          ),
+          1.2,
+        );
       break;
+    }
     case "radiant":
-      add(
-        place(pillar({ radius: Math.max(2.5, R * 0.5), height: 24, life: 1.5, core: p.core, glow: p.glow }), [
-          w.c[0],
-          0,
-          w.c[2],
-        ]),
-        1.5,
-      );
+      if (round)
+        add(
+          place(
+            pillar({ radius: Math.max(2.5, R * 0.5), height: 24, life: 1.5, core: p.core, glow: p.glow }),
+            [w.c[0], 0, w.c[2]],
+          ),
+          1.5,
+        );
+      // A line or cone of light (Sunbeam): a broad sweep of it along the ground.
+      else add(sweep({ life: 1.2, core: p.core, glow: p.glow, width: 0.3 }), 1.2);
       add(burst([areaEmitter(w, 80, 0.6, 5, [1.0, 1.8], [0.2, 0.45])], { core: p.core, glow: p.glow }), 1.8);
       break;
     case "force":
-      add(
-        place(
-          shell({ radius: R, life: 1.0, core: p.core, glow: p.glow, rough: 0.05, facet: true, opacity: 0.7 }),
-          w.c,
-        ),
-        1.0,
-      );
-      add(place(floorRing({ radius: R, life: 0.9, core: p.core, glow: p.glow }), [w.c[0], 0, w.c[2]]), 0.9);
+      if (round)
+        add(
+          place(
+            shell({
+              radius: R,
+              life: 1.0,
+              core: p.core,
+              glow: p.glow,
+              rough: 0.05,
+              facet: true,
+              opacity: 0.7,
+            }),
+            w.c,
+          ),
+          1.0,
+        );
+      add(sweep({ life: 0.9, core: p.core, glow: p.glow }), 0.9);
       break;
     case "psychic":
       for (let k = 0; k < 3; k++) {
-        const ring = floorRing({ radius: R, life: 1.0 + k * 0.25, core: p.core, glow: p.glow, width: 0.05 });
-        add(place(ring, [w.c[0], 0.05 + k * 0.01, w.c[2]]), 1.0 + k * 0.25);
+        const ring = sweep({ life: 1.0 + k * 0.25, core: p.core, glow: p.glow, width: 0.05 });
+        ring.position.y = 0.05 + k * 0.01;
+        add(ring, 1.0 + k * 0.25);
       }
       add(
-        burst([areaEmitter(w, 60, R * 0.3, 2, [0.8, 1.3], [0.3, 0.55])], { core: p.core, glow: p.glow }),
+        burst([areaEmitter(w, 60, round ? R * 0.3 : 1, 2, [0.8, 1.3], [0.3, 0.55])], {
+          core: p.core,
+          glow: p.glow,
+        }),
         1.3,
       );
       break;
@@ -335,14 +456,8 @@ export function areaBurst(preset: Preset, w: Where, scale: number, seed: number)
       );
       break;
     case "arcane":
-      add(
-        place(floorRing({ radius: R, life: 1.6, core: p.core, glow: p.glow, runes: true }), [
-          w.c[0],
-          0,
-          w.c[2],
-        ]),
-        1.6,
-      );
+      // A runic circle for a round area; a sweep of light through any other (runes cut by a cone's sides read broken).
+      add(sweep({ life: 1.6, core: p.core, glow: p.glow, runes: round }), 1.6);
       add(burst([areaEmitter(w, 60, 0.8, 3, [0.8, 1.5], [0.2, 0.4])], { core: p.core, glow: p.glow }), 1.5);
       break;
   }
@@ -416,11 +531,27 @@ export function areaLoop(
   scale: number,
   seed: number,
   wallPoints?: { x: number; y: number }[],
+  /** A wall's height and whether it's opaque; `dm`: the DM's view (they see what's inside a cloud or darkness). */
+  extra: { height?: number; solid?: boolean; dm?: boolean } = {},
 ): Object3D {
   const p = VFX[preset];
   const g = new Group();
   const R = Math.max(1, w.r);
   const floor: V3 = [w.c[0], 0, w.c[2]];
+  const fl = floorOf(w);
+  /** A decal over the area: a disc of R for a round one, its footprint for any other. */
+  const lying = (o: Omit<Parameters<typeof decal>[0], "radius" | "geometry">) => {
+    const geometry = fl.geometry();
+    return place(decal({ ...o, radius: R, ...(geometry ? { geometry } : {}) }), fl.at);
+  };
+  /** A ring over the area: a disc of R, or clipped to its footprint (from its origin). */
+  const ringOver = (o: Omit<Parameters<typeof floorRing>[0], "radius" | "geometry">) => {
+    const geometry = fl.geometry();
+    return place(
+      floorRing({ ...o, radius: geometry ? fl.reach : R, ...(geometry ? { geometry } : {}) }),
+      fl.at,
+    );
+  };
   const loopBurst = (e: EmitterSpec[], o: Parameters<typeof particleBurst>[1]) =>
     particleBurst(e, { seed, loop: true, ...o }, scale);
   const drift = (
@@ -445,37 +576,45 @@ export function areaLoop(
   // Lightly obscured (Web; a fog the DM thins): a haze — a low, translucent mist that hides nothing (AC-VIS-07) —
   // under whatever else it draws.
   if (props.obscurement === "light") {
-    const haze = shell({
-      radius: R,
-      life: 1,
-      core: "#D8DEE6",
-      glow: "#9AA6B4",
-      rough: 0.5,
-      additive: false,
-      opacity: 0.2,
-      loop: true,
-    });
-    haze.scale.set(1, 0.28, 1);
-    g.add(place(haze, [w.c[0], w.c[1] + R * 0.05, w.c[2]]));
+    if (fl.round) {
+      const haze = shell({
+        radius: R,
+        life: 1,
+        core: "#D8DEE6",
+        glow: "#9AA6B4",
+        rough: 0.5,
+        additive: false,
+        opacity: 0.3,
+        loop: true,
+        soft: true,
+      });
+      haze.scale.set(1, 0.28, 1);
+      g.add(place(haze, [w.c[0], w.c[1] + R * 0.05, w.c[2]]));
+    } else
+      g.add(lying({ kind: "mist", life: 1, core: "#D8DEE6", glow: "#9AA6B4", loop: true, opacity: 0.45 }));
     // Only a haze (a thinned fog): nothing of its preset's loop over it. (Web adds its strands below.)
     if (!props.difficult) return g;
   }
   if (props.magicalDarkness) {
-    // Darkness: an inky sphere with a swirling edge.
+    // Darkness: an inky sphere with a swirling edge — thinner for the DM, who has to see what's in it.
+    const opacity = extra.dm ? 0.6 : 0.92;
     g.add(
-      place(
-        shell({
-          radius: R,
-          life: 1,
-          core: "#05060A",
-          glow: "#1C1426",
-          rough: 0.25,
-          additive: false,
-          opacity: 0.92,
-          loop: true,
-        }),
-        w.c,
-      ),
+      fl.round
+        ? place(
+            shell({
+              radius: R,
+              life: 1,
+              core: "#05060A",
+              glow: "#1C1426",
+              rough: 0.25,
+              additive: false,
+              opacity,
+              loop: true,
+              soft: true,
+            }),
+            w.c,
+          )
+        : lying({ kind: "mist", life: 1, core: "#1C1426", glow: "#05060A", loop: true, opacity }),
     );
     return g;
   }
@@ -489,18 +628,25 @@ export function areaLoop(
         : preset === "cold"
           ? { core: "#DCE6F0", glow: "#8FA3B8" }
           : { core: "#C9D0D8", glow: "#8492A6" };
-    const body = shell({
-      radius: R,
-      life: 1,
-      core: gas.core,
-      glow: gas.glow,
-      rough: 0.55,
-      additive: false,
-      opacity: 0.5,
-      loop: true,
-    });
-    body.scale.set(1, 0.42, 1);
-    g.add(place(body, [w.c[0], w.c[1] + R * 0.12, w.c[2]]));
+    const thin = extra.dm ? 0.65 : 1;
+    if (fl.round) {
+      const body = shell({
+        radius: R,
+        life: 1,
+        core: gas.core,
+        glow: gas.glow,
+        rough: 0.55,
+        additive: false,
+        opacity: 0.6 * thin,
+        loop: true,
+        soft: true,
+      });
+      body.scale.set(1, 0.42, 1);
+      g.add(place(body, [w.c[0], w.c[1] + R * 0.12, w.c[2]]));
+    } else
+      g.add(
+        lying({ kind: "mist", life: 1, core: gas.core, glow: gas.glow, loop: true, opacity: 0.8 * thin }),
+      );
     g.add(
       particleBurst(
         [
@@ -509,7 +655,7 @@ export function areaLoop(
             alphaCurve: [0, 0.7, 0],
           }),
         ],
-        { seed, loop: true, core: gas.core, glow: gas.glow, additive: false, opacity: 0.5 },
+        { seed, loop: true, core: gas.core, glow: gas.glow, additive: false, opacity: 0.5 * thin },
         // Billboards this big cost fill, not count: a floor under the tier's share, or the cloud comes apart.
         Math.max(scale, 0.6),
       ),
@@ -526,16 +672,14 @@ export function areaLoop(
     return g;
   }
   if (props.bodyFt) {
-    // An object at its centre (Flaming Sphere): the burning ball itself, flames licking up off it, and a faint ring
-    // where its heat reaches (the zone a creature ending its turn in burns).
+    // An object at its centre (Flaming Sphere): the burning ball itself (hot at its heart, embers at its limb, a glow
+    // round it), the light it throws on the floor, flames licking up off it, and a faint ring where its heat reaches
+    // (the zone a creature ending its turn in burns).
     const r = props.bodyFt / 2;
     g.add(
-      place(shell({ radius: r, life: 1, core: p.core, glow: p.glow, rough: 0.6, loop: true, opacity: 0.9 }), [
-        w.c[0],
-        w.c[1] + r,
-        w.c[2],
-      ]),
+      place(orb({ radius: r, core: p.core, glow: p.glow, ember: p.shadow }), [w.c[0], w.c[1] + r, w.c[2]]),
     );
+    g.add(place(glowDisc({ radius: Math.max(R, r * 3), color: p.glow, opacity: 0.4, flicker: true }), floor));
     g.add(
       loopBurst(
         [
@@ -558,39 +702,13 @@ export function areaLoop(
     return g;
   }
   if (props.difficult && shapeKind === "cube" && props.obscurement === "light") {
-    // Web: its strands on the floor, faintly shining.
-    g.add(
-      place(
-        decal({
-          kind: "web",
-          radius: R,
-          life: 1,
-          core: "#F6F2E6",
-          glow: "#A9B4C2",
-          loop: true,
-          opacity: 1,
-        }),
-        floor,
-      ),
-    );
+    // Web: its strands across its cube's floor, faintly shining.
+    g.add(lying({ kind: "web", life: 1, core: "#F6F2E6", glow: "#A9B4C2", loop: true, opacity: 1 }));
     return g;
   }
   if (props.difficult && !props.obscurement) {
     // Spike Growth: thorns.
-    g.add(
-      place(
-        decal({
-          kind: "thorns",
-          radius: R,
-          life: 1,
-          core: "#3F5A2A",
-          glow: "#1E2A14",
-          loop: true,
-          opacity: 1,
-        }),
-        floor,
-      ),
-    );
+    g.add(lying({ kind: "thorns", life: 1, core: "#3F5A2A", glow: "#1E2A14", loop: true, opacity: 1 }));
     return g;
   }
   if (props.speedHalved) {
@@ -638,10 +756,28 @@ export function areaLoop(
     return g;
   }
   if (shapeKind === "wall" && wallPoints && wallPoints.length >= 2) {
-    // Wall of Fire (and other walls): a curtain along its line — the flames themselves one ribbon, the embers above.
-    g.add(curtain({ points: wallPoints, height: 9, core: p.core, glow: p.glow, opacity: 0.8 }));
-    // The burning ground along it: seen from above, where the curtain is edge-on.
-    g.add(curtain({ points: wallPoints, height: 0, core: p.core, glow: p.glow, opacity: 0.55, floor: 1.2 }));
+    const height = Math.max(1, extra.height ?? 10);
+    if (preset !== "fire") {
+      // Every other wall (ice, stone, thorns, force, wind): a pane as tall as it is, dense if it's opaque, and its
+      // line on the floor — what shows of it seen edge-on.
+      const closed = w.f?.kind === "strip" && w.f.closed;
+      const pane = { points: wallPoints, closed, core: p.core, glow: p.glow, look: "pane" as const };
+      g.add(curtain({ ...pane, height, opacity: 0.9, solid: extra.solid === true }));
+      g.add(curtain({ ...pane, height: 0, opacity: 0.8, floor: 1.2, solid: true }));
+      return g;
+    }
+    // Wall of Fire: a curtain of flame along its line as tall as the wall, the embers above.
+    const closed = w.f?.kind === "strip" && w.f.closed;
+    const fire = {
+      points: wallPoints,
+      closed,
+      core: p.core,
+      glow: p.glow,
+      ember: mixHex(p.glow, p.shadow, 0.35),
+    };
+    g.add(curtain({ ...fire, height, opacity: 0.85 }));
+    // The burning ground along it (light on the floor): seen from above, where the curtain is edge-on.
+    g.add(curtain({ ...fire, height: 0, opacity: 0.55, floor: 1.2, additive: true }));
     const segs = wallPoints.slice(1).map((b, i) => [wallPoints[i] as { x: number; y: number }, b] as const);
     const total = segs.reduce((s, [a, b]) => s + Math.hypot(b.x - a.x, b.y - a.y), 0) || 1;
     g.add(
@@ -705,16 +841,14 @@ export function areaLoop(
           [
             {
               ...drift(Math.round(R * 6), 3, [0.6, 1.1], [0.5, 1.0], { sizeCurve: [0.8, 1, 0.2] }),
-              origin: (_i, r) => {
-                const a = r() * Math.PI * 2;
-                return [w.c[0] + Math.cos(a) * R * 0.95, w.c[1], w.c[2] + Math.sin(a) * R * 0.95];
-              },
+              // Flames round its edge (a disc's rim, a cone's sides).
+              origin: (_i, r) => onEdge(w, r),
             },
           ],
           { core: p.core, glow: p.glow },
         ),
       );
-      if (R <= 3)
+      if (R <= 3 && fl.round)
         g.add(
           place(
             shell({ radius: R, life: 1, core: p.core, glow: p.glow, rough: 0.5, loop: true, opacity: 0.8 }),
@@ -746,12 +880,7 @@ export function areaLoop(
       );
       break;
     case "thunder":
-      g.add(
-        place(
-          floorRing({ radius: R, life: 1, core: p.core, glow: p.glow, loop: true, opacity: 0.35 }),
-          floor,
-        ),
-      );
+      g.add(ringOver({ life: 1, core: p.core, glow: p.glow, loop: true, opacity: 0.35 }));
       break;
     case "acid":
       g.add(
@@ -783,43 +912,31 @@ export function areaLoop(
       break;
     case "force":
       g.add(
-        place(
-          shell({
-            radius: R,
-            life: 1,
-            core: p.core,
-            glow: p.glow,
-            rough: 0.02,
-            facet: true,
-            opacity: 0.22,
-            loop: true,
-          }),
-          w.c,
-        ),
+        fl.round
+          ? place(
+              shell({
+                radius: R,
+                life: 1,
+                core: p.core,
+                glow: p.glow,
+                rough: 0.02,
+                facet: true,
+                opacity: 0.22,
+                loop: true,
+              }),
+              w.c,
+            )
+          : ringOver({ life: 1, core: p.core, glow: p.glow, loop: true, opacity: 0.3 }),
       );
       break;
     case "psychic":
-      g.add(
-        place(floorRing({ radius: R, life: 1, core: p.core, glow: p.glow, loop: true, opacity: 0.4 }), floor),
-      );
+      g.add(ringOver({ life: 1, core: p.core, glow: p.glow, loop: true, opacity: 0.4 }));
       break;
     case "healing":
       break;
     case "arcane":
-      g.add(
-        place(
-          floorRing({
-            radius: R,
-            life: 1,
-            core: p.core,
-            glow: p.glow,
-            runes: true,
-            loop: true,
-            opacity: 0.5,
-          }),
-          floor,
-        ),
-      );
+      // A runic circle on a round area; a slow sweep of light through any other.
+      g.add(ringOver({ life: 1, core: p.core, glow: p.glow, runes: fl.round, loop: true, opacity: 0.5 }));
       break;
   }
   return g;

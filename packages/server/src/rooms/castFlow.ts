@@ -6,7 +6,7 @@
  * for everyone who can see its caster ("Mira casts Fireball (3rd level) — 4 creatures").
  */
 import type { Ability, DamageType } from "@gloam/shared";
-import { COVER_BONUS } from "@gloam/shared/aoe";
+import { COVER_BONUS, coverHint } from "@gloam/shared/aoe";
 import { type CastTargetView, type CastView, GloamError } from "@gloam/shared/protocol";
 import { applyDamage, applyHealing, critFormula, isDm } from "@gloam/shared/rules";
 import type { RequestResponse, RequestTarget, RollRequest } from "../dice/requests.ts";
@@ -18,8 +18,10 @@ import { holderOf } from "../engine/commands/health.ts";
 import { SYSTEM_ACTOR } from "../engine/commands/party.ts";
 import {
   adjusted,
+  barriersOf,
   CAST_FOLLOWUP,
   type CastFollowup,
+  castLineText,
   conditionsFor,
   outcomeOf,
   rowFormula,
@@ -130,14 +132,21 @@ export class CastFlow {
     for (const t of d.targets) {
       // The caster sees only the creatures they perceive (a hidden one isn't named on their card).
       if (!v.dm && !v.perceives(t.id)) continue;
-      targets.push(v.dm ? this.dmRow(ctx, d, t) : this.casterRow(d, t));
+      targets.push(v.dm ? this.dmRow(ctx, d, t) : this.casterRow(ctx, d, t, v));
     }
+    // A trigger's card (their effect burning someone) only when they perceive someone on it — its subtitle naming
+    // only those.
+    if (!v.dm && d.kind === "trigger" && !targets.length) return null;
+    const subtitle =
+      !v.dm && d.kind === "trigger" && d.trigger?.verb
+        ? `${[...new Set(targets.map((t) => t.name))].join(", ")} ${d.trigger.verb}`
+        : d.subtitle;
     const cover = v.dm ? coverNote(d) : undefined;
     return {
       id: c.id,
       kind: d.kind,
       name: d.name,
-      subtitle: d.subtitle,
+      subtitle,
       casterName: d.caster.name,
       casterTokenId: d.caster.tokenId,
       spellId: d.spellId,
@@ -184,7 +193,7 @@ export class CastFlow {
   }
 
   private dmRow(ctx: CommandCtx, d: CastData, t: CastTargetData): CastTargetView {
-    const base = this.casterRow(d, t);
+    const base = this.casterRow(ctx, d, t, null);
     let h: ReturnType<typeof holderOf> | null = null;
     try {
       h = holderOf(ctx, { tokenId: t.id });
@@ -243,15 +252,43 @@ export class CastFlow {
     return row;
   }
 
-  /** What the caster sees of a row: who, whether it's in, their own rolls — no DC, AC, resistances or HP. */
-  private casterRow(d: CastData, t: CastTargetData): CastTargetView {
+  /** A row's cover from what a player perceives: creatures they perceive in the way, walls they know of. */
+  private coverSeen(
+    ctx: CommandCtx,
+    d: CastData,
+    t: CastTargetData,
+    v: { perceives(id: string): boolean },
+  ): CastTargetData["cover"] {
+    const m = ctx.model;
+    const target = m.get("token", t.id);
+    const casterTok = d.caster.tokenId ? m.get("token", d.caster.tokenId) : undefined;
+    const from = d.origin ?? casterTok?.pos ?? null;
+    if (!target || !from || (from.x === target.pos.x && from.y === target.pos.y)) return "none";
+    const barriers = barriersOf(ctx, target.sceneId, { known: true });
+    const others = m
+      .inScene("token", target.sceneId)
+      .filter((o) => o.id !== target.id && !o.hidden && v.perceives(o.id))
+      .map((o) => ({ pos: o.pos, r: o.sizeFt / 2 }));
+    return coverHint(from, { pos: target.pos, r: target.sizeFt / 2 }, barriers, others).cover;
+  }
+
+  /**
+   * What the caster sees of a row: who, whether it's in, their own rolls — no DC, AC, resistances or HP; the cover
+   * hint as they could judge it (the creatures they perceive, the walls they know of — never a hidden one's worth).
+   */
+  private casterRow(
+    ctx: CommandCtx,
+    d: CastData,
+    t: CastTargetData,
+    v: { perceives(id: string): boolean } | null,
+  ): CastTargetView {
     return {
       key: t.key,
       id: t.id,
       name: t.name,
       state: t.state,
       pc: t.pc,
-      cover: t.cover,
+      cover: t.cover === "none" || !v ? t.cover : this.coverSeen(ctx, d, t, v),
       ...(d.save && t.save
         ? {
             save: {
@@ -345,7 +382,7 @@ export class CastFlow {
     const c = f.castId ? this.cast(f.castId) : undefined;
     if (c && f.askSaves?.length && c.data.save) this.askSaves(c, f.askSaves, by);
     if (f.fx) this.fx(f.fx);
-    if (f.line) this.line(f, c);
+    if (f.line) this.line(f);
   }
 
   private askSaves(c: CastEntity, targets: string[], by: string): void {
@@ -395,11 +432,18 @@ export class CastFlow {
     }
   }
 
-  /** "Mira casts Fireball (3rd level) — 4 creatures": the DM, and the players who perceive the caster. */
-  private line(f: CastFollowup, c: CastEntity | undefined): void {
-    const caster = c?.data.caster.tokenId;
-    for (const v of this.host.viewers())
-      if (v.dm || !caster || v.perceives(caster)) v.send("cast.line", { text: f.line, castId: f.castId });
+  /**
+   * "Mira casts Fireball (3rd level) — 4 creatures": the DM, and the players who perceive the caster — card or no card
+   * (a hidden lich's Darkness tells no one) — each counting (or naming) only the creatures they perceive.
+   */
+  private line(f: CastFollowup): void {
+    const l = f.line;
+    if (!l) return;
+    for (const v of this.host.viewers()) {
+      if (!v.dm && !v.perceives(l.casterTokenId)) continue;
+      const seen = v.dm ? l.targets : l.targets.filter((x) => v.perceives(x.id));
+      v.send("cast.line", { text: castLineText(l, seen), castId: f.castId });
+    }
   }
 
   // ── rolls ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -577,10 +621,11 @@ function coverNote(d: CastData): string | undefined {
   const what =
     t.cover === "half" ? "half cover" : t.cover === "threeQuarters" ? "three-quarters cover" : "total cover";
   if (bonus === null) return `Cover hint: ${t.name} has total cover (it can't be targeted directly).`;
-  const against = d.save
-    ? d.save.ability === "dex"
-      ? ` to its ${ABILITY_SHORT.dex} save`
-      : " (to AC; not this save)"
-    : " to its AC";
-  return `Cover hint: ${t.name} has ${what} (+${bonus}${against}).`;
+  // Cover adds to AC and to Dexterity saves only (§17.5): a save of another ability gets nothing from it.
+  const against = !d.save
+    ? "to its AC"
+    : d.save.ability === "dex"
+      ? `to its ${ABILITY_SHORT.dex} save`
+      : `to AC and ${ABILITY_SHORT.dex} saves, not to this ${ABILITY_SHORT[d.save.ability]} save`;
+  return `Cover hint: ${t.name} has ${what}: +${bonus} ${against}.`;
 }

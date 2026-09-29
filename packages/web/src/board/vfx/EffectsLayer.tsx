@@ -2,6 +2,7 @@ import type { EffectView } from "@gloam/shared/state";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useMemo } from "react";
 import { DoubleSide, type Group, Mesh, MeshBasicMaterial, Shape, ShapeGeometry } from "three";
+import { useTable } from "../../net/table.ts";
 import { useBoard } from "../../state/entities.ts";
 import { prefersReducedMotion, useSettings } from "../../state/settings.ts";
 import { provideTestHook } from "../../test/hooks.ts";
@@ -47,6 +48,8 @@ export function EffectsLayer() {
 function EffectLook({ e, still }: { e: EffectView; still: boolean }) {
   const tokens = useBoard((d) => d.tokens);
   const tier = useTier((s) => s.name);
+  // The DM sees into a cloud or darkness (their look is thinner): they have to see what's inside.
+  const dm = useTable((s) => s.me?.role === "dm" || s.me?.role === "admin");
   const clock = useThree((s) => s.clock);
   const size = useThree((s) => s.size);
   const dpr = useThree((s) => s.viewport.dpr);
@@ -72,8 +75,13 @@ function EffectLook({ e, still }: { e: EffectView; still: boolean }) {
       TIERS[tier].particles,
       hashOf(e.id),
       pts,
+      {
+        ...(typeof shape.height === "number" ? { height: shape.height } : {}),
+        solid: shape.opaque === true || props.opaque === true,
+        dm,
+      },
     );
-  }, [key, preset, props, e.name, tier, shape]);
+  }, [key, preset, props, e.name, tier, shape, dm]);
   useEffect(() => {
     if (!look) return;
     let parts = 0;

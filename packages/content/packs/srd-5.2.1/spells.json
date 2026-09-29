@@ -571,7 +571,8 @@
         }
       },
       "triggers": [],
-      "attach": "object"
+      "attach": "object",
+      "recastEnds": true
     },
     "light": {
       "bright": 20,

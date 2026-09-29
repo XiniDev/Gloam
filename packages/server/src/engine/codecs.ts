@@ -418,11 +418,14 @@ export const CODECS: { [K in EntityKind]: Codec<K> } = {
       expiresJson: j(e.expires),
       visibility: e.visibility,
       vfx: e.vfx,
-      dataJson: j({ name: e.name, movement: e.movement }),
+      dataJson: j({ name: e.name, movement: e.movement, ...(e.used ? { used: e.used } : {}) }),
       createdAt: e.createdAt,
     }),
     fromRow: (r) => {
-      const data = p<{ name?: string; movement?: EffectEntity["movement"] }>(r.dataJson, {});
+      const data = p<{ name?: string; movement?: EffectEntity["movement"]; used?: EffectEntity["used"] }>(
+        r.dataJson,
+        {},
+      );
       return {
         id: r.id as string,
         sceneId: r.sceneId as string,

@@ -393,6 +393,16 @@ export function castArea(spell: Spell, alt?: number): SpellArea | undefined {
 }
 
 /**
+ * What a cast's lasting area hangs on (§33.4): the chosen alternative's (Darkness on an object) or the spell's — the
+ * caster (Spirit Guardians goes where it goes), an object, a creature it targets, or a point (where it stays).
+ */
+export function castAttach(spell: Spell, alt?: number): "caster" | "object" | "point" | "target" {
+  return (
+    (alt !== undefined ? spell.areaAlternatives?.[alt]?.attach : undefined) ?? spell.effect?.attach ?? "point"
+  );
+}
+
+/**
  * How far a sheet attack reaches, from its range as written: "20/60" (normal/long: the long range — past the normal
  * one it's at Disadvantage, the DM's call), "120 ft", "reach 10 ft", a bare "30"; nothing written, 5 ft.
  */

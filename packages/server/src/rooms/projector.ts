@@ -162,6 +162,13 @@ export function tokenView(t: TokenEntity, ctx: ProjectionCtx): TokenView {
       freeMovement: t.overrides.freeMovement === true,
       lockMovement: t.overrides.lockMovement === true,
       stuck,
+      // The effects whose slowing ground it's spared: its controllers' to know, never in the effect (§13.4).
+      spared: JSON.stringify(
+        ctx.model
+          .inScene("effect", t.sceneId)
+          .filter((e) => e.props.exempt?.includes(t.id))
+          .map((e) => e.id),
+      ),
       ...mv,
     },
     vis: {
@@ -297,7 +304,8 @@ export function effectView(e: EffectEntity, ctx: ProjectionCtx): EffectView {
   const v: EffectView = {
     id: e.id,
     shapeJson: JSON.stringify(shapeForView(e, ctx)),
-    propsJson: JSON.stringify(e.props),
+    // Its public props name no creature: who it spares is on those creatures, for their controllers (`spared`).
+    propsJson: JSON.stringify(publicProps(e.props)),
     vfx: e.vfx,
     roundsLeft: "never" in e.expires ? -1 : Math.max(0, e.expires.round - round),
     name: e.name,
@@ -308,6 +316,39 @@ export function effectView(e: EffectEntity, ctx: ProjectionCtx): EffectView {
   const casterId = e.source.casterTokenId ?? "";
   if (tokenId || casterId) v.link = { tokenId, casterId };
   return v;
+}
+
+/** The creatures an effect spared before an op on it (a set's `prev` is the value at its path). */
+function exemptBefore(op: Extract<Op, { k: "set" | "create" | "delete" }>): string[] {
+  const list = (v: unknown) => (Array.isArray(v) ? (v as string[]) : []);
+  if (op.k === "create") return [];
+  if (op.k === "delete")
+    return list((op.prev as { props?: { exempt?: unknown } } | undefined)?.props?.exempt);
+  const [first, second] = op.path;
+  if (first === undefined)
+    return list((op.prev as { props?: { exempt?: unknown } } | undefined)?.props?.exempt);
+  if (first !== "props") return [];
+  if (second === undefined) return list((op.prev as { exempt?: unknown } | undefined)?.exempt);
+  return second === "exempt" ? list(op.prev) : [];
+}
+
+/** An effect's props as everyone gets them: without the creatures it spares (token ids, §13.4). */
+function publicProps(p: EffectEntity["props"]): Omit<EffectEntity["props"], "exempt"> {
+  const { exempt: _exempt, ...rest } = p;
+  return rest;
+}
+
+/**
+ * An effect seen only by its area (SPEC §13.4): held up by a creature the viewer doesn't perceive — an emanation's
+ * source, the holder of a light — its area comes as the viewer's own stand-in: another id, no link, no controls, no
+ * rounds left, its centre to the foot. Nothing that names the creature or ties the area to it.
+ */
+export function effectGlimpseView(v: EffectView, id: string): EffectView {
+  const { link: _link, ...rest } = v;
+  const sh = JSON.parse(v.shapeJson) as { kind?: string; at?: { x: number; y: number; z: number } | null };
+  if (sh.kind === "emanation" && sh.at)
+    sh.at = { x: Math.round(sh.at.x), y: Math.round(sh.at.y), z: Math.round(sh.at.z) };
+  return { ...rest, id, shapeJson: JSON.stringify(sh), controlJson: "{}", roundsLeft: -1, dmHidden: false };
 }
 
 /** How an effect moves and what its caster can do with it (the board's handle; `EffectControl`). */
@@ -524,6 +565,12 @@ export class StateProjector {
   }
 
   /** Glow stand-ins (the room keeps them in step with the vision service); a reload clears them with the rest. */
+  upsertGlimpse(view: EffectView): void {
+    this.upsert("effects", view as unknown as Obj);
+  }
+  removeGlimpse(id: string): void {
+    (this.state as unknown as Record<CollectionName, Map<string, Obj>>).effects.delete(id);
+  }
   upsertGlow(view: LightView): void {
     this.upsert("lights", view as unknown as Obj);
   }
@@ -635,13 +682,17 @@ export class StateProjector {
         const l = m.get("light", op.id) ?? (op.k === "delete" ? (op.prev as LightEntity) : undefined);
         if (l?.tokenId) touch("tokens", l.tokenId, l.sceneId);
       }
-      // A Silence came, went or moved: the creatures of its scene (Deafened while inside it).
+      // A Silence came, went or moved: the creatures of its scene (Deafened while inside it). The creatures an effect
+      // spares, before and after (their `spared`).
       if (op.e === "effect") {
-        const fx = (m.get("effect", op.id) ?? (op.k === "delete" ? op.prev : undefined)) as
-          | { sceneId?: string; props?: { silence?: boolean } }
-          | undefined;
+        type Fx = { sceneId?: string; props?: { silence?: boolean; exempt?: string[] } };
+        const fx = (m.get("effect", op.id) ?? (op.k === "delete" ? op.prev : undefined)) as Fx | undefined;
         if (fx?.props?.silence && fx.sceneId)
           for (const t of m.inScene("token", fx.sceneId)) touch("tokens", t.id, t.sceneId);
+        for (const id of new Set([...(fx?.props?.exempt ?? []), ...exemptBefore(op)])) {
+          const t = m.get("token", id);
+          if (t) touch("tokens", t.id, t.sceneId);
+        }
       }
       if (op.e === "token") {
         const t = m.get("token", op.id);

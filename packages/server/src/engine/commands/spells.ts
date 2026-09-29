@@ -38,6 +38,7 @@ import {
   areaAtSlot,
   CONDITIONS,
   castArea,
+  castAttach,
   controlsToken,
   deriveSheet,
   durationRounds,
@@ -93,6 +94,29 @@ import { type Hurt, tallyOps } from "./tally.ts";
  * (health.ts) for every target at once. Rolls are the room's (the dice service), recorded here by `cast.record`.
  */
 
+/** A cast's line before it's told to anyone (castFlow words it for each reader). */
+export interface CastLine {
+  casterTokenId: string;
+  caster: string;
+  verb: "casts" | "attacks";
+  /** "Fireball (3rd level)"; an attack's weapon. */
+  what: string;
+  /** The creatures on the card. */
+  targets: { id: string; name: string }[];
+  /** A cast says how many of them (only a card's; a spell with none says nothing). */
+  count: boolean;
+}
+
+/** A cast's line for one reader: the creatures in it they perceive (the DM: all), counted or named. */
+export function castLineText(l: CastLine, seen: readonly { id: string; name: string }[]): string {
+  if (l.verb === "attacks") {
+    const names = [...new Set(seen.map((x) => x.name))].join(", ");
+    return names ? `${l.caster} attacks ${names} with ${l.what}` : `${l.caster} attacks with ${l.what}`;
+  }
+  const n = new Set(seen.map((x) => x.id)).size;
+  return `${l.caster} casts ${l.what}${l.count && n ? ` — ${n} ${n === 1 ? "creature" : "creatures"}` : ""}`;
+}
+
 /** The room message that asks the room to follow a cast up (save cards, the VFX, the log line). */
 export const CAST_FOLLOWUP = "cast.followup";
 export interface CastFollowup {
@@ -107,8 +131,11 @@ export interface CastFollowup {
     targets: string[];
     kind: "burst" | "projectile" | "instant";
   };
-  /** Its line in the log and the feed, for everyone. */
-  line?: string;
+  /**
+   * Its line in the log and the feed (§8.13): who casts or attacks, and with what — to the DM and to the players who
+   * perceive the caster, each told only of the creatures they perceive (how many for a cast, which for an attack).
+   */
+  line?: CastLine;
   spellId?: string | null;
 }
 
@@ -178,16 +205,21 @@ export function bodyOf(t: TokenEntity): Body {
   return { pos: t.pos, r: t.sizeFt / 2, z: t.elevation, height: Math.max(t.sizeFt, 2.5) };
 }
 
-/** A scene's walls as barriers to lines of effect and cover (§17.3, §17.5): its walls and doors, and wall effects. */
-export function barriersOf(ctx: CommandCtx, sceneId: string): Barrier[] {
+/**
+ * A scene's walls as barriers to lines of effect and cover (§17.3, §17.5): its walls and doors, and wall effects.
+ * `known`: only those a player knows of (a hidden wall only if it blocks sight — they see its shadow, §13.4).
+ */
+export function barriersOf(ctx: CommandCtx, sceneId: string, opts: { known?: boolean } = {}): Barrier[] {
   const out: Barrier[] = [];
-  for (const w of ctx.model.inScene("wall", sceneId))
+  for (const w of ctx.model.inScene("wall", sceneId)) {
+    if (opts.known && w.hidden && !blocksSight(w.kind, w.doorState)) continue;
     out.push({
       a: w.a,
       b: w.b,
       blocksMove: blocksMove(w.kind, w.doorState),
       blocksSight: blocksSight(w.kind, w.doorState),
     });
+  }
   for (const e of ctx.model.inScene("effect", sceneId)) {
     const sh = e.shape;
     if (sh.kind !== "wall") continue;
@@ -230,6 +262,8 @@ function placeShape(
   level: number,
   pl: Placement,
   caster: TokenEntity,
+  attach: ReturnType<typeof castAttach>,
+  onto: string | null,
 ): AreaShape {
   const a = areaAtSlot(area, spell.level, level);
   const self = spell.range.kind === "self";
@@ -261,15 +295,24 @@ function placeShape(
       return self
         ? { kind: "cube", origin: edge, dirDeg: pl.dirDeg, size: size ?? a.size, originOnFace: true }
         : { kind: "cube", origin: at, dirDeg: pl.dirDeg, size: size ?? a.size, originOnFace: false };
-    case "emanation":
-      // Round an object put down at a point (Flaming Sphere's sphere): the distance out from the object's edge.
-      if (spell.effect?.attach === "object" && !pl.attachTo)
+    case "emanation": {
+      const reach = size ?? a.distance;
+      // Round an object (§33.4): one that's held moves with its holder (the DM's pick); one put down at a point
+      // stays there — Flaming Sphere's sphere, Darkness cast on an object — the distance out from the object's edge.
+      if (attach === "object")
+        return onto
+          ? { kind: "emanation", sourceTokenId: onto, distance: reach }
+          : { kind: "sphere", origin: at, radius: reach + (spell.effect?.bodyFt ?? 0) / 2 };
+      // Round where the caster stands, staying there (Tiny Hut, Globe of Invulnerability: immobile).
+      if (attach === "point")
         return {
           kind: "sphere",
-          origin: at,
-          radius: (size ?? a.distance) + (spell.effect.bodyFt ?? 0) / 2,
+          origin: { x: caster.pos.x, y: caster.pos.y, z: caster.elevation },
+          radius: reach + caster.sizeFt / 2,
         };
-      return { kind: "emanation", sourceTokenId: pl.attachTo ?? caster.id, distance: size ?? a.distance };
+      // Round the caster, going where it goes (Spirit Guardians) — or the creature the DM puts it on.
+      return { kind: "emanation", sourceTokenId: onto ?? caster.id, distance: reach };
+    }
     case "wall":
       return {
         kind: "wall",
@@ -285,6 +328,35 @@ function placeShape(
         ...(a.damagingSide ? { damagingSide: a.damagingSide } : {}),
       };
   }
+}
+
+/**
+ * What a cast is put on when the caster names a token (§8.13; the security review's H2): the DM may put it on any
+ * token on the caster's scene (P2) — a creature's torch, an object token; a player only on the caster itself, and only
+ * where the spell allows it — something they carry for a spell cast on an object (Light: "isn't being worn or carried
+ * by someone else"), their own space for one that goes with the caster. Anything else goes on an object at a point.
+ */
+function castOnto(
+  ctx: CommandCtx,
+  spell: Spell,
+  attach: ReturnType<typeof castAttach>,
+  caster: TokenEntity,
+  id: string | undefined,
+  dm: boolean,
+): string | null {
+  if (!id) return null;
+  const h = ctx.model.get("token", id);
+  if (!h || h.sceneId !== caster.sceneId) throw new GloamError("INVALID", "That isn't on this scene.");
+  if (dm) return h.id;
+  // Cast on the object itself (Light), not an area round one (Darkness on an object must lie where no one holds it).
+  const carried = attach === "object" && !spell.area;
+  if (h.id === caster.id && (carried || attach === "caster")) return h.id;
+  throw new GloamError(
+    "FORBIDDEN",
+    carried
+      ? `${spell.name} goes on something ${caster.name} carries, or on an object put down within reach.`
+      : `${spell.name} can't be put on a creature.`,
+  );
 }
 
 /** A wall's drawn length (a ring's circumference). */
@@ -507,6 +579,7 @@ function makeEffect(
   caster: Caster,
   castId: string,
   on: string | null,
+  chosenType?: DamageType,
 ): EffectEntity | null {
   const tpl = spell.effect;
   if (!tpl) return null;
@@ -577,7 +650,11 @@ function makeEffect(
                 damage && damage.formula === t.damage.formula
                   ? scaledFormula(t.damage.formula, damage.scaling, spell.level, level, caster.level)
                   : t.damage.formula,
-              type: t.damage.type,
+              // The type the caster chose, where the spell offers one (Spirit Guardians' Necrotic for an evil caster).
+              type:
+                chosenType && damage?.typeOptions?.includes(chosenType) && t.damage.type === damage.type
+                  ? chosenType
+                  : t.damage.type,
             },
           }
         : {}),
@@ -817,6 +894,36 @@ export const spellCast: CommandDef<
     }
     if (p.mode === "ritual" && !spell.ritual)
       throw new GloamError("INVALID", `${spell.name} isn't a ritual.`);
+    if (!dm) {
+      // On the scene in play (a token left on a prep scene isn't at the table).
+      if (t.sceneId !== ctx.model.campaign.activeSceneId)
+        throw new GloamError("FORBIDDEN", `${t.name} isn't on the scene in play.`);
+      // An area's size is the spell's (and its slot's); resizing one is the DM's (P2).
+      if (p.placement?.size !== undefined)
+        throw new GloamError("FORBIDDEN", "Only the DM can change an area's size.");
+      // Without a slot (P2's override for a sheet that's wrong): a spell the sheet has, at a level it could cast.
+      if (p.mode === "free" && spell.level > 0) {
+        const sc = c.sheet?.core.spellcasting;
+        const has = sc?.spells.some(
+          (x) => x.contentId === spell.id || x.name.trim().toLowerCase() === spell.name.toLowerCase(),
+        );
+        if (!has)
+          throw new GloamError(
+            "FORBIDDEN",
+            `${spell.name} isn't on ${t.name}'s sheet — only the DM can cast it without a slot.`,
+          );
+        const top = Math.max(
+          spell.level,
+          ...(sc?.slots ?? []).filter((s) => s.max > 0).map((s) => s.level),
+          sc?.pact?.level ?? 0,
+        );
+        if ((p.level ?? spell.level) > top)
+          throw new GloamError(
+            "FORBIDDEN",
+            `${t.name} can cast it at ${SPELL_LEVEL_NAMES[top]} level at most.`,
+          );
+      }
+    }
     // Concentration (§8.13): a second one asks first.
     const conc = c.h.status.concentration;
     if (spell.duration.concentration && conc && !p.endConcentration)
@@ -844,12 +951,15 @@ export const spellCast: CommandDef<
     const caster = casterOf(ctx, p.casterTokenId);
     const t = caster.token;
     const dm = isDm(ctx.actor.role);
+    // A ritual is cast at its own level only (SRD p. 187); a free cast at the level asked.
     const level =
       spell.level === 0
         ? 0
         : p.mode === "slot"
           ? (p.slot?.level ?? spell.level)
-          : Math.max(spell.level, p.level ?? spell.level);
+          : p.mode === "ritual"
+            ? spell.level
+            : Math.max(spell.level, p.level ?? spell.level);
     const castId = newId("cst");
     const ops: Op[] = [];
     const kind = targetingKind(spell);
@@ -860,6 +970,18 @@ export const spellCast: CommandDef<
     let targets: CastTargetData[] = [];
     // Where it strikes: its strike's area under a lasting one (Call Lightning's bolt), else its (alternative) area.
     const area = castArea(spell, p.placement?.alt) ?? null;
+    // What it hangs on: the caster, a creature, an object (held, or put down at a point) — the holder checked.
+    const attach = castAttach(spell, p.placement?.alt);
+    const onto = castOnto(
+      ctx,
+      spell,
+      attach,
+      t,
+      p.placement?.attachTo ??
+        // The DM's older way to name the holder of a spell cast on an object (Light on a creature's torch).
+        (dm && attach === "object" && !area ? p.targets?.[0] : undefined),
+      dm,
+    );
     if (!p.narrative && area && kind === "area") {
       // An area that is simply round the caster (an emanation; a sphere on itself) has nothing to place: an API
       // caller needn't send a placement for it.
@@ -869,7 +991,7 @@ export const spellCast: CommandDef<
           : undefined;
       const pl: Placement | undefined = p.placement ?? around;
       if (!pl) throw new GloamError("INVALID", "Place the area first.");
-      shape = placeShape(spell, area, level, pl, t);
+      shape = placeShape(spell, area, level, pl, t, attach, onto);
       if (shape.kind === "wall" && !dm) {
         const scaled = areaAtSlot(area, spell.level, level);
         const max =
@@ -922,15 +1044,43 @@ export const spellCast: CommandDef<
         // On each creature it's cast on (Darkvision, True Seeing); Faerie Fire's come with its card, on a failed save.
         if (kind !== "area")
           for (const x of targets) {
-            const e = makeEffect(ctx, spell, level, null, caster, castId, x.id);
+            const e = makeEffect(ctx, spell, level, null, caster, castId, x.id, p.damageType);
             if (e) effects.push(e);
           }
       } else {
-        // On an object (Light): the object where it was put, or — cast at a creature — the one it holds.
-        const holder =
-          p.placement?.attachTo ??
-          (spell.effect.attach === "object" && !shape ? (p.targets?.[0] ?? null) : null);
-        effect = makeEffect(ctx, spell, level, shape, caster, castId, holder);
+        // On an object with no area of its own (Light): the caster's gear or the token the DM chose (the holder), or
+        // an object put down at a point within reach — the light shines from there.
+        let at = shape;
+        if (!at && attach === "object" && !onto) {
+          const o = p.placement?.origin;
+          if (!o)
+            throw new GloamError(
+              "INVALID",
+              `Choose what ${spell.name} is cast on: something ${t.name} carries, or a point within reach.`,
+            );
+          if (!dm) {
+            const ok = canPlace(
+              bodyOf(t),
+              o,
+              spell.range.kind === "touch"
+                ? { kind: "touch", reach: caster.h.stats.reachFt || 5 }
+                : { kind: "ft", ft: spell.range.kind === "ranged" ? (spell.range.ft ?? 5) : 5 },
+              barriersOf(ctx, t.sceneId),
+            );
+            if (!ok.ok)
+              throw new GloamError(
+                ok.why === "range" ? "INVALID" : "BLOCKED",
+                ok.why === "range" ? "That point is out of reach." : "No clear path to that point.",
+              );
+          }
+          at = { kind: "sphere", origin: { x: o.x, y: o.y, z: o.z }, radius: 0 };
+        }
+        // Cast again, the earlier one ends (Light).
+        if (spell.effect.recastEnds)
+          for (const old of ctx.model.all("effect"))
+            if (old.source.contentId === spell.id && old.source.casterTokenId === t.id)
+              ops.push(...endEffectOps(ctx, old));
+        effect = makeEffect(ctx, spell, level, at, caster, castId, onto, p.damageType);
         if (effect) effects.push(effect);
       }
     }
@@ -1030,9 +1180,15 @@ export const spellCast: CommandDef<
       };
       ops.push(createOp("cast", cast));
     }
-    const n = new Set(inArea.map((x) => x.id)).size;
     const what = `${spell.name}${spell.level > 0 ? ` (${SPELL_LEVEL_NAMES[level]} level)` : ""}`;
-    const line = `${t.name} casts ${what}${card && n ? ` — ${n} ${n === 1 ? "creature" : "creatures"}` : ""}`;
+    const line: CastLine = {
+      casterTokenId: t.id,
+      caster: t.name,
+      verb: "casts",
+      what,
+      targets: inArea.map((x) => ({ id: x.id, name: x.name })),
+      count: Boolean(card),
+    };
     const follow: CastFollowup = {
       castId: cast?.id ?? null,
       line,
@@ -1061,9 +1217,10 @@ export const spellCast: CommandDef<
         : {}),
     };
     const events: RoomEvent[] = [{ name: CAST_FOLLOWUP, payload: follow, to: { dms: true } }];
+    // The history's words: who cast what — no count of creatures (the caster may not perceive them all).
     return {
       ops,
-      summary: `${line}${p.mode === "free" && spell.level > 0 ? " (no slot)" : p.mode === "ritual" ? " (ritual)" : ""}`,
+      summary: `${t.name} casts ${what}${p.mode === "free" && spell.level > 0 ? " (no slot)" : p.mode === "ritual" ? " (ritual)" : ""}`,
       sceneId: t.sceneId,
       events,
       result: { castId: cast?.id ?? null, effectId: effect?.id ?? null, given },
@@ -1149,12 +1306,18 @@ export const attackStart: CommandDef<z.infer<typeof AttackStart>, { castId: stri
       createdAt: ctx.now,
       updatedAt: ctx.now,
     };
-    const names = [...new Set(targets.map((x) => x.name))].join(", ");
-    const line = `${t.name} attacks ${names} with ${a.name}`;
+    const line: CastLine = {
+      casterTokenId: t.id,
+      caster: t.name,
+      verb: "attacks",
+      what: a.name,
+      targets: targets.map((x) => ({ id: x.id, name: x.name })),
+      count: false,
+    };
     const follow: CastFollowup = { castId, line, spellId: null };
     return {
       ops: [createOp("cast", cast), ...pipOps(ctx, t.id, "action")],
-      summary: line,
+      summary: castLineText(line, line.targets),
       sceneId: t.sceneId,
       events: [{ name: CAST_FOLLOWUP, payload: follow, to: { dms: true } }],
       result: { castId },
@@ -1663,9 +1826,29 @@ export const castRecord: CommandDef<z.infer<typeof CastRecord>, { ok: true }> = 
 
 function mayMoveEffect(ctx: CommandCtx, e: EffectEntity): boolean {
   if (isDm(ctx.actor.role)) return true;
-  if (e.movement?.by !== "caster" || !e.source.casterTokenId) return false;
+  // Its caster moves it only as the spell says it can (a distance a turn); one that only drifts (Cloudkill, SRD p. 116:
+  // 10 ft away at the start of each of the caster's turns) moves by itself — or by the DM.
+  if (e.movement?.by !== "caster" || e.movement.maxFt === undefined || !e.source.casterTokenId) return false;
   const t = ctx.model.get("token", e.source.casterTokenId);
   return Boolean(t && controlsToken(ctx.actor.role, ctx.actor.userId, t));
+}
+
+/** The combat turn under way on the actor's scene ("combat:round:index"), or null out of combat. */
+function turnKey(ctx: CommandCtx): string | null {
+  const c = activeCombat(ctx);
+  if (!c) return null;
+  const d = dataOf(c);
+  return d.begun ? `${c.id}:${c.round}:${c.turnIndex}` : null;
+}
+
+/** Whether segments p–q and a–b cross (touching counts). */
+function segmentsCross(p: P, q: P, a: P, b: P): boolean {
+  const o = (u: P, v: P, w: P) => (v.x - u.x) * (w.y - u.y) - (v.y - u.y) * (w.x - u.x);
+  const d1 = o(a, b, p);
+  const d2 = o(a, b, q);
+  const d3 = o(p, q, a);
+  const d4 = o(p, q, b);
+  return d1 * d2 <= 0 && d3 * d4 <= 0 && !(d1 === 0 && d2 === 0);
 }
 
 /** Where an effect is (its origin; a wall's first point); an emanation is where its creature is. */
@@ -1716,17 +1899,68 @@ export const effectMove: CommandDef<z.infer<typeof EffectMove>, { ok: true }> = 
     }
     if (!isDm(ctx.actor.role) && e.movement?.maxFt !== undefined) {
       const d = Math.hypot(p.to.x - at.x, p.to.y - at.y);
-      if (d > e.movement.maxFt + 0.5)
-        throw new GloamError("INVALID", `${e.name} moves at most ${e.movement.maxFt} ft at a time.`);
+      // In combat, its distance is a turn's (Moonbeam 60 ft, Flaming Sphere 30 ft), however many drags it takes; a
+      // sphere that rammed a creature stops for the turn (SRD p. 132). Out of combat, a move at a time.
+      const turn = turnKey(ctx);
+      const used = turn && e.used?.turn === turn ? e.used : null;
+      if (used?.stopped)
+        throw new GloamError(
+          "INVALID",
+          `${e.name} stopped when it hit a creature: it moves again next turn.`,
+        );
+      const left = e.movement.maxFt - (used?.movedFt ?? 0);
+      if (d > left + 0.5)
+        throw new GloamError(
+          "INVALID",
+          used
+            ? `${e.name} can move ${Math.max(0, Math.round(left))} ft more this turn.`
+            : `${e.name} moves at most ${e.movement.maxFt} ft ${turn ? "a turn" : "at a time"}.`,
+        );
+      // Somewhere its caster could send it: within the spell's range, with a clear line from the caster.
+      const caster = e.source.casterTokenId ? ctx.model.get("token", e.source.casterTokenId) : undefined;
+      const spell = e.source.contentId ? spellById(ctx, e.source.contentId) : undefined;
+      if (caster && spell?.range.kind === "ranged" && spell.range.ft !== undefined) {
+        const ok = canPlace(
+          bodyOf(caster),
+          { x: p.to.x, y: p.to.y },
+          { kind: "ft", ft: spell.range.ft },
+          barriersOf(ctx, e.sceneId),
+        );
+        if (!ok.ok)
+          throw new GloamError(
+            ok.why === "range" ? "INVALID" : "BLOCKED",
+            ok.why === "range"
+              ? `That's out of ${spell.name}'s range.`
+              : `${caster.name} has no clear line there.`,
+          );
+      }
+    }
+    // An object rolls along the floor: not through a wall (Flaming Sphere, SRD p. 132 — barriers up to 5 ft tall only).
+    if (!isDm(ctx.actor.role) && e.props.bodyFt) {
+      const wall = barriersOf(ctx, e.sceneId).some((w) => w.blocksMove && segmentsCross(at, p.to, w.a, w.b));
+      if (wall) throw new GloamError("BLOCKED", `A wall is in ${e.name}'s way.`);
     }
   },
   plan(ctx, p) {
     const e = mustGet(ctx, "effect", p.effectId);
+    const at = effectAt(e);
     // An object rolled along (Flaming Sphere): it stops at the first creature it runs into, which saves (SRD p. 132).
     const ram = rammed(ctx, e, p.to);
     const to = ram ? ram.at : p.to;
     const shape = movedShape(e.shape, to, p.dirDeg);
-    const ops = setOps("effect", e, { shape });
+    // Its caster's use of it this turn (combat): the feet, and a stop after a ram.
+    const turn = turnKey(ctx);
+    const was = turn && e.used?.turn === turn ? e.used : null;
+    const moved = at ? Math.hypot(to.x - at.x, to.y - at.y) : 0;
+    const used = turn
+      ? {
+          turn,
+          movedFt: (was?.movedFt ?? 0) + moved,
+          ...(ram || was?.stopped ? { stopped: true } : {}),
+          ...(was?.acted ? { acted: true } : {}),
+        }
+      : undefined;
+    const ops = setOps("effect", e, used ? { shape, used } : { shape });
     ops.push(...dispelOps(ctx, { ...e, shape }));
     return {
       ops,
@@ -1996,10 +2230,11 @@ function triggerCard(
     : null;
   const castId = newId("cst");
   const names = tokens.map((t) => t.name).join(", ");
+  const verb = when === "per5ft" ? `moved ${times * 5} ft in it` : WHEN_TEXT[when];
   const data: CastData = {
     kind: "trigger",
     name: e.name,
-    subtitle: when === "per5ft" ? `${names} moved ${times * 5} ft in it` : `${names} ${WHEN_TEXT[when]}`,
+    subtitle: `${names} ${verb}`,
     spell: null,
     spellId: e.source.contentId ?? null,
     level: e.source.slot ?? null,
@@ -2030,7 +2265,7 @@ function triggerCard(
     concentration: Boolean(e.concentrationTokenId),
     requestId: null,
     vfx: e.vfx,
-    trigger: { effectId: e.id, when, ...(trig.note ? { note: trig.note } : {}) },
+    trigger: { effectId: e.id, when, verb, ...(trig.note ? { note: trig.note } : {}) },
     createdBy: "system",
   };
   const cast: CastEntity = {
@@ -2081,6 +2316,14 @@ export const effectAct: CommandDef<z.infer<typeof EffectAct>, { castId: string |
       d.combatants[cb.turnIndex]?.tokenId !== caster.id
     )
       throw new GloamError("NOT_YOUR_TURN", `It isn't ${caster.name}'s turn.`);
+    // The point first (a bad one says so, whatever else), then the turn's allowance.
+    const area = effectArea(ctx, e);
+    if (!area || !contains(footprint(area), p.at))
+      throw new GloamError("INVALID", `That point isn't under ${e.name}.`);
+    // A Magic action: once a turn (the DM gives another, as with Action Surge).
+    const turn = turnKey(ctx);
+    if (turn && e.used?.turn === turn && e.used.acted)
+      throw new GloamError("INVALID", `${e.name} has already been called this turn.`);
   },
   plan(ctx, p) {
     const e = mustGet(ctx, "effect", p.effectId);
@@ -2096,12 +2339,23 @@ export const effectAct: CommandDef<z.infer<typeof EffectAct>, { castId: string |
       .filter((x) => x.state === "in")
       .map((x) => x.id);
     const card = inBolt.length ? triggerCard(ctx, e, "action", inBolt, 1, p.at) : null;
+    const turn = turnKey(ctx);
+    const was = turn && e.used?.turn === turn ? e.used : null;
+    const acted = turn
+      ? setOps("effect", e, {
+          used: { turn, movedFt: was?.movedFt ?? 0, ...(was?.stopped ? { stopped: true } : {}), acted: true },
+        })
+      : [];
+    // Its caller hears of a card only if they perceive someone on it — else a bolt that struck "nobody" would say
+    // whether an unseen creature stood there.
+    const dm = isDm(ctx.actor.role);
+    const told = dm || (card !== null && inBolt.some((id) => ctx.actor.sees?.(id) ?? true));
     return {
-      ops: card?.ops ?? [],
-      summary: card ? card.summary : `${e.name}: nobody there`,
+      ops: [...(card?.ops ?? []), ...acted],
+      summary: dm ? (card ? card.summary : `${e.name}: nobody there`) : `${e.name} strikes`,
       sceneId: e.sceneId,
       events: card?.events ?? [],
-      result: { castId: card?.castId ?? null },
+      result: { castId: told ? (card?.castId ?? null) : null },
     };
   },
 };

@@ -111,6 +111,8 @@ import {
 import { EffectFlow } from "./effectFlow.ts";
 import { HealthFlow, type SystemRequest } from "./health.ts";
 import {
+  effectGlimpseView,
+  effectView,
   glowView,
   lightView,
   type ProjectionCtx,
@@ -819,6 +821,7 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
     this.projector.loadActive();
     this.syncSensed();
     this.syncGlows();
+    this.syncGlimpses();
     this.syncAllViews();
     // A reload (a restore) starts every client's sheets afresh.
     for (const [c, v] of this.viewerPairs()) this.sheets.join(c, v);
@@ -1326,6 +1329,7 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
     if (seen) this.syncSensed();
     // Carriers move and lights change without anyone's perception changing: the stand-ins follow every commit.
     this.syncGlows();
+    this.syncGlimpses();
     if (res.switched) {
       // Everyone travels (SPEC §8.3): DMs who were prepping the new active scene now see it live.
       for (const [client, sceneId] of this.prepSubs) if (sceneId === nextActive) this.prepSubs.delete(client);
@@ -1670,6 +1674,26 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
       if (!l) continue;
       this.projector.upsertGlow(glowView(lightView(l, this.projectionCtx()), id));
       this.glowIds.add(id);
+    }
+  }
+
+  /**
+   * Effect stand-ins in the state (§13.4): exactly the ones someone holds, each drawn from its effect as it is now
+   * (an emanation's area follows its unseen creature — to the foot, never its id).
+   */
+  private readonly glimpseIds = new Set<string>();
+  private syncGlimpses(): void {
+    const want = new Map(this.vision.allGlimpses().map((g) => [g.id, g.effectId] as const));
+    for (const id of [...this.glimpseIds])
+      if (!want.has(id)) {
+        this.projector.removeGlimpse(id);
+        this.glimpseIds.delete(id);
+      }
+    for (const [id, effectId] of want) {
+      const e = this.model.get("effect", effectId);
+      if (!e) continue;
+      this.projector.upsertGlimpse(effectGlimpseView(effectView(e, this.projectionCtx()), id));
+      this.glimpseIds.add(id);
     }
   }
 
