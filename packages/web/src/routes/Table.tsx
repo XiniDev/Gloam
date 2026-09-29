@@ -9,6 +9,8 @@ import { DiceTray } from "../hud/DiceTray.tsx";
 import { Dock } from "../hud/Dock.tsx";
 import { MapToolsPanel } from "../hud/dm/MapToolsPanel.tsx";
 import { NewSceneWizard } from "../hud/dm/NewSceneWizard.tsx";
+import { EmoteLayer } from "../hud/EmoteLayer.tsx";
+import { EmoteWheel } from "../hud/EmoteWheel.tsx";
 import { FloatingCards } from "../hud/FloatingCards.tsx";
 import { FogPanel } from "../hud/FogPanel.tsx";
 import { HoverCard } from "../hud/HoverCard.tsx";
@@ -17,6 +19,7 @@ import { HpDialog } from "../hud/health/HpDialog.tsx";
 import { StatusPicker } from "../hud/health/StatusPicker.tsx";
 import { Intro, useIntro } from "../hud/Intro.tsx";
 import { useHudInsets } from "../hud/insets.ts";
+import { HandoutReveal } from "../hud/journal/HandoutReveal.tsx";
 import { dismissKnockCard, showKnockCard } from "../hud/KnockCards.tsx";
 import { LeftToolbar } from "../hud/LeftToolbar.tsx";
 import { LightsPanel } from "../hud/LightsPanel.tsx";
@@ -45,6 +48,7 @@ import { joinErrorCode } from "../net/colyseus.ts";
 import { watchCombat } from "../net/combat.ts";
 import { watchDice } from "../net/dice.ts";
 import { watchFog } from "../net/fog.ts";
+import { watchFun } from "../net/fun.ts";
 import { watchHealth } from "../net/health.ts";
 import { watchSheets } from "../net/sheets.ts";
 import { watchSpells } from "../net/spells.ts";
@@ -80,6 +84,7 @@ export default function TableRoute() {
   useEffect(() => watchSoundCues(), []);
   useEffect(() => watchClock(), []);
   useEffect(() => watchAudio(), []);
+  useEffect(() => watchFun(), []);
   useEffect(() => watchSpells(), []);
   useEffect(() => watchPendingArt(), []);
   useEffect(() => {
@@ -181,6 +186,9 @@ export default function TableRoute() {
       <MapToolsPanel />
       <LoadingBar />
       <RadialMenu />
+      <EmoteWheel />
+      <EmoteLayer />
+      <HandoutReveal />
       <HoverCard />
       <HpNumbers />
       <MoveLabel />

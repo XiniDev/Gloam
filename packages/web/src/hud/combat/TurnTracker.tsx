@@ -23,6 +23,7 @@ import { Menu } from "../../ui/Menu.tsx";
 import { Portrait } from "../../ui/Portrait.tsx";
 import { toast } from "../../ui/Toast.tsx";
 import { Tooltip } from "../../ui/Tooltip.tsx";
+import { HandBadge } from "../HandBadge.tsx";
 import { insetMeasures, useCover, useHudInsets, useIsPhone, useMeasuredInset } from "../insets.ts";
 import { useAssetImage } from "../useAssetImage.ts";
 
@@ -350,6 +351,10 @@ function Entry({
   // Its player's colour or its disposition's (§28 Portrait), as on its base on the board.
   const token = useEntities((s) => (e.tokenId ? boardData(s).tokens.get(e.tokenId) : undefined));
   const ring = token ? ringColorOf(token, colorBlind) : "var(--line)";
+  // Its player's hand up (SPEC §8.18: on the portrait and in the tracker).
+  const handUp = useTable((t) =>
+    token ? t.presence.some((p) => p.handRaised && token.ownerIds.includes(p.userId)) : false,
+  );
   const size = compact ? (active ? PHONE.active : PHONE.entry) : active ? W.active : W.entry;
   // A click selects the creature (the camera and its menu are a click away on the board).
   const select = () => {
@@ -416,6 +421,7 @@ function Entry({
             <Portrait name={e.name} color={active ? "var(--brass-400)" : ring} size={size} src={src} />
           )}
         </span>
+        {handUp ? <HandBadge size={compact ? 14 : 16} className="absolute -right-1 -top-1" /> : null}
         {active ? (
           <svg
             // (Its own key: sharing the swell's with a sibling, React left stale portraits behind as turns passed.)

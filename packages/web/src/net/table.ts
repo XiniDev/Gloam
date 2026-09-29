@@ -41,7 +41,14 @@ export type Connection = "connecting" | "open" | "dropped" | "closed";
 interface TableStore {
   room: Room<unknown, TableState> | null;
   connection: Connection;
-  me: { userId: string; role: "admin" | "dm" | "player" | "spectator"; name: string; color: string } | null;
+  me: {
+    userId: string;
+    role: "admin" | "dm" | "player" | "spectator";
+    name: string;
+    color: string;
+    /** Their own quick phrases (SPEC §8.18), as their profile keeps them. */
+    phrases: string[];
+  } | null;
   campaignId: string | null;
   campaignName: string;
   units: "ft" | "m";
@@ -297,10 +304,17 @@ async function join(campaignId: string): Promise<Room<unknown, TableState>> {
 
   room.onMessage(
     "welcome",
-    (w: { userId: string; role: "admin" | "dm" | "player" | "spectator"; name: string; color: string }) => {
-      useTable
-        .getState()
-        .set({ me: { userId: w.userId, role: w.role, name: w.name, color: w.color }, connection: "open" });
+    (w: {
+      userId: string;
+      role: "admin" | "dm" | "player" | "spectator";
+      name: string;
+      color: string;
+      phrases?: string[];
+    }) => {
+      useTable.getState().set({
+        me: { userId: w.userId, role: w.role, name: w.name, color: w.color, phrases: w.phrases ?? [] },
+        connection: "open",
+      });
     },
   );
   room.onMessage("knocks", (list: KnockCard[]) => useTable.getState().set({ knocks: list }));

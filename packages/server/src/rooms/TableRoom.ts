@@ -15,6 +15,7 @@ import {
   DeathSaveRequest,
   DiceManual,
   DiceRoll,
+  EmoteSend,
   GloamError,
   HandToggle,
   type HistoryListEntry,
@@ -22,11 +23,14 @@ import {
   type HistoryRestorePlan,
   HpApply,
   LobbyDecide,
+  LogAdd,
+  LogList,
   MESSAGE_RATES,
   MeasureShare,
   MovePreview,
   PingSend,
   ProfileDiceSkin,
+  ProfilePhrases,
   PromptResolve,
   ProposalDecide,
   RequestAnswer,
@@ -39,6 +43,7 @@ import {
 import {
   applyChanges,
   applyPatch,
+  can,
   controlsToken,
   diffSheet,
   effectiveTokenState,
@@ -115,6 +120,7 @@ import {
   parseCookies,
 } from "./dispatch.ts";
 import { EffectFlow } from "./effectFlow.ts";
+import { FunFlow } from "./fun.ts";
 import { HealthFlow, type SystemRequest } from "./health.ts";
 import {
   effectGlimpseView,
@@ -164,6 +170,8 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
   effects!: EffectFlow;
   /** When the track playing ends (SPEC §25.3). */
   audioTimer!: AudioTimer;
+  /** Emotes, the campaign log, handouts (SPEC §8.18). */
+  fun!: FunFlow;
   /** DM connections viewing a non-active scene in prep (SPEC §13.7): client → scene id. */
   private readonly prepSubs = new Map<Client, string>();
   /** Test probe (AC-PER-01): runs right before Colyseus encodes and sends a state patch. */
@@ -233,12 +241,27 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
       "hand.toggle": def(HandToggle, MESSAGE_RATES["hand.toggle"], ({ auth }, p) => {
         const pr = this.state.presence.get(auth.userId);
         if (!pr) throw new GloamError("NOT_FOUND");
-        if (auth.role === "spectator") throw new GloamError("FORBIDDEN");
+        // Everyone at the table may (SPEC §6: emotes, pings, hand raise — spectators too).
+        if (!can(auth.role, "social")) throw new GloamError("FORBIDDEN");
         const raised = p.raised ?? !pr.handRaised;
+        // The DM is told once, as it goes up (not again while it stays up).
+        if (raised && !pr.handRaised) this.toDms("hand.raised", { userId: auth.userId, name: auth.name });
         pr.handRaised = raised;
-        if (raised) this.toDms("hand.raised", { userId: auth.userId, name: auth.name });
         return { raised };
       }),
+      "emote.send": def(EmoteSend, MESSAGE_RATES["emote.send"], ({ auth }, p) => {
+        this.fun.emote(auth, p);
+      }),
+      "profile.phrases": def(ProfilePhrases, MESSAGE_RATES["profile.phrases"], ({ auth }, p) => ({
+        phrases: this.fun.setPhrases(auth.userId, p.phrases),
+      })),
+      "log.add": def(LogAdd, MESSAGE_RATES["log.add"], ({ auth }, p) => this.fun.add(auth, p.text)),
+      "log.list": def(LogList, MESSAGE_RATES["log.list"], ({ auth }, p) =>
+        this.fun.list(auth, p.sinceSession, p.limit),
+      ),
+      "handout.list": def(z.strictObject({}), MESSAGE_RATES["handout.list"], ({ auth }) =>
+        this.fun.handouts(auth),
+      ),
       "prep.open": def(SceneRef, MESSAGE_RATES["prep.open"], ({ client, auth }, p): PrepSnapshot | null => {
         this.requireDm(auth);
         const scene = this.model.get("scene", p.sceneId);
@@ -845,8 +868,15 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
           // none of them is dying after all
         }
       },
-      log: (kind, text, data) => {
-        roomCtx().campaigns.appendLog(this.campaignId, { kind, text, data });
+      log: (kind, text, data) => this.fun.append(kind, text, { data }),
+    });
+    this.fun = new FunFlow({
+      campaignId: this.campaignId,
+      model: () => this.model,
+      clients: () => this.clients,
+      perceives: (c, tokenId) => {
+        const role = (c.auth as ClientAuth | undefined)?.role;
+        return role === "admin" || role === "dm" || Boolean(this.views.grantsOf(c)?.tokens.has(tokenId));
       },
     });
     this.audioTimer = new AudioTimer({
@@ -1456,6 +1486,11 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
 
   private onCommitted(info: CommitInfo): void {
     this.historyChanged();
+    try {
+      this.fun?.committed(info);
+    } catch (err) {
+      roomCtx().log.error({ err }, "the campaign log's entries failed");
+    }
     // The audio changed other than by its own commands (an undo, a revert): everyone gets it as it now is.
     if (
       !info.type.startsWith("audio.") &&
@@ -1686,6 +1721,8 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
       color: auth.color,
       campaignId: this.campaignId,
       serverNow: Date.now(),
+      // Their own quick phrases (SPEC §8.18), as their profile keeps them.
+      phrases: this.fun.phrasesOf(auth.userId),
     });
     if (auth.role === "admin" || auth.role === "dm") client.send("knocks", ctx.people.pending());
     // An admitted player's characters join them on the board (AC-SCN-06).
@@ -1935,6 +1972,12 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
         continue;
       }
       // A cast's follow-ups (§8.13): save cards, the VFX, its line.
+      // A command's line for the campaign log (a handout shown).
+      if (e.name === "log.append") {
+        const l = e.payload as { kind: string; text: string; visibility?: string };
+        this.fun.append(l.kind, l.text, { ...(l.visibility ? { visibility: l.visibility } : {}) });
+        continue;
+      }
       if (e.name === CAST_FOLLOWUP) {
         try {
           this.casts.followup(e.payload as CastFollowup, info?.actor.userId ?? "system");

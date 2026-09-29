@@ -9,6 +9,7 @@ import { visibleTabs } from "../sheet/tabsLayout.ts";
 import { ApprovalsPanel } from "./ApprovalsPanel.tsx";
 import { CombatPanel } from "./CombatPanel.tsx";
 import { EffectsPanel } from "./EffectsPanel.tsx";
+import { HandoutsPanel } from "./HandoutsPanel.tsx";
 import { HealthPanel } from "./HealthPanel.tsx";
 import { HistoryPanel } from "./HistoryPanel.tsx";
 import { LibraryPanel } from "./LibraryPanel.tsx";
@@ -26,6 +27,7 @@ const SECTIONS: { id: DmSection; label: string }[] = [
   { id: "spells", label: "Spells" },
   { id: "effects", label: "Effects" },
   { id: "sound", label: "Sound" },
+  { id: "handouts", label: "Handouts" },
   { id: "history", label: "History" },
   { id: "approvals", label: "Approvals" },
 ];
@@ -156,6 +158,7 @@ export default function DmPanel() {
         {section === "spells" ? <SpellsPanel /> : null}
         {section === "history" ? <HistoryPanel /> : null}
         {section === "sound" ? <SoundPanel /> : null}
+        {section === "handouts" ? <HandoutsPanel /> : null}
         {section === "effects" ? <EffectsPanel /> : null}
         {section === "approvals" ? <ApprovalsPanel /> : null}
       </div>

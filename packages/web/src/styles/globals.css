@@ -181,6 +181,58 @@
     --select-caret: var(--brass-600);
     --edge-shade: var(--paper-edge-shade);
   }
+  /* A handout's deckled top edge (§27.2): the paper's torn top, drawn as a mask. */
+  .deckle {
+    -webkit-mask-image:
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='10' viewBox='0 0 120 10'%3E%3Cpath d='M0 10V5.2L6 3.9 11 5.6 17 4.1 22 2.8 29 4.6 35 3.2 41 5.1 47 3.4 53 2.6 59 4.4 66 3.1 72 5.3 78 3.6 84 2.9 90 4.8 97 3.3 103 5 109 3.5 115 4.6 120 3.8V10Z' fill='%23000'/%3E%3C/svg%3E"),
+      linear-gradient(var(--ink-950), var(--ink-950));
+    -webkit-mask-size:
+      120px 10px,
+      100% calc(100% - 9px);
+    -webkit-mask-position:
+      0 0,
+      0 9px;
+    -webkit-mask-repeat: repeat-x, no-repeat;
+    mask-image:
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='10' viewBox='0 0 120 10'%3E%3Cpath d='M0 10V5.2L6 3.9 11 5.6 17 4.1 22 2.8 29 4.6 35 3.2 41 5.1 47 3.4 53 2.6 59 4.4 66 3.1 72 5.3 78 3.6 84 2.9 90 4.8 97 3.3 103 5 109 3.5 115 4.6 120 3.8V10Z' fill='%23000'/%3E%3C/svg%3E"),
+      linear-gradient(var(--ink-950), var(--ink-950));
+    mask-size:
+      120px 10px,
+      100% calc(100% - 9px);
+    mask-position:
+      0 0,
+      0 9px;
+    mask-repeat: repeat-x, no-repeat;
+  }
+  /* Markdown on a document: paragraphs, emphasis, lists, quotes (no raw HTML is ever rendered). */
+  .doc-md {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6em;
+  }
+  .doc-md :where(p, ul, ol, blockquote, h1, h2, h3, h4) {
+    margin: 0;
+  }
+  .doc-md :where(ul) {
+    list-style: disc;
+    padding-left: 1.25em;
+  }
+  .doc-md :where(ol) {
+    list-style: decimal;
+    padding-left: 1.25em;
+  }
+  .doc-md :where(blockquote) {
+    border-left: 2px solid var(--border-strong);
+    padding-left: 0.75em;
+    font-style: italic;
+  }
+  .doc-md :where(h1, h2, h3, h4) {
+    font-family: var(--font-display);
+    line-height: 1.2;
+  }
+  .doc-md :where(strong) {
+    font-weight: 700;
+  }
   /* A bar that stays on top of a scrolling parchment page (its tabs): the same paper, opaque. */
   .parchment-bar {
     background-color: var(--parchment-100);

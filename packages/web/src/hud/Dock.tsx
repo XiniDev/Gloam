@@ -1,5 +1,6 @@
-import { ScrollText, Users, X } from "lucide-react";
+import { BookOpen, ScrollText, Users, X } from "lucide-react";
 import { type ReactElement, Suspense, useEffect, useRef, useState } from "react";
+import { useFun } from "../net/fun.ts";
 import { pendingProposals, useSheets } from "../net/sheets.ts";
 import { useTable } from "../net/table.ts";
 import { pendingCount, useLibrary } from "../state/library.ts";
@@ -11,6 +12,7 @@ import { Sparkle } from "../ui/ornaments.tsx";
 import { PromptCards } from "./health/PromptCards.tsx";
 import { hudOrder } from "./Intro.tsx";
 import { insetMeasures, useCover, useHudInsets, useIsPhone, useMeasuredInset } from "./insets.ts";
+import { JournalPanel } from "./journal/JournalPanel.tsx";
 import { PartyPanel } from "./PartyPanel.tsx";
 import { RequestCards } from "./RequestCards.tsx";
 import { SheetPanel } from "./sheet/SheetPanel.tsx";
@@ -42,6 +44,8 @@ export function Dock() {
   const role = useTable((s) => s.me?.role);
   const dm = role === "dm" || role === "admin";
   const pending = useLibrary(pendingCount) + useSheets(pendingProposals);
+  // Handouts given since the Journal was last open (a player's reminder that something is waiting).
+  const unread = useFun((s) => s.unread);
   const [width, setWidth] = useState(loadWidth);
   const drag = useRef<{ x: number; w: number } | null>(null);
   const asideRef = useRef<HTMLElement>(null);
@@ -66,6 +70,7 @@ export function Dock() {
   const tabs: { id: DockTab; label: string; icon: ReactElement; badge?: number }[] = [
     { id: "party", label: "Party", icon: <Users size={19} /> },
     { id: "sheet", label: "Sheet", icon: <ScrollText size={19} /> },
+    { id: "journal", label: "Journal", icon: <BookOpen size={19} />, badge: unread },
     ...(dm ? [{ id: "dm" as const, label: "DM panel", icon: <Sparkle size={18} />, badge: pending }] : []),
   ];
 
@@ -77,7 +82,9 @@ export function Dock() {
   const railButtons = tabs.map((t) => (
     <div key={t.id} className="relative">
       <IconButton
-        label={t.badge ? `${t.label} (${t.badge} waiting for approval)` : t.label}
+        label={
+          t.badge ? `${t.label} (${t.badge} ${t.id === "journal" ? "new" : "waiting for approval"})` : t.label
+        }
         active={tab === t.id}
         onClick={() => toggle(t.id)}
       >
@@ -116,7 +123,15 @@ export function Dock() {
           className="panel pointer-events-auto relative flex min-w-0 flex-col overflow-hidden overflow-x-clip"
           // Never wider than the screen leaves beside the rail; on a phone, all of it.
           style={{ width: page ? "100%" : `min(${width}px, calc(100vw - ${RAIL_ROOM}px))` }}
-          aria-label={tab === "dm" ? "DM panel" : tab === "sheet" ? "Character sheet" : "Party"}
+          aria-label={
+            tab === "dm"
+              ? "DM panel"
+              : tab === "sheet"
+                ? "Character sheet"
+                : tab === "journal"
+                  ? "Journal"
+                  : "Party"
+          }
         >
           {page ? (
             <nav
@@ -167,6 +182,7 @@ export function Dock() {
           <ErrorBoundary where={tab}>
             {tab === "party" ? <PartyPanel /> : null}
             {tab === "sheet" ? <SheetPanel /> : null}
+            {tab === "journal" ? <JournalPanel /> : null}
             {tab === "dm" && dm ? (
               <Suspense fallback={null}>
                 <DmPanel />

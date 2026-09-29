@@ -4,7 +4,7 @@ import { create } from "zustand";
 /** Board tools (SPEC §29.3 left toolbar). DM-only tools arrive with their phases. */
 export type Tool = "select" | "pan" | "measure" | "ping" | "target" | "walls" | "zones" | "lights" | "fog";
 export type WallDrawKind = "wall" | "door" | "window" | "curtain" | "invisible" | "secret";
-export type DockTab = "party" | "sheet" | "spells" | "log" | "dm";
+export type DockTab = "party" | "sheet" | "spells" | "journal" | "dm";
 export type DmSection =
   | "scenes"
   | "library"
@@ -15,6 +15,7 @@ export type DmSection =
   | "effects"
   | "history"
   | "sound"
+  | "handouts"
   | "approvals";
 export type SheetTab =
   | "overview"
@@ -43,6 +44,8 @@ export interface UiStore {
   /** Radial menu anchor (screen px) and token, or null. */
   radial: { tokenId: string; x: number; y: number } | null;
   quickUnit: { x: number; y: number } | null;
+  /** The emote wheel (SPEC §8.18), open where it was asked for (screen px), or closed. */
+  emoteWheel: { x: number; y: number } | null;
   /** The scene whose 3D map the DM is aligning (transform gizmo + Generate walls), or null. */
   mapTool: string | null;
   /** The New scene wizard: open (true) or open with a map already chosen (its asset id), or closed. */
@@ -123,6 +126,7 @@ export const useUi = create<UiStore>((set, get) => ({
   prepSceneId: null,
   radial: null,
   quickUnit: null,
+  emoteWheel: null,
   mapTool: null,
   sceneWizard: null,
   cameras: initial.cameras ?? {},

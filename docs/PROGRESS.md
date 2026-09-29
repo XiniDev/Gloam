@@ -580,3 +580,19 @@ groundwork; its restart test still to write: spawnServer({ dataDir, env: { PORT 
 - Open: AC-UNDO-05 (emotes and music, later phase); P10 key screens + visual critic for Saves and History; full E2E run
   (p3-tools ERR_NO_BUFFER_SPACE source, p4-light-fog timing); P9 round-2 leftovers (effects over unseen fog in the
   player view, blacked-out token plates); SPEC §24.9 `compileAsync` warm-up.
+
+## 2026-09-29 — P11: audio and flavour (AUD-01…06, FUN-01/03/04/05, UNDO-05 passing)
+
+- Sound engine: every §31 sound synthesized (recipes calibrated to the research's level plan; /dev/sounds audition
+  page with measured peaks and loudness); board sounds panned and attenuated; cues for initiative, turns, death saves,
+  conditions, hand raise, scene travel; the dice's tumble.
+- Music: DM panel → Sound (presets, tracks with volumes, playlists, loop/shuffle/next/previous/stop, volume); the
+  server's timeline and track-end timer; clients within 75 ms (a 7-s skewed clock and a late joiner too); four
+  generative presets (pure per-bar generators; no repeats over 10 min); 2-s crossfades; loudness normalisation.
+- Ambience: seven procedural layers, five presets, a storm's shared distant thunder.
+- Flavour: emote wheel (E, own-token menu, own portrait), pops over tokens/portraits and a feed; hand raise on
+  portraits and tracker; handouts and secret notes (DM panel → Handouts; parchment reveal; Journal → Handouts); the
+  campaign log (automatic entries, recaps, search, Markdown export).
+- Fixed on the way: a late joiner's audio state lost to the replay bus; the DM re-told of a hand already up;
+  spectators refused a hand; half-scale white noise.
+- Open: P11 key screens + visual critic; P10 key screens; the full E2E run; then P12.

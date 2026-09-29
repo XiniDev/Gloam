@@ -6,6 +6,7 @@ import { setWallMode, useWallTool } from "../board/tools/walls.ts";
 import { request, useTable } from "../net/table.ts";
 import { type Tool, useUi } from "../state/ui.ts";
 import { IconButton } from "../ui/Button.tsx";
+import { openEmoteWheel } from "./EmoteWheel.tsx";
 import { hudOrder } from "./Intro.tsx";
 import { insetMeasures, useCover, useHudInsets, useIsPhone, useMeasuredInset } from "./insets.ts";
 
@@ -207,7 +208,11 @@ function useToolKeys(dm: boolean): void {
       if (e.code === "KeyV") ui.set({ tool: "select" });
       else if (e.code === "KeyM") ui.set({ tool: ui.tool === "measure" ? "select" : "measure" });
       else if (e.code === "KeyH") void request("hand.toggle", {}).catch(() => {});
-      else if (e.code === "KeyG") ui.set({ rangeOverlay: !ui.rangeOverlay });
+      else if (e.code === "KeyE") {
+        // (The key's own press shouldn't type into the wheel's first field.)
+        e.preventDefault();
+        openEmoteWheel();
+      } else if (e.code === "KeyG") ui.set({ rangeOverlay: !ui.rangeOverlay });
       else if (e.code === "KeyW" && dm) drawWalls("wall");
       else if (e.code === "KeyZ" && dm) ui.set({ tool: "zones" });
       else if (e.code === "KeyI" && dm) ui.set({ tool: "lights" });

@@ -1647,10 +1647,10 @@
       "code": "UNDO",
       "phase": "P10",
       "text": "Dice rolls, joins, kicks, bans, approvals, emotes, pings and music playback are not undoable.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/fun.test.ts 'AC-UNDO-05': an emote, a ping, a hand raise, a dice roll and a kick write no history entries at all, and Dave's undo passes over them to his earlier sheet edit; handout.show and note.secret entries are undoable=0; asset.review is undoable:false; packages/server/src/test/audio.test.ts: every audio.music entry is undoable=0 and undo never touches playback (a playlist's undo restores only playlists). Joins happen outside the command bus (no history).",
       "disputed": null,
-      "updatedAt": "2026-09-29T15:30:23.354Z"
+      "updatedAt": "2026-09-29T22:03:15.544Z"
     },
     {
       "id": "AC-PER-01",
@@ -1878,10 +1878,10 @@
       "code": "FUN",
       "phase": "P11",
       "text": "The emote wheel offers 12 emotes, 8 quick phrases and up to 6 custom phrases; emotes display for 2.5 s above the token or portrait with animation and sound; the rate limit applies.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p11-fun.spec.ts: E opens the wheel (12 emotes, 8 quick phrases, own-phrase and hand buttons; artifacts/screens/p11/emote-wheel.png); Laugh pops over Dave's token for the DM (above its plate, centred on the token) and Dave, over his portrait for Erin who doesn't see the token — each shown 2.2–3.6 s (in-page pop log), in the feed, with the emotePop sound; a phrase saved from the wheel is sent as a bubble (phrase.png); 3 emotes then the 4th refused. packages/server/src/test/fun.test.ts: tokenId only to those who perceive the token, spectators may emote, unknown phrases refused, ≤6 phrases ≤40 chars, RATE_LIMITED on the 4th of a burst.",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-29T22:03:15.270Z"
     },
     {
       "id": "AC-FUN-02",
@@ -1900,10 +1900,10 @@
       "code": "FUN",
       "phase": "P11",
       "text": "Hand raise shows on the portrait and the tracker and notifies the DM once.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p11-fun.spec.ts: Dave's H shows the hand badge on his top-bar portrait for all three pages and on his creature's portrait in the combat tracker (hand-raised.png); the DM hears the handRaised bell exactly once (not again while it stays up; players never) and sees 'Dave raised a hand'; H again lowers it. packages/server/src/test/fun.test.ts: the DM is told once per raise (raised:true again doesn't repeat), spectators may raise a hand.",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-29T22:03:15.338Z"
     },
     {
       "id": "AC-FUN-04",
@@ -1911,10 +1911,10 @@
       "code": "FUN",
       "phase": "P11",
       "text": "Handouts and secret notes reach exactly the chosen recipients with the reveal animation and stay in their Handouts list.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p11-fun.spec.ts: the DM writes 'A torn map' (Markdown) in DM panel → Handouts, shows it To Dave: the parchment unfurls on Dave's screen with the paper sound (handout-reveal.png, bold rendered), not Erin's; 'Keep it' → it's in Dave's Journal → Handouts, not Erin's; a secret note to Erin reaches Erin alone (secret-note.png) and never appears in Dave's data. packages/server/src/test/fun.test.ts: drafts reach nobody, handout.list per recipient, 'all' adds everyone, notes for one player, DM list with recipients, players refused.",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-29T22:03:15.408Z"
     },
     {
       "id": "AC-FUN-05",
@@ -1922,10 +1922,10 @@
       "code": "FUN",
       "phase": "P11",
       "text": "The campaign log records the automatic events, accepts manual entries, groups by session, and exports Markdown.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/fun.test.ts: the log records session open, a death, a stabilisation, a character's level-up, a scene change and handouts shown (a targeted one readable only by its recipient), takes a player's manual entry with its author (spectators refused), every entry carries its session, undo doesn't unwrite it. e2e/journeys/p11-fun.spec.ts: Dave's Journal → Log grouped by session, his recap reaches Erin, search narrows to it (journal-log.png), Export Markdown downloads '# Test Campaign — campaign log' with '## Session 1' and the recap; packages/web/src/net/fun.test.ts checks the Markdown shape.",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-29T22:03:15.475Z"
     },
     {
       "id": "AC-DMP-01",

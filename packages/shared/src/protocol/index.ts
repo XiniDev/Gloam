@@ -121,6 +121,12 @@ export const MESSAGE_RATES = {
   "admin.unban": rate(2),
   "clock.sync": rate(1, 6),
   "hand.toggle": rate(1),
+  // Table flavour (§8.18): an emote every 1.5 s (bursts of 3), phrases saved, the log read and written.
+  "emote.send": rate(1 / 1.5, 3),
+  "profile.phrases": rate(1, 3),
+  "log.add": rate(1, 3),
+  "log.list": rate(1, 3),
+  "handout.list": rate(1, 3),
   "prep.open": rate(2),
   "prep.close": rate(2),
   "scene.list": rate(5),
@@ -165,6 +171,7 @@ export const MESSAGE_RATES = {
 export * from "./audio.ts";
 export * from "./combat.ts";
 export * from "./commands.ts";
+export * from "./fun.ts";
 export * from "./health.ts";
 export * from "./history.ts";
 export * from "./sheets.ts";

@@ -18,6 +18,7 @@ import {
   RotateCw,
   ScrollText,
   ShieldPlus,
+  Smile,
   Trash2,
   Unlock,
 } from "lucide-react";
@@ -34,6 +35,7 @@ import { KeyHint } from "../ui/KeyHint.tsx";
 import { WaxSeal } from "../ui/ornaments.tsx";
 import { toast } from "../ui/Toast.tsx";
 import { toastUndo } from "./dm/ScenesPanel.tsx";
+import { openEmoteWheel } from "./EmoteWheel.tsx";
 import { clearArea, isPhoneNow, useHudInsets } from "./insets.ts";
 import { openSheetFor, sheetOfToken } from "./sheet/open.ts";
 
@@ -89,6 +91,14 @@ export function RadialMenu() {
         label: "Sheet",
         icon: <ScrollText size={18} />,
         run: () => void openSheetFor(id),
+      });
+    // On your own token: an emote over it (SPEC §8.5 radial, §8.18).
+    if (token.ownerIds.includes(me.userId))
+      out.push({
+        id: "emote",
+        label: "Emote",
+        icon: <Smile size={18} />,
+        run: () => openEmoteWheel(radial ? { x: radial.x, y: radial.y } : undefined),
       });
     if (controls && (dm || !token.locked)) {
       out.push({
@@ -302,7 +312,7 @@ export function RadialMenu() {
       out.push({ id: "dm", label: "DM", icon: <WaxSeal size={20} />, ring: dmRing });
     }
     return out;
-  }, [token, me, assets, carried]);
+  }, [token, me, assets, carried, radial]);
 
   const shown = ring ?? slices;
   const close = () => {

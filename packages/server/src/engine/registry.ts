@@ -6,6 +6,7 @@ import { campaignUpdate } from "./commands/campaign.ts";
 import { COMBAT_COMMANDS } from "./commands/combat.ts";
 import { CONTENT_COMMANDS } from "./commands/content.ts";
 import { FOG_COMMANDS } from "./commands/fog.ts";
+import { HANDOUT_COMMANDS } from "./commands/handout.ts";
 import { HEALTH_COMMANDS } from "./commands/health.ts";
 import { LIGHT_COMMANDS } from "./commands/light.ts";
 import { MOVE_COMMANDS } from "./commands/move.ts";
@@ -36,6 +37,7 @@ export const ALL_COMMANDS: CommandDef<never, unknown>[] = [
   ...SPELL_COMMANDS,
   ...CONTENT_COMMANDS,
   ...AUDIO_COMMANDS,
+  ...HANDOUT_COMMANDS,
 ];
 
 /** Room message rate limits per command (SPEC §13.5); default 10/s. */
@@ -73,6 +75,8 @@ export const COMMAND_RATES: Record<string, { capacity: number; perSecond: number
   "content.spell.import": { capacity: 2, perSecond: 0.5 },
   // Audio (§13.5: 5/s): the player's buttons, the mixer's sliders (sent as they move, a few a second).
   ...Object.fromEntries(AUDIO_COMMANDS.map((d) => [d.type, { capacity: 8, perSecond: 5 }])),
+  // Handouts and secret notes (§13.5: 2/s).
+  ...Object.fromEntries(HANDOUT_COMMANDS.map((d) => [d.type, { capacity: 4, perSecond: 2 }])),
 };
 
 export function registerCommands(bus: CommandBus): void {

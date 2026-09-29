@@ -4,41 +4,41 @@ import { type PresenceView, useTable } from "../net/table.ts";
 import { Sparkle } from "../ui/ornaments.tsx";
 import { Portrait } from "../ui/Portrait.tsx";
 import { SoundChip } from "../ui/SoundChip.tsx";
+import { openEmoteWheel } from "./EmoteWheel.tsx";
+import { HandBadge } from "./HandBadge.tsx";
 import { hudOrder } from "./Intro.tsx";
 import { useCover, useIsPhone } from "./insets.ts";
 import { SettingsPopover } from "./SettingsPopover.tsx";
 
-function Initials({ p }: { p: PresenceView }) {
+function Initials({ p, mine }: { p: PresenceView; mine: boolean }) {
+  const portrait = (
+    <Portrait
+      name={p.name}
+      color={p.color}
+      size={32}
+      dim={!p.online}
+      {...(p.role === "dm" || p.role === "admin" ? { dm: p.role === "admin" ? "Host" : "DM" } : {})}
+    />
+  );
   return (
-    <div className="relative" title={`${p.name}${p.online ? "" : " (away)"}`}>
-      <Portrait
-        name={p.name}
-        color={p.color}
-        size={32}
-        dim={!p.online}
-        {...(p.role === "dm" || p.role === "admin" ? { dm: p.role === "admin" ? "Host" : "DM" } : {})}
-      />
-      {p.handRaised ? (
-        <span
-          className="absolute -right-1.5 -top-1.5 grid h-[18px] w-[18px] place-items-center rounded-full bg-accent"
-          role="img"
-          aria-label="Hand raised"
+    <div className="relative" title={`${p.name}${p.online ? "" : " (away)"}`} data-presence={p.userId}>
+      {mine ? (
+        // Your own: a tap (or a long press on touch) opens the emote wheel beneath it (SPEC §8.18).
+        <button
+          type="button"
+          aria-label="Emotes"
+          className="block rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
+          onClick={(e) => {
+            const r = e.currentTarget.getBoundingClientRect();
+            openEmoteWheel({ x: r.left + r.width / 2, y: r.bottom + 150 });
+          }}
         >
-          <svg
-            width="11"
-            height="11"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="var(--ink-950)"
-            strokeWidth="2.4"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden
-          >
-            <path d="M8 13V5.5a1.5 1.5 0 0 1 3 0V12M11 11V4a1.5 1.5 0 0 1 3 0v7M14 11V5.5a1.5 1.5 0 0 1 3 0V13c0 4.5-2.5 8-6.5 8-2.5 0-4.2-1.3-5.4-3.4L3.4 14.4a1.6 1.6 0 0 1 2.6-1.8L8 15" />
-          </svg>
-        </span>
-      ) : null}
+          {portrait}
+        </button>
+      ) : (
+        portrait
+      )}
+      {p.handRaised ? <HandBadge className="absolute -right-1.5 -top-1.5" /> : null}
     </div>
   );
 }
@@ -88,7 +88,7 @@ export function TopBar() {
             .filter((p) => p.online || p.role !== "admin")
             .map((p) => (
               <li key={p.userId}>
-                <Initials p={p} />
+                <Initials p={p} mine={p.userId === me?.userId} />
               </li>
             ))}
         </ul>
