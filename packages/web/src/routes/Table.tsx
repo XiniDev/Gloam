@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router";
 import { ActionBar } from "../hud/ActionBar.tsx";
+import { TurnBanner } from "../hud/combat/TurnBanner.tsx";
 import { TurnTracker } from "../hud/combat/TurnTracker.tsx";
 import { useCombatKeys } from "../hud/combat/useCombatKeys.ts";
 import { DiceTray } from "../hud/DiceTray.tsx";
@@ -157,6 +158,7 @@ export default function TableRoute() {
       <ActionBar />
       <RollFeed />
       <TurnTracker />
+      <TurnBanner />
       <FloatingCards />
       <DiceTray />
       <HpDialog />

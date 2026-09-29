@@ -363,6 +363,53 @@ export const RECIPES = {
       }
     },
   },
+  /**
+   * Your turn (UI, SPEC §31 "Warm bell"): two sines (660 Hz + 990 Hz) struck together with a 1.2-s decay, into a
+   * soft room — a short, damped feedback delay — so it rings on without shouting.
+   */
+  yourTurn: {
+    channel: "ui",
+    variation: 0.01,
+    play(ctx, dest, t, rate) {
+      const out = outGain(ctx, dest, 0.22);
+      // The room: a damped feedback delay the bell rings into (and out of, softly).
+      const room = ctx.createDelay(0.5);
+      room.delayTime.value = 0.09;
+      const fb = ctx.createGain();
+      fb.gain.value = 0.38;
+      const damp = ctx.createBiquadFilter();
+      damp.type = "lowpass";
+      damp.frequency.value = 2400;
+      const wet = ctx.createGain();
+      wet.gain.value = 0.3;
+      room.connect(damp).connect(fb).connect(room);
+      damp.connect(wet).connect(out);
+      for (const [f, p] of [
+        [660, 1],
+        [990, 0.6],
+      ] as const) {
+        const o = ctx.createOscillator();
+        o.type = "sine";
+        o.frequency.value = f * rate;
+        const e = env(ctx, t, 0.004, p, 1.2 / 3);
+        o.connect(e);
+        e.connect(out);
+        e.connect(room);
+        o.start(t);
+        o.stop(t + 3);
+        o.onended = () => o.disconnect();
+      }
+      // The room's own nodes go when the tail has died away.
+      const done = ctx.createConstantSource();
+      done.offset.value = 0;
+      done.connect(out);
+      done.start(t);
+      done.stop(t + 3.5);
+      done.onended = () => {
+        for (const n of [room, fb, damp, wet, done]) n.disconnect();
+      };
+    },
+  },
   /** Damage taken (effects, sound.md §2.4): a crunch with a falling pitch — loss. */
   damage: zzfx("damage", "effects", [
     {

@@ -277,6 +277,32 @@ select:not([multiple]) {
     opacity: 1;
   }
 }
+/* Turn start (SPEC §27.7): the active portrait swells, and a brass ring sweeps once round it. */
+@keyframes turn-swell {
+  0% {
+    transform: scale(0.86);
+  }
+  45% {
+    transform: scale(1.08);
+  }
+  100% {
+    transform: none;
+  }
+}
+@keyframes ring-sweep {
+  0% {
+    stroke-dashoffset: 176;
+    opacity: 1;
+  }
+  70% {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+  100% {
+    stroke-dashoffset: 0;
+    opacity: 0;
+  }
+}
 @keyframes rise-in {
   from {
     opacity: 0;

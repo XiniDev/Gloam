@@ -270,6 +270,23 @@ export function TestProbe() {
     provideTestHook("plateCovers", () => plateCovers());
     // The brightest pixel of the board within r px of a screen point (luminance 0–255), read from the drawing buffer
     // (kept in test builds) — no screenshot, so no waiting on a compositor frame.
+    // The board's mean colour within r px of a screen point ([r, g, b] 0–255), from its drawing buffer.
+    provideTestHook("boardRgb", (sx: number, sy: number, radius?: number) => {
+      const r = radius ?? 1;
+      const el = gl.domElement;
+      const rect = el.getBoundingClientRect();
+      const dpr = gl.getPixelRatio();
+      const ctx = gl.getContext();
+      const size = Math.max(1, Math.round((2 * r + 1) * dpr));
+      const x = Math.round((sx - rect.left - r) * dpr);
+      const y = Math.round(el.height - (sy - rect.top + r + 1) * dpr);
+      const buf = new Uint8Array(size * size * 4);
+      ctx.readPixels(x, y, size, size, ctx.RGBA, ctx.UNSIGNED_BYTE, buf);
+      const sum = [0, 0, 0];
+      for (let i = 0; i < size * size; i++)
+        for (let c = 0; c < 3; c++) sum[c] = (sum[c] as number) + (buf[i * 4 + c] as number);
+      return sum.map((v) => Math.round(v / (size * size)));
+    });
     provideTestHook("boardPixels", (sx: number, sy: number, radius?: number) => {
       const r = radius ?? 4;
       const el = gl.domElement;

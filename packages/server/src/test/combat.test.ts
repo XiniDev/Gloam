@@ -215,7 +215,49 @@ describe("P8 — combat on the server (§8.12, §16.5)", () => {
     // The DM's move ignores the budget (unless it counts as movement).
     await move(dm, hero, { x: start.x + dir * 35, y: start.y });
     expect(data().turn?.usedFt).toBe(0);
+    // With "Count as movement" ticked for the creature, the DM's move spends its movement like its player's would.
+    await cmd(dm, "token.update", { tokenId: hero, overrides: { countAsMovement: true } });
+    await move(dm, hero, { x: start.x + dir * 25, y: start.y });
+    expect(data().turn?.usedFt).toBeCloseTo(10, 1);
+    await cmd(dm, "token.update", { tokenId: hero, overrides: { countAsMovement: false } });
     await cmd(dm, "move.reset", { tokenId: hero });
+  });
+
+  it("an attack from the app marks the creature's Action, once; the pips can be toggled by hand (AC-CMB-08)", async () => {
+    await turnOf(hero);
+    expect(data().pips[hero] ?? 0).toBe(0);
+    // Brin's player attacks from the sheet: the Action is marked.
+    await cmd(anna().room, "dice.roll", {
+      formula: "1d20 + 5",
+      purpose: "attack",
+      context: { tokenId: hero },
+    });
+    await waitFor(() => ((data().pips[hero] ?? 0) & 1) === 1);
+    // A second swing (Extra Attack) is the same Action.
+    await cmd(anna().room, "dice.roll", {
+      formula: "1d20 + 5",
+      purpose: "attack",
+      context: { tokenId: hero },
+    });
+    expect(data().pips[hero]).toBe(1);
+    // An ordinary roll marks nothing; the Bonus Action by hand, and back.
+    await cmd(anna().room, "dice.roll", { formula: "1d20 + 2", context: { tokenId: hero } });
+    expect(data().pips[hero]).toBe(1);
+    await cmd(anna().room, "combat.pip", { tokenId: hero, pip: "bonus", used: true });
+    expect(data().pips[hero]).toBe(3);
+    await cmd(anna().room, "combat.pip", { tokenId: hero, pip: "bonus", used: false });
+    expect(data().pips[hero]).toBe(1);
+    // Not its turn: an attack marks nothing (it's someone else's Action, or a reaction the player marks).
+    await cmd(anna().room, "combat.endTurn", { tokenId: hero });
+    const other = data().combatants[combat()?.turnIndex ?? 0]?.tokenId as string;
+    const before = data().pips[other] ?? 0;
+    await cmd(anna().room, "dice.roll", {
+      formula: "1d20 + 5",
+      purpose: "attack",
+      context: { tokenId: hero },
+    });
+    await sleep(150);
+    expect(data().pips[other] ?? 0).toBe(before);
   });
 
   it("Dash adds its speed; standing up costs half; Prone crawls at double; a Speed-0 condition refuses the move with why (AC-MOV-09)", async () => {
@@ -391,15 +433,46 @@ describe("P8 — combat on the server (§8.12, §16.5)", () => {
     await cmd(dm, "token.delete", { tokenIds: [brute] });
   });
 
-  it("stop: back to free movement, the summary in the campaign log and to everyone (AC-CMB-07, AC-CMB-11)", async () => {
+  it("stop: back to free movement, the summary in the campaign log — rounds, who went down, what each dealt and took — and to everyone (AC-CMB-07, AC-CMB-11)", async () => {
+    // Brin's turn: two goblins hit, the second dropped (10 HP each) — Brin's doing, as far as the table can tell.
+    await turnOf(hero);
+    const goblins = data()
+      .combatants.filter((e) => e.name.startsWith("Goblin"))
+      .map((e) => e.tokenId);
+    expect(goblins.length).toBeGreaterThanOrEqual(2);
+    const [g1, g2] = goblins as [string, string];
+    // (The tally so far: earlier turns of this combat — Brin went down once.)
+    const before = structuredClone(data().tally);
+    const dealtBefore = before.dealt[hero] ?? 0;
+    await cmd(dm, "hp.apply", { targets: [g1], kind: "damage", amount: 3 });
+    const drop = () =>
+      cmd(dm, "hp.apply", {
+        targets: [g2],
+        kind: "damage",
+        amount: 20,
+        decide: { [g2]: { keep: ["npcAtZero"], choices: { npcAtZero: "dead" } } },
+      });
+    await drop();
+    expect(data().tally.taken[g1]).toBe((before.taken[g1] ?? 0) + 3);
+    expect(data().tally.taken[g2]).toBe((before.taken[g2] ?? 0) + 10);
+    expect(data().tally.dealt[hero]).toBe(dealtBefore + 13);
+    expect(data().tally.downed).toEqual([...before.downed, g2]);
+    // Undone, the hit takes its share of the tally with it.
+    await cmd(dm, "history.undo", {});
+    expect(data().tally.taken[g2]).toBe(before.taken[g2]);
+    expect(data().tally.dealt[hero]).toBe(dealtBefore + 3);
+    expect(data().tally.downed).toEqual(before.downed);
+    await drop();
     anna().msgs.length = 0;
     await cmd(dm, "combat.stop", {});
     expect(combat()).toBeUndefined();
     await waitFor(() => anna().msgs.find((m) => m.type === "combat.stopped"));
     const log = t.server.ctx.campaigns.log(campaignId);
-    expect(
-      log.some((e) => e.kind === "combat.summary" && /Combat ended after \d+ rounds?/.test(e.text)),
-    ).toBe(true);
+    const summary = log.find((e) => e.kind === "combat.summary")?.text ?? "";
+    expect(summary).toMatch(/^Combat ended after \d+ rounds?\./);
+    expect(summary).toMatch(/Down: [^.]*Goblin/);
+    expect(summary).toMatch(new RegExp(`Brin: dealt ${dealtBefore + 13}, took [0-9]+`));
+    expect(summary).toMatch(/Goblin[^:]*: dealt 0, took 3/);
     expect(room().state.combat.active).toBe(false);
     const at = tokenOf(hero)?.pos as { x: number; y: number };
     await move(anna().room, hero, { x: at.x, y: at.y + 5 });

@@ -183,6 +183,12 @@ export function SettingsPopover() {
             checked={s.dmCanMoveCamera}
             onChange={(dmCanMoveCamera) => s.update({ dmCanMoveCamera })}
           />
+          <Toggle
+            label="Focus camera on my turn"
+            description="In combat, the view glides to your creature as its turn begins."
+            checked={s.focusOnMyTurn}
+            onChange={(focusOnMyTurn) => s.update({ focusOnMyTurn })}
+          />
         </Section>
       ) : null}
     </>

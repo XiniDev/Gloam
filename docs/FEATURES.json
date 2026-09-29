@@ -514,10 +514,10 @@
       "code": "MOV",
       "phase": "P8",
       "text": "In combat on their own turn, dragging a token shows a routed path around walls with a distance/remaining label; the in-budget part is verdigris, the rest ember-red, with a max-reach marker at the exact budget point.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p8-combat.spec.ts › 'AC-MOV-01/15/18: …' (on Wren's turn a drag past a wall: routed round its end, 35 ft; the hollow mark exactly 30 ft along; the board verdigris before it and ember after; the label '35 ft · 5 over'; screenshot artifacts/screens/p8/combat-drag.png)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-29T05:04:46.284Z"
     },
     {
       "id": "AC-MOV-02",
@@ -580,10 +580,10 @@
       "code": "MOV",
       "phase": "P8",
       "text": "Players cannot move tokens they don't control; in combat they can move only on their own turn unless granted free movement; DM moves ignore budgets unless \"Count as movement\" is ticked.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/movement.test.ts › 'only a token's controllers move it; a locked token or locked movement refuses players; bad paths are rejected'; packages/server/src/test/combat.test.ts › 'in combat a player moves only on their creature's turn, within its budget…' (out of turn refused; the DM's move ignores the budget, and with 'Count as movement' ticked spends 10 of it) and 'the DM's bonus movement … free movement lifts turn order' (free movement: out of turn allowed; off: refused)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-29T04:39:41.569Z"
     },
     {
       "id": "AC-MOV-08",
@@ -668,10 +668,10 @@
       "code": "MOV",
       "phase": "P8",
       "text": "A path that leaves a visible hostile creature's reach shows an opportunity-attack marker at the exit point, suppressed while the mover is Disengaged.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p8-combat.spec.ts › 'AC-MOV-01/15/18: …' (leaving the goblin's reach: an opportunity-attack mark and 'Opportunity attack from Goblin'; Disengaged: none); packages/shared/src/movement/opportunity.test.ts",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-29T05:04:46.355Z"
     },
     {
       "id": "AC-MOV-16",
@@ -701,10 +701,10 @@
       "code": "MOV",
       "phase": "P8",
       "text": "DM bonus movement (+X ft for this turn / N rounds / until removed) adds to the budget per §19.4 (not doubled by Dash), shows in the budget label (\"30 + 10 ft\"), and expires as set.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p8-combat.spec.ts › 'AC-MOV-01/15/18: …' (the DM's '+10 ft for this turn' shows as '30 + 10 ft' in Dave's budget, gone when removed); packages/server/src/test/combat.test.ts › 'the DM's bonus movement joins the budget (never doubled by Dash)…' (ends with the turn; never on a Speed of 0)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-29T05:04:46.428Z"
     },
     {
       "id": "AC-WAL-01",
@@ -1339,10 +1339,10 @@
       "code": "CMB",
       "phase": "P8",
       "text": "The start dialog supports all four initiative methods, participant selection, grouping identical NPCs, and per-participant surprise.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p8-combat.spec.ts › 'AC-CMB-01/02/04/05/06/08/11: …' (the Start combat dialog: the four methods, every creature on the scene offered and chosen, Kell surprised, identical goblins grouped — one shared roll once the DM rolls the NPCs; screenshot artifacts/screens/p8/start-combat.png); packages/server/src/test/combat.test.ts › quick start (groups, rolls, surprise)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-29T05:04:45.790Z"
     },
     {
       "id": "AC-CMB-02",
@@ -1350,10 +1350,10 @@
       "code": "CMB",
       "phase": "P8",
       "text": "Player initiative cards offer Roll / Enter / Skip with automatic advantage/disadvantage from Invisible, Incapacitated and Surprised.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p8-combat.spec.ts › 'AC-CMB-01/02/04/05/06/08/11: …' (Dave's card: Roll / Enter physical roll / Skip, 'Advantage · Invisible'; Pia's 'Disadvantage · Surprised'; Dave rolls, Pia enters hers; screenshot initiative-card.png); packages/shared/src/rules/combat.test.ts (initiativeHints: Invisible, Incapacitated and what includes it, Surprised)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-29T05:04:45.862Z"
     },
     {
       "id": "AC-CMB-03",
@@ -1372,10 +1372,10 @@
       "code": "CMB",
       "phase": "P8",
       "text": "The tracker shows portraits in order, the round number and the active highlight; players don't see combatants they can't perceive.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p8-combat.spec.ts › 'AC-CMB-01/02/04/05/06/08/11: …' (the tracker: round 1, four in initiative order, one active; the DM adds the hidden Lurker — five in the DM's tracker, none of it in Dave's; every portrait its place's size, one swelling); packages/server/src/test/combat.test.ts › 'the tracker: the DM sees everyone; a player the combatants they perceive…'",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-29T05:04:45.931Z"
     },
     {
       "id": "AC-CMB-05",
@@ -1383,10 +1383,10 @@
       "code": "CMB",
       "phase": "P8",
       "text": "Turn start resets the budget and pips, runs start-of-turn prompts, plays the chime for the owner, and focuses the camera if opted in.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p8-combat.spec.ts › 'AC-CMB-01/02/04/05/06/08/11: …' (Wren's turn: the 'Your turn' banner and bell for Dave, the camera to Wren with his setting on, the brass ring round his portrait, every pip back and 30 ft; screenshots your-turn*.png); packages/server/src/test/combat.test.ts › 'a turn's start: its pips cleared…, \"your turn\" to its player, the hazards…'",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-29T05:04:46.001Z"
     },
     {
       "id": "AC-CMB-06",
@@ -1394,10 +1394,10 @@
       "code": "CMB",
       "phase": "P8",
       "text": "During combat only the active combatant's controller can move it (unless free movement is granted); End turn advances; Next/Previous/Delay/Add/Remove/Set initiative/drag-reorder work for the DM.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p8-combat.spec.ts › 'AC-CMB-01/02/04/05/06/08/11: …' (End turn passes it on and Dave can't move Wren out of turn; the DM's Previous, Set initiative (Kell to 30, first), Delay (until after the Lurker), drag to reorder in the tracker, Remove); packages/server/src/test/combat.test.ts › 'the DM's controls…' and 'in combat a player moves only on their creature's turn…'",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-29T05:04:46.071Z"
     },
     {
       "id": "AC-CMB-07",
@@ -1416,10 +1416,10 @@
       "code": "CMB",
       "phase": "P8",
       "text": "Action pips track usage, are marked automatically by app-driven attacks and spells, can be toggled manually, and the Reaction resets at the start of the creature's own turn.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p8-combat.spec.ts › 'AC-CMB-01/02/04/05/06/08/11: …' (the Bonus pip marked by hand and back; an attack from the app marks the Action); packages/server/src/test/combat.test.ts › 'an attack from the app marks the creature's Action, once; the pips can be toggled by hand' and 'a turn's start: its pips cleared (the Reaction only on its own turn)…'",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-29T05:04:46.143Z"
     },
     {
       "id": "AC-CMB-09",
@@ -1449,10 +1449,10 @@
       "code": "CMB",
       "phase": "P8",
       "text": "Quick start begins combat in one click with all non-hidden creatures on the scene and the default initiative method, and Stop combat returns everyone to free movement in one click.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p8-combat.spec.ts › 'AC-CMB-01/02/04/05/06/08/11: …' (Stop combat in one click: everyone free again, 'Combat ended' to the players; Quick start in one click: the four not hidden, the campaign's method); packages/server/src/test/combat.test.ts › quick start and stop (the summary: rounds, who went down, what each dealt and took)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-29T05:04:46.214Z"
     },
     {
       "id": "AC-SPL-01",

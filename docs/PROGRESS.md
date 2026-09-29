@@ -401,3 +401,15 @@ P1 28/28 · P2 32/32 · P3 16/17 · P4 12/12 · P5 9/9 · P6 14/14 · P7 1/17 ·
 - Next: commit; P8's range overlay (G), turn banner and chime, combat tally, the remaining server tests, the P8 journeys
   and key screens, its critic (≤ 2 rounds), and its ACs marked with evidence.
 
+## 2026-09-29 — P8: combat and movement budgets — 21/21
+
+- Committed: P7 critic round 2 (54f450f); the movement range overlay with its worker, bench part and journey (39d4c7e).
+- Now: a turn's start (bell, banner, camera focus setting, the tracker's swell and ring), the combat tally in `hp.apply`,
+  "Count as movement" and app-attack pip tests, the P8 journeys — p8-combat (the start dialog, initiative cards and
+  hints, the tracker and what players perceive, a turn's start, pips, End turn, the DM's controls and drag to reorder,
+  Stop, Quick start; a drag in combat: routed path, verdigris/ember split, the exact reach mark, the label,
+  opportunity attacks and Disengaged, bonus movement) and p8-range. Test hooks read the board's drawing buffer.
+- ACs: all 21 of P8 pass with evidence (MOV-01/04/05/07/09/10/15/16/18, CMB-01…11, HP-08, WAL-05).
+- `pnpm bench`: vision p95 4.5 ms (10), range p95 7.5 ms (30).
+- Next: P8 key screens and the visual critic (≤ 2 rounds); then P9.
+

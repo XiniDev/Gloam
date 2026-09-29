@@ -100,6 +100,7 @@ export function TurnTracker() {
               <Entry
                 e={e}
                 active={view.begun && index === view.activeIndex}
+                turnKey={`${view.round}:${view.activeIndex}`}
                 draggable={dm && Boolean(e.tokenId)}
                 onDragStart={() => setDragging(e.tokenId ?? null)}
                 onDrop={() => {
@@ -165,12 +166,15 @@ export function TurnTracker() {
 function Entry({
   e,
   active,
+  turnKey,
   draggable,
   onDragStart,
   onDrop,
 }: {
   e: CombatViewEntry;
   active: boolean;
+  /** Which turn it is (round and place): the turn-start moment plays again when it changes. */
+  turnKey: string;
   draggable: boolean;
   onDragStart: () => void;
   onDrop: () => void;
@@ -208,16 +212,51 @@ function Entry({
         className={`relative grid place-items-center rounded-full ${active ? "shadow-[0_0_0_2px_var(--brass-400),0_0_14px_var(--glow-brass)]" : ""}`}
         style={{ width: size, height: size }}
       >
-        {e.unknown ? (
-          <span
-            className="grid h-full w-full place-items-center rounded-full bg-ink-950 text-18 text-faint shadow-[inset_0_0_0_1px_var(--line)]"
+        {/* The turn starting (§27.7): the portrait swells, a brass ring sweeps once round it (keyed to the turn). */}
+        <span
+          key={active ? turnKey : "idle"}
+          className={`grid h-full w-full place-items-center ${active ? "animate-[turn-swell_var(--dur-scene)_var(--ease-out)]" : ""}`}
+        >
+          {e.unknown ? (
+            <span
+              className="grid h-full w-full place-items-center rounded-full bg-ink-950 text-18 text-faint shadow-[inset_0_0_0_1px_var(--line)]"
+              aria-hidden
+            >
+              ?
+            </span>
+          ) : (
+            <Portrait
+              name={e.name}
+              color={active ? "var(--brass-400)" : "var(--line)"}
+              size={size}
+              src={src}
+            />
+          )}
+        </span>
+        {active ? (
+          <svg
+            // (Its own key: sharing the swell's with a sibling, React left stale portraits behind as turns passed.)
+            key={`ring:${turnKey}`}
+            viewBox="0 0 60 60"
+            className="pointer-events-none absolute -inset-1.5"
             aria-hidden
+            data-testid="turn-ring"
           >
-            ?
-          </span>
-        ) : (
-          <Portrait name={e.name} color={active ? "var(--brass-400)" : "var(--line)"} size={size} src={src} />
-        )}
+            <circle
+              cx="30"
+              cy="30"
+              r="28"
+              fill="none"
+              stroke="var(--brass-300)"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeDasharray="176"
+              strokeDashoffset="176"
+              transform="rotate(-90 30 30)"
+              className="animate-[ring-sweep_var(--dur-cinematic)_var(--ease-out)_forwards]"
+            />
+          </svg>
+        ) : null}
       </button>
       <span className="tabular text-12 leading-none text-bone">
         {e.unknown ? "" : e.initiative !== undefined ? e.initiative : "…"}

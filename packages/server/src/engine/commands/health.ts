@@ -37,6 +37,7 @@ import type { CommandCtx, CommandDef, RoomEvent } from "../commandBus.ts";
 import type { Op } from "../ops.ts";
 import { mustGet, setOps } from "../plan.ts";
 import { readSheet, sheetEditOps } from "./actor.ts";
+import { type Hurt, tallyOps } from "./tally.ts";
 
 /**
  * HP, conditions and death (SPEC §8.11, §19): damage (the §19.2 pipeline), healing and temporary HP for tokens;
@@ -366,6 +367,8 @@ export const hpApply: CommandDef<z.infer<typeof HpApply>, { applied: number; sen
     const lines: string[] = [];
     let applied = 0;
     let sent = 0;
+    // What each creature lost, and who dropped to 0 — a running combat's tally.
+    const hurt: Hurt = { taken: new Map(), downed: [] };
     for (const id of [...new Set(p.targets)]) {
       const h = holderOf(ctx, refOf(ctx, id));
       // A player's damage to a creature they don't control: to the DM first (house rule "via DM confirmation").
@@ -419,6 +422,13 @@ export const hpApply: CommandDef<z.infer<typeof HpApply>, { applied: number; sen
         });
       if (kills(apply)) fx.dead = true;
       ops.push(...holderOps(ctx, h, { hp, hpTemp, status }));
+      if (p.kind === "damage") {
+        const lost = Math.max(0, h.hp + h.hpTemp - (hp + hpTemp));
+        for (const tokenId of tokensOf(ctx, h)) {
+          hurt.taken.set(tokenId, (hurt.taken.get(tokenId) ?? 0) + lost);
+          if (h.hp > 0 && hp <= 0) hurt.downed.push(tokenId);
+        }
+      }
       for (const tokenId of tokensOf(ctx, h))
         events.push({ name: "hp.fx", payload: { ...fx, tokenId }, to: { viewersOf: tokenId } });
       lines.push(line);
@@ -426,6 +436,7 @@ export const hpApply: CommandDef<z.infer<typeof HpApply>, { applied: number; sen
     }
     if (follow.prompts.length || follow.concentration.length)
       events.push({ name: FOLLOWUPS, payload: follow, to: { dms: true } });
+    ops.push(...tallyOps(ctx, hurt));
     const summary = lines.length
       ? `${lines.slice(0, 3).join("; ")}${lines.length > 3 ? ` and ${lines.length - 3} more` : ""}${p.label ? ` (${p.label})` : ""}`
       : "Damage sent to the DM";
