@@ -231,7 +231,8 @@ export interface CastTargetView {
     immune: boolean;
     has: { resist: boolean; vuln: boolean; immune: boolean };
   };
-  conditions: { id: string; on: boolean }[];
+  /** The spell's conditions for this row: ticked or not; a choice's group (ticking one unticks the others). */
+  conditions: { id: string; on: boolean; group?: string; stage?: number }[];
   /** The computed number and the DM's edit (the edit wins). */
   computed?: number;
   final?: number;

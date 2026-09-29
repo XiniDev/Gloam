@@ -235,10 +235,15 @@ export function affected(
       out.push({ id: c.id, affected: false, blocked: false });
       continue;
     }
-    const inArea = opts.coverage === "centre" ? contains(f, c.pos) : overlaps(f, c.pos, c.r);
-    const [lo, hi] = verticalExtent(a, c.pos);
-    const inHeight = c.z <= hi && c.z + c.height >= lo;
-    if (!inArea || !inHeight) {
+    const inside3d = roundReach(a, c, opts.coverage === "centre");
+    let hit: boolean;
+    if (inside3d !== null) hit = inside3d;
+    else {
+      const inArea = opts.coverage === "centre" ? contains(f, c.pos) : overlaps(f, c.pos, c.r);
+      const [lo, hi] = verticalExtent(a, c.pos);
+      hit = inArea && c.z <= hi && c.z + c.height >= lo;
+    }
+    if (!hit) {
       out.push({ id: c.id, affected: false, blocked: false });
       continue;
     }
@@ -249,6 +254,36 @@ export function affected(
     out.push(reached ? { id: c.id, affected: true } : { id: c.id, affected: false, blocked: true });
   }
   return out;
+}
+
+/**
+ * A round area in three dimensions (SRD 5.2.1: a Sphere's radius "extends in straight lines from that point"; an
+ * Emanation reaches its distance from its source's space every way; rules audit m4): whether it reaches a creature —
+ * any part of its body (a base circle raised to its height), or with "centre" coverage its centre — by true distance,
+ * so a flier high above a Fireball's edge isn't caught as a box would catch it. Null for other shapes (the footprint
+ * and its vertical extent, §17.1, decide).
+ */
+function roundReach(a: AreaShape, c: AreaCreature, centre: boolean): boolean | null {
+  const lo = c.z;
+  const hi = c.z + c.height;
+  const gapZ = (z0: number, z1: number) => (hi < z0 ? z0 - hi : lo > z1 ? lo - z1 : 0);
+  if (a.kind === "sphere") {
+    const z = a.z ?? 0;
+    const flat = dist(c.pos, a.origin);
+    if (centre) return Math.hypot(flat, (lo + hi) / 2 - z) <= a.radius + 1e-9;
+    return Math.hypot(Math.max(0, flat - c.r), gapZ(z, z)) < a.radius;
+  }
+  if (a.kind === "emanation") {
+    const z = a.z ?? 0;
+    const top = z + (a.sourceHeight ?? 0);
+    const flat = Math.max(0, dist(c.pos, a.source) - a.sourceRadius);
+    if (centre) {
+      const mid = (lo + hi) / 2;
+      return Math.hypot(flat, mid < z ? z - mid : mid > top ? mid - top : 0) <= a.distance + 1e-9;
+    }
+    return Math.hypot(Math.max(0, flat - c.r), gapZ(z, top)) < a.distance;
+  }
+  return null;
 }
 
 /**

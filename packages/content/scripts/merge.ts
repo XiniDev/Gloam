@@ -388,6 +388,13 @@ export function mergeSpell(
     );
   }
 
+  // --- Splash (an attack that then bursts: Ice Knife) — only by an overlay ----------------------------------
+  const oSplash = overlayFor("splash");
+  if (oSplash?.set.splash !== undefined) {
+    record.splash = oSplash.set.splash;
+    prov.splash = `overlay:${oSplash.file}`;
+  }
+
   // --- Save ----------------------------------------------------------------------------------------------
   const pSave = proseSave(text);
   const fSaveActs = (foundry?.activities ?? []).filter((a) => a.saveAbilities.length > 0);

@@ -579,8 +579,13 @@ function Details({ c, t }: { c: CastView; t: CastTargetView }) {
                 checked={x.on}
                 onChange={(e) =>
                   set({
+                    // One of a choice's group: ticking it unticks the rest of its group.
                     conditions: t.conditions
-                      .filter((y) => (y.id === x.id ? e.target.checked : y.on))
+                      .filter((y) =>
+                        y.id === x.id
+                          ? e.target.checked
+                          : y.on && !(e.target.checked && x.group && y.group === x.group),
+                      )
                       .map((y) => y.id),
                   })
                 }

@@ -2311,7 +2311,10 @@
     "conditions": [
       {
         "id": "blinded",
-        "onFailedSave": true
+        "onFailedSave": true,
+        "duration": {
+          "until": "casterTurnEnd"
+        }
       }
     ],
     "vfx": "arcane",
@@ -2324,7 +2327,7 @@
       "castingTime": "pdf",
       "classes": "pdf",
       "components": "pdf",
-      "conditions": "prose:has/have the <Condition> condition+foundry",
+      "conditions": "overlay:spell-mechanics.json",
       "duration": "pdf",
       "id": "pdf",
       "level": "pdf",
@@ -4274,6 +4277,7 @@
     "attack": {
       "kind": "ranged"
     },
+    "splash": 5,
     "save": {
       "ability": "dex",
       "onSuccess": "none"
@@ -4281,7 +4285,8 @@
     "damage": [
       {
         "formula": "1d10",
-        "type": "piercing"
+        "type": "piercing",
+        "on": "hit"
       },
       {
         "formula": "2d6",
@@ -4289,7 +4294,8 @@
         "scaling": {
           "mode": "slot",
           "perLevel": "1d6"
-        }
+        },
+        "on": "save"
       }
     ],
     "vfx": "force",
@@ -4303,8 +4309,7 @@
       "castingTime": "pdf",
       "classes": "pdf",
       "components": "pdf",
-      "damage": "foundry",
-      "damage.scaling": "prose:increases by NdM for each spell slot level above",
+      "damage": "overlay:spell-mechanics.json",
       "duration": "pdf",
       "higherLevels": "pdf",
       "id": "pdf",
@@ -4314,6 +4319,7 @@
       "ritual": "pdf",
       "save": "prose:makes/succeeds on a <Ability> saving throw+foundry",
       "school": "pdf",
+      "splash": "overlay:spell-mechanics.json",
       "targeting": "foundry:affects.type=creature",
       "text": "pdf",
       "vfx": "derived:primary damage piercing → force"
@@ -4907,7 +4913,10 @@
     "conditions": [
       {
         "id": "poisoned",
-        "onFailedSave": false
+        "onFailedSave": false,
+        "duration": {
+          "until": "casterTurnEnd"
+        }
       }
     ],
     "vfx": "poison",
@@ -4920,7 +4929,7 @@
       "castingTime": "pdf",
       "classes": "pdf",
       "components": "pdf",
-      "conditions": "prose:has/have the <Condition> condition+foundry",
+      "conditions": "overlay:spell-mechanics.json",
       "damage": "foundry",
       "damage.scaling": "prose:increases by NdM for each spell slot level above",
       "duration": "pdf",
@@ -5280,11 +5289,15 @@
     "conditions": [
       {
         "id": "incapacitated",
-        "onFailedSave": true
+        "onFailedSave": true,
+        "duration": {
+          "until": "ownTurnEnd"
+        }
       },
       {
         "id": "unconscious",
-        "onFailedSave": true
+        "onFailedSave": true,
+        "stage": 2
       }
     ],
     "vfx": "arcane",
@@ -5297,7 +5310,7 @@
       "castingTime": "pdf",
       "classes": "pdf",
       "components": "pdf",
-      "conditions": "prose:has/have the <Condition> condition+foundry",
+      "conditions": "overlay:spell-mechanics.json",
       "duration": "pdf",
       "id": "pdf",
       "level": "pdf",
@@ -6022,11 +6035,13 @@
     "conditions": [
       {
         "id": "blinded",
-        "onFailedSave": true
+        "onFailedSave": true,
+        "choice": "sense"
       },
       {
         "id": "deafened",
-        "onFailedSave": true
+        "onFailedSave": true,
+        "choice": "sense"
       }
     ],
     "vfx": "arcane",
@@ -6038,7 +6053,7 @@
       "castingTime": "pdf",
       "classes": "pdf",
       "components": "pdf",
-      "conditions": "prose:has/have the <Condition> condition+foundry",
+      "conditions": "overlay:spell-mechanics.json",
       "duration": "pdf",
       "higherLevels": "pdf",
       "id": "pdf",
@@ -17399,7 +17414,10 @@
     "conditions": [
       {
         "id": "frightened",
-        "onFailedSave": false
+        "onFailedSave": false,
+        "duration": {
+          "until": "casterTurnStart"
+        }
       }
     ],
     "vfx": "psychic",
@@ -17412,7 +17430,7 @@
       "castingTime": "pdf",
       "classes": "pdf",
       "components": "pdf",
-      "conditions": "prose:has/have the <Condition> condition",
+      "conditions": "overlay:spell-mechanics.json",
       "damage": "prose:<Type> damage equal to NdM plus your spellcasting ability modifier",
       "damage.scaling": "prose:increases by NdM for each spell slot level above",
       "duration": "pdf",
@@ -17654,15 +17672,18 @@
     "conditions": [
       {
         "id": "unconscious",
-        "onFailedSave": true
+        "onFailedSave": true,
+        "choice": "eye"
       },
       {
         "id": "frightened",
-        "onFailedSave": true
+        "onFailedSave": true,
+        "choice": "eye"
       },
       {
         "id": "poisoned",
-        "onFailedSave": true
+        "onFailedSave": true,
+        "choice": "eye"
       }
     ],
     "vfx": "arcane",
@@ -17674,7 +17695,7 @@
       "castingTime": "pdf",
       "classes": "pdf",
       "components": "pdf",
-      "conditions": "prose:has/have the <Condition> condition+foundry",
+      "conditions": "overlay:spell-mechanics.json",
       "duration": "pdf",
       "id": "pdf",
       "level": "pdf",
@@ -17791,7 +17812,8 @@
       },
       {
         "id": "petrified",
-        "onFailedSave": true
+        "onFailedSave": true,
+        "stage": 2
       }
     ],
     "vfx": "arcane",
@@ -17803,7 +17825,7 @@
       "castingTime": "pdf",
       "classes": "pdf",
       "components": "pdf",
-      "conditions": "prose:has/have the <Condition> condition+foundry",
+      "conditions": "overlay:spell-mechanics.json",
       "duration": "pdf",
       "id": "pdf",
       "level": "pdf",
@@ -18752,7 +18774,10 @@
     "conditions": [
       {
         "id": "blinded",
-        "onFailedSave": true
+        "onFailedSave": true,
+        "duration": {
+          "until": "casterTurnStart"
+        }
       }
     ],
     "light": {
@@ -18771,7 +18796,7 @@
       "castingTime": "pdf",
       "classes": "pdf",
       "components": "pdf",
-      "conditions": "prose:has/have the <Condition> condition+foundry",
+      "conditions": "overlay:spell-mechanics.json",
       "damage": "foundry",
       "duration": "pdf",
       "id": "pdf",
@@ -19539,15 +19564,18 @@
     "conditions": [
       {
         "id": "blinded",
-        "onFailedSave": true
+        "onFailedSave": true,
+        "pick": true
       },
       {
         "id": "deafened",
-        "onFailedSave": true
+        "onFailedSave": true,
+        "pick": true
       },
       {
         "id": "stunned",
-        "onFailedSave": true
+        "onFailedSave": true,
+        "pick": true
       }
     ],
     "vfx": "arcane",
@@ -19559,7 +19587,7 @@
       "castingTime": "pdf",
       "classes": "pdf",
       "components": "pdf",
-      "conditions": "foundry",
+      "conditions": "overlay:spell-mechanics.json",
       "duration": "pdf",
       "id": "pdf",
       "level": "pdf",
@@ -20070,11 +20098,13 @@
     "conditions": [
       {
         "id": "blinded",
-        "onFailedSave": true
+        "onFailedSave": true,
+        "pick": true
       },
       {
         "id": "restrained",
-        "onFailedSave": true
+        "onFailedSave": true,
+        "pick": true
       }
     ],
     "vfx": "fire",
@@ -20087,7 +20117,7 @@
       "castingTime": "pdf",
       "classes": "pdf",
       "components": "pdf",
-      "conditions": "foundry",
+      "conditions": "overlay:spell-mechanics.json",
       "damage": "overlay:spell-mechanics.json",
       "duration": "pdf",
       "id": "pdf",
@@ -20510,19 +20540,23 @@
     "conditions": [
       {
         "id": "frightened",
-        "onFailedSave": true
+        "onFailedSave": true,
+        "choice": "glyph"
       },
       {
         "id": "incapacitated",
-        "onFailedSave": true
+        "onFailedSave": true,
+        "choice": "glyph"
       },
       {
         "id": "unconscious",
-        "onFailedSave": true
+        "onFailedSave": true,
+        "choice": "glyph"
       },
       {
         "id": "stunned",
-        "onFailedSave": true
+        "onFailedSave": true,
+        "choice": "glyph"
       }
     ],
     "vfx": "necrotic",
@@ -20535,7 +20569,7 @@
       "castingTime": "pdf",
       "classes": "pdf",
       "components": "pdf",
-      "conditions": "prose:has/have the <Condition> condition+foundry",
+      "conditions": "overlay:spell-mechanics.json",
       "damage": "foundry",
       "duration": "pdf",
       "id": "pdf",
@@ -20767,11 +20801,13 @@
     "conditions": [
       {
         "id": "frightened",
-        "onFailedSave": true
+        "onFailedSave": true,
+        "choice": "mode"
       },
       {
         "id": "charmed",
-        "onFailedSave": true
+        "onFailedSave": true,
+        "choice": "mode"
       }
     ],
     "vfx": "arcane",
@@ -20783,7 +20819,7 @@
       "castingTime": "pdf",
       "classes": "pdf",
       "components": "pdf",
-      "conditions": "prose:has/have the <Condition> condition+foundry",
+      "conditions": "overlay:spell-mechanics.json",
       "duration": "pdf",
       "id": "pdf",
       "level": "pdf",
@@ -21272,7 +21308,10 @@
     "conditions": [
       {
         "id": "blinded",
-        "onFailedSave": true
+        "onFailedSave": true,
+        "duration": {
+          "until": "ownTurnEnd"
+        }
       }
     ],
     "effect": {
@@ -21290,7 +21329,7 @@
       "castingTime": "pdf",
       "classes": "pdf",
       "components": "pdf",
-      "conditions": "prose:has/have the <Condition> condition+foundry",
+      "conditions": "overlay:spell-mechanics.json",
       "duration": "pdf",
       "effect": "overlay:spell-effects.json",
       "id": "pdf",
@@ -21966,11 +22005,13 @@
     "conditions": [
       {
         "id": "restrained",
-        "onFailedSave": true
+        "onFailedSave": true,
+        "pick": true
       },
       {
         "id": "unconscious",
-        "onFailedSave": true
+        "onFailedSave": true,
+        "pick": true
       }
     ],
     "vfx": "arcane",
@@ -21982,7 +22023,7 @@
       "castingTime": "pdf",
       "classes": "pdf",
       "components": "pdf",
-      "conditions": "prose:has/have the <Condition> condition+foundry",
+      "conditions": "overlay:spell-mechanics.json",
       "duration": "pdf",
       "id": "pdf",
       "level": "pdf",
@@ -22303,11 +22344,13 @@
     "conditions": [
       {
         "id": "blinded",
-        "onFailedSave": true
+        "onFailedSave": true,
+        "pick": true
       },
       {
         "id": "restrained",
-        "onFailedSave": true
+        "onFailedSave": true,
+        "pick": true
       }
     ],
     "light": {
@@ -22326,7 +22369,7 @@
       "castingTime": "pdf",
       "classes": "pdf",
       "components": "pdf",
-      "conditions": "prose:has/have the <Condition> condition+foundry",
+      "conditions": "overlay:spell-mechanics.json",
       "damage": "foundry",
       "duration": "pdf",
       "id": "pdf",

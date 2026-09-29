@@ -161,12 +161,24 @@
     },
     "prismatic-wall": {
       "page": 155,
-      "source": "\"Each layer forces the creature to make a Dexterity saving throw or be affected by that layer’s properties as described in the Prismatic Layers table\" (damage layers: \"Successful Save: Half as much damage\"). The Constitution save against blindness for creatures near the wall stays in the text.",
+      "source": "\"Each layer forces the creature to make a Dexterity saving throw or be affected by that layer’s properties as described in the Prismatic Layers table\" (damage layers: \"Successful Save: Half as much damage\"). The Constitution save against blindness for creatures near the wall stays in the text. Indigo (Restrained) and Violet (Blinded) by the layer: the DM judges by the layer.",
       "set": {
         "save": {
           "ability": "dex",
           "onSuccess": "half"
-        }
+        },
+        "conditions": [
+          {
+            "id": "blinded",
+            "onFailedSave": true,
+            "pick": true
+          },
+          {
+            "id": "restrained",
+            "onFailedSave": true,
+            "pick": true
+          }
+        ]
       }
     },
     "spirit-guardians": {
@@ -415,7 +427,7 @@
     },
     "prismatic-spray": {
       "page": 154,
-      "source": "\"Each creature in the Cone makes a Dexterity saving throw. For each target, roll 1d8 to determine which color ray affects it\"; the Prismatic Rays table gives Red 12d6 Fire, Orange Acid, Yellow Lightning, Green Poison, Blue Cold with \"Successful Save: Half as much damage\" (Indigo and Violet impose conditions).",
+      "source": "\"Each creature in the Cone makes a Dexterity saving throw. For each target, roll 1d8 to determine which color ray affects it\"; the Prismatic Rays table gives Red 12d6 Fire, Orange Acid, Yellow Lightning, Green Poison, Blue Cold with \"Successful Save: Half as much damage\" (Indigo and Violet impose conditions). Indigo (Restrained) and Violet (Blinded) by the ray each creature rolls: the DM judges by the ray.",
       "set": {
         "save": {
           "ability": "dex",
@@ -426,6 +438,18 @@
             "formula": "12d6",
             "type": "fire",
             "typeOptions": ["fire", "acid", "lightning", "poison", "cold"]
+          }
+        ],
+        "conditions": [
+          {
+            "id": "blinded",
+            "onFailedSave": true,
+            "pick": true
+          },
+          {
+            "id": "restrained",
+            "onFailedSave": true,
+            "pick": true
           }
         ]
       }
@@ -525,6 +549,269 @@
             "17": 4
           }
         }
+      }
+    },
+    "blindness-deafness": {
+      "page": 113,
+      "source": "\"One creature that you can see within range must succeed on a Constitution saving throw, or it has the Blinded or Deafened condition (your choice) for the duration.\" One of the two: a choice.",
+      "set": {
+        "conditions": [
+          {
+            "id": "blinded",
+            "onFailedSave": true,
+            "choice": "sense"
+          },
+          {
+            "id": "deafened",
+            "onFailedSave": true,
+            "choice": "sense"
+          }
+        ]
+      }
+    },
+    "flesh-to-stone": {
+      "page": 133,
+      "source": "\"On a failed save, it has the Restrained condition for the duration.\" Then \"If it fails its saves three times, it is turned to stone and has the Petrified condition for the duration.\" Petrified is a later stage.",
+      "set": {
+        "conditions": [
+          {
+            "id": "restrained",
+            "onFailedSave": true
+          },
+          {
+            "id": "petrified",
+            "onFailedSave": true,
+            "stage": 2
+          }
+        ]
+      }
+    },
+    "sleep": {
+      "page": 163,
+      "source": "\"must succeed on a Wisdom saving throw or have the Incapacitated condition until the end of its next turn, at which point it must repeat the save. If the target fails the second save, the target has the Unconscious condition for the duration.\" Unconscious is a later stage.",
+      "set": {
+        "conditions": [
+          {
+            "id": "incapacitated",
+            "onFailedSave": true,
+            "duration": {
+              "until": "ownTurnEnd"
+            }
+          },
+          {
+            "id": "unconscious",
+            "onFailedSave": true,
+            "stage": 2
+          }
+        ]
+      }
+    },
+    "eyebite": {
+      "page": 129,
+      "source": "\"must succeed on a Wisdom saving throw or be affected by one of the following effects of your choice for the duration\": Asleep (Unconscious), Panicked (Frightened), Sickened (Poisoned). One of the three: a choice.",
+      "set": {
+        "conditions": [
+          {
+            "id": "unconscious",
+            "onFailedSave": true,
+            "choice": "eye"
+          },
+          {
+            "id": "frightened",
+            "onFailedSave": true,
+            "choice": "eye"
+          },
+          {
+            "id": "poisoned",
+            "onFailedSave": true,
+            "choice": "eye"
+          }
+        ]
+      }
+    },
+    "divine-word": {
+      "page": 125,
+      "source": "\"On a failed save, a target that has 50 Hit Points or fewer suffers an effect based on its current Hit Points\" (the Divine Word Effects table: Deafened; Blinded and Deafened; Blinded, Deafened and Stunned; death). The DM judges each by the creature's Hit Points.",
+      "set": {
+        "conditions": [
+          {
+            "id": "blinded",
+            "onFailedSave": true,
+            "pick": true
+          },
+          {
+            "id": "deafened",
+            "onFailedSave": true,
+            "pick": true
+          },
+          {
+            "id": "stunned",
+            "onFailedSave": true,
+            "pick": true
+          }
+        ]
+      }
+    },
+    "symbol": {
+      "page": 167,
+      "source": "\"choose which effect the symbol bears: Death, Discord, Fear, Pain, Sleep, or Stunning\": Fear Frightened, Pain Incapacitated, Sleep Unconscious, Stunning Stunned. One, by the glyph: a choice.",
+      "set": {
+        "conditions": [
+          {
+            "id": "frightened",
+            "onFailedSave": true,
+            "choice": "glyph"
+          },
+          {
+            "id": "incapacitated",
+            "onFailedSave": true,
+            "choice": "glyph"
+          },
+          {
+            "id": "unconscious",
+            "onFailedSave": true,
+            "choice": "glyph"
+          },
+          {
+            "id": "stunned",
+            "onFailedSave": true,
+            "choice": "glyph"
+          }
+        ]
+      }
+    },
+    "antipathy-sympathy": {
+      "page": 109,
+      "source": "\"As you cast the spell, choose whether it creates antipathy or sympathy\": Antipathy leaves the creature Frightened, Sympathy Charmed. One, by the mode: a choice.",
+      "set": {
+        "conditions": [
+          {
+            "id": "frightened",
+            "onFailedSave": true,
+            "choice": "mode"
+          },
+          {
+            "id": "charmed",
+            "onFailedSave": true,
+            "choice": "mode"
+          }
+        ]
+      }
+    },
+    "imprisonment": {
+      "page": 142,
+      "source": "\"Until the spell ends, the target is also affected by one of the following effects of your choice\": Chaining (Restrained), Slumber (Unconscious); the other forms hold it in other ways. The DM judges by the form.",
+      "set": {
+        "conditions": [
+          {
+            "id": "restrained",
+            "onFailedSave": true,
+            "pick": true
+          },
+          {
+            "id": "unconscious",
+            "onFailedSave": true,
+            "pick": true
+          }
+        ]
+      }
+    },
+    "color-spray": {
+      "page": 116,
+      "source": "\"must succeed on a Constitution saving throw or have the Blinded condition until the end of your next turn\"",
+      "set": {
+        "conditions": [
+          {
+            "id": "blinded",
+            "onFailedSave": true,
+            "duration": {
+              "until": "casterTurnEnd"
+            }
+          }
+        ]
+      }
+    },
+    "ray-of-sickness": {
+      "page": 158,
+      "source": "\"the target takes 2d8 Poison damage and has the Poisoned condition until the end of your next turn\"",
+      "set": {
+        "conditions": [
+          {
+            "id": "poisoned",
+            "onFailedSave": false,
+            "duration": {
+              "until": "casterTurnEnd"
+            }
+          }
+        ]
+      }
+    },
+    "sunbeam": {
+      "page": 166,
+      "source": "\"a creature takes 6d8 Radiant damage and has the Blinded condition until the start of your next turn\"",
+      "set": {
+        "conditions": [
+          {
+            "id": "blinded",
+            "onFailedSave": true,
+            "duration": {
+              "until": "casterTurnStart"
+            }
+          }
+        ]
+      }
+    },
+    "conjure-fey": {
+      "page": 118,
+      "source": "\"the target has the Frightened condition until the start of your next turn\"",
+      "set": {
+        "conditions": [
+          {
+            "id": "frightened",
+            "onFailedSave": false,
+            "duration": {
+              "until": "casterTurnStart"
+            }
+          }
+        ]
+      }
+    },
+    "holy-aura": {
+      "page": 141,
+      "source": "\"the attacker must succeed on a Constitution saving throw or have the Blinded condition until the end of its next turn\"",
+      "set": {
+        "conditions": [
+          {
+            "id": "blinded",
+            "onFailedSave": true,
+            "duration": {
+              "until": "ownTurnEnd"
+            }
+          }
+        ]
+      }
+    },
+    "ice-knife": {
+      "page": 141,
+      "source": "\"On a hit, the target takes 1d10 Piercing damage.\" \"Hit or miss, the shard then explodes. The target and each creature within 5 feet of it must succeed on a Dexterity saving throw or take 2d6 Cold damage.\" The attack's card carries the Piercing; the burst's, the save and the Cold.",
+      "set": {
+        "damage": [
+          {
+            "formula": "1d10",
+            "type": "piercing",
+            "on": "hit"
+          },
+          {
+            "formula": "2d6",
+            "type": "cold",
+            "scaling": {
+              "mode": "slot",
+              "perLevel": "1d6"
+            },
+            "on": "save"
+          }
+        ],
+        "splash": 5
       }
     }
   }

@@ -244,10 +244,15 @@ export class CastFlow {
       immune: Boolean(d.damage?.parts.some((p) => h?.stats.immune.includes(p.type))),
     };
     row.adjust = { resist: !t.ignore.resist, vuln: !t.ignore.vuln, immune: !t.ignore.immune, has };
-    row.conditions = [...new Set([...d.conditions.map((c) => c.id), ...(t.conditions ?? [])])].map((id) => ({
-      id,
-      on: conditionsFor(d, t).includes(id),
-    }));
+    row.conditions = [...new Set([...d.conditions.map((c) => c.id), ...(t.conditions ?? [])])].map((id) => {
+      const spec = d.conditions.find((c) => c.id === id);
+      return {
+        id,
+        on: conditionsFor(d, t).includes(id),
+        ...(spec?.choice ? { group: spec.choice } : {}),
+        ...(spec?.stage ? { stage: spec.stage } : {}),
+      };
+    });
     const parts = rowParts(d, t);
     if (d.damage?.healing) {
       const amount = parts ? parts.parts.reduce((s, p) => s + p.amount, 0) : null;

@@ -82,6 +82,21 @@ describe("areas of effect (§17)", () => {
     expect(verticalExtent(cone, { x: 20, y: 0 })).toEqual([-10, 10]);
     expect(affected(cone, [creature("low", 20, 0, 2.5, 8, 5)], [])[0]?.affected).toBe(true);
     expect(affected(cone, [creature("up", 20, 0, 2.5, 12, 5)], [])[0]?.affected).toBe(false);
+    // A sphere is round (rules audit m4): a flier 18 ft out and 15 ft up is 18−2.5 = 15.5 out, 15 up — 21.6 ft from
+    // the centre, outside a 20-ft Fireball (a box would have caught it); 10 ft up, 18.4 ft away, inside.
+    expect(affected(fireball, [creature("corner", 18, 0, 2.5, 15, 5)], [])[0]?.affected).toBe(false);
+    expect(affected(fireball, [creature("lower", 18, 0, 2.5, 10, 5)], [])[0]?.affected).toBe(true);
+    // An emanation from a creature's space: its distance every way — up from its head too.
+    const guardians = {
+      kind: "emanation" as const,
+      source: { x: 0, y: 0 },
+      sourceRadius: 2.5,
+      z: 0,
+      sourceHeight: 5,
+      distance: 15,
+    };
+    expect(affected(guardians, [creature("above", 0, 0, 2.5, 19, 5)], [])[0]?.affected).toBe(true);
+    expect(affected(guardians, [creature("diag", 16, 0, 2.5, 18, 5)], [])[0]?.affected).toBe(false);
   });
 
   it("line of effect: a wall giving total cover between the origin and every sample point leaves a creature out, marked blocked; one sample in the open is enough", () => {

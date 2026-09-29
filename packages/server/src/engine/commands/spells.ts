@@ -391,6 +391,73 @@ function roomForACard(ctx: CommandCtx, t: TokenEntity): void {
     );
 }
 
+/** A condition's end by a creature's next turn (`until`), as the condition's fields. */
+function turnBound(
+  until: CastData["conditions"][number]["until"],
+  casterId: string | null,
+  targetId: string,
+  active: string | undefined,
+): { endsWithTurnOf?: string; turnsLeft?: number; endsAtStartOf?: string } {
+  if (!until) return {};
+  if (until === "casterTurnStart") return casterId ? { endsAtStartOf: casterId } : {};
+  const who = until === "casterTurnEnd" ? casterId : targetId;
+  if (!who) return {};
+  return { endsWithTurnOf: who, ...(active === who ? { turnsLeft: 1 } : {}) };
+}
+
+/**
+ * The burst after an attack (Ice Knife: "Hit or miss, the shard then explodes. The target and each creature within 5
+ * feet of it must succeed on a Dexterity saving throw"): a card of its own round the attack's target — its save,
+ * the damage that rides on it, those it catches (the target too).
+ */
+function splashCard(
+  ctx: CommandCtx,
+  spell: Spell,
+  level: number,
+  caster: Caster,
+  attackCard: CastData,
+  picked: CastTargetData[],
+  chosen: DamageType | undefined,
+): CastEntity | null {
+  const target = picked.find((x) => x.state === "in");
+  const splash = spell.splash;
+  if (!target || !splash || !spell.save) return null;
+  const all = damageOf(spell, level, caster, chosen);
+  const onSave = (spell.damage ?? []).map((x) => x.on === "save");
+  const shape: AreaShape = { kind: "emanation", sourceTokenId: target.id, distance: splash };
+  const rows = areaTargets(ctx, shape, caster.token.sceneId, { sourceId: target.id, includeSource: true });
+  const tok = ctx.model.get("token", target.id);
+  const data: CastData = {
+    ...attackCard,
+    subtitle: "it bursts — hit or miss",
+    origin: tok ? { x: tok.pos.x, y: tok.pos.y, z: tok.elevation } : attackCard.origin,
+    area: shape,
+    save: { ability: spell.save.ability, onSuccess: spell.save.onSuccess },
+    dc: caster.dc,
+    attack: null,
+    damage: all ? { ...all, per: "cast", parts: all.parts.filter((_, i) => onSave[i]) } : null,
+    conditions: [],
+    targets: rows.map((x) =>
+      x.state === "in"
+        ? { ...x, save: playersRoll(ctx, x) ? { pending: true, by: "player" as const } : {} }
+        : x,
+    ),
+    // The attack's card holds the slot and the concentration; this one only the burst.
+    spent: null,
+    effectId: null,
+    concentration: false,
+  };
+  return {
+    id: newId("cst"),
+    campaignId: ctx.model.campaign.id,
+    sceneId: caster.token.sceneId,
+    status: "open",
+    data,
+    createdAt: ctx.now,
+    updatedAt: ctx.now,
+  };
+}
+
 /** A wall's drawn length (a ring's circumference). */
 function wallLength(sh: Extract<AreaShape, { kind: "wall" }>): number {
   let len = 0;
@@ -1223,6 +1290,7 @@ export const spellCast: CommandDef<
     const card =
       !p.narrative && needsCard(spell) && castResolves(spell) && (targets.length > 0 || Boolean(shape));
     let cast: CastEntity | null = null;
+    let burst: CastEntity | null = null;
     if (card) {
       const origin = shape ? originPoint(ctx, shape) : { x: t.pos.x, y: t.pos.y, z: t.elevation };
       const data: CastData = {
@@ -1253,10 +1321,14 @@ export const spellCast: CommandDef<
             id: x.id,
             onFailedSave: true,
             ...(x.duration?.rounds ? { rounds: x.duration.rounds } : {}),
+            ...(x.duration?.until ? { until: x.duration.until } : {}),
+            ...(x.choice ? { choice: x.choice } : {}),
+            ...(x.stage ? { stage: x.stage } : {}),
+            ...(x.pick ? { pick: true } : {}),
           })),
         targets: targets.map((x) =>
           spell.save && x.state === "in"
-            ? { ...x, save: x.pc ? { pending: true, by: "player" as const } : {} }
+            ? { ...x, save: playersRoll(ctx, x) ? { pending: true, by: "player" as const } : {} }
             : x,
         ),
         effectId: effect?.id ?? null,
@@ -1265,6 +1337,16 @@ export const spellCast: CommandDef<
         vfx: vfxFor(spell),
         createdBy: ctx.actor.userId,
       };
+      // An attack that then bursts (Ice Knife, rules audit m11): this card is the attack and what rides on its hit;
+      // the burst — hit or miss — is a card of its own, the target and those round it making the save.
+      if (spell.attack && spell.save && spell.splash && data.damage) {
+        const onHit = (spell.damage ?? []).map((x) => x.on !== "save");
+        data.save = null;
+        data.dc = null;
+        data.targets = data.targets.map(({ save: _s, ...x }) => x);
+        data.damage = { ...data.damage, per: "target", parts: data.damage.parts.filter((_, i) => onHit[i]) };
+        burst = splashCard(ctx, spell, level, caster, data, targets, p.damageType);
+      }
       cast = {
         id: castId,
         campaignId: ctx.model.campaign.id,
@@ -1275,6 +1357,7 @@ export const spellCast: CommandDef<
         updatedAt: ctx.now,
       };
       ops.push(createOp("cast", cast));
+      if (burst) ops.push(createOp("cast", burst));
     }
     const what = `${spell.name}${spell.level > 0 ? ` (${SPELL_LEVEL_NAMES[level]} level)` : ""}`;
     const line: CastLine = {
@@ -1315,6 +1398,20 @@ export const spellCast: CommandDef<
         : {}),
     };
     const events: RoomEvent[] = [{ name: CAST_FOLLOWUP, payload: follow, to: { dms: true } }];
+    // The burst's save cards (Ice Knife).
+    if (burst)
+      events.push({
+        name: CAST_FOLLOWUP,
+        payload: {
+          castId: burst.id,
+          askSaves: [
+            ...new Set(
+              burst.data.targets.filter((x) => x.state === "in" && playersRoll(ctx, x)).map((x) => x.id),
+            ),
+          ],
+        } satisfies CastFollowup,
+        to: { dms: true },
+      });
     // The history's words: who cast what — no count of creatures (the caster may not perceive them all).
     return {
       ops,
@@ -1638,10 +1735,20 @@ export function rowInstances(
 /** The conditions a row's hit (or failed save) lands (the DM's choice, else the spell's). */
 export function conditionsFor(c: CastData, t: CastTargetData): ConditionId[] {
   if (t.conditions) return t.conditions;
+  // What lands at first (rules audit I11): one of each group of alternatives (its first — the DM picks another),
+  // no later stage (Sleep's Unconscious waits for a second failure), nothing the DM has to judge (Divine Word).
+  const seen = new Set<string>();
+  const first = c.conditions.filter((x) => {
+    if (x.stage || x.pick) return false;
+    if (!x.choice) return true;
+    if (seen.has(x.choice)) return false;
+    seen.add(x.choice);
+    return true;
+  });
   // A save not rolled when the DM applies counts as failed — for the conditions as for the damage (rules audit m7).
   const failed = c.save ? (t.save?.autoFail ? true : t.save?.success !== true) : true;
   const hit = c.attack ? t.attack?.hit === true : true;
-  return c.conditions.filter((x) => (x.onFailedSave ? failed && hit : hit)).map((x) => x.id);
+  return first.filter((x) => (x.onFailedSave ? failed && hit : hit)).map((x) => x.id);
 }
 
 /** A row's damage instances after its outcome (half: each halved first, SRD 5.2.1 p. 17), or its DM-edited final. */
@@ -1806,6 +1913,9 @@ export const castApply: CommandDef<z.infer<typeof CastApply>, { applied: number 
                 ...(rounds && cb ? { untilRound: cb.round + rounds } : {}),
                 // "Until the end of the current turn" — the turn it's in (its own, when a trigger at its start).
                 ...(spec?.endsTurn ? { endsWithTurnOf: activeTurnOf(ctx) ?? id } : {}),
+                // "Until the end (start) of your next turn", "until the end of its next turn" (rules audit m8): a turn
+                // under way that is that creature's doesn't count — the next one does.
+                ...turnBound(spec?.until, d.caster.tokenId, id, activeTurnOf(ctx)),
               },
             ],
           };

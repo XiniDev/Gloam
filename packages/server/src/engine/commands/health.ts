@@ -31,7 +31,7 @@ import {
   tempHpChoice,
 } from "@gloam/shared/rules";
 import type { TokenEntity, TokenStats, TokenStatusT } from "@gloam/shared/schemas";
-import type { z } from "zod";
+import { z } from "zod";
 import type { ActorEntity } from "../codecs.ts";
 import type { CommandCtx, CommandDef, RoomEvent } from "../commandBus.ts";
 import type { Op } from "../ops.ts";
@@ -687,4 +687,51 @@ export const healthConsequences: CommandDef<z.infer<typeof HealthConsequences>, 
   },
 };
 
-export const HEALTH_COMMANDS = [hpApply, statusChange, healthConsequences] as CommandDef<never, unknown>[];
+export const StatusTurn = z.strictObject({
+  tokenId: z.string().min(3).max(40),
+  turnOf: z.string().min(3).max(40),
+  when: z.enum(["start", "end"]),
+});
+/**
+ * `status.turn` (internal): a turn ended or began — a creature's conditions tied to it end ("until the end of the
+ * current turn", "… of your next turn", "until the start of your next turn"), or one more of those turns passes.
+ */
+export const statusTurn: CommandDef<z.infer<typeof StatusTurn>, { removed: string[] }> = {
+  type: "status.turn",
+  schema: StatusTurn,
+  undoable: true,
+  internal: true,
+  authorize(ctx, p) {
+    mustGet(ctx, "token", p.tokenId);
+  },
+  plan(ctx, p) {
+    const h = holderOf(ctx, { tokenId: p.tokenId });
+    const removed: string[] = [];
+    let changed = false;
+    const conditions = h.status.conditions.flatMap((c) => {
+      if (p.when === "end" && c.endsWithTurnOf === p.turnOf) {
+        changed = true;
+        if ((c.turnsLeft ?? 0) > 0) return [{ ...c, turnsLeft: (c.turnsLeft ?? 0) - 1 }];
+        removed.push(c.id);
+        return [];
+      }
+      if (p.when === "start" && c.endsAtStartOf === p.turnOf) {
+        changed = true;
+        removed.push(c.id);
+        return [];
+      }
+      return [c];
+    });
+    if (!changed) return { ops: [], summary: "", result: { removed }, undoable: false };
+    return {
+      ops: holderOps(ctx, h, { hp: h.hp, hpTemp: h.hpTemp, status: { ...h.status, conditions } }),
+      summary: removed.length ? `${h.name}: ${removed.map((id) => statusName(id)).join(", ")} ended` : "",
+      result: { removed },
+    };
+  },
+};
+
+export const HEALTH_COMMANDS = [hpApply, statusChange, healthConsequences, statusTurn] as CommandDef<
+  never,
+  unknown
+>[];

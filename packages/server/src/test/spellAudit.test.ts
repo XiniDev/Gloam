@@ -2,6 +2,7 @@ import type { Room } from "@colyseus/sdk";
 import { effectiveTokenState } from "@gloam/shared/rules";
 import { Table, type TableState } from "@gloam/shared/state";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { dataOf } from "../engine/commands/combat.ts";
 import type { TableRoom } from "../rooms/TableRoom.ts";
 import {
   type Agent,
@@ -395,6 +396,117 @@ describe("P9 — the rules audit's fixes on the card", () => {
     expect(statusOf(sera).stats.ac).toBe(10);
     await cmd(dm, "cast.roll", { castId: fb.castId, what: "attack", targetId: sera, entered: 11 });
     expect(room().model.get("cast", fb.castId)?.data.targets[0]?.attack?.hit).toBe(false);
+    await closeAll();
+    await place(ogre, { x: 30, y: 30 });
+  });
+
+  it("I11: a choice lands one of its group (Blindness/Deafness: Blinded); a later stage waits (Sleep: Incapacitated, not yet Unconscious); what the DM judges waits for them (Divine Word)", async () => {
+    await fresh();
+    await place(ogre, { x: 30, y: 30 });
+    const has = (id: string) => statusOf(ogre).status.conditions.some((c) => c.id === id);
+    const castAndFail = async (spellId: string, level: number, extra: object) => {
+      const r = await cmd<{ castId: string }>(dm, "spell.cast", {
+        casterTokenId: mage,
+        spellId,
+        mode: "free",
+        level,
+        endConcentration: true,
+        ...extra,
+      });
+      await cmd(dm, "cast.set", { castId: r.castId, targetId: ogre, saveSuccess: false });
+      await cmd(dm, "cast.apply", { castId: r.castId, targets: [ogre] });
+      await closeAll();
+    };
+    const clear = () =>
+      cmd(dm, "status.change", {
+        tokenId: ogre,
+        remove: ["blinded", "deafened", "incapacitated", "unconscious", "stunned", "prone"],
+      });
+    await castAndFail("blindness-deafness", 2, { targets: [ogre] });
+    expect([has("blinded"), has("deafened")]).toEqual([true, false]);
+    await clear();
+    await castAndFail("sleep", 1, { placement: { origin: { x: 30, y: 30, z: 0 }, dirDeg: 0 } });
+    expect([has("incapacitated"), has("unconscious")]).toEqual([true, false]);
+    await clear();
+    await castAndFail("divine-word", 7, { targets: [ogre] });
+    expect([has("blinded"), has("deafened"), has("stunned")]).toEqual([false, false, false]);
+  });
+
+  it("m8: in combat, Color Spray's Blinded (cast on the Mage's own turn) lasts past that turn and ends at the end of the Mage's next", async () => {
+    await fresh();
+    await place(ogre, { x: 32, y: 20 });
+    const combat = () =>
+      room()
+        .model.inScene("combat", sceneId)
+        .find((c) => c.active);
+    const turnOf = () => {
+      const c = combat();
+      return c ? dataOf(c).combatants[c.turnIndex]?.tokenId : undefined;
+    };
+    const toTurnOf = async (id: string) => {
+      for (let i = 0; i < 8 && turnOf() !== id; i++) await cmd(dm, "combat.next", {});
+      expect(turnOf()).toBe(id);
+    };
+    await cmd(dm, "combat.start", { participants: [mage, sera, ogre], method: "skip" });
+    await cmd(dm, "combat.begin", {});
+    await waitFor(() => combat() && dataOf(combat() as NonNullable<ReturnType<typeof combat>>).begun);
+    await toTurnOf(mage);
+    const cs = await cmd<{ castId: string }>(dm, "spell.cast", {
+      casterTokenId: mage,
+      spellId: "color-spray",
+      mode: "free",
+      level: 1,
+      placement: { origin: { x: 40, y: 20, z: 0 }, dirDeg: 90 },
+    });
+    expect(
+      room()
+        .model.get("cast", cs.castId)
+        ?.data.targets.some((x) => x.id === ogre),
+    ).toBe(true);
+    await cmd(dm, "cast.set", { castId: cs.castId, targetId: ogre, saveSuccess: false });
+    await cmd(dm, "cast.apply", { castId: cs.castId, targets: [ogre] });
+    await closeAll();
+    const blinded = () => statusOf(ogre).status.conditions.some((c) => c.id === "blinded");
+    expect(blinded()).toBe(true);
+    // The Mage's turn ends: still blinded (that was the turn it was cast on).
+    await cmd(dm, "combat.next", {});
+    await sleep(200);
+    expect(blinded()).toBe(true);
+    // Round the table to the Mage again, and past it: gone at the end of the Mage's next turn.
+    await toTurnOf(mage);
+    expect(blinded()).toBe(true);
+    await cmd(dm, "combat.next", {});
+    await waitFor(() => !blinded());
+    await cmd(dm, "combat.stop", {});
+  });
+
+  it("m11: Ice Knife — the attack's card carries the Piercing on a hit; the burst, hit or miss, is a card of its own: a Dex save for the target and each creature within 5 ft, the Cold", async () => {
+    await fresh();
+    await place(sera, { x: 10, y: 20 });
+    await place(ogre, { x: 14, y: 22 });
+    const ik = await cmd<{ castId: string }>(dm, "spell.cast", {
+      casterTokenId: mage,
+      spellId: "ice-knife",
+      mode: "free",
+      level: 1,
+      targets: [sera],
+    });
+    const attack = room().model.get("cast", ik.castId)?.data;
+    expect(attack?.attack).toBeTruthy();
+    expect(attack?.save).toBeNull();
+    expect(attack?.damage?.parts.map((x) => x.type)).toEqual(["piercing"]);
+    const burst = room()
+      .model.all("cast")
+      .find((c) => c.status === "open" && c.id !== ik.castId && c.data.spellId === "ice-knife")?.data;
+    expect(burst?.save?.ability).toBe("dex");
+    expect(burst?.attack).toBeNull();
+    expect(burst?.damage?.parts.map((x) => x.type)).toEqual(["cold"]);
+    expect(
+      burst?.targets
+        .filter((x) => x.state === "in")
+        .map((x) => x.id)
+        .sort(),
+    ).toEqual([ogre, sera].sort());
     await closeAll();
     await place(ogre, { x: 30, y: 30 });
   });

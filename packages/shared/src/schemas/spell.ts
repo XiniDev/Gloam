@@ -85,6 +85,12 @@ export const SpellDamage = z
         "The damage is one of these types, chosen when casting or determined as the text says (Chromatic Orb, Dragon's Breath, Prismatic Spray's ray roll); `type` is the default",
       ),
     scaling: DamageScaling.optional(),
+    on: z
+      .enum(["hit", "save"])
+      .optional()
+      .describe(
+        "In a spell with both an attack and a save (Ice Knife), what this damage rides on: the attack's hit, or the save (with `splash`)",
+      ),
   })
   .strict();
 
@@ -98,10 +104,38 @@ export const SpellConditionApplied = z
   .object({
     id: ConditionId,
     onFailedSave: z.boolean().default(true),
+    choice: z
+      .string()
+      .max(20)
+      .optional()
+      .describe(
+        'A group of alternatives: the spell imposes one of them (Blindness/Deafness: "your choice"). The card ticks the group\'s first; the DM picks another',
+      ),
+    stage: z
+      .number()
+      .int()
+      .min(2)
+      .max(9)
+      .optional()
+      .describe(
+        "A later stage, not landed on the first failed save (Sleep's Unconscious on a second failure, Flesh to Stone's Petrified after the third): the DM ticks it when it comes",
+      ),
+    pick: z
+      .boolean()
+      .optional()
+      .describe(
+        "The DM judges whether it applies (Divine Word by the creature's Hit Points, a Prismatic Spray's ray): unticked on the card",
+      ),
     duration: z
       .object({
         rounds: z.number().int().min(1).max(100_000).optional(),
         untilSaveEnds: z.boolean().optional(),
+        until: z
+          .enum(["casterTurnEnd", "casterTurnStart", "ownTurnEnd"])
+          .optional()
+          .describe(
+            "It lasts until the end of the caster's next turn (Color Spray), the start of the caster's next turn (Sunbeam), or the end of the creature's own next turn (Sleep, Holy Aura)",
+          ),
       })
       .strict()
       .optional(),
@@ -338,6 +372,9 @@ export const SpellSchema = z
       .strict()
       .nullable()
       .optional(),
+    splash: Ft.optional().describe(
+      "After its attack, hit or miss, the target and each creature within this many feet of it make the save (Ice Knife: 5): a card of its own",
+    ),
     save: SpellSave.nullable().optional(),
     damage: z.array(SpellDamage).max(8).optional(),
     healing: SpellHealing.nullable().optional(),

@@ -284,8 +284,9 @@ export class CombatFlow {
       return;
     }
     if (e.from) this.hazards(e.from, "endTurn");
-    if (e.from) this.turnEnded(e.from);
+    if (e.from) this.turnPassed(e.from, "end");
     this.expire(e);
+    if (e.to) this.turnPassed(e.to, "start");
     if (!e.to) return;
     const c = combatOn(model, e.sceneId);
     const entry = c ? dataOf(c).combatants.find((x) => x.tokenId === e.to) : undefined;
@@ -355,10 +356,11 @@ export class CombatFlow {
    * creature), and the DM and the creature's players told.
    */
   /**
-   * A creature's turn ended: conditions that last "until the end of the current turn" end with it (Stinking Cloud's
-   * Poisoned, `endsWithTurnOf`) — on anyone they were tied to that turn.
+   * A creature's turn ended (or began): the conditions tied to it — on anyone — end ("until the end of the current
+   * turn": Stinking Cloud's Poisoned; "… of your next turn": Color Spray's Blinded; "until the start of your next
+   * turn": Sunbeam's), or one more of those turns passes; the DM and the creature's players told what ended.
    */
-  private turnEnded(tokenId: string): void {
+  private turnPassed(tokenId: string, when: "start" | "end"): void {
     const model = this.host.model();
     const t = model.get("token", tokenId);
     if (!t) return;
@@ -369,17 +371,20 @@ export class CombatFlow {
       } catch {
         continue;
       }
-      const gone = h.status.conditions.filter((x) => x.endsWithTurnOf === tokenId).map((x) => x.id as string);
-      if (!gone.length) continue;
+      const tied = h.status.conditions.some((x) =>
+        when === "end" ? x.endsWithTurnOf === tokenId : x.endsAtStartOf === tokenId,
+      );
+      if (!tied) continue;
       const dm = [...this.host.viewers()].find((v) => v.dm);
-      this.host
+      const r = this.host
         .bus()
-        .execute(
-          "status.change",
-          { tokenId: o.id, remove: gone },
+        .execute<{ removed: string[] }>(
+          "status.turn",
+          { tokenId: o.id, turnOf: tokenId, when },
           dm ? this.host.actorOf(dm.userId) : SYSTEM_ACTOR,
         );
-      const msg = { tokenId: o.id, name: h.name, what: gone.map((id) => statusName(id)).join(", ") };
+      if (!r.removed.length) continue;
+      const msg = { tokenId: o.id, name: h.name, what: r.removed.map((id) => statusName(id)).join(", ") };
       this.host.toDms("combat.expired", msg);
       for (const u of controllersOf(model, o.id)) this.host.toUser(u, "combat.expired", msg);
     }

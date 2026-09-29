@@ -44,6 +44,12 @@ export interface CastData {
   } | null;
   /** Conditions the spell applies (on a failed save, or always). */
   conditions: {
+    /** Until the end of the caster's next turn, the start of it, the end of the creature's own next turn. */
+    until?: "casterTurnEnd" | "casterTurnStart" | "ownTurnEnd";
+    /** Alternatives (one of the group is imposed), a later stage, the DM's judgement: see SpellConditionApplied. */
+    choice?: string;
+    stage?: number;
+    pick?: boolean;
     id: ConditionId;
     onFailedSave: boolean;
     rounds?: number;

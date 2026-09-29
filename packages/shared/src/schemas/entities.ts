@@ -169,6 +169,10 @@ export interface TokenStatusT {
     castId?: string;
     /** It ends when this creature's turn ends (Stinking Cloud's Poisoned: "until the end of the current turn"). */
     endsWithTurnOf?: string;
+    /** That many of those turn-ends pass first ("until the end of your next turn", cast on your own turn: 1). */
+    turnsLeft?: number;
+    /** It ends when this creature's turn starts ("until the start of your next turn": Sunbeam's Blinded). */
+    endsAtStartOf?: string;
   }[];
   markers: {
     id: MarkerId | `custom:${string}`;
