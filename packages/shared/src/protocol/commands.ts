@@ -581,6 +581,53 @@ export const RestHitDie = z.strictObject({
 });
 /** Outside combat: the DM asks the dying for a death saving throw (§8.11). */
 export const DeathSaveRequest = z.strictObject({ targets: z.array(Id).min(1).max(20) });
+
+// ── Combat (SPEC §8.12, §16.5) ─────────────────────────────────────────────────────────────────────────────
+
+const Initiative = z.number().int().min(-20).max(60);
+export const INITIATIVE_METHOD_IDS = ["rollAll", "playersRoll", "fixed", "skip"] as const;
+/**
+ * `combat.start` (DM): the participants (tokens on the active scene), how initiative is found, one roll per group of
+ * identical NPCs or not, and who is surprised.
+ */
+export const CombatStart = z.strictObject({
+  participants: z.array(Id).min(1).max(100),
+  method: z.enum(INITIATIVE_METHOD_IDS),
+  group: z.boolean().default(false),
+  surprised: z.array(Id).max(100).default([]),
+});
+/** `combat.quickStart` (DM): every creature on the scene not hidden, the campaign's default method, no dialog. */
+export const CombatQuickStart = z.strictObject({});
+/** Commands on the running combat with nothing more to say (stop, next, previous, begin, roll the NPCs). */
+export const CombatNone = z.strictObject({});
+/** `combat.endTurn` (the active combatant's controller, or the DM). */
+export const CombatEndTurn = z.strictObject({ tokenId: Id });
+/** `combat.set` (DM): a combatant's initiative. */
+export const CombatSet = z.strictObject({ tokenId: Id, initiative: Initiative });
+/** `combat.reorder` (DM): the tracker in a new order (a drag) — every combatant, once. */
+export const CombatReorder = z.strictObject({ order: z.array(Id).min(1).max(100) });
+/** `combat.delay` (DM): a combatant acts later — just after another. */
+export const CombatDelay = z.strictObject({ tokenId: Id, after: Id });
+/** `combat.add` (DM): creatures joining (each asked for initiative). */
+export const CombatAdd = z.strictObject({ tokenIds: z.array(Id).min(1).max(100) });
+/** `combat.remove` (DM). */
+export const CombatRemove = z.strictObject({ tokenId: Id });
+/** `combat.initiative` (internal): initiatives found — rolled, entered, fixed — and whether turns begin now. */
+export const CombatInitiative = z.strictObject({
+  values: z.record(Id, Initiative),
+  begin: z.boolean().default(false),
+});
+/** `combat.freeMovement` (DM): everyone moves freely, or not. */
+export const CombatFreeMovement = z.strictObject({ on: z.boolean() });
+/** `combat.pip` (the combatant's controller or the DM): an action pip used or not. */
+export const CombatPip = z.strictObject({
+  tokenId: Id,
+  pip: z.enum(["action", "bonus", "reaction", "object"]),
+  used: z.boolean(),
+});
+/** `move.reset`, `move.dash`, `move.stand` (the active combatant's controller, or the DM). */
+export const MoveTurn = z.strictObject({ tokenId: Id });
+export type CombatStart = z.infer<typeof CombatStart>;
 export type DiceRoll = z.infer<typeof DiceRoll>;
 export type DiceManual = z.infer<typeof DiceManual>;
 

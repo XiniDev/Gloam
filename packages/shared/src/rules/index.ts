@@ -1,4 +1,5 @@
 export * from "./abilities.ts";
+export * from "./combat.ts";
 export * from "./conditions.ts";
 export * from "./consequences.ts";
 export * from "./damage.ts";

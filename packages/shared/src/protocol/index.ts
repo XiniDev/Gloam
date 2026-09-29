@@ -156,6 +156,7 @@ export const MESSAGE_RATES = {
   "hp.preview": rate(8, 16),
 } as const satisfies Record<string, RateSpec>;
 
+export * from "./combat.ts";
 export * from "./commands.ts";
 export * from "./health.ts";
 export * from "./sheets.ts";

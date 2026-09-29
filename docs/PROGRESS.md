@@ -361,3 +361,20 @@ P1 28/28 · P2 32/32 · P3 16/17 · P4 12/12 · P5 9/9 · P6 14/14 · P7 1/17 ·
   board rendering flat out (paced now) — under software GL, pages starved each other until dialogs never closed.
 - `pnpm check`: 455 tests. Journeys run together (p7-health, p6-sheets, p6-requests, p2-tokens): 11 pass.
 - ACs: HP-01/02/03/04/05/06/07/09/10/11/12, TOK-04, TOK-12, VIS-15, DICE-11 pass. Left in P7: HP-13 (rests), DS-03.
+
+## 2026-09-29 — P7 complete (17/17); key screens and own review
+
+- Rests (AC-HP-13) and the icon sheet (AC-DS-03) committed (e093f30): P7 17/17.
+- Key screens: `e2e/shots/p7.shots.ts` — 18 screens at 1440 × 900, 1024 × 768 and 390 × 844 (`artifacts/screens/p7/`).
+- Own review of them, fixed before the critic (61fa016; DECISIONS 2026-09-29): plates pushed onto their own token's face by a
+  card now go under the base; Exhaustion's level in a corner notch on the board and in the DOM (the old digit was 10 px and
+  spilled off the tile); the sheet showed conditions only — now Exhaustion, concentration and markers; custom markers drew
+  a generic glyph on the board — now their own glyph and colour, the glyph's ink by contrast (bone on Citrine was ~1.2:1),
+  and the form's default colour wasn't a palette colour; a two-type hit's numbers ran together ("−6−4"); request cards
+  showed "1d20 − 4" under disadvantage (now "2d20kl1 − 4"); the roll feed cut the roller to "Y…"; the DM's Health rows cut
+  names to "Mir…"; the hover card sat over its own plate; switches sat low beside one-line labels (every dialog).
+- Tests added: `normalizeFormula` (shared), `glyphInk` (every player colour ≥ 3:1), declutter (under the base before
+  clamping; the clamp when under the base is taken); journey checks for number spacing, the as-rolled formula, the hover
+  card clear of the plate, a custom marker's own atlas cell and ink glyph, the sheet's Exhaustion chip and the plate's notch.
+- `pnpm check`: 465 tests. p7-health (3 journeys) and p7-icons (2) pass.
+- Next: the visual critic, round 1 (running), its fixes; round 2; then P8 (walls & lights round 2 — AC-WAL-05 first).
