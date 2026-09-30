@@ -3,6 +3,7 @@ import { type ReactElement, Suspense, useEffect, useRef, useState } from "react"
 import { useFun } from "../net/fun.ts";
 import { useTable } from "../net/table.ts";
 import { type DockTab, useUi } from "../state/ui.ts";
+import { BottomSheet } from "../ui/BottomSheet.tsx";
 import { IconButton } from "../ui/Button.tsx";
 import { ErrorBoundary } from "../ui/ErrorBoundary.tsx";
 import { lazyPage } from "../ui/lazyPage.ts";
@@ -87,7 +88,10 @@ export function Dock() {
   ];
 
   const order = hudOrder(2);
-  const toggle = (id: DockTab) => useUi.getState().set({ dock: tab === id ? null : id });
+  const toggle = (id: DockTab) =>
+    useUi
+      .getState()
+      .set({ dock: tab === id ? null : id, ...(phone ? { diceTray: false, rollsOpen: false } : {}) });
   // A phone's panel is a page (§8.10: "a full-screen page on phones"): the whole width, the rail folded into a bar
   // across its top with the close button.
   const page = phone && tab !== null;
@@ -101,7 +105,7 @@ export function Dock() {
   const needsCharacter = useNeedsCharacter();
   const railButtons = tabs.map((t) => (
     <div key={t.id} className="relative">
-      {t.id === "sheet" && needsCharacter && tab === null ? <FirstSteps /> : null}
+      {t.id === "sheet" && needsCharacter && tab === null && !phone ? <FirstSteps /> : null}
       <IconButton
         label={
           t.badge ? `${t.label} (${t.badge} ${t.id === "journal" ? "new" : "waiting for approval"})` : t.label
@@ -121,6 +125,56 @@ export function Dock() {
       ) : null}
     </div>
   ));
+
+  const label =
+    tab === "dm" ? "DM panel" : tab === "sheet" ? "Character sheet" : tab === "journal" ? "Journal" : "Party";
+  const content = (
+    <ErrorBoundary where={tab ?? "dock"}>
+      {tab === "party" ? <PartyPanel /> : null}
+      {tab === "sheet" ? <SheetPanel /> : null}
+      {tab === "journal" ? <JournalPanel /> : null}
+      {tab === "dm" && dm ? (
+        <Suspense fallback={null}>
+          <DmPanel />
+        </Suspense>
+      ) : null}
+    </ErrorBoundary>
+  );
+  // A phone (SPEC §29.4): no rail — the tab bar at the foot opens the panels — and a panel is a bottom sheet (95 %,
+  // stepping to 60 and 30), headed by the panels to switch between and its Close.
+  if (phone)
+    return (
+      <>
+        {/* (Its right inset: a phone's gutter — nothing holds the right edge.) */}
+        <aside ref={asideRef} aria-hidden className="pointer-events-none absolute right-3 top-0 h-0 w-0" />
+        {tab ? (
+          <BottomSheet
+            label={label}
+            testId="dock-sheet"
+            initialSnap={2}
+            bare
+            header={
+              <nav aria-label="Panels" className="flex items-center gap-1 border-b border-line pb-1">
+                {railButtons}
+                <span className="flex-1" />
+                <IconButton label="Close panel" onClick={() => useUi.getState().set({ dock: null })}>
+                  <X size={19} />
+                </IconButton>
+              </nav>
+            }
+          >
+            <RequestCards />
+            <PromptCards />
+            <div
+              ref={panelRef as never}
+              className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden overflow-x-clip"
+            >
+              {content}
+            </div>
+          </BottomSheet>
+        ) : null}
+      </>
+    );
 
   return (
     <aside
@@ -144,15 +198,7 @@ export function Dock() {
           className="panel pointer-events-auto relative flex min-w-0 flex-col overflow-hidden overflow-x-clip"
           // Never wider than the screen leaves beside the rail; on a phone, all of it.
           style={{ width: page ? "100%" : `min(${width}px, calc(100vw - ${RAIL_ROOM}px))` }}
-          aria-label={
-            tab === "dm"
-              ? "DM panel"
-              : tab === "sheet"
-                ? "Character sheet"
-                : tab === "journal"
-                  ? "Journal"
-                  : "Party"
-          }
+          aria-label={label}
         >
           {page ? (
             <nav
@@ -200,16 +246,7 @@ export function Dock() {
               if (e.key === "ArrowRight") setWidth((w) => Math.max(MIN_W, w - 20));
             }}
           />
-          <ErrorBoundary where={tab}>
-            {tab === "party" ? <PartyPanel /> : null}
-            {tab === "sheet" ? <SheetPanel /> : null}
-            {tab === "journal" ? <JournalPanel /> : null}
-            {tab === "dm" && dm ? (
-              <Suspense fallback={null}>
-                <DmPanel />
-              </Suspense>
-            ) : null}
-          </ErrorBoundary>
+          {content}
         </section>
       ) : null}
       {/* Hidden, not unmounted, under a phone's page: its measured corner (what the request cards stand below)

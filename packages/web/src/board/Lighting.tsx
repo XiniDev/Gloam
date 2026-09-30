@@ -79,6 +79,8 @@ export function Lighting({ bounds, ambient, tier }: { bounds: Bounds; ambient: s
     l.shadow.map = null;
     l.shadow.bias = tier.softShadows ? -0.0006 : -0.0004;
     l.shadow.normalBias = 0.03;
+    // Soft shadows (Ultra, §24.2): PCF's sample disc widened — a uniform, not another shader.
+    l.shadow.radius = tier.softShadows ? 3 : 1;
   }, [span, tier.shadowMap, tier.softShadows]);
 
   return (

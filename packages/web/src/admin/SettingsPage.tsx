@@ -1,7 +1,7 @@
 import { type ReactNode, useEffect, useState } from "react";
 import { ApiError, get, patch } from "../net/http.ts";
 import { Button } from "../ui/Button.tsx";
-import { Toggle } from "../ui/controls.tsx";
+import { Select, Toggle } from "../ui/controls.tsx";
 import { TextInput } from "../ui/Field.tsx";
 import { Divider } from "../ui/ornaments.tsx";
 import { toast } from "../ui/Toast.tsx";
@@ -13,7 +13,11 @@ interface SettingsDto {
   cloudflaredPath: string | null;
   autoAdmitReturning: boolean;
   dmsCanAdmit: boolean;
+  autoApproveImages: boolean;
   allowAdminThroughDoorway: boolean;
+  allowRemoteApi: boolean;
+  port: number | null;
+  newCampaignDefaults: { rulesPack: "srd-5.2.1" | "srd-5.1"; units: "ft" | "m" };
   local: boolean;
 }
 
@@ -42,12 +46,14 @@ export function SettingsPage() {
   const [token, setToken] = useState("");
   const [host, setHost] = useState("");
   const [cfPath, setCfPath] = useState("");
+  const [port, setPort] = useState("");
 
   useEffect(() => {
     void get<SettingsDto>("/api/admin/settings").then((r) => {
       setS(r);
       setHost(r.publicHostname ?? "");
       setCfPath(r.cloudflaredPath ?? "");
+      setPort(r.port ? String(r.port) : "");
     });
   }, []);
 
@@ -154,6 +160,65 @@ export function SettingsPage() {
       </Section>
 
       <Section
+        title="This computer"
+        description="Where Gloam listens. The address changes when Gloam restarts; open the new one then (an invite link or bookmark with the old port stops working)."
+      >
+        {hostOnly ? (
+          <p className="text-14 text-[var(--ember-400)]">This can only be changed on the host PC.</p>
+        ) : null}
+        <div className="grid gap-4 sm:grid-cols-[1fr_13rem] sm:items-end">
+          <TextInput
+            label="Port"
+            inputMode="numeric"
+            placeholder="4747 (the default)"
+            value={port}
+            onChange={(e) => setPort(e.target.value.replace(/\D/g, "").slice(0, 5))}
+            disabled={hostOnly}
+            help="1024–65535. Takes effect when Gloam restarts."
+          />
+          <Button
+            className="w-full sm:mb-6"
+            disabled={
+              hostOnly ||
+              port === (s.port ? String(s.port) : "") ||
+              (port !== "" && (Number(port) < 1024 || Number(port) > 65535))
+            }
+            onClick={() =>
+              void save({ port: port ? Number(port) : null }, "Port saved — restart Gloam to use it")
+            }
+          >
+            Save port
+          </Button>
+        </div>
+      </Section>
+
+      <Section
+        title="New campaigns"
+        description="What a campaign made from now on starts with (each can change its own)."
+      >
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Select
+            label="Rules"
+            value={s.newCampaignDefaults.rulesPack}
+            onChange={(v) => void save({ newCampaignDefaults: { ...s.newCampaignDefaults, rulesPack: v } })}
+            options={[
+              { value: "srd-5.2.1", label: "SRD 5.2.1 (the 2024 rules)" },
+              { value: "srd-5.1", label: "SRD 5.1 (the 2014 rules)" },
+            ]}
+          />
+          <Select
+            label="Distances in"
+            value={s.newCampaignDefaults.units}
+            onChange={(v) => void save({ newCampaignDefaults: { ...s.newCampaignDefaults, units: v } })}
+            options={[
+              { value: "ft", label: "Feet" },
+              { value: "m", label: "Metres" },
+            ]}
+          />
+        </div>
+      </Section>
+
+      <Section
         title="Admission"
         description="Knocks always reach you with a card and a sound; these rules decide who can answer them."
       >
@@ -169,6 +234,12 @@ export function SettingsPage() {
           label="DMs can admit"
           description="Let appointed DMs admit, deny and kick people, not just you."
         />
+        <Toggle
+          checked={s.autoApproveImages}
+          onChange={(v) => void save({ autoApproveImages: v })}
+          label="Auto-approve players' images"
+          description="Pictures players upload go straight into use instead of waiting in Approvals. Models and sounds still wait."
+        />
       </Section>
 
       <Section title="Admin sign-in" description="By default the Admin console only opens on this PC.">
@@ -177,6 +248,19 @@ export function SettingsPage() {
           onChange={(v) => void save({ allowAdminThroughDoorway: v })}
           label="Allow Admin sign-in through the doorway"
           description="Lets you sign in with your password from another device over the tunnel. Doorway, port and LAN settings still only change here."
+        />
+      </Section>
+
+      <Section
+        title="Local API"
+        description="API tokens (Admin → API & MCP) let tools on this computer — like Claude — use Gloam."
+      >
+        <Toggle
+          checked={s.allowRemoteApi}
+          onChange={(v) => void save({ allowRemoteApi: v })}
+          disabled={hostOnly}
+          label="Allow remote API"
+          description="Let API tokens work from other computers too, through the doorway or the LAN. Off, they only work here."
         />
       </Section>
     </div>

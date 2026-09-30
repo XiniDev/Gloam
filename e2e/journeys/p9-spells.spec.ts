@@ -691,6 +691,16 @@ test.describe("P9 — spells (SPL)", () => {
     if (await dave.getByRole("region", { name: "Character sheet", exact: true }).isVisible())
       await dave.getByRole("button", { name: "Sheet", exact: true }).click();
     await expect(dave.getByRole("region", { name: "Character sheet", exact: true })).toBeHidden();
+    // The view slides back by what the sheet's opening moved it (CameraRig): press the handle once it's still.
+    let last = { sx: -1, sy: -1 };
+    await expect
+      .poll(async () => {
+        const h = await handle(mb.effectId);
+        const still = Math.hypot(h.sx - last.sx, h.sy - last.sy) < 0.5;
+        last = h;
+        return still;
+      })
+      .toBe(true);
     const from = await handle(mb.effectId);
     const to = await screen(dave, 105, 10, 0);
     await dave.mouse.move(from.sx, from.sy);

@@ -11,6 +11,7 @@ import { useDmView } from "../../state/viewAs.ts";
 import { C, col, WALL_COLORS } from "../colors.ts";
 import { setSegments } from "../lines.ts";
 import { useWallTool } from "../tools/walls.ts";
+import { useDrawn } from "../warmup/state.ts";
 
 /** Just above the map so the lines never z-fight with it. */
 const LIFT_FT = 0.06;
@@ -54,7 +55,7 @@ function fatLine(name: string, params: ConstructorParameters<typeof LineMaterial
  * door).
  */
 export function WallsLayer() {
-  const walls = useBoard((d) => d.walls);
+  const walls = useDrawn("walls");
   // The DM's overlay (not while the DM views the board as a player).
   const dm = useDmView();
   // Which walls it draws: all of them while the Walls tool is out (editing wants every line), else as the DM chose.

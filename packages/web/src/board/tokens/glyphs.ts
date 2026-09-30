@@ -43,12 +43,13 @@ export function initialsTexture(name: string, ring: string): CanvasTexture {
     g.fillStyle = grad;
     g.fillRect(0, 0, 256, 256);
     g.strokeStyle = ring;
-    g.lineWidth = 10;
+    g.lineWidth = 12;
     g.beginPath();
-    g.arc(128, 128, 116, 0, Math.PI * 2);
+    g.arc(128, 128, 115, 0, Math.PI * 2);
     g.stroke();
     g.fillStyle = C.mapInk;
-    g.font = `700 ${text.length > 1 ? 84 : 104}px Cinzel, serif`;
+    // As large as the coin holds (at 84 px they read as a placeholder at table zoom: critic P12 r1 m19).
+    g.font = `700 ${text.length > 1 ? 104 : 128}px Cinzel, serif`;
     g.textAlign = "center";
     g.textBaseline = "middle";
     g.fillText(text, 128, 136);

@@ -29,6 +29,8 @@ export interface CloudflaredCommand {
 
 export interface Config {
   port: number;
+  /** PORT was set in the environment: it wins over Admin → Settings' port (§8.20). */
+  portExplicit: boolean;
   host: string;
   dataDir: string;
   metricsPort: number;
@@ -75,6 +77,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, overrides: Part
   const repoRoot = resolve(import.meta.dirname, "..", "..", "..");
   return {
     port: e.PORT,
+    portExplicit: env.PORT !== undefined && env.PORT !== "",
     host: e.HOST,
     dataDir: resolve(e.DATA_DIR),
     metricsPort: e.METRICS_PORT,

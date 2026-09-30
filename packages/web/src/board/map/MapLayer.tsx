@@ -11,6 +11,7 @@ import { acquireGlb, acquireTexture } from "../resources.ts";
 import { type Bounds, type Calibration, calibrationFromJson, sceneFloor } from "../scene.ts";
 import { TIERS, useTier } from "../tiers.ts";
 import { withFog } from "../vision/fogMaterial.ts";
+import { precompile } from "../warmup/precompile.ts";
 import { useMapAlign } from "./mapAlign.ts";
 import { ProceduralFloor } from "./ProceduralFloor.tsx";
 
@@ -26,6 +27,9 @@ export function MapLayer({ scene, bounds }: { scene: SceneView; bounds: Bounds }
   boardDiag.map = { kind: scene.mapKind || "blank", style };
   return <ProceduralFloor bounds={bounds} style={style} />;
 }
+
+/** An image map's material: unlit, graded by the fog composite as floor (its map set once the image is in). */
+export const imageMapMaterial = () => withFog(new MeshBasicMaterial(), "floor");
 
 /**
  * An image map at its calibrated size (1 unit = 1 ft; top-left at the origin), unlit so the art keeps its colours
@@ -75,7 +79,7 @@ function ImageMap({ assetId, calib, bounds }: { assetId: string; calib: Calibrat
       boardDiag.mapWorld = null;
     };
   }, [tex, w, h]);
-  const material = useMemo(() => withFog(new MeshBasicMaterial(), "floor"), []);
+  const material = useMemo(imageMapMaterial, []);
   useEffect(() => {
     material.map = tex;
     if (tex) material.color.setScalar(1);
@@ -105,7 +109,7 @@ function GlbMap({ assetId, calib }: { assetId: string; calib: Calibration }) {
     const done = useLoading.getState().begin();
     const h = acquireGlb(assetId);
     h.promise
-      .then((g) => {
+      .then(async (g) => {
         if (cancelled) return;
         const copy = cloneSkinned(g.scene) as Group;
         copy.traverse((o) => {
@@ -119,6 +123,9 @@ function GlbMap({ assetId, calib }: { assetId: string; calib: Calibration }) {
           }
         });
         copy.name = "glb-map";
+        // Its shaders compiled before it's shown (§24.7): its own materials are the one thing no warm-up could know.
+        await precompile(copy);
+        if (cancelled) return;
         setRoot(copy);
         boardDiag.map = { kind: "model", assetId };
         invalidate();

@@ -31,6 +31,7 @@ import { moveDiag, useMove } from "./move/drag.ts";
 import { remoteLog, useRemoteMoves } from "./move/remote.ts";
 import { pingsSeen, usePings } from "./PingLayer.tsx";
 import { editPerf } from "./perf.ts";
+import { onProgramCompiled } from "./programs.ts";
 import { resourceStats } from "./resources.ts";
 import { TIERS, TierGovernor, useTier } from "./tiers.ts";
 import { overlayDiagnostics, plateCovers, setOverlaysOff } from "./tokens/declutter.ts";
@@ -44,6 +45,11 @@ import { useZoneTool } from "./tools/zones.ts";
 import { fogUniforms } from "./vision/fogMaterial.ts";
 import { visionDiag } from "./vision/VisionLayer.tsx";
 
+/** Frame timestamps while the benchmark records (the `frameTimes` hook). */
+const frameLog: number[] & { recording?: boolean } = [];
+/** Every shader program the board compiled, when, and which materials used it then (the `programs` hook). */
+const compileLog: { name: string; key: string; at: number; origin: string; materials: string[] }[] = [];
+
 /**
  * Test hooks for the board (SPEC §23.7; present only in `vite build --mode test`): camera read/write, renderer and
  * tier stats, visible tokens and each token's render state.
@@ -54,6 +60,7 @@ export function TestProbe() {
   // The camera at every rendered frame (after the controls and the rig's tweens have run), for timing journeys.
   const v = useMemo(() => new Vector3(), []);
   useFrame(() => {
+    if (frameLog.recording) frameLog.push(performance.now());
     const c = cameraRig.controls;
     if (!c) return;
     c.getTarget(v);
@@ -68,6 +75,37 @@ export function TestProbe() {
   });
   useEffect(() => {
     if (!__GLOAM_TEST__) return;
+    return onProgramCompiled(({ program, at, origin }) => {
+      const materials = new Set<string>();
+      scene.traverse((o) => {
+        const ms = (o as Mesh).material;
+        for (const m of Array.isArray(ms) ? ms : ms ? [ms] : []) {
+          const used = (gl.properties.get(m) as { currentProgram?: unknown }).currentProgram;
+          if (used !== program) continue;
+          // The object and its named ancestors: which layer drew it.
+          const path: string[] = [];
+          for (let a: Object3D | null = o; a && path.length < 4; a = a.parent) {
+            const label =
+              a.name || (a.userData?.part as string | undefined) || (a.userData?.map as string | undefined);
+            if (label) path.push(label);
+          }
+          if (!path.length) path.push(`${o.parent?.type ?? "no parent"} > ${o.parent?.parent?.type ?? "-"}`);
+          materials.add(`${m.name || m.type} on ${o.type}${path.length ? ` (${path.join(" < ")})` : ""}`);
+        }
+      });
+      compileLog.push({
+        name: program.name,
+        key: program.cacheKey,
+        at,
+        origin,
+        materials: [...materials],
+      });
+    });
+  }, [gl, scene]);
+  useEffect(() => {
+    if (!__GLOAM_TEST__) return;
+    /** The shader programs compiled so far, each with when it was and what used it (AC-PERF-05). */
+    provideTestHook("programs", () => compileLog.map((c) => ({ ...c })));
     provideTestHook(
       "camera",
       (set?: {
@@ -547,6 +585,8 @@ export function TestProbe() {
         ring,
         opacity,
         position: obj.position.toArray(),
+        // Its body's sideways offset from where it stands (a hit's shake moves it: AC-A11Y-02).
+        bodyX: obj.getObjectByName("token-body")?.position.x ?? 0,
         // How far it has fallen (0 standing … 1 lying: prone, unconscious or dead — AC-HP-11's fall).
         lie: lieOf.get(id) ?? 0,
       };
@@ -624,6 +664,24 @@ export function TestProbe() {
     provideTestHook("remoteMoveLog", () => [...remoteLog]);
     /** Frames the board has drawn so far (how often lasting animation redraws it). */
     provideTestHook("frameCount", () => boardApi.frames);
+    /**
+     * The board's frames, timed (the benchmark, SPEC §37): `true` starts a recording (and keeps the board drawing),
+     * `false` stops it and returns each frame's interval and the longest main-thread stall between frames (ms).
+     */
+    provideTestHook("frameTimes", (on: boolean) => {
+      if (on) {
+        frameLog.length = 0;
+        frameLog.recording = true;
+        setAnimating("test:frameTimes", true);
+        return true;
+      }
+      frameLog.recording = false;
+      setAnimating("test:frameTimes", false);
+      const deltas: number[] = [];
+      for (let i = 1; i < frameLog.length; i++)
+        deltas.push((frameLog[i] as number) - (frameLog[i - 1] as number));
+      return deltas;
+    });
     /** The quality tier in use and its particle share (§24.6). */
     provideTestHook("tier", () => {
       const name = useTier.getState().name;

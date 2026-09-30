@@ -29,6 +29,7 @@ import { LoadingBar } from "../hud/LoadingBar.tsx";
 import { MeasureLabels } from "../hud/MeasureLabels.tsx";
 import { MeasurePanel } from "../hud/MeasurePanel.tsx";
 import { MoveLabel } from "../hud/MoveLabel.tsx";
+import { PhoneTabBar } from "../hud/PhoneTabBar.tsx";
 import { PrepBanner } from "../hud/PrepBanner.tsx";
 import { QuickUnitDialog } from "../hud/QuickUnitDialog.tsx";
 import { RadialMenu } from "../hud/RadialMenu.tsx";
@@ -202,6 +203,7 @@ export default function TableRoute() {
       <TargetingBar />
       <EffectChip />
       <RollFeed />
+      <PhoneTabBar />
       <TurnTracker />
       <TurnBanner />
       <FloatingCards />

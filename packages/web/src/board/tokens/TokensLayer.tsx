@@ -3,13 +3,14 @@ import { useEffect, useMemo, useReducer } from "react";
 import { Vector3 } from "three";
 import { useBoardCovers, useHudObstacles } from "../../hud/insets.ts";
 import { useTable } from "../../net/table.ts";
-import { boardData, useBoard, useEntities } from "../../state/entities.ts";
+import { boardData, useEntities } from "../../state/entities.ts";
 import { useViewAs } from "../../state/viewAs.ts";
 import { boardApi } from "../boardApi.ts";
 import { setTokenPositionLookup } from "../CameraRig.tsx";
 import { again } from "../frames.ts";
 import { ghostTokens, onGhosts } from "../move/anims.ts";
 import { useMove } from "../move/drag.ts";
+import { useDrawn } from "../warmup/state.ts";
 import { layoutOverlays, plateRects, setPathCrossed } from "./declutter.ts";
 import { HpFxLayer } from "./hpFx.tsx";
 import { TokenObject } from "./TokenObject.tsx";
@@ -28,7 +29,7 @@ const overlayCrossedAny = () => crossedCount > 0;
 
 /** Every token the viewer may see (SPEC §24.1 TokensLayer). */
 export function TokensLayer() {
-  const tokens = useBoard((d) => d.tokens);
+  const tokens = useDrawn("tokens");
   // Creatures seen leaving (or crossing) this viewer's view mid-move, drawn until they fade (move/anims.ts).
   const [, redraw] = useReducer((n: number) => n + 1, 0);
   useEffect(() => onGhosts(redraw), []);

@@ -7,7 +7,6 @@ import type { Group } from "three";
 import { actEffect, moveEffect } from "../../net/spells.ts";
 import { useTable } from "../../net/table.ts";
 import { useEffectUi } from "../../state/effectUi.ts";
-import { useBoard } from "../../state/entities.ts";
 import { provideTestHook } from "../../test/hooks.ts";
 import { toast } from "../../ui/Toast.tsx";
 import { boardApi } from "../boardApi.ts";
@@ -15,6 +14,7 @@ import { C } from "../colors.ts";
 import { again } from "../frames.ts";
 import { setBoardMarks } from "../tokens/declutter.ts";
 import { Segments } from "../tools/marks.tsx";
+import { useDrawn } from "../warmup/state.ts";
 import { type Preset, VFX } from "./palette.ts";
 import { whereOf } from "./presets.ts";
 
@@ -97,8 +97,8 @@ const HANDLE_PX = 14;
 const MIN_HANDLE_PX = 18;
 
 export function EffectHandles() {
-  const effects = useBoard((d) => d.effects);
-  const tokens = useBoard((d) => d.tokens);
+  const effects = useDrawn("effects");
+  const tokens = useDrawn("tokens");
   const me = useTable((s) => s.me);
   const drag = useEffectUi((s) => s.drag);
   const strike = useEffectUi((s) => s.strike);

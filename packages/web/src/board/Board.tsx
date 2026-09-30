@@ -9,8 +9,9 @@ import {
   useRef,
   useState,
 } from "react";
-import { PCFShadowMap, PCFSoftShadowMap } from "three";
+import { PCFShadowMap } from "three";
 import { DiceOverlay } from "../dice/DiceOverlay.tsx";
+import { useIntro } from "../hud/Intro.tsx";
 import { openSheetFor } from "../hud/sheet/open.ts";
 import { request, send, useTable } from "../net/table.ts";
 import { boardData, useBoard, useEntities } from "../state/entities.ts";
@@ -45,14 +46,15 @@ import { clickFloor, hoverBoard, leaveBoard, moveKey } from "./move/input.ts";
 import { MoveLayer } from "./move/MoveLayer.tsx";
 import { RangeOverlay } from "./move/RangeOverlay.tsx";
 import { PingLayer } from "./PingLayer.tsx";
-import { PostFX } from "./PostFX.tsx";
+import { PostFX, postfx } from "./PostFX.tsx";
 import { frameStarted, measureTask } from "./perf.ts";
-import { pinPrograms } from "./programs.ts";
+import { anchorShaders, pinPrograms, primeLights } from "./programs.ts";
 import { setMaxAnisotropy } from "./resources.ts";
 import { boundsFromJson } from "./scene.ts";
 import { TableSurface } from "./TableSurface.tsx";
 import { TestProbe } from "./TestProbe.tsx";
 import { chooseTier, probeDevice, TIERS, TierGovernor, useTier } from "./tiers.ts";
+import { MiniLightsLayer } from "./tokens/MiniLightsLayer.tsx";
 import { TokensLayer } from "./tokens/TokensLayer.tsx";
 import {
   closePolygon as closeFogPolygon,
@@ -83,6 +85,8 @@ import { VfxLayer } from "./vfx/VfxLayer.tsx";
 import { fogUniforms } from "./vision/fogMaterial.ts";
 import { SensedLayer } from "./vision/SensedLayer.tsx";
 import { VisionLayer } from "./vision/VisionLayer.tsx";
+import { useWarmup } from "./warmup/state.ts";
+import { Warmup } from "./warmup/Warmup.tsx";
 
 preloadBoardFonts();
 
@@ -128,7 +132,9 @@ function TierSetup() {
   const continuing = useRef(false);
   useFrame((state, dt) => {
     frameStarted();
-    pinPrograms(gl);
+    // What the last frame compiled stays compiled (and its custom shaders' ids stay the same, programs.ts).
+    if (pinPrograms(gl) > 0)
+      anchorShaders(gl, state.scene, state.camera, state.scene, postfx.chain?.composer.inputBuffer ?? null);
     const now = performance.now();
     boardApi.frames++;
     // The first-load intro waits for this before fading the board up (SPEC §27.7).
@@ -139,7 +145,8 @@ function TierSetup() {
     const paced = takePacedFrame();
     const continuous = continuing.current || takeRequested();
     setFrameDelta(dt, continuous || paced);
-    if (!paced && continuous) governor.tick(dt);
+    // The shader warm-up's frames are slow on purpose: the governor judges frames from when it's done.
+    if (!paced && continuous && useWarmup.getState().phase === "done") governor.tick(dt);
     continuing.current = wantsNextFrame(now);
     if (continuing.current) state.invalidate();
     else scheduleAmbientFrame();
@@ -164,6 +171,12 @@ export default function Board() {
   const scene = useBoard((d) => d.scene);
   const prep = useEntities((s) => s.prep !== null);
   const tierName = useTier((s) => s.name);
+  const tierChosen = useTier((s) => s.device !== null);
+  const introOver = useIntro((s) => s.phase === "done");
+  const warmed = useWarmup((s) => s.phase === "done");
+  // (Decided at mount: the intro, while it plays, covers the board itself.)
+  const [remounted] = useState(() => useIntro.getState().phase === "done");
+  const hiddenForWarmup = remounted && introOver && !warmed;
   const tier = TIERS[tierName];
   const boundsJson = scene?.boundsJson;
   const bounds = useMemo(() => boundsFromJson(boundsJson), [boundsJson]);
@@ -537,7 +550,7 @@ export default function Board() {
     >
       <Canvas
         dpr={Math.min(window.devicePixelRatio || 1, tier.dpr)}
-        shadows={tier.shadowMap ? { type: tier.softShadows ? PCFSoftShadowMap : PCFShadowMap } : false}
+        shadows={tier.shadowMap ? { type: PCFShadowMap } : false}
         gl={{
           antialias: false,
           powerPreference: "high-performance",
@@ -546,7 +559,13 @@ export default function Board() {
         }}
         camera={{ fov: 40, near: 0.5, far: 4000, position: [30, 60, 90] }}
         frameloop="demand"
-        style={{ background: C.ink950 }}
+        style={{
+          background: C.ink950,
+          // Mounted again after the intro (back from the Admin console): hidden until the shader warm-up is done,
+          // then faded in — the intro's candle covers only the first load (§24.7).
+          opacity: hiddenForWarmup ? 0 : 1,
+          transition: "opacity var(--dur-scene) var(--ease-out)",
+        }}
         onCreated={({ gl }) => {
           gl.setClearColor(C.ink950);
           // The fog composite's fixed noise goes up with the renderer, not with a scene's first frame (§24.7: nothing
@@ -558,84 +577,94 @@ export default function Board() {
         <TierSetup />
         <CameraRig bounds={bounds} sceneId={scene?.id ?? "none"} />
         {/*
-          In dynamic fog the light levels are the fog composite's (§15.7: bright in full colour, dim at 55 %, darkness
-          by sense): the rig lights at full for form and shading, as image maps are unlit (§24.3) — scaling it by the
-          scene's darkness as well darkened torchlit ground twice. Off and painted keep the ambient's mood.
+          Nothing draws until the device is read and the tier chosen (one effect after mount): a first frame at the
+          default tier compiled a chain and shaders the chosen tier then threw away (§24.7).
         */}
-        <Contained>
-          <Lighting
-            bounds={bounds}
-            ambient={scene?.fogMode === "dynamic" && !prep ? "bright" : (scene?.ambient ?? "bright")}
-            tier={tier}
-          />
-        </Contained>
-        <Contained>
-          <TableSurface bounds={bounds} empty={!scene} />
-        </Contained>
-        <Contained>
-          <DustMotes bounds={bounds} count={tier.dust} />
-        </Contained>
-        {/* Vision and light targets for the fog composite (drawn before the board each frame). */}
-        <Contained>
-          <VisionLayer bounds={bounds} />
-        </Contained>
-        <Contained>{scene ? <MapLayer scene={scene} bounds={bounds} /> : null}</Contained>
-        <Contained>
-          <Walls3DLayer />
-        </Contained>
-        <Contained>
-          <TokensLayer />
-        </Contained>
-        <Contained>
-          <ZonesLayer />
-        </Contained>
-        {/* Lasting spell areas (§8.13) and casts' VFX (§24.5). */}
-        <Contained>
-          <EffectsLayer />
-          <EffectHandles />
-          <VfxLayer />
-        </Contained>
-        <Contained>
-          <MoveLayer />
-          <RangeOverlay />
-          <TargetingLayer />
-        </Contained>
-        <Contained>
-          <PingLayer />
-        </Contained>
-        <Contained>
-          <MeasureLayer />
-        </Contained>
-        <Contained>
-          <WallsLayer />
-        </Contained>
-        <Contained>
-          <WallToolLayer />
-        </Contained>
-        <Contained>
-          <ZoneToolLayer />
-        </Contained>
-        <Contained>
-          <LightToolLayer />
-        </Contained>
-        <Contained>
-          <FogToolLayer />
-        </Contained>
-        <Contained>
-          <SensedLayer />
-        </Contained>
-        <Contained>
-          <DoorsLayer />
-        </Contained>
-        <Contained>
-          <MapAlignGizmo />
-        </Contained>
-        <ShadowSync enabled={tier.shadowMap > 0} soft={tier.softShadows} />
-        <Contained>
-          <PostFX tier={tier} />
-          {/* The 3D dice: their own scene over the board's, while there are dice to show (§8.9). */}
-          <DiceOverlay tier={tier} />
-        </Contained>
+        {tierChosen ? (
+          <>
+            {/*
+              In dynamic fog the light levels are the fog composite's (§15.7: bright in full colour, dim at 55 %,
+              darkness by sense): the rig lights at full for form and shading, as image maps are unlit (§24.3) — scaling
+              it by the scene's darkness as well darkened torchlit ground twice. Off and painted keep the ambient's mood.
+            */}
+            <Contained>
+              <Lighting
+                bounds={bounds}
+                ambient={scene?.fogMode === "dynamic" && !prep ? "bright" : (scene?.ambient ?? "bright")}
+                tier={tier}
+              />
+            </Contained>
+            <Contained>
+              <TableSurface bounds={bounds} empty={!scene} />
+            </Contained>
+            <Contained>
+              <DustMotes bounds={bounds} count={tier.dust} />
+            </Contained>
+            {/* Vision and light targets for the fog composite (drawn before the board each frame). */}
+            <Contained>
+              <VisionLayer bounds={bounds} />
+            </Contained>
+            <Contained>{scene ? <MapLayer scene={scene} bounds={bounds} /> : null}</Contained>
+            <Contained>
+              <Walls3DLayer />
+            </Contained>
+            <Contained>
+              <TokensLayer />
+              <MiniLightsLayer />
+            </Contained>
+            <Contained>
+              <ZonesLayer />
+            </Contained>
+            {/* Lasting spell areas (§8.13) and casts' VFX (§24.5). */}
+            <Contained>
+              <EffectsLayer />
+              <EffectHandles />
+              <VfxLayer />
+            </Contained>
+            <Contained>
+              <MoveLayer />
+              <RangeOverlay />
+              <TargetingLayer />
+            </Contained>
+            <Contained>
+              <PingLayer />
+            </Contained>
+            <Contained>
+              <MeasureLayer />
+            </Contained>
+            <Contained>
+              <WallsLayer />
+            </Contained>
+            <Contained>
+              <WallToolLayer />
+            </Contained>
+            <Contained>
+              <ZoneToolLayer />
+            </Contained>
+            <Contained>
+              <LightToolLayer />
+            </Contained>
+            <Contained>
+              <FogToolLayer />
+            </Contained>
+            <Contained>
+              <SensedLayer />
+            </Contained>
+            <Contained>
+              <DoorsLayer />
+            </Contained>
+            <Contained>
+              <MapAlignGizmo />
+            </Contained>
+            <ShadowSync enabled={tier.shadowMap > 0} />
+            <Contained>
+              <PostFX tier={tier} />
+              {/* The 3D dice: their own scene over the board's, while there are dice to show (§8.9). */}
+              <DiceOverlay tier={tier} />
+            </Contained>
+          </>
+        ) : null}
+        {tierChosen ? <Warmup bounds={bounds} /> : null}
         {__GLOAM_TEST__ ? <TestProbe /> : null}
       </Canvas>
       {/* The subtle vignette of the post chain, done in CSS so it costs nothing on any tier (SPEC §24.6). */}
@@ -682,18 +711,25 @@ function Contained({ children }: { children: ReactNode }) {
   return <Suspense fallback={null}>{children}</Suspense>;
 }
 
-/** Keeps the renderer's shadow map in step with the tier (Low turns shadow maps off, AC-BRD-03). */
-function ShadowSync({ enabled, soft }: { enabled: boolean; soft: boolean }) {
+/**
+ * Keeps the renderer's shadow map in step with the tier (Low turns shadow maps off, AC-BRD-03). Always PCF: three
+ * r18x removed PCFSoftShadowMap (it warns and falls back); Ultra's softer edge is the key light's `shadow.radius`
+ * (Lighting), so every shadowed tier shares one set of shader programs.
+ */
+function ShadowSync({ enabled }: { enabled: boolean }) {
   const gl = useThree((s) => s.gl);
   const scene = useThree((s) => s.scene);
+  const camera = useThree((s) => s.camera);
   useEffect(() => {
     gl.shadowMap.enabled = enabled;
-    gl.shadowMap.type = soft ? PCFSoftShadowMap : PCFShadowMap;
+    gl.shadowMap.type = PCFShadowMap;
     gl.shadowMap.needsUpdate = true;
     scene.traverse((o) => {
       const m = (o as { material?: { needsUpdate: boolean } | { needsUpdate: boolean }[] }).material;
       for (const mat of Array.isArray(m) ? m : m ? [m] : []) mat.needsUpdate = true;
     });
-  }, [enabled, soft, gl, scene]);
+    // The key light casts now (or no longer): the next shadow pass sees that (programs.ts primeLights).
+    primeLights(gl, camera, scene);
+  }, [enabled, gl, scene, camera]);
   return null;
 }

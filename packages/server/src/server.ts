@@ -189,6 +189,10 @@ export async function startServer(opts: StartOptions = {}): Promise<GloamServer>
       });
     },
   });
+  // The port: PORT from the environment if it was given, else the one chosen in Admin → Settings (§8.20: it takes effect
+  // on a restart), else the default.
+  const chosen = config.portExplicit ? null : settings.get().port;
+  if (chosen) config.port = chosen;
   await server.listen(config.port, config.host);
   const port = ctx.http.address().port;
 

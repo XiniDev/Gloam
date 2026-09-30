@@ -84,7 +84,7 @@ function splitAt(points: P[], at: P): { within: P[]; beyond: P[] } {
   return { within: [...points.slice(0, best), at], beyond: [at, ...points.slice(best)] };
 }
 
-function PathLine({
+export function PathLine({
   tokenId,
   points,
   ok,

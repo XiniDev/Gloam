@@ -12,6 +12,7 @@ import { setAmbient } from "../frames.ts";
 import { boundsFromJson } from "../scene.ts";
 import { TIERS, useTier } from "../tiers.ts";
 import { Segments } from "../tools/marks.tsx";
+import { useDrawn } from "../warmup/state.ts";
 import { type Preset, VFX } from "./palette.ts";
 import { areaLoop, whereOf } from "./presets.ts";
 import { disposeTree, tickTree } from "./VfxLayer.tsx";
@@ -27,7 +28,7 @@ const drawn = new Map<string, { name: string; preset: string; parts: number }>()
  * frames a second at most; still under reduced motion), within the tier's particle budget.
  */
 export function EffectsLayer() {
-  const effects = useBoard((d) => d.effects);
+  const effects = useDrawn("effects");
   const list = [...effects.values()];
   const still = useSettings(() => prefersReducedMotion());
   useEffect(() => {
@@ -48,7 +49,7 @@ export function EffectsLayer() {
 }
 
 function EffectLook({ e, still }: { e: EffectView; still: boolean }) {
-  const tokens = useBoard((d) => d.tokens);
+  const tokens = useDrawn("tokens");
   const boundsJson = useBoard((d) => d.scene?.boundsJson);
   const tier = useTier((s) => s.name);
   // The DM sees into a cloud or darkness (their look is thinner): they have to see what's inside.
@@ -112,9 +113,10 @@ function EffectLook({ e, still }: { e: EffectView; still: boolean }) {
     const m = new Mesh(
       new ShapeGeometry(s),
       new MeshBasicMaterial({
-        color: VFX[preset].glow,
+        // Darkness's footprint is ink — a void, not a purple disc (critic P12 r1 m15); its rim keeps the hex colour.
+        color: props.magicalDarkness ? "#05060A" : VFX[preset].glow,
         transparent: true,
-        opacity: props.magicalDarkness ? 0.35 : 0.06,
+        opacity: props.magicalDarkness ? 0.55 : 0.06,
         depthWrite: false,
         side: DoubleSide,
       }),

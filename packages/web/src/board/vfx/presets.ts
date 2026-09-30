@@ -606,7 +606,7 @@ export function areaLoop(
               radius: R,
               life: 1,
               core: "#05060A",
-              glow: "#1C1426",
+              glow: "#0E0B14",
               rough: 0.25,
               additive: false,
               opacity,

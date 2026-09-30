@@ -25,6 +25,7 @@ import { disposeLater } from "../dispose.ts";
 import { CAPS_FONT } from "../fonts.ts";
 import { useZoneTool } from "../tools/zones.ts";
 import { fogUniforms } from "../vision/fogMaterial.ts";
+import { useDrawn } from "../warmup/state.ts";
 import { parseZoneShape } from "./zoneShape.ts";
 
 /**
@@ -35,7 +36,7 @@ import { parseZoneShape } from "./zoneShape.ts";
  * dimmer.
  */
 export function ZonesLayer() {
-  const zones = useBoard((d) => d.zones);
+  const zones = useDrawn("zones");
   // Viewing as a player: their zones only (zones hidden from players never reach them).
   const dmView = useDmView();
   const as = useViewAs((s) => s.userId !== null);

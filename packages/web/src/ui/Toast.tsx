@@ -5,6 +5,7 @@ import { create } from "zustand";
 import { PHONE_BOTTOM_BAND, type ScreenArea, useBoardCovers, useCover, useHudInsets } from "../hud/insets.ts";
 import { useUi } from "../state/ui.ts";
 import { provideTestHook } from "../test/hooks.ts";
+import { useOpenSheets } from "./BottomSheet.tsx";
 import { useModalOpen } from "./Dialog.tsx";
 import { keepHyphenated } from "./text.tsx";
 
@@ -199,8 +200,9 @@ export function Toaster() {
   // A dialog open: the stack keeps out of it — where it stands in the stack's column, the stack goes to the foot.
   const modal = useModalOpen((s) => s.count > 0);
   const dialog = useModalOpen((s) => s.box);
-  // A phone's dock page open: its header and tabs are at the top — the stack stands at the foot (critic P11 r1 B6).
-  const dockPage = phoneTable && covers["dock-panel"] !== undefined;
+  // A phone's bottom sheet up (a panel, the dice, the rolls, a tool): the stack stands at the top of the screen, and the
+  // sheet stops short of it (BottomSheet) — neither covers the other.
+  const sheetUp = useOpenSheets((s) => s.n > 0) && phoneTable;
   // The stack is HUD over the board while it holds a toast: plates keep out from under it (critic P7 r2 #2).
   const ref = useRef<HTMLDivElement>(null);
   // (Its held toasts don't count: they aren't there.)
@@ -226,7 +228,7 @@ export function Toaster() {
   // bottom band is under the scrim or the page then — never counted, or the stack stood mid-board: critic P11 r1 B6).
   const cardsLow = !modal && under !== null && under > window.innerHeight * 0.35;
   const band = useHudInsets((s) => s.bottom);
-  const bottomBand = cardsLow ? band : dockPage ? 0 : phoneTable ? PHONE_BOTTOM_BAND : 96;
+  const bottomBand = cardsLow ? band : phoneTable ? PHONE_BOTTOM_BAND : 96;
   // Never over a dialog: its top slot taken, the foot; that taken too (a tall dialog), beside it where a column fits
   // (the card's buttons wrap; the scrim covers the board there anyway); nowhere at all — a phone's, or a narrow
   // screen's — the stack waits for it to close, its clocks stopped, errors from the dialog's own work still shown (a
@@ -263,7 +265,7 @@ export function Toaster() {
     dialog.top < pageSlot.bottom &&
     dialog.bottom > pageSlot.top;
   const held = (blocked && !beside) || pageBlocked;
-  const atFoot = table && !beside && (overDialog || dockPage || cardsLow);
+  const atFoot = table && !beside && (overDialog || cardsLow);
   const top = atFoot ? null : under;
   useEffect(() => useToasts.getState().hold(held), [held]);
   // A knock while the DM panel's Approvals shows it already: the toast would say it twice (critic P12 r1 M10).
@@ -282,11 +284,12 @@ export function Toaster() {
       className="pointer-events-none fixed bottom-[calc(16px+env(safe-area-inset-bottom))] right-3 z-[950] flex w-[min(380px,calc(100vw-24px))] flex-col gap-2 md:bottom-auto md:right-4 md:top-4"
       style={
         phoneTable
-          ? // (With a page of the dock open across the phone, the stack takes the width, over the page.)
-            {
-              ...(atFoot
-                ? { top: "auto", bottom: bottomBand + 12 }
-                : { top: top ?? cornerLeft, bottom: "auto" }),
+          ? {
+              ...(sheetUp
+                ? { top: "calc(12px + env(safe-area-inset-top))", bottom: "auto" }
+                : atFoot
+                  ? { top: "auto", bottom: bottomBand + 12 }
+                  : { top: top ?? cornerLeft, bottom: "auto" }),
               left: 12,
               right: right < window.innerWidth / 2 ? right : 12,
               width: "auto",

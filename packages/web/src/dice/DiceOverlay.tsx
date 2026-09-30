@@ -1,6 +1,6 @@
-import type { DiceSkin, TumbleDie } from "@gloam/shared/dice";
+import { DEFAULT_SKIN, type DiceSkin, type TumbleDie } from "@gloam/shared/dice";
 import { useFrame, useThree } from "@react-three/fiber";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useState } from "react";
 import {
   AgXToneMapping,
   AmbientLight,
@@ -14,11 +14,13 @@ import {
   Scene,
   ShadowMaterial,
   Vector3,
+  type WebGLRenderer,
 } from "three";
 import { audio } from "../audio/engine.ts";
 import type { SfxName } from "../audio/recipes.ts";
 import { again } from "../board/frames.ts";
 import { frameBounds, pxPerFoot } from "../board/framing.ts";
+import { pinPrograms, primeLights } from "../board/programs.ts";
 import type { TierSpec } from "../board/tiers.ts";
 import { bodyRects } from "../board/tokens/declutter.ts";
 import {
@@ -139,38 +141,118 @@ export function DiceOverlay({ tier }: { tier: TierSpec }) {
   return active ? <DiceStage tier={tier} onIdle={() => setActive(false)} /> : null;
 }
 
+/** The dice's own scene: a key light (shadowed where the tier has shadow maps), a little fill, a shadow-catching floor. */
+function makeStage(shadows: boolean) {
+  const scene = new Scene();
+  const camera = new PerspectiveCamera(30, 1, 1, 400);
+  const key = new DirectionalLight(0xffffff, 1.5);
+  key.position.set(-8, 30, 14);
+  key.castShadow = shadows;
+  key.shadow.mapSize.set(1024, 1024);
+  const sc = key.shadow.camera;
+  sc.left = -24;
+  sc.right = 24;
+  sc.top = 20;
+  sc.bottom = -20;
+  sc.near = 1;
+  sc.far = 80;
+  key.shadow.bias = -0.0008;
+  scene.add(key, key.target, new AmbientLight(0xffffff, 0.12));
+  const floor = new Mesh(
+    new PlaneGeometry(TRAY_MAX.w + 40, TRAY_MAX.d + 40),
+    new ShadowMaterial({ opacity: 0.32, depthWrite: false }),
+  );
+  floor.rotation.x = -Math.PI / 2;
+  floor.receiveShadow = shadows;
+  floor.visible = shadows;
+  scene.add(floor);
+  const blobGeometry = new PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
+  return { scene, camera, floor, blobGeometry };
+}
+
+/**
+ * The dice's shader programs (the shader warm-up compiles them just after the board shows): a throw's first frame
+ * waits for them, so a roll straight away never compiles mid-tumble.
+ */
+export const diceShaders: { ready: Promise<void> } = { ready: Promise.resolve() };
+
+const SKIN_MATERIALS: DiceSkin["material"][] = ["resin", "gemstone", "metal", "bone", "obsidian"];
+
+/**
+ * The dice's specimens for the shader warm-up (SPEC §24.7): a die of every skin material — gemstone as each tier draws
+ * it — with its contact shadow, on a stage as a throw sets it (the reflection room is made now, too). The overlay
+ * draws them over the board: to the screen, tone-mapped AgX.
+ */
+export function diceSpecimen(gl: WebGLRenderer, shadows: boolean) {
+  const stage = makeStage(shadows);
+  const env = diceEnvironment(gl);
+  const made: Material[] = [];
+  let x = -8;
+  for (const material of SKIN_MATERIALS)
+    for (const high of [false, true]) {
+      if (high && material !== "gemstone") continue;
+      const s = solid("d20");
+      const m = diceMaterial(s, { ...DEFAULT_SKIN, material }, "values", high, env);
+      made.push(m);
+      const die = new Mesh(dieGeometry(s), m);
+      die.castShadow = shadows;
+      x += 3;
+      die.position.set(x, 1, 0);
+      stage.scene.add(die);
+    }
+  const blob = new Mesh(
+    stage.blobGeometry,
+    new MeshBasicMaterial({
+      map: contactShadowTexture(),
+      color: 0x000000,
+      transparent: true,
+      depthWrite: false,
+    }),
+  );
+  made.push(blob.material);
+  stage.scene.add(blob);
+  stage.camera.position.set(0, 40, 20);
+  stage.camera.lookAt(0, 0, 0);
+  const key = stage.scene.children.find(
+    (o) => (o as DirectionalLight).isDirectionalLight,
+  ) as DirectionalLight;
+  return {
+    scene: stage.scene,
+    camera: stage.camera,
+    key,
+    /** One frame as the overlay draws it (its transmission pass, for gemstones on High, compiles only when drawn). */
+    draw() {
+      const tm = gl.toneMapping;
+      const auto = gl.autoClear;
+      const target = gl.getRenderTarget();
+      gl.setRenderTarget(null);
+      gl.toneMapping = AgXToneMapping;
+      gl.autoClear = false;
+      gl.clearDepth();
+      gl.render(stage.scene, stage.camera);
+      gl.toneMapping = tm;
+      gl.autoClear = auto;
+      gl.setRenderTarget(target);
+    },
+    dispose() {
+      // (Held before the materials go: three frees a program with its last material.)
+      pinPrograms(gl, "warm");
+      for (const m of made) m.dispose();
+      stage.floor.geometry.dispose();
+      (stage.floor.material as Material).dispose();
+      stage.blobGeometry.dispose();
+    },
+  };
+}
+
 function DiceStage({ tier, onIdle }: { tier: TierSpec; onIdle: () => void }) {
   const gl = useThree((s) => s.gl);
   const composer = Boolean(tier.bloom || tier.ao || tier.smaa);
   const high = tier.name === "ultra" || tier.name === "high";
   const shadows = tier.shadowMap > 0;
-  const stage = useMemo(() => {
-    const scene = new Scene();
-    const camera = new PerspectiveCamera(30, 1, 1, 400);
-    const key = new DirectionalLight(0xffffff, 1.5);
-    key.position.set(-8, 30, 14);
-    key.castShadow = shadows;
-    key.shadow.mapSize.set(1024, 1024);
-    const sc = key.shadow.camera;
-    sc.left = -24;
-    sc.right = 24;
-    sc.top = 20;
-    sc.bottom = -20;
-    sc.near = 1;
-    sc.far = 80;
-    key.shadow.bias = -0.0008;
-    scene.add(key, key.target, new AmbientLight(0xffffff, 0.12));
-    const floor = new Mesh(
-      new PlaneGeometry(TRAY_MAX.w + 40, TRAY_MAX.d + 40),
-      new ShadowMaterial({ opacity: 0.32, depthWrite: false }),
-    );
-    floor.rotation.x = -Math.PI / 2;
-    floor.receiveShadow = shadows;
-    floor.visible = shadows;
-    scene.add(floor);
-    const blobGeometry = new PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
-    return { scene, camera, floor, blobGeometry };
-  }, [shadows]);
+  const stage = useMemo(() => makeStage(shadows), [shadows]);
+  // Its lights set up before its first frame's shadow pass (programs.ts primeLights).
+  useLayoutEffect(() => primeLights(gl, stage.camera, stage.scene), [gl, stage]);
   // Reflections for metal and glassy skins: the lantern-lit room, made once per renderer.
   const env = useMemo(() => diceEnvironment(gl), [gl]);
   useEffect(
@@ -279,8 +361,11 @@ function DiceStage({ tier, onIdle }: { tier: TierSpec; onIdle: () => void }) {
       };
       throws.push(t);
       const seed = roll.seed ?? hashId(roll.id);
-      throwDice({ dice: kinds, seed, tray, from: roll.userId === me ? "near" : "far" })
-        .then((res) => {
+      Promise.all([
+        throwDice({ dice: kinds, seed, tray, from: roll.userId === me ? "near" : "far" }),
+        diceShaders.ready,
+      ])
+        .then(([res]) => {
           t.result = res;
           t.sym = kinds.map((k, i) => {
             const w = wanted[i];

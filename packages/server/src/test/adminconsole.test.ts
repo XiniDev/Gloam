@@ -249,7 +249,7 @@ describe("P12 — the Admin console on the server (ADM)", () => {
     await admin.patch("/api/admin/settings", { allowAdminThroughDoorway: false });
   });
 
-  it("AC-ADM-04: the security log records logins and failures, knocks, admits and denials, kicks, bans, invite rotations and refused uploads — each with its time and IP", async () => {
+  it("AC-ADM-04: the security log records logins and failures, knocks, admits and denials, kicks, bans, invite rotations, API token use and refused uploads — each with its time and IP", async () => {
     await new Agent(t.url).post("/api/admin/login", { password: "wrong password here" });
     const k = await joinAsNew(t, code, "Knocker");
     await admin.post("/api/admin/table/knocks/decide", { sessionId: k.sessionId, decision: "deny" });
@@ -278,6 +278,16 @@ describe("P12 — the Admin console on the server (ADM)", () => {
       body: form,
     });
     expect(up.status).toBeGreaterThanOrEqual(400);
+    // An API token made and used (P13): its use is logged too, never its secret.
+    const made = (await admin.post("/api/admin/api/tokens", { name: "Recap bot", scopes: ["log:read"] })).json
+      .data as { token: string };
+    expect(
+      (
+        await new Agent(t.url, { authorization: `Bearer ${made.token}` }).get(
+          `/api/v1/campaigns/${campaignId}/log`,
+        )
+      ).status,
+    ).toBe(200);
     const log = (await admin.get("/api/admin/security-log")).json.data as {
       event: string;
       ip: string | null;
@@ -295,8 +305,11 @@ describe("P12 — the Admin console on the server (ADM)", () => {
       "unban",
       "invite.rotate",
       "upload.rejected",
+      "api.token.create",
+      "api.token.use",
     ])
       expect(kinds.has(e), e).toBe(true);
+    expect(JSON.stringify(log)).not.toContain(made.token);
     for (const e of log.filter((x) => x.event !== "csp.violation")) {
       expect(e.ip, `${e.event}'s IP`).toBeTruthy();
       expect(e.createdAt).toBeGreaterThan(0);

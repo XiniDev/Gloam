@@ -45,7 +45,16 @@ void main() {
  * on the board's rendered time, so after an idle pause they carry on instead of jumping, and as ambient motion they
  * get at most 30 frames a second of their own. Reduced motion: they hold still.
  */
-export function DustMotes({ bounds, count }: { bounds: Bounds; count: number }) {
+export function DustMotes({
+  bounds,
+  count,
+  specimen = false,
+}: {
+  bounds: Bounds;
+  count: number;
+  /** The shader warm-up's (warmup/Warmup.tsx): drawn for its program only — not counted, no ambient frames. */
+  specimen?: boolean;
+}) {
   // Subscribed, so a change in Settings (or the OS preference, on the next render) applies at once.
   const still = useSettings(() => prefersReducedMotion());
   const { x, y } = boundsCenter(bounds);
@@ -99,18 +108,19 @@ export function DustMotes({ bounds, count }: { bounds: Bounds; count: number }) 
   }, [count, x, y, w, h]);
 
   useEffect(() => {
-    boardDiag.dust = points ? count : 0;
+    if (!specimen) boardDiag.dust = points ? count : 0;
     if (!points) return;
     return () => {
       points.geometry.dispose();
       disposeLater(points.material as ShaderMaterial);
     };
-  }, [points, count]);
+  }, [points, count, specimen]);
 
   useEffect(() => {
+    if (specimen) return;
     setAmbient("dust", Boolean(points) && !still);
     return () => setAmbient("dust", false);
-  }, [points, still]);
+  }, [points, still, specimen]);
 
   useFrame(() => {
     if (!points || still) return;

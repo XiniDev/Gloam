@@ -25,7 +25,7 @@ import {
 } from "three";
 import { useCombat } from "../../net/combat.ts";
 import { request, useTable } from "../../net/table.ts";
-import { useSettings } from "../../state/settings.ts";
+import { prefersReducedMotion, useSettings } from "../../state/settings.ts";
 import { useUi } from "../../state/ui.ts";
 import { BoardText } from "../BoardText.tsx";
 import { boardApi } from "../boardApi.ts";
@@ -42,6 +42,7 @@ import { pressToken } from "../move/input.ts";
 import { TIERS, useTier } from "../tiers.ts";
 import { withFog } from "../vision/fogMaterial.ts";
 import { useShownOnly } from "../vision/shown.ts";
+import { SPECIMEN_FORCED } from "../warmup/specimens.ts";
 import { alphaFromAlphaChannel } from "./alphaChannel.ts";
 import { AUTO_COIN_PITCH, approach, fadeFrame } from "./crossfade.ts";
 import {
@@ -58,7 +59,7 @@ import {
   setOverlayBody,
   setOverlaySpots,
 } from "./declutter.ts";
-import { GREY, withDesat } from "./desaturate.ts";
+import { withDesat } from "./desaturate.ts";
 import { canRaise, heightLabel } from "./elevation.ts";
 import {
   baseTop,
@@ -81,6 +82,7 @@ import {
   setHpBar,
 } from "./hpBar.ts";
 import { lieOf, tokenFx } from "./hpFx.tsx";
+import { miniVariant } from "./miniVariants.ts";
 import { CHIP_GEOMETRY, createChipMaterial, setChip } from "./plateChip.ts";
 import { atlasCell, customCell, statusAtlas } from "./statusAtlas.ts";
 
@@ -267,6 +269,8 @@ function useTransparentMaterial(
   const m = useMemo(
     () => {
       const made = at ? withFog(make(), "token", { at }) : make();
+      // It fades (hidden, a coin ↔ standee crossfade): the warm-up compiles it see-through as well as opaque.
+      made.userData.fades = true;
       return grey ? withDesat(made, grey) : made;
     },
     // biome-ignore lint/correctness/useExhaustiveDependencies: deps are the material's inputs
@@ -288,8 +292,10 @@ export const TokenObject = memo(function TokenObject({
   lift?: number;
 }) {
   const colorBlind = useSettings((s) => s.colorBlind);
-  const selected = useUi((s) => s.selection.includes(token.id));
-  const hovered = useUi((s) => s.hover === token.id);
+  // (The shader warm-up's specimens show a selected ring and a hover ring without being selected or hovered.)
+  const forced = SPECIMEN_FORCED[token.id];
+  const selected = useUi((s) => s.selection.includes(token.id)) || forced === "selected";
+  const hovered = useUi((s) => s.hover === token.id) || forced === "hovered";
   const tier = useTier((s) => s.name);
   const ring = ringColorOf(token, colorBlind);
   const R = Math.max(0.6, token.sizeFt / 2);
@@ -622,7 +628,8 @@ export const TokenObject = memo(function TokenObject({
     const wantLie = lying ? 1 : 0;
     if (lie.current === null) lie.current = wantLie;
     if (lie.current !== wantLie) {
-      const reduced = useSettings.getState().motion === "reduced";
+      // Reduced motion (the setting, or the system's when it's left to it): the flash, never the shake (AC-A11Y-02).
+      const reduced = prefersReducedMotion();
       lie.current = reduced
         ? wantLie
         : wantLie > lie.current
@@ -779,6 +786,7 @@ export const TokenObject = memo(function TokenObject({
     <group ref={root} name={`token:${token.id}`} userData={{ tokenId: token.id }} position={spawnAt}>
       <group
         ref={body}
+        name="token-body"
         position-y={lift}
         onPointerDown={onDown}
         onPointerMove={onMove}
@@ -964,15 +972,7 @@ function useMiniMaterials(mini: MiniInstance | null, opacity: number, dead: bool
       if (!m.isMesh) return;
       originals.set(m, m.material);
       const copy = (Array.isArray(m.material) ? m.material : [m.material]).map((mat) => {
-        const c = withFog(mat.clone(), "token");
-        c.transparent = opacity < 1;
-        c.opacity = opacity;
-        c.depthWrite = opacity >= 1;
-        // Dead: grey, a shade darker (§8.5 "desaturated").
-        if (dead) {
-          withDesat(c, GREY);
-          if ("color" in c) (c as MeshStandardMaterial).color.multiplyScalar(0.85);
-        }
+        const c = miniVariant(mat, opacity, dead);
         clones.push(c);
         return c;
       });

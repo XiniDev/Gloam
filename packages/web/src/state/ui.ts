@@ -74,6 +74,8 @@ export interface UiStore {
   lineWidthFt: number;
   /** The dice tray is open (SPEC §8.9, hotkey D). */
   diceTray: boolean;
+  /** A phone's rolls sheet is open (its tab bar's Log, §29.4). */
+  rollsOpen: boolean;
   /** The movement range overlay for the selected creature (SPEC §8.6, hotkey G). */
   rangeOverlay: boolean;
   /** The character the Sheet panel shows (null: your own, or the selected token's). */
@@ -151,6 +153,7 @@ export const useUi = create<UiStore>((set, get) => ({
   measureShape: "ruler",
   lineWidthFt: 5,
   diceTray: false,
+  rollsOpen: false,
   rangeOverlay: false,
   sheetActor: null,
   sheetTab: "overview",

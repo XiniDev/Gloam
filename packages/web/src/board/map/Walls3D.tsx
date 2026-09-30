@@ -35,6 +35,7 @@ import { NOISE_GLSL } from "../glsl.ts";
 import { useTier } from "../tiers.ts";
 import { useWallTool } from "../tools/walls.ts";
 import { withFog } from "../vision/fogMaterial.ts";
+import { useDrawn, useWarming } from "../warmup/state.ts";
 import { findPillars, pillarPrism } from "./pillars.ts";
 
 /**
@@ -571,8 +572,11 @@ function materials() {
 // ------------------------------------------------------------------------------------------------ the layer
 
 export function Walls3DLayer() {
-  const on = useBoard((d) => d.scene?.walls3d === true);
-  const walls = useBoard((d) => d.walls);
+  // (While the shader warm-up runs, 3-D walls are drawn whatever the scene: their materials are compiled then.)
+  const scene3d = useBoard((d) => d.scene?.walls3d === true);
+  const warming = useWarming();
+  const on = scene3d || warming;
+  const walls = useDrawn("walls");
   const dm = useDmView();
   const preview = useWallTool((s) => s.preview);
   const shadows = useTier((s) => s.name !== "low");

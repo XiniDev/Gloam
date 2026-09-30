@@ -42,7 +42,8 @@ export const intro = (page: Page) =>
   }) as Promise<IntroState | null>;
 
 export async function introDone(page: Page): Promise<void> {
-  await expect.poll(async () => (await intro(page))?.phase, { timeout: 20_000 }).toBe("done");
+  // (A page that warms its shaders up under software GL holds the candle for most of this; see Warmup.tsx.)
+  await expect.poll(async () => (await intro(page))?.phase, { timeout: 120_000 }).toBe("done");
 }
 
 export interface BoardStats {
@@ -444,7 +445,7 @@ export async function boardColour(
 export async function dmSection(page: Page, name: string): Promise<void> {
   const re = new RegExp(`^${name}`);
   const panel = page.getByRole("region", { name: "DM panel", exact: true });
-  if (!(await panel.isVisible())) await page.getByRole("button", { name: /^DM panel/ }).click();
+  if (!(await panel.isVisible())) await openPanel(page, "DM panel");
   const tabs = panel.getByRole("tablist", { name: "DM panel sections" });
   await expect(tabs).toBeVisible();
   const tab = tabs.getByRole("tab", { name: re });
@@ -454,4 +455,18 @@ export async function dmSection(page: Page, name: string): Promise<void> {
     await page.getByRole("menuitem", { name: re }).click();
   }
   await expect(tabs.getByRole("tab", { name: re, selected: true })).toBeVisible();
+}
+
+/**
+ * Opens a dock panel as a person would: its button on the rail — or, on a phone (§29.4), its tab in the tab bar or, for
+ * those a menu away (Party, Journal, the DM panel), from More.
+ */
+export async function openPanel(page: Page, name: "Party" | "Sheet" | "Journal" | "DM panel"): Promise<void> {
+  const button = page.getByRole("button", { name: new RegExp(`^${name}( [(]|$)`) }).first();
+  if (await button.isVisible()) {
+    await button.click();
+    return;
+  }
+  await page.getByTestId("more-tab").click();
+  await page.getByRole("menuitem", { name: new RegExp(`^${name}`) }).click();
 }

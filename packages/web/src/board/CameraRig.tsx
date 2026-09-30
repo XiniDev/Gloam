@@ -7,7 +7,7 @@ import { create } from "zustand";
 import { clearArea, isPhoneNow, useHudInsets } from "../hud/insets.ts";
 import { tableEvents, useTable } from "../net/table.ts";
 import { boardData, useEntities } from "../state/entities.ts";
-import { useSettings } from "../state/settings.ts";
+import { prefersReducedMotion, useSettings } from "../state/settings.ts";
 import { useUi } from "../state/ui.ts";
 import { boardApi } from "./boardApi.ts";
 import { boardDiag } from "./diag.ts";
@@ -317,7 +317,9 @@ export function CameraRig({ bounds, sceneId }: { bounds: Bounds; sceneId: string
   useEffect(() => {
     rigDiag.helpers++;
     cameraRig.pitchDeg = () => 90 - (ref.current?.polarAngle ?? 35 * DEG) / DEG;
-    cameraRig.pitchTo = (pitchDeg, ms = PRESET_MS, done) => {
+    cameraRig.pitchTo = (pitchDeg, requested = PRESET_MS, done) => {
+      // Reduced motion: the camera cuts, it never flies (AC-A11Y-02).
+      const ms = prefersReducedMotion() ? 0 : requested;
       const c = ref.current;
       if (!c) {
         rigDiag.noControls.push(`pitch@${Math.round(performance.now())}`);
@@ -412,7 +414,8 @@ export function CameraRig({ bounds, sceneId }: { bounds: Bounds; sceneId: string
       applyNow(c);
       wake();
     };
-    cameraRig.moveTargetTo = (x, z, ms = PRESET_MS) => {
+    cameraRig.moveTargetTo = (x, z, requested = PRESET_MS) => {
+      const ms = prefersReducedMotion() ? 0 : requested;
       const c = ref.current;
       if (!c) {
         rigDiag.noControls.push(`move@${Math.round(performance.now())}`);
@@ -449,7 +452,7 @@ export function CameraRig({ bounds, sceneId }: { bounds: Bounds; sceneId: string
       if (!c) return;
       const t = c.getTarget(new Vector3());
       follow.current = null;
-      void c.moveTo(t.x + d.x, t.y, t.z + d.z, true);
+      void c.moveTo(t.x + d.x, t.y, t.z + d.z, !prefersReducedMotion());
       wake();
     };
     const offDock = useUi.subscribe((s, prev) => {
@@ -568,7 +571,7 @@ export function CameraRig({ bounds, sceneId }: { bounds: Bounds; sceneId: string
     }
     if (follow.current && !tweens.current.length && ref.current) {
       const pos = tokenPosition(follow.current);
-      if (pos) void ref.current.moveTo(pos.x, 0, pos.y, true);
+      if (pos) void ref.current.moveTo(pos.x, 0, pos.y, !prefersReducedMotion());
       else follow.current = null;
     }
   });

@@ -8,6 +8,7 @@ import { aboutGloam } from "../../about/about.ts";
 import { sanitizeDisplayName, validDisplayName, validPin } from "../../auth/profiles.ts";
 import type { ServerContext } from "../../context.ts";
 import { dirSize } from "../../dataDir.ts";
+import { addBenchmarkScene } from "../../demo/benchmark.ts";
 import { createLanternCrypt } from "../../demo/lanternCrypt.ts";
 import { API_SCOPES, ApiScope } from "../../services/apiTokens.ts";
 import { LOCAL_ONLY_SETTINGS, type SettingKey, type Settings } from "../../services/settings.ts";
@@ -522,6 +523,28 @@ export function adminRoutes(app: Express, ctx: ServerContext): void {
           settingsJson: JSON.stringify({ ...parseCampaignSettings(String(c.settingsJson)), packs }),
         });
       ok(res);
+    }),
+  );
+
+  // ── the benchmark scene (SPEC §37): seeded on request into a campaign (the bench puts it in the demo), host only ──
+  app.post(
+    "/api/admin/campaigns/:id/benchmark-scene",
+    route(async (req, res) => {
+      const a = actor(req);
+      requireLocal(ctx, req);
+      const id = String(req.params.id);
+      if (!ctx.campaigns.get(id)) throw new GloamError("NOT_FOUND", "No such campaign.");
+      const b = body(req, z.strictObject({ archived: z.boolean().default(true) }));
+      const admin = ctx.profiles.get(a.userId);
+      const made = await addBenchmarkScene(
+        ctx,
+        id,
+        { userId: a.userId, name: admin?.displayName ?? "Admin", role: "admin", lobby: false },
+        { archived: b.archived },
+      );
+      // An open table for it takes it in (written as the demo is, straight to the database).
+      await ctx.rooms.table(id)?.reloadFromDatabase();
+      ok(res, made);
     }),
   );
 

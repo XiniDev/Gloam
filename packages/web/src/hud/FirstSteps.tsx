@@ -48,10 +48,11 @@ export function FirstSteps() {
   return (
     <div
       ref={ref}
-      className={`panel pointer-events-auto absolute flex select-none flex-col gap-2 px-3.5 py-3 ${
+      // A phone: above the tab bar's Sheet tab, from the screen's left gutter (the tab is the second of five).
+      className={`panel pointer-events-auto flex select-none flex-col gap-2 px-3.5 py-3 ${
         phone
-          ? "right-0 top-[calc(100%+14px)] w-[min(300px,calc(100vw-24px))]"
-          : "right-[calc(100%+12px)] top-1/2 w-[280px] -translate-y-1/2"
+          ? "fixed left-3 bottom-[calc(78px+env(safe-area-inset-bottom))] w-[min(300px,calc(100vw-24px))]"
+          : "absolute right-[calc(100%+12px)] top-1/2 w-[280px] -translate-y-1/2"
       }`}
       data-testid="first-steps"
       role="note"
@@ -60,9 +61,11 @@ export function FirstSteps() {
       <span
         className={`absolute h-3 w-3 rotate-45 bg-[var(--panel)] ${
           phone
-            ? "-top-[7px] right-4 border-l border-t border-[var(--border)]"
+            ? "-bottom-[7px] border-b border-r border-[var(--border)]"
             : "-right-[7px] top-1/2 -translate-y-1/2 border-r border-t border-[var(--border)]"
         }`}
+        // (Over the Sheet tab's middle: 30 % of the screen's width, less the callout's gutter and half the arrow.)
+        style={phone ? { left: Math.round(window.innerWidth * 0.3) - 12 - 6 } : undefined}
         aria-hidden
       />
       <span className="flex items-start gap-2">

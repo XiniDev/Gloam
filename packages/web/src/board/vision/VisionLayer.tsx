@@ -37,6 +37,7 @@ import { prefersReducedMotion } from "../../state/settings.ts";
 import { useViewAs } from "../../state/viewAs.ts";
 import { again, setAmbient, setAnimating } from "../frames.ts";
 import { moveAnimAt } from "../move/anims.ts";
+import { pinPrograms } from "../programs.ts";
 import type { Bounds } from "../scene.ts";
 import { TIERS, useTier } from "../tiers.ts";
 import { fogUniforms } from "./fogMaterial.ts";
@@ -115,6 +116,52 @@ function fanMaterial(frag: string, uniforms: Record<string, { value: unknown }>)
     depthWrite: false,
     transparent: true,
   });
+}
+
+const visionMaterial = () =>
+  fanMaterial(VISION_FRAG, {
+    uEye: { value: [0, 0] },
+    uElev: { value: 0 },
+    uRange: { value: [0, 0, 0] },
+    uKind: { value: 0 },
+  });
+const lightMaterial = () =>
+  fanMaterial(LIGHT_FRAG, {
+    uPos: { value: [0, 0] },
+    uBright: { value: 0 },
+    uDim: { value: 0 },
+    uCosHalf: { value: -2 },
+    uDir: { value: [1, 0] },
+    uFlick: { value: 1 },
+    uColor: { value: [1, 1, 1] },
+    uMagical: { value: 0 },
+    uPass: { value: 0 },
+  });
+
+/**
+ * The shader warm-up's part (SPEC §24.7): one fan of each pass drawn into a small target, as the layer draws them,
+ * so their programs exist before a scene with fog first needs them.
+ */
+export function warmVision(gl: WebGLRenderer): void {
+  const rt = new WebGLRenderTarget(8, 8, {
+    depthBuffer: false,
+    stencilBuffer: false,
+    type: UnsignedByteType,
+  });
+  const scene = new Scene();
+  const g = new BufferGeometry();
+  g.setAttribute("position", new Float32BufferAttribute([0, 0, 0, 1, 0, 0, 0, 0, 1], 3));
+  const mats = [visionMaterial(), lightMaterial()];
+  for (const m of mats) {
+    const mesh = new Mesh(g, m);
+    mesh.frustumCulled = false;
+    scene.add(mesh);
+  }
+  drawInto(gl, rt, scene);
+  pinPrograms(gl, "warm");
+  // Its materials are kept: disposed, the shaders' ids would go with them and the layer's own would compile again
+  // (programs.ts anchorShaders).
+  rt.dispose();
 }
 
 /** A visibility polygon as a triangle fan around its eye (x/z on the table). */
@@ -210,7 +257,7 @@ interface ViewerIn {
 }
 
 /** Flicker (SPEC §8.8 Light animation): gentle, well under 3 changes a second (WCAG 2.3.1); none under reduced motion. */
-function flicker(anim: string, t: number, seed: number): number {
+export function flicker(anim: string, t: number, seed: number): number {
   const s = (f: number, p: number) => Math.sin(t * f + seed * p);
   switch (anim) {
     case "torch":
@@ -226,7 +273,7 @@ function flicker(anim: string, t: number, seed: number): number {
   }
 }
 
-const hashSeed = (id: string) => {
+export const hashSeed = (id: string) => {
   let h = 0;
   for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0;
   return (h & 0xffff) / 6553.6;
@@ -287,29 +334,7 @@ export function VisionLayer({ bounds }: { bounds: Bounds }) {
     [targets],
   );
   const passes = useMemo(
-    () => ({
-      vision: new FanPass(() =>
-        fanMaterial(VISION_FRAG, {
-          uEye: { value: [0, 0] },
-          uElev: { value: 0 },
-          uRange: { value: [0, 0, 0] },
-          uKind: { value: 0 },
-        }),
-      ),
-      light: new FanPass(() =>
-        fanMaterial(LIGHT_FRAG, {
-          uPos: { value: [0, 0] },
-          uBright: { value: 0 },
-          uDim: { value: 0 },
-          uCosHalf: { value: -2 },
-          uDir: { value: [1, 0] },
-          uFlick: { value: 1 },
-          uColor: { value: [1, 1, 1] },
-          uMagical: { value: 0 },
-          uPass: { value: 0 },
-        }),
-      ),
-    }),
+    () => ({ vision: new FanPass(visionMaterial), light: new FanPass(lightMaterial) }),
     [],
   );
   useEffect(
@@ -600,13 +625,17 @@ function viewersOf(tokens: Map<string, TokenView>, dmView: boolean, asViewers: s
   return out;
 }
 
-interface LightIn extends VisionLight {
+export interface LightIn extends VisionLight {
   anim: string;
   color: string;
 }
 
 /** The lights that light what players see (DM-only ones are a DM aid), where they are this frame. */
-function lightsOf(lights: Map<string, LightView>, tokens: Map<string, TokenView>, now: number): LightIn[] {
+export function lightsOf(
+  lights: Map<string, LightView>,
+  tokens: Map<string, TokenView>,
+  now: number,
+): LightIn[] {
   const out: LightIn[] = [];
   for (const l of lights.values()) {
     if (!l.on || l.dmOnly || l.bright + l.dim <= 0) continue;

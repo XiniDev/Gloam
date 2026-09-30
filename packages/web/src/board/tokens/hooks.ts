@@ -8,7 +8,10 @@ import { assetMeta, pickImageVariant } from "../../net/assets.ts";
 import { type AssetRender, useLibrary } from "../../state/library.ts";
 import { acquireGlb, acquireTexture } from "../resources.ts";
 import { withFog } from "../vision/fogMaterial.ts";
+import { precompile } from "../warmup/precompile.ts";
 import { initialsTexture } from "./glyphs.ts";
+import { withMiniLights } from "./miniLights.ts";
+import { miniVariantStandIns } from "./miniVariants.ts";
 
 /** An asset's render view, kept current when it changes (e.g. a mini's overrides, pushed to every client). */
 export function useAssetMeta(id: string | undefined): AssetRender | null {
@@ -86,7 +89,7 @@ export function useMini(meta: AssetRender | null, size: Size): MiniInstance | nu
     let cancelled = false;
     const h = acquireGlb(id);
     h.promise.then(
-      (gltf) => {
+      async (gltf) => {
         if (cancelled) return;
         const root = cloneSkinned(gltf.scene) as Group;
         root.traverse((o) => {
@@ -95,9 +98,10 @@ export function useMini(meta: AssetRender | null, size: Size): MiniInstance | nu
             m.castShadow = true;
             m.receiveShadow = true;
             // Lit and fogged like the rest of the board (a mini in dim light looks dim, §15.7 step 4).
+            // …and by the nearest real lights (§15.7 step 5).
             m.material = Array.isArray(m.material)
-              ? m.material.map((mat) => withFog(mat, "token"))
-              : withFog(m.material, "token");
+              ? m.material.map((mat) => withMiniLights(withFog(mat, "token")))
+              : withMiniLights(withFog(m.material, "token"));
           }
         });
         const b = boundsKey
@@ -112,6 +116,12 @@ export function useMini(meta: AssetRender | null, size: Size): MiniInstance | nu
         const centre = box.getCenter(new Vector3());
         const offset = new Vector3(-centre.x, -box.min.y, -centre.z);
         const localBox = box.clone().translate(offset);
+        // Its shaders compiled before it's shown (§24.7; the token shows its coin meanwhile): a mini's materials are
+        // its own, the one thing the warm-up can't know.
+        const variants = miniVariantStandIns(root);
+        await Promise.all([precompile(root), precompile(variants.group)]);
+        variants.dispose();
+        if (cancelled) return;
         setInst({ root, gltf, scale, height: target, offset, localBox });
       },
       () => {},

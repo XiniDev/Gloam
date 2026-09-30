@@ -38,6 +38,7 @@ export function Menu({
   up = false,
   tone,
   wide = false,
+  trigger,
 }: {
   label: string;
   items: MenuItem[];
@@ -50,6 +51,8 @@ export function Menu({
   tone?: ButtonVariant;
   /** As wide as its container (a phone dialog's stacked actions). */
   wide?: boolean;
+  /** Its button drawn as the caller's (a phone tab bar's "More" tab): its classes and what's in it. */
+  trigger?: { className: string; content: ReactNode; testId?: string };
 }) {
   const [open, setOpen] = useState(false);
   const [place, setPlace] = useState<Place | null>(null);
@@ -126,8 +129,22 @@ export function Menu({
   };
 
   return (
-    <div className={wide ? "relative w-full" : "relative"}>
-      {text ? (
+    <div className={wide ? "relative w-full" : trigger ? "relative flex" : "relative"}>
+      {trigger ? (
+        <button
+          ref={button}
+          type="button"
+          aria-label={label}
+          aria-haspopup="menu"
+          aria-expanded={open}
+          aria-controls={open ? id : undefined}
+          data-testid={trigger.testId}
+          onClick={() => setOpen((o) => !o)}
+          className={trigger.className}
+        >
+          {trigger.content}
+        </button>
+      ) : text ? (
         <button
           ref={button}
           type="button"

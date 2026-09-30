@@ -1,6 +1,10 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { insetMeasures, useMeasuredInset } from "../hud/insets.ts";
+import { create } from "zustand";
+import { insetMeasures, useBoardCovers, useMeasuredInset } from "../hud/insets.ts";
+
+/** How many bottom sheets are open: a phone's tab bar steps aside for them (they rise over the bottom edge it holds). */
+export const useOpenSheets = create<{ n: number }>(() => ({ n: 0 }));
 
 /** Snap heights, as shares of the screen's height (SPEC §28 BottomSheet: 30 / 60 / 95 %). */
 export const SHEET_SNAPS = [0.3, 0.6, 0.95] as const;
@@ -20,6 +24,7 @@ export function BottomSheet({
   testId,
   initialSnap = 0,
   footer,
+  bare = false,
   children,
 }: {
   label: string;
@@ -29,6 +34,8 @@ export function BottomSheet({
   footer?: ReactNode;
   /** The height it opens at (an index into SHEET_SNAPS): 30 % unless its content needs more to be of use. */
   initialSnap?: number;
+  /** Its content lays itself out (a dock panel with its own scrolling): no padding or scroller of the sheet's. */
+  bare?: boolean;
   children: ReactNode;
 }) {
   const [snap, setSnap] = useState(() => Math.max(0, Math.min(SHEET_SNAPS.length - 1, initialSnap)));
@@ -36,6 +43,10 @@ export function BottomSheet({
   const drag = useRef<{ y0: number; h0: number; last: { y: number; t: number }[] } | null>(null);
   const ref = useRef<HTMLElement>(null);
   useMeasuredInset("bottom", ref, insetMeasures.bottom);
+  useEffect(() => {
+    useOpenSheets.setState((s) => ({ n: s.n + 1 }));
+    return () => useOpenSheets.setState((s) => ({ n: Math.max(0, s.n - 1) }));
+  }, []);
   const vh = () => (typeof window === "undefined" ? 800 : window.innerHeight);
   const snapPx = (i: number) => Math.round((SHEET_SNAPS[i] as number) * vh());
   // Re-measure on rotation: the snap is a share of the screen.
@@ -45,7 +56,10 @@ export function BottomSheet({
     window.addEventListener("resize", on);
     return () => window.removeEventListener("resize", on);
   }, []);
-  const height = dragPx ?? snapPx(snap);
+  // Toasts standing at the top while a sheet is up (Toast.tsx): the sheet stops short of them.
+  const toasts = useBoardCovers((s) => s.rects.toasts);
+  const cap = toasts && toasts.top < vh() / 3 ? vh() - toasts.bottom - 8 : Number.POSITIVE_INFINITY;
+  const height = Math.min(cap, dragPx ?? snapPx(snap));
 
   const end = (clientY: number) => {
     const d = drag.current;
@@ -107,7 +121,11 @@ export function BottomSheet({
         <span className="block h-1 w-10 rounded-chip bg-line-strong" aria-hidden />
       </button>
       {header ? <div className="shrink-0 px-3">{header}</div> : null}
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-3">{children}</div>
+      {bare ? (
+        <div className="flex min-h-0 flex-1 flex-col">{children}</div>
+      ) : (
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-3">{children}</div>
+      )}
       {footer ? <div className="shrink-0 border-t border-line px-3 py-2">{footer}</div> : null}
     </section>,
     document.body,

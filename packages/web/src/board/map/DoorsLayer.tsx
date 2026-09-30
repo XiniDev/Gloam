@@ -4,8 +4,9 @@ import { useEffect, useRef } from "react";
 import { type Sprite, Vector3 } from "three";
 import { stringSeed } from "../../audio/synth.ts";
 import { request, useTable } from "../../net/table.ts";
-import { boardData, useBoard, useEntities } from "../../state/entities.ts";
+import { boardData, useEntities } from "../../state/entities.ts";
 import { knownAt, useFog } from "../../state/fog.ts";
+import { prefersReducedMotion } from "../../state/settings.ts";
 import { useUi } from "../../state/ui.ts";
 import { useDmView } from "../../state/viewAs.ts";
 import { toast } from "../../ui/Toast.tsx";
@@ -13,6 +14,8 @@ import { boardApi } from "../boardApi.ts";
 import { playOnBoard } from "../boardSound.ts";
 import { again, wake } from "../frames.ts";
 import { doorIconTexture } from "../tokens/glyphs.ts";
+import { isSpecimen } from "../warmup/specimens.ts";
+import { useDrawn } from "../warmup/state.ts";
 
 /** A door's middle on the table (where its sounds come from). */
 const mid = (w: WallView) => ({ x: (w.ax + w.bx) / 2, y: (w.ay + w.by) / 2 });
@@ -24,12 +27,15 @@ const mid = (w: WallView) => ({ x: (w.ax + w.bx) / 2, y: (w.ay + w.by) / 2 });
  * for everyone who can see the door.
  */
 export function DoorsLayer() {
-  const walls = useBoard((d) => d.walls);
+  const walls = useDrawn("walls");
   const dm = useDmView();
   const me = useTable((s) => s.me?.userId ?? null);
   // A player sees a door's handle only where they know the ground on either side of it (not out of the unknown).
   useFog((s) => s.version);
-  const doors = [...walls.values()].filter((w) => isDoor(w, dm) && (dm || doorKnown(w, me)));
+  // (The shader warm-up's doors show their handles to anyone: their sprites' programs are compiled then.)
+  const doors = [...walls.values()].filter(
+    (w) => isDoor(w, dm) && (dm || isSpecimen(w.id) || doorKnown(w, me)),
+  );
   useDoorSounds();
   return (
     <group name="doors">
@@ -81,10 +87,12 @@ function DoorHandle({ wall, dm }: { wall: WallView; dm: boolean }) {
     } catch (err) {
       const code = (err as { code?: string }).code;
       if (code === "BLOCKED") {
-        // Locked: rattle, and the lock shakes.
+        // Locked: rattle, and the lock shakes — and says so in words, for anyone who hears nothing or (with reduced
+        // motion) sees no shake (AC-A11Y-05).
         playOnBoard("lockRattle", mid(wall));
         shake.current = performance.now();
         wake(600);
+        toast.info("The door is locked");
       } else toast.info("Can't reach that door", (err as Error).message);
     }
   };
@@ -95,7 +103,8 @@ function DoorHandle({ wall, dm }: { wall: WallView; dm: boolean }) {
     if (!s) return;
     // The shake: a quick horizontal wobble over 400 ms.
     const t = performance.now() - shake.current;
-    s.position.x = t < 400 ? Math.sin(t / 22) * 0.18 * (1 - t / 400) : 0;
+    // (Never with reduced motion: the rattle's sound says it — AC-A11Y-02.)
+    s.position.x = t < 400 && !prefersReducedMotion() ? Math.sin(t / 22) * 0.18 * (1 - t / 400) : 0;
     if (t < 400) again();
     // Never smaller on screen than a button (28 px; 44 px for touch), however far the camera is.
     here.set(x, 0.9, y).project(camera);

@@ -2021,10 +2021,10 @@
       "code": "ADM",
       "phase": "P12",
       "text": "The Security log records logins, failed logins, knocks, approvals, denials, kicks, bans, invite rotations, API token use and rejected uploads, with time and client IP.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/adminconsole.test.ts AC-ADM-04: admin.login, admin.login.failed, knock, admit, deny, kick, ban, unban, invite.rotate, upload.rejected, api.token.create and api.token.use all recorded, each with a client IP and time, filterable by event, never the token's secret; api.test.ts adds api.token.refused (scope/unknown/remote) and revoke; e2e p12-admin: the Security log page lists Knocked and Banned rows with times and IPs and filters by kind",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-30T11:02:07.176Z"
     },
     {
       "id": "AC-ADM-05",
@@ -2098,10 +2098,10 @@
       "code": "RSP",
       "phase": "P14",
       "text": "On the Low tier at DPR 1 the benchmark scene (§37) holds at least 30 fps in **headed** Chromium on the host GPU with 4× CPU throttling (a proxy for a mid-range phone; headless WebGL is software-rendered and not representative).",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/bench/client.spec.ts › AC-RSP-05 (headed Chromium on the host GPU): the benchmark scene on the Low tier at DPR 1 in a 412×915 viewport with CDP Emulation.setCPUThrottlingRate(4): median 51 fps (19.6 ms), p95 25.2 ms (≥ 30 fps) — artifacts/bench/client.json",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-30T14:06:23.055Z"
     },
     {
       "id": "AC-A11Y-01",
@@ -2340,10 +2340,10 @@
       "code": "SEC",
       "phase": "P15",
       "text": "`pnpm audit --prod` shows no known high or critical vulnerabilities at the end of the build, or each exception is justified in DECISIONS.md.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "pnpm audit --prod (2026-09-30, after P13): 0 info, 0 low, 0 moderate, 0 high, 0 critical across 427 production dependencies (326 direct+transitive, 101 optional); re-run before the final gate",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-30T11:41:06.657Z"
     },
     {
       "id": "AC-PERF-01",
@@ -2351,10 +2351,10 @@
       "code": "PERF",
       "phase": "P15",
       "text": "The benchmark scene holds 60 fps median (p95 frame ≤ 20 ms) on the High tier at 1080p in headed Chromium on the host machine; the bench report records that machine's CPU/GPU. (Target hardware class: Apple M1 / Intel Iris Xe.)",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/bench/client.spec.ts (pnpm bench part 'client', headed Chromium, e2e/bench.config.ts) › AC-PERF-01: the §37 benchmark scene (seeded by POST /api/admin/campaigns/:id/benchmark-scene: 200×150-ft image map, 40 creatures incl. 10 GLB minis of 3 models, 300 walls/12 doors, 20 lights/8 animated, 3 lasting effects, dynamic fog, 4 viewers, combat on), High tier, 1920×1080 at DPR 1, a camera tour: median 200 fps (5.0 ms), p95 9.2 ms (≤ 20) — recorded in artifacts/bench/client.json with the machine: Intel Core i7-10700K, NVIDIA GeForce RTX 2080 SUPER (ANGLE D3D11)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-30T14:06:22.975Z"
     },
     {
       "id": "AC-PERF-02",
@@ -2362,10 +2362,10 @@
       "code": "PERF",
       "phase": "P15",
       "text": "The initial table-route JavaScript is at most 1.2 MB gzipped (the dice physics worker loads lazily and is prefetched when idle).",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "tools/bench-bundle.mjs (pnpm bench part 'bundle'): vite production build with manifest; the table route's initial JS (index.html + routes/Table + board/Board and their static imports) = 1,097,712 B gzipped ≤ 1,200,000; DmPanel and every worker (dice physics among them) outside that set (lazyStayLazy) · e2e/journeys/p15-warmup.spec.ts › AC-PERF-05: the dice physics worker is requested by the player's page while the table idles, before any throw (dice/throws.ts prefetchDice, requestIdleCallback)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-30T14:06:10.416Z"
     },
     {
       "id": "AC-PERF-03",
@@ -2373,10 +2373,10 @@
       "code": "PERF",
       "phase": "P15",
       "text": "Server command handling is under 5 ms at p95 and vision recomputation under 10 ms at p95 in the benchmark.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "pnpm bench parts on the host (i7-10700K): packages/server/src/bench/commands.ts — the real command bus on a 200×150-ft scene with 300 walls/12 doors, 40 creatures, 20 lights; 600 play commands (moves, damage/healing, doors, lights, conditions, edits): p95 2.91 ms (< 5), p50 1.99 · packages/server/src/bench/vision.ts — 8 players, 500 walls, 50 lights, 400 play events through the real vision service: p95 4.46 ms (< 10)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-30T14:06:10.496Z"
     },
     {
       "id": "AC-PERF-04",
@@ -2384,10 +2384,10 @@
       "code": "PERF",
       "phase": "P15",
       "text": "A player joining an already-loaded scene sees the board within 4 s on a 20 Mbps connection (assets cached afterwards).",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/bench/client.spec.ts › AC-PERF-04 (headed): a returning player (app cached) joins after the DM makes the benchmark scene live, over CDP-throttled 20 Mbps down / 5 up / 20 ms: board shown (intro 'board' mark from navigation start) at 2.9 s (≤ 4 s; 2.8–3.5 s across runs); on the next join the map's file comes from the browser cache (fromDiskCache/fromMemoryCache) and the board shows at 2.7 s",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-30T14:06:23.139Z"
     },
     {
       "id": "AC-PERF-05",
@@ -2395,10 +2395,10 @@
       "code": "PERF",
       "phase": "P15",
       "text": "No frame drops longer than 100 ms from shader compilation during play (shaders precompiled with `gl.compileAsync`/warm-up during the intro).",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "Shader warm-up (warmup/Warmup.tsx, precompile.ts; DECISIONS 2026-09-30): e2e/journeys/p15-warmup.spec.ts › AC-PERF-05 — DM and player play through moves, rulers of every shape, pings and the Spotlight, every die, damage/healing/temp HP/conditions, a door and a light, 16 spell looks and lasting areas, emotes, combat, the DM's walls/zones/lights/fog tools, a Low→Medium tier change and three new 3-D-walled scenes: no shader program compiled by a frame after the board showed (probe tells warm-up from drawn compiles; both seen) · e2e/bench/client.spec.ts › AC-PERF-05 (headed GPU): the benchmark scene through spells, dice and tier changes High→Medium→Low→High: 0 drawn compiles, longest frame 23 ms (≤ 100) · warm-up on the RTX 2080 SUPER: 167 programs, 1.2 s",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-30T14:06:23.222Z"
     },
     {
       "id": "AC-DS-01",

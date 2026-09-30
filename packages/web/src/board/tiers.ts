@@ -152,12 +152,29 @@ export const useTier = create<TierStore>((set) => ({
 
 export const tierSpec = () => TIERS[useTier.getState().name];
 
+/**
+ * How a tier change takes effect: at once by default; once the shader warm-up is done, only when the new tier's
+ * shader programs are compiled (warmup/Warmup.tsx) — a step down for a slow machine mustn't stall it further.
+ */
+export const tierSwitch: {
+  apply(name: TierName, patch: Partial<Pick<TierStore, "device" | "pinned" | "reason">>): void;
+} = {
+  apply(name, patch) {
+    useTier.getState().set({ ...patch, name });
+  },
+};
+
 /** Applies the device profile and the user's pin (settings.tier). */
 export function chooseTier(device: DeviceProfile): void {
   const pin = useSettings.getState().tier;
-  if (pin !== "auto")
-    useTier.getState().set({ device, name: pin, pinned: true, reason: "pinned in settings" });
-  else useTier.getState().set({ device, name: initialTier(device), pinned: false, reason: "device profile" });
+  const first = useTier.getState().device === null;
+  const patch =
+    pin !== "auto"
+      ? { name: pin, pinned: true, reason: "pinned in settings" }
+      : { name: initialTier(device), pinned: false, reason: "device profile" };
+  // The first choice is the board's start (nothing drawn yet); later ones are changes.
+  if (first) useTier.getState().set({ ...patch, device });
+  else tierSwitch.apply(patch.name, { device, pinned: patch.pinned, reason: patch.reason });
 }
 
 /**
@@ -229,7 +246,7 @@ export class TierGovernor {
     const i = TIER_ORDER.indexOf(store.name) + dir;
     const next = TIER_ORDER[Math.max(0, Math.min(TIER_ORDER.length - 1, i))] as TierName;
     if (next === store.name) return null;
-    store.set({ name: next, reason });
+    tierSwitch.apply(next, { reason });
     return next;
   }
 }

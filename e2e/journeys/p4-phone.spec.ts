@@ -68,7 +68,8 @@ test.describe("P4 — the HUD on a phone", () => {
     });
     await boardSettled(admin, sceneId);
 
-    // The corner button: the tool in hand, below the top bar, clear of the dock's rail; no rail down the side.
+    // The corner button: the tool in hand, below the top bar, clear of the tab bar along the foot (§29.4); no rail down
+    // the side.
     const header = admin.locator("header").first();
     const tools = admin.getByRole("button", { name: "Tools: Select" });
     await expect(tools).toBeVisible();
@@ -141,7 +142,8 @@ test.describe("P4 — the HUD on a phone", () => {
       expect(sb.x).toBeGreaterThanOrEqual(0);
       expect(sb.x + sb.width).toBeLessThanOrEqual(PHONE.width);
       expect(sb.y + sb.height).toBeLessThanOrEqual(PHONE.height);
-      expect(overlaps(sb, await boxOf(rail)), `${label} sheet clear of the dock's rail`).toBe(false);
+      // The tab bar (§29.4) steps aside while a sheet is up: the sheet rises over the edge it holds.
+      await expect(rail, `the tab bar under the ${label} sheet`).toBeHidden();
       expect(overlaps(sb, await boxOf(header)), `${label} sheet clear of the top bar`).toBe(false);
       const small = (await controls(sheet)).filter((c) => c.box.height < 43.5 || c.box.width < 43.5);
       expect(small, `${label}: controls under 44 px`).toEqual([]);

@@ -15,6 +15,7 @@ import { useTargeting } from "../state/targeting.ts";
 import { useUi } from "../state/ui.ts";
 import { BottomSheet } from "../ui/BottomSheet.tsx";
 import { IconButton } from "../ui/Button.tsx";
+import { EmptyState } from "../ui/EmptyState.tsx";
 import { FormulaText } from "../ui/FormulaText.tsx";
 import { WaxSeal } from "../ui/ornaments.tsx";
 import { Portrait } from "../ui/Portrait.tsx";
@@ -47,6 +48,9 @@ export function RollFeed() {
   const cards = useCardsAtBottom((s) => s.on);
   // A phone aiming a spell needs its board (critic P9 r2 #12): the feed waits under the targeting bar.
   const aiming = useTargeting((s) => s.t !== null);
+  // A phone's rolls, opened from its tab bar's Log (§29.4) — there even before the first roll.
+  const rollsOpen = useUi((s) => s.rollsOpen);
+  if (phone && rollsOpen) return <PhoneRolls feed={feed} />;
   if (feed.length === 0 || (phone && (panel || cards || aiming))) return null;
   return phone ? <PhoneFeed feed={feed} /> : <DesktopFeed feed={feed} />;
 }
@@ -238,10 +242,48 @@ function RollLine({ line, settled, onOpen }: { line: Line; settled: boolean; onO
   );
 }
 
+/** A phone's rolls, newest first, as a bottom sheet (its tab bar's Log). */
+function PhoneRolls({ feed }: { feed: FeedRoll[] }) {
+  const rolling = useRolls((s) => s.rolling);
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const close = () => useUi.getState().set({ rollsOpen: false });
+  return (
+    <BottomSheet
+      label="Rolls"
+      testId="roll-feed"
+      initialSnap={1}
+      header={
+        <header className="flex w-full items-center justify-between pb-1 pl-1">
+          <h2 className="caps text-12 text-fog">Rolls</h2>
+          <IconButton label="Close the rolls" onClick={close}>
+            <X size={18} />
+          </IconButton>
+        </header>
+      }
+    >
+      {feed.length ? (
+        <ol className="flex flex-col gap-1.5">
+          {feed.slice(0, 30).map((r) => (
+            <li key={r.id}>
+              <RollCard
+                roll={r}
+                settled={!rolling.has(r.id)}
+                expanded={expanded === r.id}
+                onToggle={() => setExpanded((e) => (e === r.id ? null : r.id))}
+              />
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <EmptyState art="die" title="No rolls yet. The dice are a tap away in the bar below." />
+      )}
+    </BottomSheet>
+  );
+}
+
 function PhoneFeed({ feed }: { feed: FeedRoll[] }) {
   const rolling = useRolls((s) => s.rolling);
   const bottom = useHudInsets((s) => Math.max(12, s.bottom));
-  const [open, setOpen] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
   const newest = feed[0] as FeedRoll;
   const newestSettled = !rolling.has(newest.id);
@@ -264,37 +306,7 @@ function PhoneFeed({ feed }: { feed: FeedRoll[] }) {
     };
   }, [newestSettled, fresh, newest.id]);
   const ref = useRef<HTMLElement>(null);
-  useObstacle("feed", ref, !open);
-  if (open)
-    return (
-      <BottomSheet
-        label="Rolls"
-        testId="roll-feed"
-        initialSnap={1}
-        header={
-          <header className="flex w-full items-center justify-between pb-1 pl-1">
-            <h2 className="caps text-12 text-fog">Rolls</h2>
-            <IconButton label="Close the rolls" onClick={() => setOpen(false)}>
-              <X size={18} />
-            </IconButton>
-          </header>
-        }
-      >
-        <ol className="flex flex-col gap-1.5">
-          {feed.slice(0, 30).map((r) => (
-            <li key={r.id}>
-              <RollCard
-                roll={r}
-                settled={!rolling.has(r.id)}
-                expanded={expanded === r.id}
-                onToggle={() => setExpanded((e) => (e === r.id ? null : r.id))}
-              />
-            </li>
-          ))}
-        </ol>
-      </BottomSheet>
-    );
-  const latest = !isMasked(newest) && newestSettled ? newest.total : null;
+  useObstacle("feed", ref);
   return (
     <section
       ref={ref}
@@ -303,23 +315,14 @@ function PhoneFeed({ feed }: { feed: FeedRoll[] }) {
       className="pointer-events-none absolute left-3 z-30 flex w-[272px] max-w-[calc(100vw-24px)] flex-col-reverse gap-1.5"
       style={{ bottom }}
     >
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="panel pointer-events-auto flex h-11 min-h-[var(--touch-min)] w-fit items-center gap-3 px-3 text-12 text-muted hover:text-bone"
-        aria-expanded={false}
-        aria-label={`Rolls${latest !== null ? ` (latest ${latest})` : ""}`}
-      >
-        <span className="caps">Rolls</span>
-        {latest !== null ? (
-          <span className="display tabular text-18 leading-none text-bone">{latest}</span>
-        ) : null}
-        <ChevronUp size={14} />
-      </button>
       {fresh === newest.id ? (
         <div className="pointer-events-auto">
           {folded && expanded !== newest.id ? (
-            <RollLine line={{ key: newest.id, rolls: [newest] }} settled onOpen={() => setOpen(true)} />
+            <RollLine
+              line={{ key: newest.id, rolls: [newest] }}
+              settled
+              onOpen={() => useUi.getState().set({ rollsOpen: true })}
+            />
           ) : (
             <RollCard
               roll={newest}

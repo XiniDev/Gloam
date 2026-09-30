@@ -3,6 +3,7 @@ import { create } from "zustand";
 import { ShaderCanvas } from "../board/ambient/ShaderCanvas.tsx";
 import { CANDLE_FLAME, FLAME_UNIFORMS } from "../board/ambient/shaders.ts";
 import { boardDiag, useLoading } from "../board/diag.ts";
+import { useWarmup } from "../board/warmup/state.ts";
 import { useEntities } from "../state/entities.ts";
 import { prefersReducedMotion } from "../state/settings.ts";
 import { provideTestHook } from "../test/hooks.ts";
@@ -20,8 +21,13 @@ export const HUD_STAGGER_MS = 60;
 /** HUD groups that stagger in — top bar, toolbar, dock, board hint; the last starts at (n − 1) × 60 ms. */
 export const HUD_GROUPS = 4;
 const HUD_RISE_MS = 220; // --dur-base (the rise-in animation, globals.css)
-/** The board fades up once its first frame is drawn and its assets are in, or after this long regardless. */
+/**
+ * The board fades up once its first frame is drawn, its shaders are compiled (the warm-up, §24.7), its assets are in
+ * and it runs smoothly. Once warmed, it waits at most this long more for assets and smoothness…
+ */
 const BOARD_WAIT_MAX_MS = 6000;
+/** …and never longer than this in all (a warm-up that can't finish — a lost context — doesn't keep the candle lit). */
+const WARM_WAIT_MAX_MS = __GLOAM_TEST__ ? 120_000 : 25_000; // (test builds warm under software GL when asked)
 /** Skip and reduced-motion fades use the motion tokens (--dur-fast / --dur-base). */
 const SKIP_FADE_MS = 140;
 const REDUCED_FADE_MS = 220;
@@ -93,6 +99,8 @@ export function Intro() {
     let raf = 0;
     let lastFrame = 0;
     let smoothSince = 0;
+    /** When (ms into the intro) the warm-up finished. */
+    let warmedAt = 0;
     // Hold on the lit candle until the board has drawn, loaded, and runs smoothly (never less than the ignition
     // itself): a slow machine pays its warm-up behind the candle instead of stuttering through the fade.
     const waitForBoard = (now: number) => {
@@ -101,11 +109,22 @@ export function Intro() {
       if (boardDiag.firstFrameAt === null || !lastFrame || now - lastFrame >= SMOOTH_FRAME_MS)
         smoothSince = now;
       lastFrame = now;
+      // The warm-up's frames are slow on purpose: smoothness is judged from when it's done.
+      const warmed = useWarmup.getState().phase === "done";
+      if (!warmed) {
+        smoothSince = now;
+        warmedAt = 0;
+      } else if (!warmedAt) warmedAt = elapsed;
       const ready =
+        warmed &&
         boardDiag.firstFrameAt !== null &&
         useLoading.getState().pending === 0 &&
         now - smoothSince >= SMOOTH_WINDOW_MS;
-      if ((ready && elapsed >= (r ? 0 : IGNITE_MS)) || elapsed >= BOARD_WAIT_MAX_MS) {
+      if (
+        (ready && elapsed >= (r ? 0 : IGNITE_MS)) ||
+        (warmed && elapsed - warmedAt >= BOARD_WAIT_MAX_MS) ||
+        elapsed >= WARM_WAIT_MAX_MS
+      ) {
         useIntro.getState().go("board");
         const fade = r ? REDUCED_FADE_MS : BOARD_FADE_MS;
         after(fade, () => {

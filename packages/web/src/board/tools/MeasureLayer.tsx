@@ -39,7 +39,7 @@ export function MeasureLayer() {
   );
 }
 
-function MeasureShapeView({ m, color }: { m: Measurement; color: string }) {
+export function MeasureShapeView({ m, color }: { m: Measurement; color: string }) {
   const units = useUnits();
   const a = m.points[0] as P3;
   const b = m.points[m.points.length - 1] as P3;

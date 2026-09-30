@@ -9,6 +9,7 @@ import { Tooltip } from "../ui/Tooltip.tsx";
 import { type Density, TurnControls } from "./combat/TurnControls.tsx";
 import { ElevationControl } from "./ElevationControl.tsx";
 import { insetMeasures, useCover, useHudInsets, useIsPhone, useMeasuredInset } from "./insets.ts";
+import { TAB_BAR_H } from "./PhoneTabBar.tsx";
 import { RangeToggle } from "./RangeToggle.tsx";
 
 const typing = (t: EventTarget | null) => {
@@ -118,7 +119,12 @@ function Bar({ tray }: { tray: boolean }) {
   return (
     <div
       className="pointer-events-none absolute bottom-4 z-40 flex justify-center"
-      style={phone ? { left: 12, right: 12 } : { left: hudLeft, right: hudRight }}
+      // A phone's bar floats above its tab bar (§29.4), which holds the dice.
+      style={
+        phone
+          ? { left: 12, right: 12, bottom: `calc(${TAB_BAR_H + 12}px + env(safe-area-inset-bottom))` }
+          : { left: hudLeft, right: hudRight }
+      }
     >
       <div
         ref={ref}
@@ -137,7 +143,7 @@ function Bar({ tray }: { tray: boolean }) {
             <div className="flex min-w-0 max-w-full items-end gap-2">
               {controls}
               <div className="flex shrink-0 flex-col-reverse items-center gap-2">
-                <DiceButton open={tray} />
+                {phone ? null : <DiceButton open={tray} />}
                 <RangeToggle />
               </div>
             </div>

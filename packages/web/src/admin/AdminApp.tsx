@@ -6,6 +6,7 @@ import {
   Images,
   Info,
   LogOut,
+  Plug,
   Settings as SettingsIcon,
   ShieldCheck,
   Swords,
@@ -23,6 +24,7 @@ import { FullScreenLoader } from "../ui/FullScreenLoader.tsx";
 import { Filigree, Sparkle } from "../ui/ornaments.tsx";
 import { SoundChip } from "../ui/SoundChip.tsx";
 import { AboutPage } from "./AboutPage.tsx";
+import { ApiPage } from "./ApiPage.tsx";
 import { AssetsPage } from "./AssetsPage.tsx";
 import { CampaignsPage } from "./CampaignsPage.tsx";
 import { ContentPage } from "./ContentPage.tsx";
@@ -201,6 +203,9 @@ function Console() {
           <NavItem to="/admin/content" icon={<BookOpen size={17} />}>
             Content
           </NavItem>
+          <NavItem to="/admin/api" icon={<Plug size={17} />}>
+            API &amp; MCP
+          </NavItem>
           <NavItem to="/admin/settings" icon={<SettingsIcon size={17} />}>
             Settings
           </NavItem>
@@ -239,6 +244,7 @@ function Console() {
           <Route path="saves" element={<SavesPage />} />
           <Route path="assets" element={<AssetsPage />} />
           <Route path="content" element={<ContentPage />} />
+          <Route path="api" element={<ApiPage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="security" element={<SecurityPage />} />
           <Route path="about" element={<AboutPage />} />

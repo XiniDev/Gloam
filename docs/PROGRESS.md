@@ -616,3 +616,47 @@ groundwork; its restart test still to write: spawnServer({ dataDir, env: { PORT 
   wait on the console journey; ADM-04 on P13's API tokens.
 - Open: AC-DEMO-03 (first run under 3 min on software GL), the admin journey, full E2E run failures (p11-music timing,
   p2-tokens ring list updated, p3-movement, p3-tools), P12 key screens + critic, then P13.
+
+## 2026-09-30 — P12 key screens (critic round 1: 5.5/10, fixes in 1fcbe42); P13 local API and MCP (API-01…04 passing)
+
+- P12 passing in full: DMP-01…05, DEMO-01…03, ADM-02/03/04/05/06 (ADM-04 now covers API token use). ADM-01 waits
+  on the API & MCP page's journey (p13-api).
+- Self-review before the critic: toasts never stand on a dialog (top slot, foot, beside it, else they wait with their
+  clocks stopped), revealed creatures drawn in the dark instead of as an empty ring, honest asset sizes, the checklist
+  finding cloudflared, the Security log in words, phone token rows, walls section modes.
+- Critic round 1 (5.5/10) — every blocker and major fixed: unknown walls no longer drawn for players (their
+  silhouettes gave the dungeon away), darker blue-black fog, the DM's view lit as the scene is, revealed creatures
+  dimmed whole (`vision.shown`), wall lines a DM choice, heart/skull death saves, the rail and sections fitting with
+  scroll fades, one label hierarchy, phone campaign/people rows, no sideways scroll on admin pages (new e2e check),
+  named lights, knock toasts not doubled by the inbox, hover-card leaders; most minors too. Round 2 after the reshoot.
+- P13: `/api/v1` (campaigns, summary, spell search, spell/monster/character imports with dry runs and a §26.1 report,
+  sheets, the log) with scoped API tokens (hashed, shown once, host-only unless Allow remote API, lockout on guessing);
+  import schemas generated to docs/schemas and diff-tested; imported monsters become Bestiary NPC sheets; the MCP
+  server (§26.2's eight tools) with a real stdio round-trip test. Admin → API & MCP (tokens, Connect Claude with the
+  real path and the new token) and the missing Settings rows (port — now honoured at start — new-campaign defaults,
+  auto-approve images, allow remote API) are written; their journey (AC-API-05, AC-ADM-01) is next.
+- Open: the full E2E run on 1fcbe42 (running), P12 reshoot + critic round 2, p13-api journey + P13 key screens +
+  critic, then P14 and P15.
+
+## 2026-09-30 — P15 performance: shader warm-up, benchmark scene, `pnpm bench` on the host GPU (PERF-01…05, RSP-05)
+
+- Shader warm-up (§24.7): specimens drawn through the real layers (`useDrawn`) behind the candle, compiled in
+  parallel with the frames paused (1.2 s, 167 programs on the RTX 2080 SUPER; 9.6 s when compiled one at a time);
+  other tiers prepared after the board shows; tier changes wait for their programs; GLB minis/maps compiled before
+  shown. Root causes fixed on the way: three frees a custom shader's ids with its last material (anchors keep them —
+  pings, ribbons, rulers and spell looks recompiled every time they reappeared), a post chain rebuilt per tier change
+  (kept per tier now), PCFSoftShadowMap removed in three r18x (PCF + radius), shadow passes drawn with the last
+  frame's light setup (lights primed on change), the first frames at the store's default tier (tier chosen first).
+- Post-processing on postprocessing directly (`postChain.ts`), @react-three/postprocessing removed; Ultra's unused
+  NormalPass dropped. Minis lit by the nearest real lights (§15.7 step 5, one program for all tiers).
+- `pnpm bench` gains `bundle` (1.10 MB gz ≤ 1.2) and `client` (headed Chromium, e2e/bench.config.ts): High 1080p
+  200 fps median / p95 9.2 ms; Low ×4 CPU 51 fps; join at 20 Mbps 2.9 s; play with tier changes: 0 drawn compiles,
+  longest frame 23 ms. Server: commands p95 2.9 ms, vision p95 4.5 ms. The benchmark scene is seeded on request.
+- Journeys: p15-warmup (DM + player, no drawn compile after the board shows; positive control), p9 Moonbeam drag
+  waits for the camera's slide (the test pressed mid-slide and panned the table).
+- Next: run the uncommitted P13/P14/P15 journeys (p13-api, p14-gestures/targets/a11y, p15-secrecy, phone suites),
+  P12/P13/P14 key screens + critic, RSP-01/04, DS-02/05, HOSTING.md, final audits, full `pnpm test:e2e`.
+
+```
+PASSING 210/224 · DISPUTED 0 · FAILING 14
+```
