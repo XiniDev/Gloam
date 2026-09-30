@@ -38,10 +38,10 @@ export function PartySection() {
       />
     );
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto" data-testid="party-section">
+    <div className="flex flex-col" data-testid="party-section">
       <div className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-3">
         <span className="caps flex-1 text-12 text-brass">Rests</span>
-        <Button size="S" variant="ghost" onClick={() => setResting("short")}>
+        <Button size="S" variant="secondary" onClick={() => setResting("short")}>
           Short rest…
         </Button>
         <Button size="S" variant="secondary" onClick={() => setResting("long")}>

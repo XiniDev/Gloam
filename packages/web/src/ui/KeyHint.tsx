@@ -15,3 +15,15 @@ export function KeyHint({ keys }: { keys: string }) {
     </span>
   );
 }
+
+/**
+ * A button's shortcut as keycaps after its label (never "(W)" in the text), out of its accessible name — the button
+ * carries `aria-keyshortcuts` for that — and gone on touch, where there's no key to press (critic P12 r1 m9).
+ */
+export function ShortcutHint({ keys }: { keys: string }) {
+  return (
+    <span aria-hidden className="ml-1.5 inline-flex pointer-coarse:hidden">
+      <KeyHint keys={keys} />
+    </span>
+  );
+}

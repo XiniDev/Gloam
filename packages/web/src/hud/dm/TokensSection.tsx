@@ -11,6 +11,8 @@ import { useUi } from "../../state/ui.ts";
 import { Button, IconButton } from "../../ui/Button.tsx";
 import { Segmented } from "../../ui/controls.tsx";
 import { EmptyState } from "../../ui/EmptyState.tsx";
+import { ShortcutHint } from "../../ui/KeyHint.tsx";
+import { SECTION_HEADING } from "../../ui/labels.ts";
 import { Menu } from "../../ui/Menu.tsx";
 import { Portrait } from "../../ui/Portrait.tsx";
 import { Tooltip } from "../../ui/Tooltip.tsx";
@@ -150,7 +152,7 @@ function Bestiary() {
   };
   return (
     <section className="flex flex-col gap-2 border-t border-line pt-4" aria-label="Bestiary">
-      <h3 className="caps text-12 text-brass">Bestiary</h3>
+      <h3 className={SECTION_HEADING}>Bestiary</h3>
       {creatures.length || q ? (
         <label className="relative">
           <Search
@@ -237,10 +239,11 @@ export function TokensSection() {
     setPicked(new Set());
   };
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4" data-testid="tokens-section">
+    <div className="flex flex-col gap-3 p-4" data-testid="tokens-section">
       <div className="flex flex-wrap gap-2">
         <Button size="S" variant="secondary" icon={<Plus size={15} />} onClick={openQuickUnit}>
-          Quick unit (Q)
+          Quick unit
+          <ShortcutHint keys="Q" />
         </Button>
         {chosen.length ? (
           <>
@@ -323,7 +326,7 @@ export function TokensSection() {
         disabled={!chosen.length}
         onClick={() => useUi.getState().set({ selection: chosen })}
       >
-        Select the chosen on the board
+        Select these on the board
       </Button>
       <Bestiary />
     </div>

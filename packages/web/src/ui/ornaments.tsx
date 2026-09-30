@@ -10,8 +10,8 @@ export function Filigree({ tone = "brass" }: { tone?: "brass" | "ink" }) {
   const corner = (rot: number, pos: string) => (
     <svg
       aria-hidden
-      width="34"
-      height="34"
+      width="22"
+      height="22"
       viewBox="0 0 34 34"
       className={`pointer-events-none absolute ${pos}`}
       style={{ transform: `rotate(${rot}deg)` }}
@@ -27,10 +27,11 @@ export function Filigree({ tone = "brass" }: { tone?: "brass" | "ink" }) {
   );
   return (
     <>
-      {corner(0, "left-1.5 top-1.5")}
-      {corner(90, "right-1.5 top-1.5")}
-      {corner(180, "bottom-1.5 right-1.5")}
-      {corner(270, "bottom-1.5 left-1.5")}
+      {/* 22 px at a 4-px inset: clear of a 24-px padding's content (at 34 px it touched titles and buttons). */}
+      {corner(0, "left-1 top-1")}
+      {corner(90, "right-1 top-1")}
+      {corner(180, "bottom-1 right-1")}
+      {corner(270, "bottom-1 left-1")}
     </>
   );
 }

@@ -148,6 +148,7 @@ export interface LightView {
   preset: string;
   dmOnly: boolean;
   shuttered: boolean;
+  label: string;
   link?: LinkView;
 }
 

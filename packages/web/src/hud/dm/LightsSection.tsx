@@ -8,9 +8,11 @@ import { useUi } from "../../state/ui.ts";
 import { Button, IconButton } from "../../ui/Button.tsx";
 import { Segmented, Select } from "../../ui/controls.tsx";
 import { EmptyState } from "../../ui/EmptyState.tsx";
+import { ShortcutHint } from "../../ui/KeyHint.tsx";
+import { SECTION_HEADING } from "../../ui/labels.ts";
 import { act } from "./tokenDm.tsx";
 
-const H = "caps text-12 text-brass";
+const H = SECTION_HEADING;
 
 /**
  * DM panel → Lights (SPEC §8.19): the scene's ambient light; the lights on it — each found on the board and opened in
@@ -23,10 +25,17 @@ export function LightsSection() {
   const tokens = useBoard((d) => d.tokens);
   const preset = useLightTool((s) => s.preset);
   if (!scene) return <EmptyState art="candle" title="No scene is showing yet." />;
-  const list = [...lights.values()].sort((a, b) => a.preset.localeCompare(b.preset) || a.x - b.x);
+  // Named ones first, by name; then the rest by preset (and left to right).
+  const list = [...lights.values()].sort(
+    (a, b) =>
+      (a.label ? 0 : 1) - (b.label ? 0 : 1) ||
+      a.label.localeCompare(b.label) ||
+      a.preset.localeCompare(b.preset) ||
+      a.x - b.x,
+  );
   const nameOf = (p: string) => LIGHT_PRESETS.find((x) => x.id === p)?.name ?? "Light";
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-4" data-testid="lights-section">
+    <div className="flex flex-col gap-5 p-4" data-testid="lights-section">
       <section className="flex flex-col gap-2" aria-label="Ambient light">
         <h3 className={H}>Ambient light</h3>
         <Segmented
@@ -63,7 +72,8 @@ export function LightsSection() {
             icon={<Flame size={15} />}
             onClick={() => useUi.getState().set({ tool: "lights", dock: null })}
           >
-            Place on the board (I)
+            Place on the board
+            <ShortcutHint keys="I" />
           </Button>
         </div>
       </section>
@@ -92,10 +102,12 @@ export function LightsSection() {
                     }}
                   >
                     <span className="truncate text-14 text-bone">
-                      {nameOf(l.preset)}
+                      {l.label || nameOf(l.preset)}
                       {carrier ? <span className="text-muted"> · carried by {carrier.name}</span> : null}
                     </span>
                     <span className="tabular text-12 text-muted">
+                      {/* Named: its kind after the name ("Torch · 20/20 ft"). */}
+                      {l.label ? `${nameOf(l.preset)} · ` : ""}
                       {l.bright}/{l.dim} ft{l.dmOnly ? " · only you" : ""}
                       {l.on ? "" : " · out"}
                     </span>
@@ -103,8 +115,8 @@ export function LightsSection() {
                   <IconButton
                     label={
                       l.on
-                        ? `Put out the ${nameOf(l.preset).toLowerCase()}`
-                        : `Light the ${nameOf(l.preset).toLowerCase()}`
+                        ? `Put out the ${(l.label || nameOf(l.preset)).toLowerCase()}`
+                        : `Light the ${(l.label || nameOf(l.preset)).toLowerCase()}`
                     }
                     onClick={() =>
                       act(request("light.toggle", { lightId: l.id, enabled: !l.on }), "Couldn't change it")

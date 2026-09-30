@@ -132,6 +132,8 @@ export interface LightEntity {
   preset: string | null;
   /** Hooded lantern shutter lowered (bright 0, dim 5). */
   shuttered?: boolean;
+  /** What the DM calls it ("Sconce · entrance hall"); unnamed, its preset's name. */
+  label?: string;
 }
 
 export type ZoneKind = "difficult" | "water" | "hazard" | "impassable" | "label";

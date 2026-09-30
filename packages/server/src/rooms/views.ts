@@ -72,6 +72,16 @@ function playerSees(userId: string, t: TokenEntity, perception: Perception): boo
   return perception.perceives(userId, t);
 }
 
+/**
+ * Whether a user holds a token only because it's shown to them outright (revealTo) — they don't own it and nothing of
+ * theirs perceives it. Their board draws it standing in the dark (critic P12 r1 M3).
+ */
+function shownOnly(userId: string, t: TokenEntity, perception: Perception): boolean {
+  if (t.hidden || t.ownerIds.includes(userId)) return false;
+  if (!(t.revealTo === "all" || (Array.isArray(t.revealTo) && t.revealTo.includes(userId)))) return false;
+  return !perception.perceives(userId, t);
+}
+
 /** Players see walls that aren't hidden, plus hidden ones that block sight (as anonymous occluders). */
 function playerSeesWall(w: WallEntity): boolean {
   return !w.hidden || wallBlocksSight(w);
@@ -82,6 +92,8 @@ export class ViewManager {
   private readonly model: CampaignModel;
   private perception: Perception;
   private readonly granted = new Map<Client, Grants>();
+  /** The tokens each client was last told it holds only as shown (`vision.shown`), as a key. */
+  private readonly shown = new Map<Client, string>();
 
   constructor(state: TableState, model: CampaignModel, perception: Perception = OPEN_PERCEPTION) {
     this.state = state;
@@ -244,6 +256,26 @@ export class ViewManager {
       }
     }
     this.granted.set(client, have);
+    // Which of them it holds only because they're shown to it: told when that changes.
+    const only =
+      isDm(viewer.role) || !activeSceneId
+        ? []
+        : this.model
+            .inScene("token", activeSceneId)
+            .filter((t) =>
+              viewer.role === "spectator"
+                ? this.playerIds().every(
+                    (u) => !playerSees(u, t, this.perception) || shownOnly(u, t, this.perception),
+                  ) && this.playerIds().some((u) => playerSees(u, t, this.perception))
+                : shownOnly(viewer.userId, t, this.perception),
+            )
+            .map((t) => t.id)
+            .sort();
+    const key = only.join(",");
+    if ((this.shown.get(client) ?? "") !== key) {
+      this.shown.set(client, key);
+      client.send("vision.shown", { tokenIds: only });
+    }
   }
 
   /**
@@ -264,6 +296,7 @@ export class ViewManager {
   }
 
   forget(client: Client): void {
+    this.shown.delete(client);
     this.granted.delete(client);
   }
 

@@ -8,10 +8,12 @@ import { useViewAs } from "../../state/viewAs.ts";
 import { Button } from "../../ui/Button.tsx";
 import { Segmented, Select } from "../../ui/controls.tsx";
 import { EmptyState } from "../../ui/EmptyState.tsx";
+import { ShortcutHint } from "../../ui/KeyHint.tsx";
+import { SECTION_HEADING } from "../../ui/labels.ts";
 import { toast } from "../../ui/Toast.tsx";
 import { act, overridesOf } from "./tokenDm.tsx";
 
-const H = "caps text-12 text-brass";
+const H = SECTION_HEADING;
 
 /**
  * DM panel → Vision & Fog (SPEC §8.19): the scene's fog mode and ambient light, the fog tools (reveal and hide by
@@ -34,7 +36,7 @@ export function VisionSection() {
     .map((t) => ({ t, with: overridesOf(t).shareVisionWith ?? [] }))
     .filter((x) => x.with.length > 0);
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-4" data-testid="vision-section">
+    <div className="flex flex-col gap-5 p-4" data-testid="vision-section">
       <section className="flex flex-col gap-2" aria-label="Fog of war">
         <h3 className={H}>Fog of war</h3>
         <Segmented
@@ -80,7 +82,8 @@ export function VisionSection() {
               icon={<Paintbrush size={15} />}
               onClick={() => useUi.getState().set({ tool: "fog", dock: null })}
             >
-              Fog tools (B)
+              Fog tools
+              <ShortcutHint keys="B" />
             </Button>
             <Button size="S" variant="ghost" onClick={() => void paintAll(true)}>
               Reveal all{target === "all" ? "" : ` to ${name(target)}`}

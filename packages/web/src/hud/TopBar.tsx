@@ -93,8 +93,10 @@ export function TopBar() {
           className={`panel pointer-events-auto flex min-w-0 items-center gap-2 py-1 pl-3 pr-1 shadow-[inset_0_0_0_1px_var(--brass-600)] ${phone ? "" : "mx-auto"}`}
         >
           <VenetianMask size={16} className="shrink-0 text-brass" aria-hidden />
+          {/* A phone keeps the name (the mask says the rest): "Acting as …" cut it off (critic P12 r1 M13). */}
           <span className="truncate text-14 text-bone">
-            Acting as <span className="font-bold">{acting.name}</span>
+            {phone ? <span className="sr-only">Acting as </span> : "Acting as "}
+            <span className="font-bold">{phone ? acting.name.split(/\s+/)[0] : acting.name}</span>
           </span>
           <Button size="S" variant="ghost" onClick={() => void actAs(null).catch(() => {})}>
             Stop

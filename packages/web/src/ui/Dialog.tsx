@@ -107,18 +107,32 @@ export function useModalFocus(
         close.current();
       }
       if (e.key === "Tab" && ref.current) {
-        const items = [...ref.current.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
-          (el) => el.offsetParent !== null,
-        );
+        // The dialog's controls, then any toast's showing beside it (a knock card's Admit must be reachable without a
+        // mouse: critic P12 r1 m18) — Tab goes round them, never to the page behind.
+        const visible = (el: HTMLElement) => el.offsetParent !== null;
+        const items = [
+          ...ref.current.querySelectorAll<HTMLElement>(FOCUSABLE),
+          ...document.querySelectorAll<HTMLElement>("[data-toast] button"),
+        ].filter(visible);
         if (items.length === 0) return;
+        const at = items.indexOf(document.activeElement as HTMLElement);
+        const inToast = at >= 0 && !ref.current.contains(items[at] as Node);
         const first = items[0] as HTMLElement;
         const last = items[items.length - 1] as HTMLElement;
-        if (e.shiftKey && document.activeElement === first) {
+        if (at < 0 || inToast) {
+          e.preventDefault();
+          const next = at < 0 ? first : items[(at + (e.shiftKey ? -1 : 1) + items.length) % items.length];
+          next?.focus();
+        } else if (e.shiftKey && document.activeElement === first) {
           e.preventDefault();
           last.focus();
         } else if (!e.shiftKey && document.activeElement === last) {
           e.preventDefault();
           first.focus();
+        } else if (!e.shiftKey && at === items.findLastIndex((el) => ref.current?.contains(el))) {
+          // From the dialog's last control to the first toast's.
+          e.preventDefault();
+          (items[at + 1] ?? first).focus();
         }
       }
     };
@@ -268,15 +282,15 @@ function DialogCard({
       </div>
       {children ? <DialogBody>{children}</DialogBody> : null}
       {footer ? (
-        // On a phone the actions stack full-width, the main one on top (a ragged right-aligned wrap
-        // otherwise).
-        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 px-6 pb-6 pt-4 max-sm:[&>div]:w-full max-sm:[&>div]:flex-col-reverse max-sm:[&_button]:w-full">
+        // On a phone the actions stack full-width, the main one (last, as footers list them) on top — a plain row of
+        // buttons wrapped Cancel above Save (critic P12 r1 m10).
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 px-6 pb-6 pt-4 max-sm:flex-col-reverse max-sm:items-stretch max-sm:[&>div]:w-full max-sm:[&>div]:flex-col-reverse max-sm:[&_button]:w-full">
           {footer}
         </div>
       ) : children ? (
         // No buttons: the body's scroll still ends above the corners' filigree (a field scrolled under it read as
         // cut off by the frame).
-        <div className="h-7 shrink-0" aria-hidden />
+        <div className="h-5 shrink-0" aria-hidden />
       ) : null}
     </motion.div>
   );

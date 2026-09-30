@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { type ReactNode, useEffect, useRef } from "react";
 import { create } from "zustand";
 import { PHONE_BOTTOM_BAND, type ScreenArea, useBoardCovers, useCover, useHudInsets } from "../hud/insets.ts";
+import { useUi } from "../state/ui.ts";
 import { provideTestHook } from "../test/hooks.ts";
 import { useModalOpen } from "./Dialog.tsx";
 import { keepHyphenated } from "./text.tsx";
@@ -265,7 +266,11 @@ export function Toaster() {
   const atFoot = table && !beside && (overDialog || dockPage || cardsLow);
   const top = atFoot ? null : under;
   useEffect(() => useToasts.getState().hold(held), [held]);
-  const shown = held ? items.filter(showsWhileHeld) : items;
+  // A knock while the DM panel's Approvals shows it already: the toast would say it twice (critic P12 r1 M10).
+  const inboxOpen = useUi((s) => s.dock === "dm" && s.dmSection === "approvals");
+  const shown = (held ? items.filter(showsWhileHeld) : items).filter(
+    (t) => !(inboxOpen && t.key?.startsWith("knock:")),
+  );
   // Tests: a toast on demand (where it stands beside the HUD).
   useEffect(() => provideTestHook("toast", (title: unknown) => toast.info(String(title))), []);
   return (

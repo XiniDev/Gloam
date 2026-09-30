@@ -80,93 +80,125 @@ export function HoverCard() {
     ? overrideBadges(token, (id) => people.find((p) => p.userId === id)?.name ?? "someone", npcHp)
     : [];
   const customs = parseCustomMarkers(token.customMarkers);
-  const { left, top } = placeCard(token.id, at, W, card.current?.offsetHeight ?? 200);
+  const cardH = card.current?.offsetHeight ?? 200;
+  const { left, top } = placeCard(token.id, at, W, cardH);
+  // Slid away from its token (to keep off another creature's plate): a leader ties them (critic P12 r1 M5).
+  const body = bodyRectOf(token.id) ?? at;
+  const cx = (body.x0 + body.x1) / 2;
+  const cy = (body.y0 + body.y1) / 2;
+  const ex = Math.min(left + W, Math.max(left, cx));
+  const ey = Math.min(top + cardH, Math.max(top, cy));
+  const sx = Math.min(body.x1, Math.max(body.x0, ex));
+  const sy = Math.min(body.y1, Math.max(body.y0, ey));
+  const leader = Math.hypot(ex - sx, ey - sy) > 36;
   return (
-    <div
-      ref={card}
-      role="tooltip"
-      data-testid="hover-card"
-      data-token={token.id}
-      data-waited={waited}
-      className="panel pointer-events-none absolute z-40 flex flex-col gap-1.5 p-3 shadow-[var(--shadow-float)] motion-safe:animate-[rise-in_var(--dur-fast)_var(--ease-out)_both]"
-      style={{ left, top, width: W }}
-    >
-      {/* §8.5: portrait, name, HP (per mode), AC (DM / owner), speeds, conditions with their one-line summaries. */}
-      <div className="flex items-center gap-2.5">
-        <Portrait name={token.name} color={token.ringColor || "var(--line)"} size={40} src={portrait} />
-        <span className="display min-w-0 flex-1 truncate text-18 text-bone">{token.name}</span>
-      </div>
-      <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-13">
-        {hp ? (
-          <>
-            <dt className="caps text-12 text-fog">HP</dt>
-            <dd className="tabular text-bone" data-testid="hover-hp">
-              {hp}
-            </dd>
-          </>
-        ) : null}
-        {token.own ? (
-          <>
-            <dt className="caps text-12 text-fog">AC</dt>
-            <dd className="tabular text-bone" data-testid="hover-ac">
-              {token.own.ac}
-            </dd>
-            <dt className="caps text-12 text-fog">Speed</dt>
-            <dd className="tabular text-bone">{token.own.budgetFt} ft</dd>
-          </>
-        ) : null}
-      </dl>
-      {badges.length ? (
-        <ul
-          className="flex flex-wrap gap-1 border-t border-line/60 pt-2"
-          aria-label="DM settings"
-          data-testid="dm-badges"
+    <>
+      {leader ? (
+        <svg
+          aria-hidden
+          // (Arriving with its card, not before it.)
+          className="pointer-events-none fixed inset-0 z-40 h-full w-full motion-safe:animate-[rise-in_var(--dur-fast)_var(--ease-out)_both]"
+          data-testid="hover-leader"
         >
-          {badges.map((b) => (
-            <li
-              key={b.key}
-              title={b.title}
-              data-badge={b.key}
-              className="inline-flex max-w-full items-center gap-1 rounded-[var(--radius-chip)] border border-brass-deep/60 bg-ink-900 px-1.5 py-0.5 text-12 text-bone"
-            >
-              <b.icon size={12} className="shrink-0 text-brass" aria-hidden />
-              <span className="truncate">{b.text}</span>
-              <span className="sr-only">: {b.title}</span>
-            </li>
-          ))}
-        </ul>
+          <line
+            x1={sx}
+            y1={sy}
+            x2={ex}
+            y2={ey}
+            stroke="var(--ink-950)"
+            strokeWidth={4}
+            strokeOpacity={0.55}
+          />
+          <line x1={sx} y1={sy} x2={ex} y2={ey} stroke="var(--brass-400)" strokeWidth={1.5} />
+          <circle cx={sx} cy={sy} r={3} fill="var(--brass-400)" stroke="var(--ink-950)" strokeWidth={1} />
+        </svg>
       ) : null}
-      {statuses.length || customs.length || token.exhaustion ? (
-        <ul
-          className="flex flex-col gap-1.5 border-t border-line/60 pt-2"
-          aria-label="Conditions and markers"
-        >
-          {token.exhaustion ? (
-            <Condition
-              icon={<StatusIcon id="exhaustion" size={18} badge label="" level={token.exhaustion} />}
-              name={`Exhaustion ${token.exhaustion}`}
-              summary={statusSummary("exhaustion")}
-            />
+      <div
+        ref={card}
+        role="tooltip"
+        data-testid="hover-card"
+        data-token={token.id}
+        data-waited={waited}
+        className="panel pointer-events-none absolute z-40 flex flex-col gap-1.5 p-3 shadow-[var(--shadow-float)] motion-safe:animate-[rise-in_var(--dur-fast)_var(--ease-out)_both]"
+        style={{ left, top, width: W }}
+      >
+        {/* §8.5: portrait, name, HP (per mode), AC (DM / owner), speeds, conditions with their one-line summaries. */}
+        <div className="flex items-center gap-2.5">
+          <Portrait name={token.name} color={token.ringColor || "var(--line)"} size={40} src={portrait} />
+          <span className="display min-w-0 flex-1 truncate text-18 text-bone">{token.name}</span>
+        </div>
+        <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-13">
+          {hp ? (
+            <>
+              <dt className="caps text-12 text-fog">HP</dt>
+              <dd className="tabular text-bone" data-testid="hover-hp">
+                {hp}
+              </dd>
+            </>
           ) : null}
-          {statuses.slice(0, 8).map((id) => (
-            <Condition
-              key={id}
-              icon={<StatusIcon id={id} size={18} badge label="" />}
-              name={statusName(id)}
-              summary={statusSummary(id)}
-            />
-          ))}
-          {customs.map((c) => (
-            <Condition
-              key={c.id}
-              icon={<StatusIcon id={c.id} size={18} badge label="" glyph={c.glyph} color={c.color} />}
-              name={c.label}
-              summary={c.description}
-            />
-          ))}
-        </ul>
-      ) : null}
-    </div>
+          {token.own ? (
+            <>
+              <dt className="caps text-12 text-fog">AC</dt>
+              <dd className="tabular text-bone" data-testid="hover-ac">
+                {token.own.ac}
+              </dd>
+              <dt className="caps text-12 text-fog">Speed</dt>
+              <dd className="tabular text-bone">{token.own.budgetFt} ft</dd>
+            </>
+          ) : null}
+        </dl>
+        {badges.length ? (
+          <ul
+            className="flex flex-wrap gap-1 border-t border-line/60 pt-2"
+            aria-label="DM settings"
+            data-testid="dm-badges"
+          >
+            {badges.map((b) => (
+              <li
+                key={b.key}
+                title={b.title}
+                data-badge={b.key}
+                className="inline-flex max-w-full items-center gap-1 rounded-[var(--radius-chip)] border border-brass-deep/60 bg-ink-900 px-1.5 py-0.5 text-12 text-bone"
+              >
+                <b.icon size={12} className="shrink-0 text-brass" aria-hidden />
+                <span className="truncate">{b.text}</span>
+                <span className="sr-only">: {b.title}</span>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        {statuses.length || customs.length || token.exhaustion ? (
+          <ul
+            className="flex flex-col gap-1.5 border-t border-line/60 pt-2"
+            aria-label="Conditions and markers"
+          >
+            {token.exhaustion ? (
+              <Condition
+                icon={<StatusIcon id="exhaustion" size={18} badge label="" level={token.exhaustion} />}
+                name={`Exhaustion ${token.exhaustion}`}
+                summary={statusSummary("exhaustion")}
+              />
+            ) : null}
+            {statuses.slice(0, 8).map((id) => (
+              <Condition
+                key={id}
+                icon={<StatusIcon id={id} size={18} badge label="" />}
+                name={statusName(id)}
+                summary={statusSummary(id)}
+              />
+            ))}
+            {customs.map((c) => (
+              <Condition
+                key={c.id}
+                icon={<StatusIcon id={c.id} size={18} badge label="" glyph={c.glyph} color={c.color} />}
+                name={c.label}
+                summary={c.description}
+              />
+            ))}
+          </ul>
+        ) : null}
+      </div>
+    </>
   );
 }
 

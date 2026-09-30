@@ -656,7 +656,13 @@ function FirstCampaign({ onCreated }: { onCreated: () => void }) {
           onChange={(e) => setName(e.target.value)}
           placeholder="e.g. The Lantern Crypt"
         />
-        <Button type="submit" variant="primary" loading={busy} disabled={!name.trim()}>
+        {/* One main action at a time: the demo until a name is typed, then making it (critic P12 r1 m16). */}
+        <Button
+          type="submit"
+          variant={name.trim() ? "primary" : "secondary"}
+          loading={busy}
+          disabled={!name.trim()}
+        >
           Create campaign
         </Button>
       </div>
@@ -668,7 +674,12 @@ function FirstCampaign({ onCreated }: { onCreated: () => void }) {
             to open and play in a minute.
           </p>
         </div>
-        <Button type="button" variant="secondary" loading={demoBusy} onClick={() => void demo()}>
+        <Button
+          type="button"
+          variant={name.trim() ? "secondary" : "primary"}
+          loading={demoBusy}
+          onClick={() => void demo()}
+        >
           Start with the demo
         </Button>
       </div>

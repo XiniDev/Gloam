@@ -81,7 +81,7 @@ export function SecurityPage() {
     void load(event).catch((e: Error) => toast.danger("Couldn't load the log", e.message));
   }, [event, load]);
   return (
-    <div className="max-w-[1040px]" data-testid="security-page">
+    <div className="max-w-[880px]" data-testid="security-page">
       <header>
         <h1 className="text-36 text-bone">Security log</h1>
         <p className="mt-1 text-14 text-muted">
@@ -90,7 +90,7 @@ export function SecurityPage() {
         </p>
       </header>
       <section className="panel mt-6 flex flex-col gap-4 p-5 sm:p-6" aria-label="Events">
-        <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="flex items-center gap-2 text-22 text-bone">
             <ShieldCheck size={20} aria-hidden /> Events
           </h2>

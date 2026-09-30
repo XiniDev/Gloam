@@ -100,8 +100,9 @@ test.describe("P12 — the Admin console (ADM)", () => {
     await expect(admin.getByTestId("asset-campaign").filter({ hasText: "The Lantern Crypt" })).toContainText(
       "2 uploads",
     );
-    await admin.getByRole("button", { name: "Clean up unused files" }).click();
-    await expect(admin.getByText(/Nothing to clean up|Cleaned up/)).toBeVisible();
+    // Nothing unused yet: the clean-up says so and waits (a button that did nothing: critic P12 r1 m12).
+    await expect(admin.getByRole("button", { name: "Clean up unused files" })).toBeDisabled();
+    await expect(admin.getByText("Nothing to clean up: every file is in use.")).toBeVisible();
 
     // ── Content: the SRD pack per campaign ──
     await nav(admin, "Content");
@@ -131,3 +132,52 @@ test.describe("P12 — the Admin console (ADM)", () => {
     await admin.screenshot({ path: `${SHOTS}/admin-about.png` });
   });
 });
+
+/** Every admin page on a phone: nothing runs past the screen's edge (AC-RSP-01; critic P12 r1 B2 — a URL did). */
+for (const width of [360, 390])
+  test.describe(`P12 — the Admin console at ${width} px`, () => {
+    test.use({ viewport: { width, height: 800 } });
+    test(`no admin page scrolls sideways at ${width} px`, async ({ admin }) => {
+      test.setTimeout(120_000);
+      await admin.getByRole("button", { name: "Start with the demo" }).click();
+      await expect(admin.getByText("The Lantern Crypt is ready")).toBeVisible({ timeout: 30_000 });
+      for (const name of [
+        "Table",
+        "People",
+        "Campaigns",
+        "Saves",
+        "Assets",
+        "Content",
+        "Settings",
+        "Security log",
+        "About",
+      ]) {
+        const link = admin
+          .getByRole("navigation", { name: "Admin sections" })
+          .getByRole("link", { name, exact: true });
+        await link.scrollIntoViewIfNeeded();
+        await link.click();
+        await expect(admin.getByRole("heading", { level: 1 }).first()).toBeVisible();
+        // (Content loaded: the page's own data, then the measure.)
+        await admin.waitForLoadState("networkidle");
+        const over = await admin.evaluate(() => {
+          const d = document.documentElement;
+          // Past the edge and not inside something that clips or scrolls it within the screen (a scrolling strip).
+          const clipped = (el: HTMLElement) => {
+            for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+              const o = getComputedStyle(p).overflowX;
+              if (o !== "visible" && p.getBoundingClientRect().right <= d.clientWidth + 0.5) return true;
+            }
+            return false;
+          };
+          const wide = [...document.querySelectorAll<HTMLElement>("main *")]
+            .filter((el) => el.getBoundingClientRect().right > d.clientWidth + 0.5)
+            .filter((el) => !clipped(el))
+            .slice(0, 3)
+            .map((el) => `${el.tagName.toLowerCase()}.${String(el.className).slice(0, 40)}`);
+          return { scroll: d.scrollWidth - d.clientWidth, wide };
+        });
+        expect(over, `${name} at ${width} px`).toEqual({ scroll: 0, wide: [] });
+      }
+    });
+  });

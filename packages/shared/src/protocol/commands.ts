@@ -353,6 +353,8 @@ const LightFields = z.strictObject({
   enabled: z.boolean(),
   dmOnly: z.boolean(),
   elevation: z.number().finite().min(-1000).max(10_000),
+  /** Its name in the DM's lists ("" clears it). */
+  label: z.string().trim().max(60),
 });
 /** `light.create` (DM): a free-standing light, or one carried by a token; `preset` fills radii from §34.3. */
 export const LightCreate = LightFields.partial().extend({

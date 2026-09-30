@@ -141,7 +141,8 @@ export const BOARD_COLORS = {
   hemiSky: "#1A2230",
   hemiGround: "#0A0C10",
   keyLight: "#FFD9A8",
-  warFog: "#0A0F1A",
+  /** §15.7's deep blue-black: near ink-950, the blue only a breath (at #0A0F1A its drift read as a navy slab). */
+  warFog: "#080B11",
   exploredTint: "#6F86A8",
   oak: "#5A3A22",
   oakDark: "#2A1A10",

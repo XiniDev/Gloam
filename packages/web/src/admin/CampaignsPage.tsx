@@ -1,4 +1,4 @@
-import { Archive, ArchiveRestore, Pencil, Plus, Sparkles, Star, Trash2 } from "lucide-react";
+import { Archive, ArchiveRestore, Pencil, Plus, Star, Trash2 } from "lucide-react";
 import { type FormEvent, useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { get, patch, post } from "../net/http.ts";
@@ -6,6 +6,8 @@ import { Button } from "../ui/Button.tsx";
 import { Dialog } from "../ui/Dialog.tsx";
 import { EmptyState } from "../ui/EmptyState.tsx";
 import { TextInput } from "../ui/Field.tsx";
+import { Menu } from "../ui/Menu.tsx";
+import { Sparkle } from "../ui/ornaments.tsx";
 import { toast } from "../ui/Toast.tsx";
 
 interface CampaignItem {
@@ -65,6 +67,21 @@ export function CampaignsPage() {
   };
   const live = (list ?? []).filter((c) => !c.archived);
   const archived = (list ?? []).filter((c) => c.archived);
+  const rename = (c: CampaignItem) => {
+    setRenaming(c);
+    setNewName(c.name);
+  };
+  const archive = (c: CampaignItem) =>
+    void run(
+      `archive:${c.id}`,
+      () => patch(`/api/admin/campaigns/${c.id}`, { archived: !c.archived }),
+      c.archived ? `${c.name} is back` : `${c.name} is archived`,
+      "Couldn't do that",
+    );
+  const remove = (c: CampaignItem) => {
+    setDeleting(c);
+    setConfirm("");
+  };
   const row = (c: CampaignItem) => (
     <li
       key={c.id}
@@ -72,21 +89,22 @@ export function CampaignsPage() {
       data-testid="campaign-row"
       data-campaign={c.id}
     >
-      <span className="flex min-w-0 flex-1 flex-col">
-        <span className="flex items-center gap-2">
-          <span className="truncate text-16 font-bold text-bone">{c.name}</span>
+      {/* Who it is takes the row's width on a phone, its actions below (squeezed beside them, the name went). */}
+      <span className="flex min-w-0 flex-[1_1_16rem] flex-col">
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="min-w-0 truncate text-16 font-bold text-bone">{c.name}</span>
           {c.selected ? (
-            <span className="caps inline-flex items-center gap-1 text-12 text-brass">
-              <Star size={12} aria-hidden /> The table's
+            <span className="caps inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-12 text-brass">
+              <Star size={12} aria-hidden /> At the table
             </span>
           ) : null}
         </span>
         <span className="text-13 text-muted">
-          {c.sessionNo ? `${c.sessionNo} ${c.sessionNo === 1 ? "session" : "sessions"}` : "Not played yet"} ·
+          {c.sessionNo ? `${c.sessionNo} ${c.sessionNo === 1 ? "session" : "sessions"}` : "Not played yet"} ·
           made <span className="whitespace-nowrap">{day(c.createdAt)}</span>
         </span>
       </span>
-      <span className="flex flex-wrap gap-1">
+      <span className="flex flex-wrap items-center gap-1">
         {!c.selected && !c.archived ? (
           <Button
             size="S"
@@ -104,44 +122,38 @@ export function CampaignsPage() {
             Use at the table
           </Button>
         ) : null}
-        <Button
-          size="S"
-          variant="ghost"
-          icon={<Pencil size={14} />}
-          onClick={() => {
-            setRenaming(c);
-            setNewName(c.name);
-          }}
-        >
-          Rename
-        </Button>
-        <Button
-          size="S"
-          variant="ghost"
-          icon={c.archived ? <ArchiveRestore size={14} /> : <Archive size={14} />}
-          loading={busy === `archive:${c.id}`}
-          onClick={() =>
-            void run(
-              `archive:${c.id}`,
-              () => patch(`/api/admin/campaigns/${c.id}`, { archived: !c.archived }),
-              c.archived ? `${c.name} is back` : `${c.name} is archived`,
-              "Couldn't do that",
-            )
-          }
-        >
-          {c.archived ? "Bring back" : "Archive"}
-        </Button>
-        <Button
-          size="S"
-          variant="danger"
-          icon={<Trash2 size={14} />}
-          onClick={() => {
-            setDeleting(c);
-            setConfirm("");
-          }}
-        >
-          Delete
-        </Button>
+        {/* Wide: each at hand. A phone: one menu of them. */}
+        <span className="contents max-sm:hidden">
+          <Button size="S" variant="ghost" icon={<Pencil size={14} />} onClick={() => rename(c)}>
+            Rename
+          </Button>
+          <Button
+            size="S"
+            variant="ghost"
+            icon={c.archived ? <ArchiveRestore size={14} /> : <Archive size={14} />}
+            loading={busy === `archive:${c.id}`}
+            onClick={() => archive(c)}
+          >
+            {c.archived ? "Bring back" : "Archive"}
+          </Button>
+          <Button size="S" variant="danger" icon={<Trash2 size={14} />} onClick={() => remove(c)}>
+            Delete
+          </Button>
+        </span>
+        <span className="sm:hidden">
+          <Menu
+            label={`${c.name}: more`}
+            items={[
+              { label: "Rename", icon: <Pencil size={15} />, onSelect: () => rename(c) },
+              {
+                label: c.archived ? "Bring back" : "Archive",
+                icon: c.archived ? <ArchiveRestore size={15} /> : <Archive size={15} />,
+                onSelect: () => archive(c),
+              },
+              { label: "Delete…", icon: <Trash2 size={15} />, danger: true, onSelect: () => remove(c) },
+            ]}
+          />
+        </span>
       </span>
     </li>
   );
@@ -174,7 +186,7 @@ export function CampaignsPage() {
           </Button>
           <Button
             variant="ghost"
-            icon={<Sparkles size={16} />}
+            icon={<Sparkle size={16} />}
             loading={busy === "demo"}
             onClick={() =>
               void run(

@@ -266,7 +266,12 @@ test.describe("P3 — the Walls tool (WAL-02, WAL-07)", () => {
         all.push({ a: { x: x + 4.75, y }, b: { x: x + 4.75, y: y + 4 } });
       }
     expect(all).toHaveLength(1000);
+    // The Walls tool out from the start: the overlay draws every wall (with 3D walls on and no tool it draws only the
+    // special ones) — its first draw holds the first 500, and it must grow to the thousand.
+    await admin.keyboard.press("w");
     await req(admin, "wall.create", { sceneId, walls: all.slice(0, 500) });
+    await expect.poll(async () => (await walls(admin)).length).toBe(500);
+    await admin.waitForTimeout(300);
     await req(admin, "wall.create", { sceneId, walls: all.slice(500) });
     await expect.poll(async () => (await walls(admin)).length).toBe(1000);
     await camera(admin, { pitchDeg: 90, distance: 190, target: [100, 66], ms: 0 });
@@ -275,7 +280,6 @@ test.describe("P3 — the Walls tool (WAL-02, WAL-07)", () => {
     await expect
       .poll(() => hook<{ segments: number; drawn: number | null }>(admin, "wallsOverlay"))
       .toEqual({ segments: 1000, drawn: 1000 });
-    await admin.keyboard.press("w");
     await admin.getByRole("radio", { name: "Select walls" }).click();
 
     // A joint drag: select a wall mid-warren and drag its shared end in a circle for 60 moves.

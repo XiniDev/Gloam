@@ -1,4 +1,4 @@
-import { HardDrive, Sparkles } from "lucide-react";
+import { Eraser, HardDrive } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { get, post } from "../net/http.ts";
 import { Button } from "../ui/Button.tsx";
@@ -86,14 +86,17 @@ export function AssetsPage() {
         <div className="flex flex-wrap items-center gap-3">
           <Button
             variant="secondary"
-            icon={<Sparkles size={16} />}
+            icon={<Eraser size={16} />}
             loading={busy}
+            disabled={o !== null && orphans === 0}
             onClick={() => void cleanup()}
           >
             Clean up unused files
           </Button>
           <p className="text-13 text-muted">
-            Only files no upload uses, and uploads turned down more than a day ago.
+            {o !== null && orphans === 0
+              ? "Nothing to clean up: every file is in use."
+              : "Removes files nothing uses any more, and uploads turned down over a day ago."}
           </p>
         </div>
       </section>

@@ -1,6 +1,7 @@
 import { DEFAULT_HOUSE_RULES, type HouseRules } from "@gloam/shared/schemas";
 import { request, useTable } from "../../net/table.ts";
 import { Select, Slider, Toggle } from "../../ui/controls.tsx";
+import { FIELD_LABEL, SECTION_HEADING } from "../../ui/labels.ts";
 import { act } from "./tokenDm.tsx";
 
 type Choice<K extends keyof HouseRules> = { value: HouseRules[K] & string; label: string }[];
@@ -42,7 +43,7 @@ function setRule<K extends keyof HouseRules>(k: K, v: HouseRules[K]): void {
 function Group({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="flex flex-col gap-4" aria-label={title}>
-      <h3 className="caps border-b border-line pb-1 text-12 text-brass">{title}</h3>
+      <h3 className={SECTION_HEADING}>{title}</h3>
       {children}
     </section>
   );
@@ -56,10 +57,10 @@ export function HouseRulesPanel() {
   const rules = useTable((s) => s.houseRules);
   const pack = useTable((s) => s.rulesPack);
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto p-4" data-testid="house-rules">
+    <div className="flex flex-col gap-6 p-4" data-testid="house-rules">
       <Group title="Rules">
         <div className="flex flex-col gap-1">
-          <span className="caps text-12 text-fog">Rules pack</span>
+          <span className={FIELD_LABEL}>Rules pack</span>
           <span className="text-14 text-bone">{pack === "srd-5.1" ? "SRD 5.1" : "SRD 5.2.1"}</span>
           <p className="text-12 text-muted">
             The rules this campaign plays by (set when the campaign is made).

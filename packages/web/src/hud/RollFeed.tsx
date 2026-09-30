@@ -195,10 +195,22 @@ function lines(feed: FeedRoll[], max: number): Line[] {
 function RollLine({ line, settled, onOpen }: { line: Line; settled: boolean; onOpen: () => void }) {
   const me = useTable((s) => s.me?.userId);
   const r = line.rolls[0] as FeedRoll;
+  const role = useTable((s) => s.presence.find((p) => p.userId === r.userId)?.role);
   const masked = isMasked(r);
   const many = line.rolls.length;
-  const byDm = masked ? r.byDm : false;
-  const who = masked ? (many > 1 ? `The DM rolled ${many} times` : r.text) : r.userId === me ? "You" : r.name;
+  // As its card says it (critic P12 r1 M14): the DM's rolls sealed, a character's rolled by the DM "DM as …", a formula
+  // in the mono face.
+  const acting = !isMasked(r) && r.actingAs ? r.actingAs : null;
+  const byDm = masked ? r.byDm : role === "dm" || role === "admin";
+  const who = masked
+    ? many > 1
+      ? `The DM rolled ${many} times`
+      : r.text
+    : acting
+      ? `DM as ${acting}`
+      : r.userId === me
+        ? "You"
+        : r.name;
   const what = masked ? null : r.label || r.formula;
   return (
     <button
@@ -209,10 +221,11 @@ function RollLine({ line, settled, onOpen }: { line: Line; settled: boolean; onO
       style={{ borderLeftColor: byDm ? "var(--wax-500)" : (!masked && r.color) || "var(--border)" }}
       title={what ? `${who}: ${what}` : who}
     >
+      {byDm ? <WaxSeal size={14} /> : null}
       <span className="min-w-0 flex-1 truncate text-12 text-bone/85">
         {what ? (
           <>
-            {what} <span className="text-muted">· {who}</span>
+            <span className={r.label ? "" : "mono"}>{what}</span> <span className="text-muted">· {who}</span>
           </>
         ) : (
           who

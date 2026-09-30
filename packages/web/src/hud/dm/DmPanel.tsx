@@ -2,6 +2,7 @@ import { Search } from "lucide-react";
 import { useUi } from "../../state/ui.ts";
 import { KeyHint } from "../../ui/KeyHint.tsx";
 import { WaxSeal } from "../../ui/ornaments.tsx";
+import { ScrollFade } from "../../ui/ScrollFade.tsx";
 import { Tooltip } from "../../ui/Tooltip.tsx";
 import { ApprovalsPanel, useApprovalsCount } from "./ApprovalsPanel.tsx";
 import { CombatPanel } from "./CombatPanel.tsx";
@@ -31,22 +32,29 @@ function DmRail() {
   const section = useUi((s) => s.dmSection);
   const waiting = useApprovalsCount();
   return (
-    <div
-      role="tablist"
-      aria-label="DM panel sections"
-      aria-orientation="vertical"
-      className="flex w-12 shrink-0 flex-col items-center gap-0.5 overflow-y-auto border-r border-line py-1.5"
-      onKeyDown={(e) => {
-        // Up/Down move between the sections (the tablist pattern).
-        if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
-        e.preventDefault();
-        const i = SECTIONS.findIndex((s) => s.id === section);
-        const next = SECTIONS[(i + (e.key === "ArrowDown" ? 1 : -1) + SECTIONS.length) % SECTIONS.length];
-        if (!next) return;
-        useUi.getState().set({ dmSection: next.id });
-        requestAnimationFrame(() =>
-          (e.currentTarget.querySelector(`[data-section="${next.id}"]`) as HTMLElement | null)?.focus(),
-        );
+    // Seventeen sections fit a 768-px screen at 36 px each; shorter, the rail scrolls and its ends say so (a section cut
+    // in half with no hint was a secret: critic P12 r1 M6).
+    <ScrollFade
+      outerClassName="w-12 shrink-0 border-r border-line"
+      className="flex flex-col items-center py-1.5"
+      testId="dm-rail-more"
+      scrollerProps={{
+        role: "tablist",
+        "aria-label": "DM panel sections",
+        "aria-orientation": "vertical",
+        onKeyDown: (e) => {
+          // Up/Down move between the sections (the tablist pattern).
+          if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+          e.preventDefault();
+          const i = SECTIONS.findIndex((s) => s.id === section);
+          const next = SECTIONS[(i + (e.key === "ArrowDown" ? 1 : -1) + SECTIONS.length) % SECTIONS.length];
+          if (!next) return;
+          useUi.getState().set({ dmSection: next.id });
+          const rail = e.currentTarget;
+          requestAnimationFrame(() =>
+            (rail.querySelector(`[data-section="${next.id}"]`) as HTMLElement | null)?.focus(),
+          );
+        },
       }}
     >
       {SECTIONS.map((s) => {
@@ -63,7 +71,7 @@ function DmRail() {
               tabIndex={on ? 0 : -1}
               data-section={s.id}
               onClick={() => useUi.getState().set({ dmSection: s.id })}
-              className={`hit relative grid h-10 w-10 shrink-0 place-items-center rounded-[var(--radius-control)] transition-colors duration-[var(--dur-fast)] ${
+              className={`hit relative grid h-9 w-9 shrink-0 place-items-center rounded-[var(--radius-control)] transition-colors duration-[var(--dur-fast)] ${
                 on
                   ? "bg-raised text-brass-bright shadow-[inset_0_0_0_1px_var(--brass-600)]"
                   : "text-muted hover:bg-raised hover:text-bone"
@@ -82,7 +90,7 @@ function DmRail() {
           </Tooltip>
         );
       })}
-    </div>
+    </ScrollFade>
   );
 }
 
@@ -125,10 +133,26 @@ export default function DmPanel() {
           data-section={section}
         >
           {section === "scenes" ? <ScenesPanel /> : null}
-          {section === "tokens" ? <TokensSection /> : null}
-          {section === "vision" ? <VisionSection /> : null}
-          {section === "walls" ? <WallsSection /> : null}
-          {section === "lights" ? <LightsSection /> : null}
+          {section === "tokens" ? (
+            <ScrollFade>
+              <TokensSection />
+            </ScrollFade>
+          ) : null}
+          {section === "vision" ? (
+            <ScrollFade>
+              <VisionSection />
+            </ScrollFade>
+          ) : null}
+          {section === "walls" ? (
+            <ScrollFade>
+              <WallsSection />
+            </ScrollFade>
+          ) : null}
+          {section === "lights" ? (
+            <ScrollFade>
+              <LightsSection />
+            </ScrollFade>
+          ) : null}
           {section === "combat" ? <CombatPanel /> : null}
           {section === "health" ? <HealthPanel /> : null}
           {section === "requests" ? <RequestsPanel /> : null}
@@ -136,16 +160,25 @@ export default function DmPanel() {
           {section === "spells" ? <SpellsPanel /> : null}
           {section === "library" ? <LibraryPanel /> : null}
           {section === "sound" ? <SoundPanel /> : null}
-          {section === "party" ? <PartySection /> : null}
+          {section === "party" ? (
+            <ScrollFade>
+              <PartySection />
+            </ScrollFade>
+          ) : null}
           {section === "handouts" ? (
-            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+            // (Its sections' ends fade where there's more: never a field sliced by the frame, critic P12 r1 M7.)
+            <ScrollFade>
               <HandoutsPanel />
               <NotesSection />
-            </div>
+            </ScrollFade>
           ) : null}
           {section === "approvals" ? <ApprovalsPanel /> : null}
           {section === "history" ? <HistoryPanel /> : null}
-          {section === "rules" ? <HouseRulesPanel /> : null}
+          {section === "rules" ? (
+            <ScrollFade>
+              <HouseRulesPanel />
+            </ScrollFade>
+          ) : null}
         </div>
       </div>
     </div>

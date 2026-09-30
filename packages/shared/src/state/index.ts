@@ -170,6 +170,8 @@ export const LightS = schema(
     dmOnly: t.boolean(),
     /** A hooded lantern's hood is down (its radii already say so). */
     shuttered: t.boolean(),
+    /** Its name in the DM's lists ("" = its preset's). */
+    label: t.string(),
     link: t.ref(LinkS).view(TAG_LINK), // carried lights: the server moves x/y with the carrier
   },
   "Light",

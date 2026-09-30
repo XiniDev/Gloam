@@ -167,13 +167,14 @@ export async function createLanternCrypt(ctx: ServerContext, by: Uploader): Prom
     };
     const lights: LightEntity[] = [
       // Wall sconces: torches on the walls, flickering.
-      light({ x: 6, y: 35 }, "torch"),
-      light({ x: 41, y: 14 }, "torch"),
-      light({ x: 74, y: 14 }, "torch"),
-      light({ x: 41, y: 56 }, "torch"),
-      light({ x: 74, y: 56 }, "torch"),
+      light({ x: 6, y: 35 }, "torch", { label: "Sconce · entrance hall" }),
+      light({ x: 41, y: 14 }, "torch", { label: "Sconce · crypt, north-west" }),
+      light({ x: 74, y: 14 }, "torch", { label: "Sconce · crypt, north-east" }),
+      light({ x: 41, y: 56 }, "torch", { label: "Sconce · crypt, south-west" }),
+      light({ x: 74, y: 56 }, "torch", { label: "Sconce · crypt, south-east" }),
       // The brazier at the crypt's heart.
       light({ x: 57.5, y: 35 }, "torch", {
+        label: "Brazier",
         preset: null,
         bright: 10,
         dim: 10,
@@ -182,6 +183,7 @@ export async function createLanternCrypt(ctx: ServerContext, by: Uploader): Prom
       }),
       // A shaft of moonlight in the flooded chamber: dim, cold, still.
       light({ x: 108, y: 44 }, "torch", {
+        label: "Moon shaft",
         preset: null,
         bright: 0,
         dim: 10,

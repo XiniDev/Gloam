@@ -136,7 +136,7 @@ function Knock({ k, admin }: { k: KnockCard; admin: boolean }) {
         <Button size="S" variant="secondary" onClick={() => decide("admitSpectator")}>
           As spectator
         </Button>
-        <Button size="S" variant="ghost" onClick={() => decide("deny")}>
+        <Button size="S" variant="secondary" onClick={() => decide("deny")}>
           Deny
         </Button>
         {admin ? (

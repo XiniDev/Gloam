@@ -186,6 +186,7 @@ export function OverviewTab({ ctx }: { ctx: SheetCtx }) {
           <Pips
             label="Death save successes"
             tone="ink"
+            shape="success"
             total={3}
             filled={c.deathSaves.successes}
             disabled={ro}
@@ -196,6 +197,7 @@ export function OverviewTab({ ctx }: { ctx: SheetCtx }) {
           <span className="text-13 text-paper-muted">Failures</span>
           <Pips
             label="Death save failures"
+            shape="failure"
             total={3}
             filled={c.deathSaves.failures}
             disabled={ro}

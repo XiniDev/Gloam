@@ -41,6 +41,7 @@ import { moveAnimAt, moveAnimFade } from "../move/anims.ts";
 import { pressToken } from "../move/input.ts";
 import { TIERS, useTier } from "../tiers.ts";
 import { withFog } from "../vision/fogMaterial.ts";
+import { useShownOnly } from "../vision/shown.ts";
 import { alphaFromAlphaChannel } from "./alphaChannel.ts";
 import { AUTO_COIN_PITCH, approach, fadeFrame } from "./crossfade.ts";
 import {
@@ -296,6 +297,9 @@ export const TokenObject = memo(function TokenObject({
   const [gradeAt] = useState(() => new Vector2(token.pos.x, token.pos.y));
   const hidden = token.dm?.dmHidden === true; // only DMs ever receive hidden tokens (AC-TOK-08)
   const baseOpacity = hidden ? 0.4 : 1;
+  // Held only because it's shown to this viewer (nothing of theirs sees it): it stands in the dark — the ring dimmed
+  // here, the plate at 60 % (its body the fog composite greys).
+  const inTheDark = useShownOnly((s) => s.ids.has(token.id));
 
   const meta = useAssetMeta(token.assetId || undefined);
   const portrait = useAssetMeta(token.portraitAssetId || undefined);
@@ -412,10 +416,10 @@ export const TokenObject = memo(function TokenObject({
   );
 
   useEffect(() => {
-    rimMat.color.copy(col(ring));
+    rimMat.color.copy(col(ring)).multiplyScalar(inTheDark ? 0.45 : 1);
     rimMat.emissive.copy(col(ring));
-    rimMat.emissiveIntensity = 0.35;
-  }, [ring, rimMat]);
+    rimMat.emissiveIntensity = inTheDark ? 0.08 : 0.35;
+  }, [ring, rimMat, inTheDark]);
 
   const face: Texture = faceTex ?? initialsTexture(token.name, ring);
   useEffect(() => {
@@ -930,8 +934,8 @@ export const TokenObject = memo(function TokenObject({
         viewer={viewer}
         top={topNow}
         screenTop={screenTop}
-        // A DM-hidden token is faint (40 %); its plate stays readable for the DM.
-        opacity={hidden ? Math.max(0.75, baseOpacity) : baseOpacity}
+        // A DM-hidden token is faint (40 %); its plate stays readable for the DM. One in the dark: 60 %.
+        opacity={hidden ? Math.max(0.75, baseOpacity) : inTheDark ? 0.6 : baseOpacity}
         hidden={hidden}
       />
     </group>

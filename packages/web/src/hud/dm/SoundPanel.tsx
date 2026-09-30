@@ -43,6 +43,7 @@ import { type AssetItem, useLibrary } from "../../state/library.ts";
 import { prefersReducedMotion } from "../../state/settings.ts";
 import { Button, IconButton } from "../../ui/Button.tsx";
 import { Slider } from "../../ui/controls.tsx";
+import { SECTION_HEADING } from "../../ui/labels.ts";
 import { Menu } from "../../ui/Menu.tsx";
 import { toast } from "../../ui/Toast.tsx";
 import { UploadZone } from "./UploadZone.tsx";
@@ -103,7 +104,7 @@ function useThrottled(send: (v: number) => void, ms = 250): (v: number) => void 
 }
 
 function Heading({ children }: { children: string }) {
-  return <h3 className="caps text-12 text-brass">{children}</h3>;
+  return <h3 className={SECTION_HEADING}>{children}</h3>;
 }
 
 /** What's playing, where it is, and the transport. */

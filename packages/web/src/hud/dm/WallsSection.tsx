@@ -4,13 +4,16 @@ import { setWallMode, type WallMode } from "../../board/tools/walls.ts";
 import { useZoneTool } from "../../board/tools/zones.ts";
 import { request } from "../../net/table.ts";
 import { useBoard } from "../../state/entities.ts";
+import { useSettings } from "../../state/settings.ts";
 import { useUi } from "../../state/ui.ts";
 import { Button, IconButton } from "../../ui/Button.tsx";
-import { Toggle } from "../../ui/controls.tsx";
+import { Segmented, Toggle } from "../../ui/controls.tsx";
 import { EmptyState } from "../../ui/EmptyState.tsx";
+import { ShortcutHint } from "../../ui/KeyHint.tsx";
+import { FIELD_LABEL, SECTION_HEADING } from "../../ui/labels.ts";
 import { act } from "./tokenDm.tsx";
 
-const H = "caps text-12 text-brass";
+const H = SECTION_HEADING;
 
 const ZONE_NAME: Record<string, string> = {
   difficult: "Difficult terrain",
@@ -29,6 +32,7 @@ export function WallsSection() {
   const scene = useBoard((d) => d.scene);
   const walls = useBoard((d) => d.walls);
   const zones = useBoard((d) => d.zones);
+  const chosenLines = useSettings((s) => s.wallLines);
   if (!scene) return <EmptyState art="candle" title="No scene is showing yet." />;
   const all = [...walls.values()];
   const doors = all.filter((w) => (w.dmKind ?? w.kind) === "door").length;
@@ -41,26 +45,30 @@ export function WallsSection() {
     tool("walls", { wallKind });
   };
   const list = [...zones.values()].sort((a, b) => (a.label || a.kind).localeCompare(b.label || b.kind));
+  const lines = chosenLines ?? (scene.walls3d ? "special" : "all");
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-4" data-testid="walls-section">
+    <div className="flex flex-col gap-5 p-4" data-testid="walls-section">
       <section className="flex flex-col gap-2" aria-label="Walls">
         <h3 className={H}>Walls</h3>
         <p className="text-13 text-muted">
           {all.length} {all.length === 1 ? "wall" : "walls"} · {doors} {doors === 1 ? "door" : "doors"}
           {secret ? ` · ${secret} secret` : ""}
         </p>
-        <div className="flex flex-wrap gap-2">
+        {/* The Walls tool in each of its modes: three equals in a row. */}
+        <div className="grid grid-cols-3 gap-2">
           <Button
             size="S"
             variant="secondary"
             icon={<PenLine size={15} />}
             onClick={() => wallTool("draw", "wall")}
+            aria-keyshortcuts="W"
           >
-            Draw walls (W)
+            Walls
+            <ShortcutHint keys="W" />
           </Button>
           <Button
             size="S"
-            variant="ghost"
+            variant="secondary"
             icon={<DoorClosed size={15} />}
             onClick={() => wallTool("draw", "door")}
           >
@@ -68,7 +76,7 @@ export function WallsSection() {
           </Button>
           <Button
             size="S"
-            variant="ghost"
+            variant="secondary"
             icon={<Square size={15} />}
             onClick={() => wallTool("room", "wall")}
           >
@@ -83,12 +91,34 @@ export function WallsSection() {
           label="Walls in 3D"
           description="Stone walls stand up from the floor; off, they're drawn as lines."
         />
+        <div className="flex flex-col gap-1.5">
+          <span className={FIELD_LABEL}>Wall lines over the board</span>
+          <Segmented
+            label="Wall lines over the board"
+            size="S"
+            value={lines}
+            onChange={(v) => useSettings.getState().update({ wallLines: v })}
+            options={[
+              { value: "all", label: "Every wall" },
+              { value: "special", label: "Doors & secrets" },
+              { value: "none", label: "None" },
+            ]}
+          />
+          <p className="text-13 text-muted">For you alone. While you draw walls, every line shows.</p>
+        </div>
       </section>
       <section className="flex flex-col gap-2" aria-label="Zones">
-        <div className="flex items-center justify-between gap-2">
-          <h3 className={H}>Zones</h3>
-          <Button size="S" variant="secondary" icon={<Shapes size={15} />} onClick={() => tool("zones")}>
-            Draw zones (Z)
+        <h3 className={H}>Zones</h3>
+        <div className="grid grid-cols-3 gap-2">
+          <Button
+            size="S"
+            variant="secondary"
+            icon={<Shapes size={15} />}
+            onClick={() => tool("zones")}
+            aria-keyshortcuts="Z"
+          >
+            Draw
+            <ShortcutHint keys="Z" />
           </Button>
         </div>
         {list.length ? (

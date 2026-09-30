@@ -96,7 +96,15 @@ test("P12 key screens", async ({ admin, browser, gloam, guardLog }, info) => {
     await expect(admin.getByTestId("person-row").first()).toBeVisible();
   });
   await step("04-admin-people-role", admin, async () => {
-    await admin.getByTestId("person-row").first().getByRole("button", { name: "Role" }).click();
+    // (A phone's row folds its actions into one menu.)
+    if (phone) {
+      await admin
+        .getByTestId("person-row")
+        .first()
+        .getByRole("button", { name: /: actions$/ })
+        .click();
+      await admin.getByRole("menuitem", { name: "Role" }).click();
+    } else await admin.getByTestId("person-row").first().getByRole("button", { name: "Role" }).click();
     await expect(admin.getByRole("dialog")).toBeVisible();
   });
   await admin.keyboard.press("Escape");
@@ -213,6 +221,17 @@ test("P12 key screens", async ({ admin, browser, gloam, guardLog }, info) => {
         const s = await hook<{ sx: number; sy: number }>(admin, "project", gob.pos.x, gob.pos.y, 0.15);
         await admin.mouse.move(s.sx, s.sy);
         await expect(admin.getByTestId("dm-badges")).toBeVisible();
+        // Its entrance played out (the pointer stays on the token: shot() would move it away).
+        await admin.evaluate(() =>
+          Promise.all(
+            document
+              .getAnimations()
+              .filter((a) =>
+                Number.isFinite(a.effect?.getComputedTiming().endTime ?? Number.POSITIVE_INFINITY),
+              )
+              .map((a) => a.finished.catch(() => undefined)),
+          ),
+        );
         await admin.screenshot({ path: join(dir, "22-hover-badges.png") });
       },
       false,

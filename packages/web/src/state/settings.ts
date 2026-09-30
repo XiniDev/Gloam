@@ -21,6 +21,12 @@ export interface DeviceSettings {
   diceTrayKeepOpen: boolean;
   /** Which law `volumes` are saved under ("db48"); older saves held linear gains. */
   volumeLaw?: "db48";
+  /**
+   * The DM's wall lines (SPEC §8.19 "walls overlay toggle"): every wall, only the ones 3D walls don't show for what
+   * they are (secret, hidden, invisible, windows, curtains, doors), or none. Unset: every wall on a flat map, only
+   * those with 3D walls (every wall in bone-white over stone walls read as a floor plan: critic P12 r1 B4).
+   */
+  wallLines: "all" | "special" | "none" | null;
 }
 
 const KEY = "gloam.settings.v1";
@@ -42,6 +48,7 @@ export const DEFAULT_SETTINGS: DeviceSettings = {
   clickToMove: true,
   diceTrayKeepOpen: false,
   volumeLaw: "db48",
+  wallLines: null,
 };
 
 function load(): DeviceSettings {

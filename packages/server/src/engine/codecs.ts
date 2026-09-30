@@ -268,7 +268,7 @@ export const CODECS: { [K in EntityKind]: Codec<K> } = {
       enabled: e.enabled,
       dmOnly: e.dmOnly,
       preset: e.preset,
-      dataJson: j({ shuttered: e.shuttered ?? false }),
+      dataJson: j({ shuttered: e.shuttered ?? false, ...(e.label ? { label: e.label } : {}) }),
     }),
     fromRow: (r) => ({
       id: r.id as string,
@@ -289,6 +289,9 @@ export const CODECS: { [K in EntityKind]: Codec<K> } = {
       dmOnly: Boolean(r.dmOnly),
       preset: (r.preset as string | null) ?? null,
       shuttered: p<{ shuttered?: boolean }>(r.dataJson, {}).shuttered ?? false,
+      ...(p<{ label?: string }>(r.dataJson, {}).label
+        ? { label: p<{ label: string }>(r.dataJson, { label: "" }).label }
+        : {}),
     }),
   },
   zone: {

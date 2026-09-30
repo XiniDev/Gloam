@@ -267,7 +267,12 @@ export function JumpTo() {
                   {e.hint ? <span className="truncate text-12 text-muted">{e.hint}</span> : null}
                 </span>
                 <span className="caps shrink-0 text-12 text-fog">{e.kind}</span>
-                {i === cur ? <CornerDownLeft size={14} className="shrink-0 text-muted" aria-hidden /> : null}
+                {/* Its slot on every row: the kind column never shifts under the one that has it. */}
+                <CornerDownLeft
+                  size={14}
+                  className={`shrink-0 text-muted ${i === cur ? "" : "invisible"}`}
+                  aria-hidden
+                />
               </div>
             ))
           ) : (

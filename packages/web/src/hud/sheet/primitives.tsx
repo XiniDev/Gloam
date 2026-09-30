@@ -2,6 +2,7 @@ import type { ActorView } from "@gloam/shared/protocol";
 import { Lock, Minus, Pencil, Plus, RotateCcw } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { D20Icon } from "../../icons/dice.tsx";
+import { DeathPip } from "../../ui/DeathPip.tsx";
 import { hintFor, modeOf, type RollMode, type RollTest, testOf } from "./rollMode.ts";
 import { rollFromSheet, rollPhysically } from "./sheetActions.ts";
 
@@ -408,6 +409,7 @@ export function Pips({
   tone = "wax",
   disabled = false,
   filledMeans = "spent",
+  shape = "diamond",
 }: {
   total: number;
   filled: number;
@@ -417,6 +419,8 @@ export function Pips({
   disabled?: boolean;
   /** What a filled pip is: one spent (slots used), or one left (Hit Dice, as the rest cards count them). */
   filledMeans?: "spent" | "left";
+  /** Death saves draw as hearts (successes) and skulls (failures), §28; anything else a diamond. */
+  shape?: "diamond" | "success" | "failure";
 }) {
   return (
     <span
@@ -436,16 +440,20 @@ export function Pips({
             onClick={() => onSet(on && i === filled - 1 ? i : i + 1)}
             className="grid h-6 min-h-[var(--touch-min)] w-6 min-w-[var(--touch-min)] place-items-center disabled:opacity-50"
           >
-            <span
-              className={`block h-3.5 w-3.5 rotate-45 border ${
-                on
-                  ? tone === "wax"
-                    ? "border-wax bg-wax"
-                    : "border-paper-ink bg-paper-ink"
-                  : "border-paper-muted bg-transparent"
-              }`}
-              aria-hidden
-            />
+            {shape === "diamond" ? (
+              <span
+                className={`block h-3.5 w-3.5 rotate-45 border ${
+                  on
+                    ? tone === "wax"
+                      ? "border-wax bg-wax"
+                      : "border-paper-ink bg-paper-ink"
+                    : "border-paper-muted bg-transparent"
+                }`}
+                aria-hidden
+              />
+            ) : (
+              <DeathPip kind={shape} filled={on} size={18} />
+            )}
           </button>
         );
       })}

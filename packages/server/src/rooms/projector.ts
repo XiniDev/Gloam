@@ -247,6 +247,7 @@ export function lightView(l: LightEntity, ctx: ProjectionCtx): LightView {
     preset: l.preset ?? "",
     dmOnly: l.dmOnly,
     shuttered: l.shuttered === true,
+    label: l.label ?? "",
   };
   if (l.tokenId) v.link = { tokenId: l.tokenId, casterId: "" };
   return v;

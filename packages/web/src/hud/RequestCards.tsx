@@ -1,11 +1,12 @@
 import { normalizeFormula, withHint } from "@gloam/shared/dice";
 import type { RequestCard } from "@gloam/shared/protocol";
-import { ArrowDown, ArrowUp, ChevronUp, Heart, SkipForward, Skull, X } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronUp, SkipForward, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { create } from "zustand";
 import { D20Icon, HandDieIcon } from "../icons/dice.tsx";
 import { respondRequest, useSheets } from "../net/sheets.ts";
 import { Button, IconButton } from "../ui/Button.tsx";
+import { DeathPip } from "../ui/DeathPip.tsx";
 import { toast } from "../ui/Toast.tsx";
 import { keepHyphenated } from "../ui/text.tsx";
 import { makeRoomForDice } from "./insets.ts";
@@ -285,29 +286,13 @@ function DeathSavePips({ successes, failures }: { successes: number; failures: n
       <span className="flex items-center gap-1.5">
         <span className="caps text-12 text-fog">Successes</span>
         {[0, 1, 2].map((i) => (
-          <Heart
-            key={i}
-            size={20}
-            strokeWidth={1.75}
-            data-filled={i < successes ? "" : undefined}
-            className={
-              i < successes ? "fill-[var(--verdigris-400)] text-[var(--verdigris-400)]" : "text-faint"
-            }
-            aria-hidden
-          />
+          <DeathPip key={i} kind="success" filled={i < successes} />
         ))}
       </span>
       <span className="flex items-center gap-1.5">
         <span className="caps text-12 text-fog">Failures</span>
         {[0, 1, 2].map((i) => (
-          <Skull
-            key={i}
-            size={20}
-            strokeWidth={1.75}
-            data-filled={i < failures ? "" : undefined}
-            className={i < failures ? "fill-[var(--blood-500)] text-[var(--ink-950)]" : "text-faint"}
-            aria-hidden
-          />
+          <DeathPip key={i} kind="failure" filled={i < failures} />
         ))}
       </span>
     </div>

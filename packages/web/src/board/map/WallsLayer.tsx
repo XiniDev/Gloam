@@ -5,6 +5,8 @@ import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
 import { LineSegments2 } from "three/examples/jsm/lines/LineSegments2.js";
 import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeometry.js";
 import { useBoard } from "../../state/entities.ts";
+import { useSettings } from "../../state/settings.ts";
+import { useUi } from "../../state/ui.ts";
 import { useDmView } from "../../state/viewAs.ts";
 import { C, col, WALL_COLORS } from "../colors.ts";
 import { setSegments } from "../lines.ts";
@@ -55,6 +57,11 @@ export function WallsLayer() {
   const walls = useBoard((d) => d.walls);
   // The DM's overlay (not while the DM views the board as a player).
   const dm = useDmView();
+  // Which walls it draws: all of them while the Walls tool is out (editing wants every line), else as the DM chose.
+  const walls3d = useBoard((d) => d.scene?.walls3d === true);
+  const chosen = useSettings((s) => s.wallLines);
+  const editing = useUi((s) => s.tool === "walls");
+  const mode = editing ? "all" : (chosen ?? (walls3d ? "special" : "all"));
   const size = useThree((s) => s.size);
   const invalidate = useThree((s) => s.invalidate);
   const [under, lines] = useMemo(() => {
@@ -97,6 +104,9 @@ export function WallsLayer() {
     const c = new Color();
     let i = 0;
     for (const w of walls.values()) {
+      const kind = w.dmKind ?? w.kind;
+      // Only what 3D walls don't show for what it is: never a plain wall the stone already draws.
+      if (mode === "none" || (mode === "special" && kind === "wall" && w.dmHidden !== true)) continue;
       const moved = preview?.get(w.id);
       const seg = [
         moved ? moved.a.x : w.ax,
@@ -107,7 +117,6 @@ export function WallsLayer() {
         moved ? moved.b.y : w.by,
       ];
       everything.set(seg, i * 6);
-      const kind = w.dmKind ?? w.kind;
       const p = patternOf(kind, w.dmHidden === true);
       c.set(WALL_COLORS[kind as keyof typeof WALL_COLORS] ?? WALL_COLORS.wall);
       if (p === "hidden") c.multiplyScalar(0.6);
@@ -115,13 +124,13 @@ export function WallsLayer() {
       rgb[p].push(c.r, c.g, c.b, c.r, c.g, c.b);
       i++;
     }
-    setSegments(under, everything);
+    setSegments(under, everything.subarray(0, i * 6));
     for (const p of PATTERN_KEYS) {
       setSegments(lines[p], new Float32Array(pos[p]), new Float32Array(rgb[p]));
       if (PATTERNS[p] && pos[p].length) lines[p].computeLineDistances();
     }
     invalidate();
-  }, [walls, preview, under, lines, invalidate]);
+  }, [walls, preview, under, lines, invalidate, mode]);
 
   if (!dm) return null;
   return (

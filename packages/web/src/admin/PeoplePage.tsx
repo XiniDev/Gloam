@@ -6,6 +6,7 @@ import { Select } from "../ui/controls.tsx";
 import { Dialog } from "../ui/Dialog.tsx";
 import { EmptyState } from "../ui/EmptyState.tsx";
 import { TextInput } from "../ui/Field.tsx";
+import { Menu } from "../ui/Menu.tsx";
 import { Portrait } from "../ui/Portrait.tsx";
 import { toast } from "../ui/Toast.tsx";
 
@@ -72,6 +73,18 @@ export function PeoplePage() {
     }
   };
   const list = (people ?? []).filter((p) => !p.isAdmin);
+  const kick = (p: Person) =>
+    void act(
+      () => post(`/api/admin/people/${p.id}/kick`),
+      `${p.name} is back in the waiting room`,
+      "Couldn't kick them",
+    );
+  const unban = (p: Person) =>
+    void act(
+      () => post(`/api/admin/people/${p.id}/unban`),
+      `${p.name} may knock again`,
+      "Couldn't unban them",
+    );
   return (
     <div className="max-w-[880px]" data-testid="people-page">
       <header>
@@ -94,26 +107,74 @@ export function PeoplePage() {
                 data-user={p.id}
               >
                 <Portrait name={p.name} color={p.color} size={36} dim={!p.online} />
-                <span className="flex min-w-0 flex-1 flex-col">
-                  <span className="flex items-center gap-2">
-                    <span className="truncate text-16 font-bold text-bone">{p.name}</span>
+                {/* Who: at least 20rem — narrower, its actions go to the next line rather than squeeze it. */}
+                <span className="flex min-w-0 flex-[1_1_20rem] flex-col">
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span className="min-w-0 truncate text-16 font-bold text-bone">{p.name}</span>
                     {p.banned ? (
-                      <span className="caps rounded-chip border border-danger px-1.5 text-12 text-danger-text">
+                      <span className="caps shrink-0 rounded-chip border border-danger px-1.5 text-12 text-danger-text">
                         Banned
                       </span>
                     ) : p.online ? (
-                      <span className="caps text-12 text-verdigris">At the table</span>
+                      <span className="caps shrink-0 whitespace-nowrap text-12 text-verdigris">
+                        At the table
+                      </span>
                     ) : null}
                   </span>
                   <span className="text-13 text-muted">
                     {p.role ? ROLE[p.role] : "Not in this campaign"} · {p.hasPin ? "PIN set" : "no PIN"} ·
                     last seen <span className="whitespace-nowrap">{seen(p.lastSeenAt)}</span>
                     {p.devices.length
-                      ? ` · ${p.devices.length} ${p.devices.length === 1 ? "device" : "devices"}`
+                      ? ` · ${p.devices.length} ${p.devices.length === 1 ? "device" : "devices"}`
                       : ""}
                   </span>
                 </span>
-                <span className="flex flex-wrap gap-1">
+                {/* A phone: one menu of them. */}
+                <span className="sm:hidden">
+                  <Menu
+                    label={`${p.name}: actions`}
+                    items={[
+                      {
+                        label: "Rename",
+                        icon: <Pencil size={15} />,
+                        onSelect: () => setEdit({ kind: "rename", p }),
+                      },
+                      {
+                        label: "PIN",
+                        icon: <KeyRound size={15} />,
+                        onSelect: () => setEdit({ kind: "pin", p }),
+                      },
+                      {
+                        label: "Role",
+                        icon: <Users size={15} />,
+                        onSelect: () => setEdit({ kind: "role", p }),
+                      },
+                      ...(p.online
+                        ? [
+                            {
+                              label: "Back to the waiting room",
+                              icon: <UserX size={15} />,
+                              onSelect: () => kick(p),
+                            },
+                          ]
+                        : []),
+                      p.banned
+                        ? { label: "Unban", onSelect: () => unban(p) }
+                        : {
+                            label: "Ban…",
+                            icon: <Ban size={15} />,
+                            onSelect: () => setEdit({ kind: "ban", p }),
+                          },
+                      {
+                        label: "Delete…",
+                        icon: <Trash2 size={15} />,
+                        danger: true,
+                        onSelect: () => setEdit({ kind: "delete", p }),
+                      },
+                    ]}
+                  />
+                </span>
+                <span className="flex flex-wrap gap-1 max-sm:hidden">
                   <Button
                     size="S"
                     variant="ghost"
@@ -139,33 +200,12 @@ export function PeoplePage() {
                     Role
                   </Button>
                   {p.online ? (
-                    <Button
-                      size="S"
-                      variant="ghost"
-                      icon={<UserX size={14} />}
-                      onClick={() =>
-                        void act(
-                          () => post(`/api/admin/people/${p.id}/kick`),
-                          `${p.name} is back in the waiting room`,
-                          "Couldn't kick them",
-                        )
-                      }
-                    >
+                    <Button size="S" variant="ghost" icon={<UserX size={14} />} onClick={() => kick(p)}>
                       Kick
                     </Button>
                   ) : null}
                   {p.banned ? (
-                    <Button
-                      size="S"
-                      variant="ghost"
-                      onClick={() =>
-                        void act(
-                          () => post(`/api/admin/people/${p.id}/unban`),
-                          `${p.name} may knock again`,
-                          "Couldn't unban them",
-                        )
-                      }
-                    >
+                    <Button size="S" variant="ghost" onClick={() => unban(p)}>
                       Unban
                     </Button>
                   ) : (

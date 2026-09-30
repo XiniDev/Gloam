@@ -4,6 +4,7 @@ import { useState } from "react";
 import { decideHomebrew, deleteHomebrew, type HomebrewSpell, useSpells } from "../../net/spells.ts";
 import { Button, IconButton } from "../../ui/Button.tsx";
 import { EmptyState } from "../../ui/EmptyState.tsx";
+import { SECTION_HEADING } from "../../ui/labels.ts";
 import { toast } from "../../ui/Toast.tsx";
 import { duplicateOf, HomebrewBuilder } from "../spells/HomebrewBuilder.tsx";
 import { ImportSpellsDialog } from "../spells/ImportSpellsDialog.tsx";
@@ -39,7 +40,7 @@ export function SpellsPanel() {
       </div>
       {proposed.length ? (
         <section className="flex flex-col gap-1.5" aria-label="Proposed spells">
-          <h3 className="caps text-12 text-brass">Proposed by players</h3>
+          <h3 className={SECTION_HEADING}>Proposed by players</h3>
           <ul className="flex flex-col divide-y divide-line/60 rounded-[var(--radius-control)] border border-line">
             {proposed.map((h) => (
               <Row key={h.id} h={h} onOpen={() => setEditing({ spell: h.spell, replaces: h.id })}>

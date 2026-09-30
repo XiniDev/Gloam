@@ -5,6 +5,7 @@ import { createHandout, deleteHandout, sendNote, showHandout, updateHandout, use
 import { type PresenceView, useTable } from "../../net/table.ts";
 import { Button, IconButton } from "../../ui/Button.tsx";
 import { Select } from "../../ui/controls.tsx";
+import { SECTION_HEADING } from "../../ui/labels.ts";
 import { Menu } from "../../ui/Menu.tsx";
 import { toast } from "../../ui/Toast.tsx";
 import { useAssetImage } from "../useAssetImage.ts";
@@ -224,7 +225,7 @@ export function HandoutsPanel() {
     <div className="flex shrink-0 flex-col gap-5 p-4" data-testid="handouts-panel">
       <section className="flex flex-col gap-2" aria-label="Handouts">
         <div className="flex items-center justify-between">
-          <h3 className="caps text-12 text-brass">Handouts</h3>
+          <h3 className={SECTION_HEADING}>Handouts</h3>
           {adding ? null : (
             <Button variant="ghost" size="S" onClick={() => setAdding(true)}>
               New handout
@@ -245,7 +246,7 @@ export function HandoutsPanel() {
         )}
       </section>
       <section className="flex flex-col gap-2" aria-label="Secret notes">
-        <h3 className="caps text-12 text-brass">Secret note</h3>
+        <h3 className={SECTION_HEADING}>Secret note</h3>
         <SecretNote players={players} />
         {notes.length ? (
           <ul className="flex flex-col divide-y divide-line/60 rounded-[var(--radius-control)] border border-line">

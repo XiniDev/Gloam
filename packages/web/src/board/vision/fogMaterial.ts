@@ -147,16 +147,35 @@ float gMemAt(vec2 xz) {
     + texture2D(gMem, uv + vec2(o.x, -o.y)).r + texture2D(gMem, uv + vec2(-o.x, -o.y)).r);
   return smoothstep(0.2, 0.8, m);
 }
-// The unknown: deep blue-black war fog drifting slowly (animated fbm), never flat black.
+// The unknown: deep blue-black war fog drifting slowly (animated fbm), never flat black — its swell kept low and its
+// lightest wisps a touch warm, so it reads as darkness on the table, not a blue slab (critic P12 r1 M2).
 vec3 gWarFog(vec2 xz) {
   float n = texture2D(gNoise, xz * 0.034 + vec2(gTime * 0.004, -gTime * 0.0028)).r;
   float m = texture2D(gNoise, xz * 0.087 - vec2(gTime * 0.007, gTime * 0.0035)).r;
-  return G_FOG * (0.45 + 0.95 * n * n + 0.35 * m);
+  float swell = n * n;
+  return G_FOG * (0.55 + 0.7 * swell + 0.25 * m) + vec3(0.005, 0.005, 0.006) * swell;
 }
 // The war fog where it meets what's seen or remembered: still there (no drifting blotches at the edge of torchlight,
 // §15.7: the soft edge is a plain falloff; the fbm is the unknown's own).
 vec3 gCalmFog(vec2 xz, float near) {
   return mix(gWarFog(xz), G_FOG * 0.9, clamp(near * 3.0, 0.0, 1.0));
+}
+// Whether a point is known to this viewer at all — seen now or remembered (0: the unknown). A wall in the unknown on
+// both its sides isn't drawn for them: graded as fog it still stood up out of it, a silhouette of rooms they've never
+// seen against the table (critic P12 r1 B3).
+float gKnownAt(vec2 xz) {
+  if (gMode < 0.5 || gDm > 0.5) return 1.0;
+  vec2 uv = (xz - gRect.xy) / gRect.zw;
+  if (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) return 1.0;
+  float mem = gMemAt(xz);
+  if (gMode < 1.5) return mem;
+  vec4 v = gVisAt(uv);
+  vec4 L = texture2D(gLight, uv);
+  float bright = max(L.r, gAmbient > 1.5 ? 1.0 : 0.0);
+  float dim = max(max(L.g, bright), gAmbient > 0.5 ? 1.0 : 0.0);
+  float sight = clamp(v.r * (bright + (dim - bright) * v.g) + v.r * (dim - bright) * (1.0 - v.g)
+    + v.r * (1.0 - dim) * max(v.g, v.a), 0.0, 1.0);
+  return max(clamp(sight + v.b * (1.0 - sight), 0.0, 1.0), mem);
 }
 // The DM's view of the players' fog: a translucent hatch, the map still readable under it. Drawn on the screen at a
 // fixed angle and spacing (not on the table), so it reads the same on floors, walls and tokens — on a wall's face a
@@ -183,7 +202,7 @@ vec4 gVisFeathered(vec2 uv) {
 // A creature shown to the viewer but out of their sight: greyed and dark, still itself.
 vec3 gKnown(vec3 col) {
   float lum = dot(col, vec3(0.2126, 0.7152, 0.0722));
-  return mix(vec3(lum), col, 0.45) * 0.62 + G_TINT * 0.04;
+  return mix(vec3(lum), col, 0.4) * 0.4 + G_TINT * 0.03;
 }
 vec3 gloamFog(vec3 col, vec2 xz, float feather, vec2 across, vec2 facing) {
   if (gMode < 0.5) return col;
@@ -223,7 +242,6 @@ vec3 gloamFog(vec3 col, vec2 xz, float feather, vec2 across, vec2 facing) {
   float seenSight = clamp(wBright + wDim + wDark, 0.0, 1.0);
   float wBlind = v.b * (1.0 - seenSight);
   float seen = clamp(seenSight + wBlind, 0.0, 1.0);
-  if (gDm > 0.5) return gHatch(col, xz, 1.0 - max(seen, mem * 0.55));
   float lum = dot(col, vec3(0.2126, 0.7152, 0.0722));
   vec3 lit = col;
   // Coloured light warms (or cools) what it lights; a flickering one's intensity (alpha over coverage) breathes.
@@ -233,6 +251,10 @@ vec3 gloamFog(vec3 col, vec2 xz, float feather, vec2 across, vec2 facing) {
   float flick = L.g > 0.001 ? clamp(lcol.a / L.g, 0.6, 1.0) : 1.0;
   if (lk > 0.001) lit *= mix(vec3(1.0), lc / lk, 0.28 * clamp(L.g * 1.5, 0.0, 1.0));
   lit *= flick;
+  // The DM sees everything — lit as it is, softened: pools of light at full, their dim edges at 85 %, the dark at
+  // 70 % (every part still readable), under the hatch of what the players don't see. Before, the DM's crypt was
+  // evenly lit whatever its lights and "Dark" did (critic P12 r1 M1).
+  if (gDm > 0.5) return gHatch(lit * (0.7 + 0.15 * dim + 0.15 * bright), xz, 1.0 - max(seen, mem * 0.55));
   vec3 cDim = col * 0.55 * vec3(0.93, 0.97, 1.07) * flick;
   float grain = (gf_hash(floor(gl_FragCoord.xy / 1.5) + floor(gTime * 12.0) * 17.0) - 0.5) * 0.035;
   vec3 cDark = vec3(lum * 0.85 + grain);
@@ -291,6 +313,10 @@ float gloamSeen(vec2 xz) {
 // best-seen of four points just outside the pillar: centre c, reach r (ft).
 const AROUND_IMPL = /* glsl */ `
 float gLum(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
+float gKnownAround(vec2 c, vec2 r) {
+  return max(max(gKnownAt(c + vec2(r.x, 0.0)), gKnownAt(c - vec2(r.x, 0.0))),
+    max(gKnownAt(c + vec2(0.0, r.y)), gKnownAt(c - vec2(0.0, r.y))));
+}
 vec3 gloamFogAround(vec3 col, vec2 c, vec2 r) {
   vec3 best = gloamFog(col, c + vec2(r.x, 0.0), 0.0, vec2(0.0), vec2(0.0));
   vec3 s = gloamFog(col, c - vec2(r.x, 0.0), 0.0, vec2(0.0), vec2(0.0));
@@ -394,6 +420,16 @@ ${
   around
     ? `gl_FragColor.rgb = vFogTop > 0.5 ? gloamFogAround(gl_FragColor.rgb, gAroundC, gAroundR) : ${graded};`
     : `gl_FragColor.rgb = ${graded};`
+}
+${
+  // A wall (or pillar) unknown on every side of it: not there for this viewer (gKnownAt is 1 for the DM).
+  wall
+    ? `if (${
+        around
+          ? "gKnownAround(gAroundC, gAroundR)"
+          : "max(gKnownAt(vFogW.xz + vFogAcross * 0.6), gKnownAt(vFogW.xz - vFogAcross * 0.6))"
+      } < 0.02) discard;`
+    : ""
 }`,
       );
   };

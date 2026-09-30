@@ -6,11 +6,11 @@ import {
   Feather,
   Footprints,
   Gauge,
+  HeartPulse,
   Link2,
   Link2Off,
   Lock,
   type LucideIcon,
-  Megaphone,
   NotebookPen,
   ShieldOff,
   Timer,
@@ -111,7 +111,13 @@ export function overrideBadges(
     });
   if (o.freeMovement)
     out.push({ key: "free", icon: Feather, text: "Free", title: "Moves freely (no turn order, no budget)" });
-  if (o.lockMovement) out.push({ key: "stuck", icon: Anchor, text: "Can't move", title: "Movement locked" });
+  if (o.lockMovement)
+    out.push({
+      key: "stuck",
+      icon: Anchor,
+      text: "Locked",
+      title: "Movement locked: its players can't move it",
+    });
   if (o.ignoreConditionSpeed)
     out.push({
       key: "ignore",
@@ -130,11 +136,11 @@ export function overrideBadges(
     });
   const reveal = revealOf(t);
   if (reveal === "all")
-    out.push({ key: "reveal", icon: Megaphone, text: "Shown to all", title: "Always shown to everyone" });
+    out.push({ key: "reveal", icon: Eye, text: "Shown to all", title: "Always shown to everyone" });
   else if (Array.isArray(reveal) && reveal.length)
     out.push({
       key: "reveal",
-      icon: Megaphone,
+      icon: Eye,
       text: `Shown: ${reveal.map(names).join(", ")}`,
       title: `Always shown to ${reveal.map(names).join(", ")}`,
     });
@@ -147,7 +153,7 @@ export function overrideBadges(
   if (t.kind !== "character" && t.hpDisplay && t.hpDisplay !== npcHpDisplay)
     out.push({
       key: "hp",
-      icon: Gauge,
+      icon: HeartPulse,
       text: `HP: ${t.hpDisplay}`,
       title: `Players see its HP as: ${t.hpDisplay}`,
     });

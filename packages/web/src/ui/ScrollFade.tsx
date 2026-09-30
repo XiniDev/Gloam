@@ -1,4 +1,4 @@
-import { type ReactNode, useLayoutEffect, useRef, useState } from "react";
+import { type HTMLAttributes, type ReactNode, useLayoutEffect, useRef, useState } from "react";
 
 /**
  * A scrolling area whose edges say there's more (critic P7 r2 #9, P8 r1 #7): at an edge with more to scroll that way,
@@ -9,11 +9,17 @@ export function ScrollFade({
   children,
   className = "",
   testId,
+  outerClassName = "flex-1",
+  scrollerProps,
 }: {
   children: ReactNode;
   /** The scroller's own classes (its padding). */
   className?: string;
   testId?: string;
+  /** The frame's own classes (its size in its parent: a column's height by default). */
+  outerClassName?: string;
+  /** The scroller's attributes (a rail's tablist role and its keys). */
+  scrollerProps?: HTMLAttributes<HTMLDivElement>;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [more, setMore] = useState({ up: false, down: false });
@@ -36,8 +42,8 @@ export function ScrollFade({
     };
   }, []);
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col">
-      <div ref={ref} className={`min-h-0 flex-1 overflow-y-auto ${className}`}>
+    <div className={`relative flex min-h-0 flex-col ${outerClassName}`}>
+      <div ref={ref} {...scrollerProps} className={`min-h-0 flex-1 overflow-y-auto ${className}`}>
         {children}
       </div>
       <span

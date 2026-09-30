@@ -45,11 +45,12 @@ function newLight(sceneId: string, carrier: TokenEntity | null, p: z.infer<typeo
     dmOnly: p.dmOnly ?? false,
     preset: pre?.id ?? null,
     shuttered: false,
+    ...(p.label ? { label: p.label } : {}),
   };
 }
 
 const nameOf = (l: LightEntity) =>
-  LIGHT_PRESETS.find((p) => p.id === l.preset)?.name.toLowerCase() ?? "light";
+  l.label || (LIGHT_PRESETS.find((p) => p.id === l.preset)?.name.toLowerCase() ?? "light");
 
 export const lightCreate: CommandDef<z.infer<typeof LightCreate>, { lightId: string }> = {
   type: "light.create",

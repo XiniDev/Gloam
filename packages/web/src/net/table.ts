@@ -10,6 +10,7 @@ import { clearRemotePreview, onRemotePreview } from "../board/move/remote.ts";
 import { addPing } from "../board/PingLayer.tsx";
 import { editPerf, measureSince } from "../board/perf.ts";
 import { type MeasureShape, onSharedMeasure } from "../board/tools/measure.ts";
+import { onShownOnly } from "../board/vision/shown.ts";
 import { useAudioSync } from "../state/audioSync.ts";
 import { useEntities } from "../state/entities.ts";
 import type { FogRectMsg } from "../state/fog.ts";
@@ -343,6 +344,7 @@ async function join(campaignId: string): Promise<Room<unknown, TableState>> {
   room.onMessage("fog.patch", (m: FogRectMsg) => onFogPatch(m));
   room.onMessage("explored.patch", (m: FogRectMsg) => onExploredPatch(m));
   room.onMessage("fog.reload", () => void loadFog());
+  room.onMessage("vision.shown", (m: { tokenIds: string[] }) => onShownOnly(m));
   room.onMessage("measure.shared", (m: SharedMeasureMessage) =>
     onSharedMeasure({
       shape: m.shape,

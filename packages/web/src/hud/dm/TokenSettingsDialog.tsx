@@ -7,6 +7,7 @@ import { useUi } from "../../state/ui.ts";
 import { Button } from "../../ui/Button.tsx";
 import { Segmented, Select, Toggle } from "../../ui/controls.tsx";
 import { Dialog } from "../../ui/Dialog.tsx";
+import { FIELD_LABEL, SECTION_HEADING } from "../../ui/labels.ts";
 import { toast, useToasts } from "../../ui/Toast.tsx";
 import { act, overridesOf, revealOf, updateToken } from "./tokenDm.tsx";
 
@@ -19,7 +20,7 @@ function Group({ title, children }: { title: string; children: React.ReactNode }
       className="flex flex-col gap-3 border-t border-line pt-4 first:border-t-0 first:pt-0"
       aria-label={title}
     >
-      <h3 className="caps text-12 text-brass">{title}</h3>
+      <h3 className={SECTION_HEADING}>{title}</h3>
       {children}
     </section>
   );
@@ -118,7 +119,7 @@ function Body({ t }: { t: TokenView }) {
           onCommit={(v) => set({ speedOverride: v })}
         />
         <div className="flex flex-col gap-2">
-          <span className="text-14 text-bone">Bonus movement</span>
+          <span className={FIELD_LABEL}>Bonus movement</span>
           {o.bonusMove ? (
             <div className="flex items-center justify-between gap-3 rounded-[var(--radius-control)] border border-line px-3 py-2">
               <span className="text-14 text-bone">
@@ -224,7 +225,7 @@ function Body({ t }: { t: TokenView }) {
           description="Only you see it, whatever the players can see."
         />
         <div className="flex flex-col gap-2">
-          <span className="text-14 text-bone">Reveal</span>
+          <span className={FIELD_LABEL}>Reveal</span>
           <Segmented
             label="Reveal"
             size="S"
@@ -330,7 +331,7 @@ function PlayerChecks({
 }) {
   return (
     <fieldset className="flex flex-col gap-1.5">
-      <legend className="mb-1 text-14 text-bone">{label}</legend>
+      <legend className={`mb-1.5 ${FIELD_LABEL}`}>{label}</legend>
       <div className="flex flex-wrap gap-1.5">
         {players.map((p) => {
           const on = chosen.includes(p.userId);

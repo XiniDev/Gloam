@@ -12,8 +12,8 @@ import {
   Table2,
   Users,
 } from "lucide-react";
-import { type FormEvent, type ReactNode, useEffect, useState } from "react";
-import { NavLink, Route, Routes, useNavigate, useSearchParams } from "react-router";
+import { type FormEvent, type ReactNode, useEffect, useRef, useState } from "react";
+import { NavLink, Route, Routes, useLocation, useNavigate, useSearchParams } from "react-router";
 import { leaveRoom } from "../net/colyseus.ts";
 import { ApiError, post } from "../net/http.ts";
 import { useSession } from "../state/session.ts";
@@ -114,7 +114,7 @@ function NavItem({ to, icon, children }: { to: string; icon: ReactNode; children
       to={to}
       end
       className={({ isActive }) =>
-        `flex h-10 items-center gap-3 rounded-[var(--radius-control)] px-3 text-14 font-bold transition-colors ${
+        `flex h-10 shrink-0 items-center gap-3 whitespace-nowrap rounded-[var(--radius-control)] px-3 text-14 font-bold transition-colors ${
           isActive
             ? "bg-raised text-brass-bright shadow-[inset_2px_0_0_var(--brass-400)]"
             : "text-muted hover:bg-raised hover:text-bone"
@@ -130,6 +130,15 @@ function NavItem({ to, icon, children }: { to: string; icon: ReactNode; children
 function Console() {
   const navigate = useNavigate();
   const connected = useAdminLive((s) => s.connected);
+  const location = useLocation();
+  const navStrip = useRef<HTMLElement>(null);
+  // The page you're on, in a phone's scrolled strip.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the page changing is the cue
+  useEffect(() => {
+    const active = navStrip.current?.querySelector<HTMLElement>('[aria-current="page"]');
+    if (active && navStrip.current && navStrip.current.scrollWidth > navStrip.current.clientWidth)
+      active.scrollIntoView({ inline: "center", block: "nearest" });
+  }, [location.pathname]);
   useEffect(() => {
     let room: Room | null = null;
     let cancelled = false;
@@ -168,7 +177,12 @@ function Console() {
             <SoundChip />
           </span>
         </div>
-        <nav aria-label="Admin sections" className="flex gap-1 overflow-x-auto md:flex-col">
+        {/* A phone's strip scrolls: its ends fade (more that way), and the page you're on is brought into it. */}
+        <nav
+          aria-label="Admin sections"
+          ref={navStrip}
+          className="flex gap-1 overflow-x-auto max-md:[mask-image:linear-gradient(90deg,transparent,#000_20px,#000_calc(100%-20px),transparent)] max-md:px-4 md:flex-col"
+        >
           <NavItem to="/admin" icon={<Table2 size={17} />}>
             Table
           </NavItem>

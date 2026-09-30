@@ -5,6 +5,7 @@ import { useBoard } from "../../state/entities.ts";
 import { useUi } from "../../state/ui.ts";
 import { Button } from "../../ui/Button.tsx";
 import { Select } from "../../ui/controls.tsx";
+import { SECTION_HEADING } from "../../ui/labels.ts";
 import { act, focusToken } from "./tokenDm.tsx";
 
 /**
@@ -64,7 +65,7 @@ export function NotesSection() {
       aria-label="DM notes"
       data-testid="dm-notes"
     >
-      <h3 className="caps flex items-center gap-2 text-12 text-brass">
+      <h3 className={`flex items-center gap-2 ${SECTION_HEADING}`}>
         <NotebookPen size={14} aria-hidden /> Your notes · only you see them
       </h3>
       <label className="flex flex-col gap-1.5">

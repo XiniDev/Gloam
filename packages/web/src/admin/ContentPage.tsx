@@ -60,9 +60,7 @@ export function ContentPage() {
                   checked={k.packs.includes(p.id)}
                   onChange={(on) => void toggle(k.id, k.packs, p.id, on)}
                   label={`${k.name}${k.archived ? " (archived)" : ""}`}
-                  description={
-                    k.packs.includes(p.id) ? "Plays with it." : "Its spells aren't offered or cast here."
-                  }
+                  description={k.packs.includes(p.id) ? "In play" : "Its spells aren't offered or cast here."}
                 />
               </div>
             ))}
