@@ -29,7 +29,8 @@ export interface CastData {
   origin: { x: number; y: number; z: number } | null;
   /** The area as placed (stored shape, §17.1), for the card's "blocked" and the VFX. */
   area: unknown;
-  save: { ability: Ability; onSuccess: "half" | "none" | "special" } | null;
+  /** `ignoresCover`: the target gains nothing from half or three-quarters cover for this save (Sacred Flame). */
+  save: { ability: Ability; onSuccess: "half" | "none" | "special"; ignoresCover?: true } | null;
   dc: number | null;
   dcRevealed: boolean;
   /** An attack roll's formula ("1d20 + 7"), per target. */

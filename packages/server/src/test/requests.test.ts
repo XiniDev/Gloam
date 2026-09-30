@@ -1,6 +1,7 @@
 import type { Room } from "@colyseus/sdk";
 import { Table, type TableState } from "@gloam/shared/state";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { dataOf } from "../engine/commands/combat.ts";
 import type { TableRoom } from "../rooms/TableRoom.ts";
 import {
   type Agent,
@@ -250,5 +251,19 @@ describe("P6 — roll requests on the server (AC-DICE-06)", () => {
     // On joining again, the open cards come back.
     const open = await rq<Card[]>(anna.room, "request.list", {});
     expect(open.map((c) => c.requestId)).toEqual(expect.arrayContaining([requestId, shown.requestId]));
+  });
+
+  it("rules audit A1: a sheet's initiative counts Dex once — Ilse (Dex 16) under Fixed initiative scores 13, not 16", async () => {
+    await rq(dm, "combat.start", { participants: [annaTok], method: "fixed" });
+    const where = room().model.get("token", annaTok)?.sceneId as string;
+    const c = await waitFor(() =>
+      room()
+        .model.inScene("combat", where)
+        .find((x) => x.active),
+    );
+    const entry = dataOf(c).combatants.find((e) => e.tokenId === annaTok);
+    // SRD 5.2.1 p. 184: Initiative score 10 + Dex modifier (+3).
+    expect(entry?.initiative).toBe(13);
+    await rq(dm, "combat.stop", {});
   });
 });

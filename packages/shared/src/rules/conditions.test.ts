@@ -3,8 +3,11 @@ import { CONDITION_IDS, MARKER_IDS } from "../constants.ts";
 import {
   attackHints,
   CONDITIONS,
+  dodgeHolds,
   effectiveSpeed,
+  expandConditions,
   hintedMode,
+  immuneToCondition,
   incapacitates,
   MARKERS,
   rollHints,
@@ -93,6 +96,18 @@ describe("conditions and markers (SPEC §8.11, §19.3, §34.1)", () => {
   });
 });
 
+describe("immunities conditions grant (rules audit A12)", () => {
+  it("Petrified: immune to Poisoned — a Poisoned it had does nothing, one more can't be given; a stat block's own immunity", () => {
+    expect(expandConditions(["poisoned", "petrified"]).sort()).toEqual(["incapacitated", "petrified"]);
+    // A Petrified creature's own checks: no Poisoned disadvantage.
+    expect(rollHints(["poisoned", "petrified"], 0, "check", "str").dis).toEqual([]);
+    expect(immuneToCondition([], ["petrified"], "poisoned")).toBe("Petrified");
+    expect(immuneToCondition(["poisoned"], [], "poisoned")).toBe("own");
+    expect(immuneToCondition([], ["paralyzed"], "poisoned")).toBeNull();
+    expect(immuneToCondition([], ["petrified"], "blinded")).toBeNull();
+  });
+});
+
 describe("attackHints (the card's attack rolls, SRD 5.2.1 §19.3)", () => {
   const me = { conditions: [] as string[], exhaustion: 0 };
   const them = (conditions: string[], markers: string[] = [], outlined = false) => ({
@@ -121,12 +136,51 @@ describe("attackHints (the card's attack rolls, SRD 5.2.1 §19.3)", () => {
     expect(hintedMode(h)).toBe("normal");
     expect(h.penalty).toBe(-4);
   });
-  it("a melee hit from within 5 ft on a Paralyzed or Unconscious creature is a critical hit; a ranged one, or from farther, isn't", () => {
+  it("any hit from within 5 ft on a Paralyzed or Unconscious creature is a critical hit — melee or ranged; from farther, not", () => {
     expect(attackHints(me, them(["paralyzed"]), { withinFt: 5, melee: true }).critOnHit).toBe("Paralyzed");
     expect(attackHints(me, them(["unconscious"]), { withinFt: 5, melee: true }).critOnHit).toBe(
       "Unconscious",
     );
-    expect(attackHints(me, them(["paralyzed"]), { withinFt: 5, melee: false }).critOnHit).toBeNull();
+    // SRD 5.2.1 pp. 186, 191: "Any attack roll that hits you is a Critical Hit if the attacker is within 5 feet" — a
+    // Fire Bolt or a crossbow from 5 ft too (rules audit A6; this once asserted the opposite).
+    expect(attackHints(me, them(["paralyzed"]), { withinFt: 5, melee: false }).critOnHit).toBe("Paralyzed");
     expect(attackHints(me, them(["paralyzed"]), { withinFt: 10, melee: true }).critOnHit).toBeNull();
+  });
+  it("an Unconscious creature is Prone too: from 30 ft a shot at it is a plain roll; from 5 ft, advantage (rules audit A5)", () => {
+    expect(hintedMode(attackHints(me, them(["unconscious"]), { withinFt: 30, melee: false }))).toBe("normal");
+    expect(hintedMode(attackHints(me, them(["unconscious"]), { withinFt: 5, melee: true }))).toBe("adv");
+    expect(expandConditions(["unconscious"]).sort()).toEqual(["incapacitated", "prone", "unconscious"]);
+    // Its own initiative: disadvantage once (Incapacitated), not twice.
+    expect(rollHints(["unconscious"], 0, "initiative").dis).toHaveLength(1);
+  });
+  it("Dodging: attacks at disadvantage and Dex saves at advantage — lost while Incapacitated or at Speed 0 (SRD 5.2.1 p. 181; rules audit A10)", () => {
+    const shot = (conditions: string[], speedFt?: number) =>
+      attackHints(
+        me,
+        { ...them(conditions, ["dodging"]), ...(speedFt !== undefined ? { speedFt } : {}) },
+        { withinFt: 30, melee: false },
+      ).dis.map((x) => x.from);
+    expect(shot([])).toEqual(["target Dodging"]);
+    // Incapacitated — or a condition that includes it (Stunned) — ends it; so do Grappled's Speed 0 and a Speed of 0.
+    expect(shot(["incapacitated"])).toEqual([]);
+    expect(shot(["grappled"])).toEqual([]);
+    expect(shot([], 0)).toEqual([]);
+    expect(shot([], 30)).toEqual(["target Dodging"]);
+    expect(attackHints(me, them(["stunned"], ["dodging"]), { withinFt: 30, melee: false }).dis).toEqual([]);
+    // Its Dexterity saves: advantage while it holds; none on another save, none once it lapses.
+    const save = (ability: string, conditions: string[] = [], speedFt?: number) =>
+      rollHints(conditions, 0, "save", ability, {
+        markers: ["dodging"],
+        ...(speedFt !== undefined ? { speedFt } : {}),
+      }).adv.map((x) => x.from);
+    expect(save("dex")).toEqual(["Dodging"]);
+    expect(save("wis")).toEqual([]);
+    expect(save("dex", ["restrained"])).toEqual([]);
+    expect(save("dex", [], 0)).toEqual([]);
+    expect(save("dex", ["incapacitated"])).toEqual([]);
+    // Without the marker, nothing; the check itself.
+    expect(rollHints([], 0, "save", "dex", { markers: [] }).adv).toEqual([]);
+    expect(dodgeHolds({ conditions: ["unconscious"], markers: ["dodging"] })).toBe(false);
+    expect(dodgeHolds({ conditions: ["poisoned"], markers: ["dodging"], speedFt: 5 })).toBe(true);
   });
 });

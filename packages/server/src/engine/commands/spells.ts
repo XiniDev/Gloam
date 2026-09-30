@@ -4,7 +4,6 @@ import {
   affected as areaAffected,
   type Barrier,
   type Body,
-  COVER_BONUS,
   canPlace,
   contains,
   coverHint,
@@ -14,6 +13,7 @@ import {
   footprintsOverlap,
   overlaps,
   resolveArea,
+  saveCoverBonus,
 } from "@gloam/shared/aoe";
 import { parseFormula } from "@gloam/shared/dice";
 import type { P } from "@gloam/shared/geometry";
@@ -47,6 +47,7 @@ import {
   controlsToken,
   deriveSheet,
   durationRounds,
+  immuneToCondition,
   incapacitates,
   isDm,
   PIP,
@@ -75,18 +76,21 @@ import { newId } from "../../ids.ts";
 import { inSilence } from "../../vision/sources.ts";
 import type { ActorEntity, CastEntity } from "../codecs.ts";
 import type { CommandCtx, CommandDef, RoomEvent } from "../commandBus.ts";
+import type { CampaignModel } from "../model.ts";
 import type { Op } from "../ops.ts";
 import { createOp, deleteOp, mustGet, requireDm, setOps, setPathOp } from "../plan.ts";
 import { readSheet, sheetEditOps } from "./actor.ts";
 import type { CastData, CastTargetData, DamageRoll } from "./castData.ts";
 import { activeCombat, dataOf } from "./combat.ts";
 import {
+  consequenceRules,
   FOLLOWUPS,
   type Followups,
   type Holder,
   holderOf,
   holderOps,
   itemOf,
+  mustBeAbleToAct,
   outcomeFor,
   promptTitle,
   tokensOf,
@@ -222,8 +226,13 @@ export function bodyOf(t: TokenEntity): Body {
  * `known`: only those a player knows of (a hidden wall only if it blocks sight — they see its shadow, §13.4).
  */
 export function barriersOf(ctx: CommandCtx, sceneId: string, opts: { known?: boolean } = {}): Barrier[] {
+  return barriersIn(ctx.model, sceneId, opts);
+}
+
+/** `barriersOf` for a campaign's model (a room's effects between commands). */
+export function barriersIn(model: CampaignModel, sceneId: string, opts: { known?: boolean } = {}): Barrier[] {
   const out: Barrier[] = [];
-  for (const w of ctx.model.inScene("wall", sceneId)) {
+  for (const w of model.inScene("wall", sceneId)) {
     if (opts.known && w.hidden && !blocksSight(w.kind, w.doorState)) continue;
     out.push({
       a: w.a,
@@ -232,7 +241,7 @@ export function barriersOf(ctx: CommandCtx, sceneId: string, opts: { known?: boo
       blocksSight: blocksSight(w.kind, w.doorState),
     });
   }
-  for (const e of ctx.model.inScene("effect", sceneId)) {
+  for (const e of model.inScene("effect", sceneId)) {
     const sh = e.shape;
     if (sh.kind !== "wall") continue;
     const opaque = sh.opaque || e.props.opaque === true;
@@ -436,7 +445,7 @@ function splashCard(
     subtitle: "it bursts — hit or miss",
     origin: tok ? { x: tok.pos.x, y: tok.pos.y, z: tok.elevation } : attackCard.origin,
     area: shape,
-    save: { ability: spell.save.ability, onSuccess: spell.save.onSuccess },
+    save: castSave(spell.save),
     dc: caster.dc,
     attack: null,
     damage: all ? { ...all, per: "cast", parts: all.parts.filter((_, i) => onSave[i]) } : null,
@@ -971,6 +980,11 @@ export function rowFormula(
   };
 }
 
+/** The card's save, from the spell's: its ability, what a success does, whether cover counts for it. */
+function castSave(s: NonNullable<Spell["save"]>): NonNullable<CastData["save"]> {
+  return { ability: s.ability, onSuccess: s.onSuccess, ...(s.ignoresCover ? { ignoresCover: true } : {}) };
+}
+
 function subtitleOf(spell: Spell, level: number, mode: "slot" | "ritual" | "free"): string {
   const base = spell.level === 0 ? "cantrip" : `${SPELL_LEVEL_NAMES[level]} level`;
   // One grammar with the rest of the card's header: parts joined by a middot ("2nd level · no slot").
@@ -1048,6 +1062,8 @@ export const spellCast: CommandDef<
     if (p.mode === "ritual" && !spell.ritual)
       throw new GloamError("INVALID", `${spell.name} isn't a ritual.`);
     if (!p.narrative) roomForACard(ctx, t);
+    // A cast is an action, a Bonus Action or a Reaction: none while Incapacitated (rules audit A11).
+    mustBeAbleToAct(ctx, c.h, "cast a spell");
     if (!dm) {
       // On the scene in play (a token left on a prep scene isn't at the table).
       if (t.sceneId !== ctx.model.campaign.activeSceneId)
@@ -1274,7 +1290,14 @@ export const spellCast: CommandDef<
         const h = x.id === t.id ? { ...caster.h, status: casterStatus } : holderOf(ctx, { tokenId: x.id });
         let s = h.status;
         for (const g of gives)
-          if (!s.conditions.some((k) => k.id === g.id) && !h.stats.conditionImmune.includes(g.id))
+          if (
+            !s.conditions.some((k) => k.id === g.id) &&
+            !immuneToCondition(
+              h.stats.conditionImmune,
+              s.conditions.map((k) => k.id as string),
+              g.id,
+            )
+          )
             s = {
               ...s,
               conditions: [
@@ -1316,7 +1339,7 @@ export const spellCast: CommandDef<
         caster: { tokenId: t.id, actorId: caster.actor?.id ?? null, name: t.name },
         origin,
         area: shape,
-        save: spell.save ? { ability: spell.save.ability, onSuccess: spell.save.onSuccess } : null,
+        save: spell.save ? castSave(spell.save) : null,
         dc: spell.save ? caster.dc : null,
         dcRevealed: false,
         attack: spell.attack
@@ -1326,11 +1349,13 @@ export const spellCast: CommandDef<
             }
           : null,
         damage: damageOf(spell, level, caster, p.damageType),
+        // What a failed save lands — and what an attack's hit lands (Ray of Sickness' Poisoned: the card is where a
+        // hit is known; the cast-time path only gives what needs neither).
         conditions: (spell.conditions ?? [])
-          .filter((x) => x.onFailedSave)
+          .filter((x) => x.onFailedSave || spell.attack)
           .map((x) => ({
             id: x.id,
-            onFailedSave: true,
+            onFailedSave: x.onFailedSave,
             ...(x.duration?.rounds ? { rounds: x.duration.rounds } : {}),
             ...(x.duration?.until ? { until: x.duration.until } : {}),
             ...(x.choice ? { choice: x.choice } : {}),
@@ -1447,6 +1472,7 @@ export const attackStart: CommandDef<z.infer<typeof AttackStart>, { castId: stri
     if (!a) throw new GloamError("NOT_FOUND", "That attack isn't on the sheet.");
     if (!a.attack && !a.damage) throw new GloamError("INVALID", `${a.name} has no attack or damage to roll.`);
     if (isDm(ctx.actor.role)) return;
+    mustBeAbleToAct(ctx, holderOf(ctx, { tokenId: t.id }), "attack");
     roomForACard(ctx, t);
     // A player's attack as the rules have one (security review L1, rules audit I12): on the scene in play, on its
     // own turn in combat (an action), at most four swings (the Attack action's most, Extra Attack at its highest — the
@@ -1699,12 +1725,11 @@ export const castSetDc: CommandDef<z.infer<typeof CastSetDc>, { ok: true }> = {
     const c = openCast(ctx, p.castId);
     if (!c.data.save) throw new GloamError("INVALID", "This card has no save.");
     const ops: Op[] = [...castPathOp(c, ["dc"], p.dc)];
-    const dex = c.data.save.ability === "dex";
+    const save = c.data.save;
     c.data.targets.forEach((t, i) => {
       const s = t.save;
       if (!s || s.total === undefined || s.autoFail || s.byHand) return;
-      const bonus = dex ? (COVER_BONUS[t.cover] ?? 0) : 0;
-      const success = s.total + bonus >= p.dc;
+      const success = s.total + saveCoverBonus(save, t.cover) >= p.dc;
       if (success !== s.success)
         ops.push(...castPathOp(c, ["targets", String(i), "save", "success"], success));
     });
@@ -1829,10 +1854,7 @@ export const castApply: CommandDef<z.infer<typeof CastApply>, { applied: number 
     const c = openCast(ctx, p.castId);
     const d = c.data;
     const rules = ctx.model.campaign.houseRules;
-    const cRules = {
-      bloodied: rules.bloodied && ctx.model.campaign.rulesPack !== "srd-5.1",
-      npcAtZero: rules.npcAtZero,
-    };
+    const cRules = consequenceRules(ctx);
     const ops: Op[] = [];
     const events: RoomEvent[] = [];
     const follow: Followups = { prompts: [], concentration: [], by: ctx.actor.userId };
@@ -1887,9 +1909,19 @@ export const castApply: CommandDef<z.infer<typeof CastApply>, { applied: number 
         for (const inst of instances) {
           if (!inst.parts.length) continue;
           const crit = Boolean(inst.row.attack?.crit && outcomeOf(d, inst.row) !== "none");
+          const base = {
+            kind: "damage" as const,
+            targets: [id],
+            halved: false,
+            crit,
+            tempChoice: "best" as const,
+          };
           const o = outcomeFor(
             silenced(ctx, adjusted(cur, ignore)),
-            { kind: "damage", targets: [id], parts: inst.parts, halved: false, crit, tempChoice: "best" },
+            // The DM's edited number is final: taken as it is (not halved again on a Petrified creature, A13).
+            inst.row.final != null
+              ? { ...base, totals: { [id]: inst.parts.reduce((s, x) => s + x.amount, 0) } }
+              : { ...base, parts: inst.parts },
             id,
             true,
             cRules,
@@ -1939,7 +1971,15 @@ export const castApply: CommandDef<z.infer<typeof CastApply>, { applied: number 
       // Conditions (§8.13 "conditions to apply"): a concentration spell's end with it (castId).
       for (const { row } of mine)
         for (const cid of conditionsFor(d, row)) {
-          if (status.conditions.some((x) => x.id === cid) || h.stats.conditionImmune.includes(cid)) continue;
+          if (
+            status.conditions.some((x) => x.id === cid) ||
+            immuneToCondition(
+              h.stats.conditionImmune,
+              status.conditions.map((x) => x.id as string),
+              cid,
+            )
+          )
+            continue;
           const spec = d.conditions.find((x) => x.id === cid);
           const rounds = spec?.rounds;
           status = {
@@ -1962,6 +2002,10 @@ export const castApply: CommandDef<z.infer<typeof CastApply>, { applied: number 
             ],
           };
           lines.push(`${h.name}: ${CONDITIONS[cid].name}`);
+          // Put Unconscious (Sleep's second stage, Eyebite…): Prone as well, its own — it outlasts the spell (SRD
+          // 5.2.1 p. 191: "When this condition ends, you remain Prone"; rules audit A5).
+          if (cid === "unconscious" && !status.conditions.some((x) => x.id === "prone"))
+            status = { ...status, conditions: [...status.conditions, { id: "prone", source: d.name }] };
         }
       // A condition that incapacitates ends its Concentration (SRD p. 179; rules audit I2): Hold Person on a caster
       // holding a spell — as the DM's automation setting has it (at once, or asked).

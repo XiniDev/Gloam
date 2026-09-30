@@ -272,6 +272,10 @@ describe("P7 — HP, conditions and death on the server (§8.11)", () => {
     await rq(dm, "prompt.resolve", { promptId: q.id, apply: true });
     expect(markers(orc)).toContain("dead");
     await waitFor(() => room().state.tokens.get(orc)?.dead === true);
+    // Healing a corpse does nothing (SRD 5.2.1 p. 180 — rules audit A2): no HP, still dead.
+    await hpApply(dm, { targets: [orc], kind: "heal", amount: 10 });
+    expect(state(orc).stats.hp).toBe(0);
+    expect(markers(orc)).toContain("dead");
     // A third: skipped — kept at 0, nothing added.
     const rat = await npc("Rat", 2);
     await hpApply(dm, { targets: [rat], kind: "damage", amount: 5 });
@@ -279,6 +283,15 @@ describe("P7 — HP, conditions and death on the server (§8.11)", () => {
     await rq(dm, "prompt.resolve", { promptId: r.id, apply: false });
     expect(markers(rat)).toEqual([]);
     expect(prompts().find((x) => x.id === r.id)?.status).toBe("skipped");
+  });
+
+  it("rules audit A5: Unconscious put on by hand brings Prone; coming round, it stays Prone (SRD 5.2.1 p. 191)", async () => {
+    const guard = await npc("Guard", 11);
+    await rq(dm, "status.change", { tokenId: guard, add: [{ id: "unconscious" }] });
+    expect(conditions(guard)).toEqual(expect.arrayContaining(["unconscious", "prone"]));
+    await rq(dm, "status.change", { tokenId: guard, remove: ["unconscious"] });
+    expect(conditions(guard)).toContain("prone");
+    expect(conditions(guard)).not.toContain("unconscious");
   });
 
   it("a PC at 0 HP: Unconscious and Prone and death saves, once the DM confirms; damage at 0 adds failures; massive damage asks (AC-HP-09)", async () => {
@@ -589,6 +602,27 @@ describe("P7 — HP, conditions and death on the server (§8.11)", () => {
     // Its speed shows 10 ft less (−5 ft a level).
     await waitFor(() => room().state.tokens.get(ilse)?.own?.budgetFt === 20);
     await statusChange(dm, { tokenId: ilse, exhaustion: 0 });
+  });
+
+  it("Dodging: its Dexterity save card comes with advantage; not once it's Grappled (Speed 0) or Incapacitated — Dodge's benefits lapse (SRD 5.2.1 p. 181; rules audit A10)", async () => {
+    await reset();
+    await statusChange(dm, { tokenId: ilse, add: [{ id: "dodging" }] });
+    const dexCard = async (ability = "dex") => {
+      await sleep(250);
+      const { requestId } = await rq<{ requestId: string }>(dm, "request.create", {
+        targets: [ilse],
+        type: "save",
+        ability,
+      });
+      return (await waitFor(() => cardsOf("Anna").find((c) => c.requestId === requestId))) as RequestCard;
+    };
+    expect((await dexCard()).hint).toEqual({ mode: "adv", from: ["Dodging"] });
+    expect((await dexCard("wis")).hint).toBeUndefined();
+    await statusChange(dm, { tokenId: ilse, add: [{ id: "grappled" }] });
+    expect((await dexCard()).hint).toBeUndefined();
+    await statusChange(dm, { tokenId: ilse, remove: ["grappled"], add: [{ id: "incapacitated" }] });
+    expect((await dexCard()).hint).toBeUndefined();
+    await statusChange(dm, { tokenId: ilse, remove: ["incapacitated", "dodging"] });
   });
 
   it("rests: a long rest as the DM kept it, one undoable step; a short rest's Hit Dice on the player's cards, one die at a time (AC-HP-13)", async () => {

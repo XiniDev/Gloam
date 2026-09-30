@@ -32,9 +32,15 @@ export type Consequence =
 /** Whether a creature is Bloodied (SRD 5.2.1: half its HP or fewer; at 0 it's down instead). */
 export const isBloodied = (hp: number, hpMax: number) => hpMax > 0 && hp > 0 && hp <= hpMax / 2;
 
+/** Dead: three failed death saves, or marked so (a monster the DM had die at 0 HP). */
+export const isDead = (s: TokenStatusT) =>
+  s.deathSaves?.dead === true || s.markers.some((m) => m.id === "dead");
+
 export interface ConsequenceRules {
   bloodied: boolean;
   npcAtZero: "dead" | "unconscious" | "keep";
+  /** The rules pack played ("srd-5.1": the Concentration DC has no cap). */
+  rulesPack?: string;
 }
 
 /** What damage brings, from the creature as it was and the damage's preview. */
@@ -58,7 +64,7 @@ export function damageConsequences(
     if (preview.massiveDeath || failures >= 3)
       out.push({ kind: "dying", reason: preview.massiveDeath ? "massive" : "failures" });
   } else if (preview.total > 0 && before.status.concentration)
-    out.push({ kind: "concentrationSave", dc: concentrationDc(preview.total) });
+    out.push({ kind: "concentrationSave", dc: concentrationDc(preview.total, rules.rulesPack) });
   if (rules.bloodied) {
     const was = isBloodied(before.hp, before.hpMax);
     const now = isBloodied(preview.hp, before.hpMax);

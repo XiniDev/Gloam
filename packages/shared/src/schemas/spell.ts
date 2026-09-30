@@ -97,7 +97,16 @@ export const SpellDamage = z
 export const SpellHealing = z.object({ formula: Formula, scaling: DamageScaling.optional() }).strict();
 
 export const SpellSave = z
-  .object({ ability: Ability, onSuccess: z.enum(["half", "none", "special"]) })
+  .object({
+    ability: Ability,
+    onSuccess: z.enum(["half", "none", "special"]),
+    ignoresCover: z
+      .literal(true)
+      .optional()
+      .describe(
+        "The target gains no benefit from Half Cover or Three-Quarters Cover for this save (Sacred Flame); Total Cover still keeps it from being targeted",
+      ),
+  })
   .strict();
 
 export const SpellConditionApplied = z

@@ -6,14 +6,21 @@
  * caster's turn an effect whose rounds are up ends (its concentration with it), and one that drifts (Cloudkill) moves
  * 10 ft away from its caster — each as a command of its own, the DM's to undo.
  */
-import { type AreaShape as Area, contains, footprint, resolveArea } from "@gloam/shared/aoe";
+import {
+  type AreaShape as Area,
+  affected,
+  type Barrier,
+  contains,
+  footprint,
+  resolveArea,
+} from "@gloam/shared/aoe";
 import type { P } from "@gloam/shared/geometry";
 import { durationExpired } from "@gloam/shared/rules";
 import type { AreaShape, EffectEntity, TokenEntity } from "@gloam/shared/schemas";
 import type { CommandActor, CommandBus } from "../engine/commandBus.ts";
 import { type CombatTurn, combatOn, dataOf } from "../engine/commands/combat.ts";
 import { SYSTEM_ACTOR } from "../engine/commands/party.ts";
-import { bodyOf, effectAt } from "../engine/commands/spells.ts";
+import { barriersIn, bodyOf, effectAt } from "../engine/commands/spells.ts";
 import type { CampaignModel } from "../engine/model.ts";
 import { roomCtx } from "./roomContext.ts";
 
@@ -33,9 +40,21 @@ function areaOf(model: CampaignModel, e: EffectEntity): Area | null {
   });
 }
 
-/** Whether a creature's base is in an area (any part of it, as for a spell's area, §17.3). */
-function inside(a: Area, t: TokenEntity): boolean {
-  return baseIn(footprint(a), t.pos, t.sizeFt / 2);
+/**
+ * Whether a creature standing at `p` is in an area as its spell's cast judged it (§17.3; rules audit A4): any part of
+ * its body within the area's reach in three dimensions, with a line of effect from the area's origin — a goblin in the
+ * next room, a wall between it and the Spirit Guardians' caster, isn't; nor is a flier high over a Moonbeam. A wall's
+ * own area keeps its footprint rule (below).
+ */
+function reaches(a: Area, t: TokenEntity, barriers: readonly Barrier[], p: P = t.pos): boolean {
+  if (a.kind === "wall") return baseIn(footprint(a), p, t.sizeFt / 2);
+  const body = { ...bodyOf(t), pos: p };
+  return affected(a, [{ id: t.id, ...body }], barriers)[0]?.affected === true;
+}
+
+/** Whether a creature is in an area now (as reaches(), where it stands). */
+function inside(model: CampaignModel, a: Area, t: TokenEntity): boolean {
+  return reaches(a, t, barriersIn(model, t.sceneId));
 }
 
 /**
@@ -176,7 +195,7 @@ export class EffectFlow {
     if (!a) return;
     // In it — or, for a wall's trigger that reaches out of its damaging side (Wall of Fire's 10 ft), on that side.
     const hit =
-      inside(a, t) ||
+      inside(this.host.model(), a, t) ||
       (trig.sideFt !== undefined && fx.shape.kind === "wall" && onDamagingSide(fx.shape, t, trig.sideFt));
     if (hit) this.fire(fx, when, [t.id]);
   }
@@ -232,13 +251,15 @@ export class EffectFlow {
     const model = this.host.model();
     const t = model.get("token", tokenId);
     if (!t || path.length < 2) return;
+    const barriers = barriersIn(model, t.sceneId);
     for (const fx of model.inScene("effect", t.sceneId)) {
       if (fx.props.exempt?.includes(t.id)) continue;
       const a = areaOf(model, fx);
       if (!a) continue;
       const f = footprint(a);
-      // Any part of its base (a wall: its centre in the wall's space, or stepping through it).
-      const at = (p: P) => baseIn(f, p, t.sizeFt / 2);
+      // Any part of its body, at its height, with a line of effect from the area's origin (a wall: its centre in the
+      // wall's space, or stepping through it).
+      const at = (p: P) => reaches(a, t, barriers, p);
       // Walked the path in 1-ft steps: where it came in, and how far it went inside.
       let was = at(path[0] as P);
       let entered = false;
@@ -328,7 +349,7 @@ export class EffectFlow {
     if (!now) return;
     for (const t of model.inScene("token", fx.sceneId)) {
       if (fx.props.exempt?.includes(t.id)) continue;
-      if (inside(now, t) && !(was && inside(was, t))) this.once(fx, "enter", t.id);
+      if (inside(model, now, t) && !(was && inside(model, was, t))) this.once(fx, "enter", t.id);
     }
   }
 

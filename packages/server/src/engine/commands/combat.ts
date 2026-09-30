@@ -46,7 +46,7 @@ import type { CommandCtx, CommandDef, RoomEvent } from "../commandBus.ts";
 import type { CampaignModel } from "../model.ts";
 import type { Op } from "../ops.ts";
 import { createOp, mustGet, requireDm, setOps, setPathOp } from "../plan.ts";
-import { holderOf, holderOps } from "./health.ts";
+import { holderOf, holderOps, mustBeAbleToAct } from "./health.ts";
 
 /**
  * Combat and initiative (SPEC §8.12; AC-CMB-01…11): a combat on the active scene — its combatants in tracker order,
@@ -155,6 +155,11 @@ export function initiativeModeOf(ctx: CommandCtx, t: TokenEntity, surprised: boo
     status.conditions.map((c) => c.id as string),
     surprised && pack !== "srd-5.1",
   );
+}
+
+/** A combatant's Exhaustion level (its −2 a level on every D20 Test, initiative's roll included). */
+export function exhaustionOf(ctx: CommandCtx, t: TokenEntity): number {
+  return stateOf(ctx, t).status.exhaustion;
 }
 
 /** A combatant's initiative modifier: Dex modifier plus any initiative bonus (§19.5). */
@@ -860,7 +865,9 @@ export const moveDash: CommandDef<z.infer<typeof MoveTurn>, { dashes: number }> 
   schema: MoveTurn,
   undoable: true,
   authorize(ctx, p) {
-    ownTurn(ctx, p.tokenId);
+    const { t } = ownTurn(ctx, p.tokenId);
+    // Dash is an action: none while Incapacitated (rules audit A11).
+    mustBeAbleToAct(ctx, holderOf(ctx, { tokenId: t.id }), "Dash");
   },
   plan(ctx, p) {
     const { t, c, d, turn } = ownTurn(ctx, p.tokenId);

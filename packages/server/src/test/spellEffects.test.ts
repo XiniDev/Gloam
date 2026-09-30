@@ -192,6 +192,39 @@ describe("P9 — the named persistent effects (§8.13, AC-SPL-08)", () => {
     await place(cleric, { x: 20, y: 60 });
   });
 
+  it("rules audit A4: a lasting effect reaches as its cast did — not through a wall, not a flier high over it", async () => {
+    await fresh();
+    await toTurnOf(cleric);
+    // A solid wall between Sera and a goblin 12 ft off; another goblin beside her, 40 ft up.
+    const { wallIds } = await cmd<{ wallIds: string[] }>(dm, "wall.create", {
+      sceneId,
+      walls: [{ a: { x: 26, y: 40 }, b: { x: 26, y: 80 } }],
+    });
+    await place(g1, { x: 32, y: 60 });
+    await place(g2, { x: 22, y: 66 });
+    await cmd(dm, "token.elevation", { tokenId: g2, elevation: 40 });
+    const sg = await cast("spirit-guardians", 3);
+    const id = effectOf(sg.effectId)?.id as string;
+    const cardsFor = (tok: string) => triggerCards(id).filter((c) => whoIn(c.id).includes(tok));
+    // Each ends its turn within 15 ft of her: neither is reached (SRD p. 177: total cover; pp. 181, 188: 3-D reach).
+    await toTurnOf(g1);
+    await cmd(dm, "combat.next", {});
+    await cmd(dm, "combat.next", {});
+    await sleep(300);
+    expect(cardsFor(g1)).toHaveLength(0);
+    expect(cardsFor(g2)).toHaveLength(0);
+    // The wall gone and the flier down: next time round, both are.
+    await cmd(dm, "wall.delete", { wallIds });
+    await cmd(dm, "token.elevation", { tokenId: g2, elevation: 0 });
+    await toTurnOf(g1);
+    await cmd(dm, "combat.next", {});
+    await waitFor(() => cardsFor(g1).length > 0);
+    await cmd(dm, "combat.next", {});
+    await waitFor(() => cardsFor(g2).length > 0);
+    await clearCards();
+    await clearEffects();
+  });
+
   it("Moonbeam: whoever is in the beam when it appears saves; its caster moves it up to 60 ft (not 61), and moving it onto a creature brings its save", async () => {
     await fresh();
     await toTurnOf(cleric);

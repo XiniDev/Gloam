@@ -238,7 +238,8 @@ export async function createLanternCrypt(ctx: ServerContext, by: Uploader): Prom
       TokenStatsIn.parse({
         ...o,
         hpMax: o.hpMax ?? o.hp,
-        initBonus: o.initBonus ?? o.dexMod ?? 0,
+        // (The bonus beyond Dex: initiative adds the Dex modifier itself.)
+        initBonus: o.initBonus ?? 0,
       }) as TokenStats;
     const token = (name: string, pos: V, sizeFt: number, assetId: string, s: TokenStats): TokenEntity => ({
       id: newId("tok"),

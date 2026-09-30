@@ -318,6 +318,19 @@ export type Cover = "none" | "half" | "threeQuarters" | "total";
 export const COVER_BONUS: Record<Cover, number | null> = { none: 0, half: 2, threeQuarters: 5, total: null };
 
 /**
+ * What a creature's cover adds to its save (SRD 5.2.1 "Cover"): the cover's bonus on a Dexterity save, nothing on any
+ * other — and nothing where the spell says the target gains no benefit from half or three-quarters cover for this
+ * save (Sacred Flame; rules audit A9). Total cover isn't a bonus: it keeps the creature from being targeted at all.
+ */
+export function saveCoverBonus(
+  save: { ability: string; ignoresCover?: boolean } | null | undefined,
+  cover: Cover,
+): number {
+  if (save?.ability !== "dex" || save.ignoresCover) return 0;
+  return COVER_BONUS[cover] ?? 0;
+}
+
+/**
  * The cover hint (§17.5): five rays from the attacker's centre (or the area's origin) to the target — its centre and
  * four points at 0.9 × its base radius, two across the line of attack and two along it — counted blocked when a wall
  * stops movement or sight: none, 1–2 half, 3–4 three-quarters, all 5 total. The centre ray through another

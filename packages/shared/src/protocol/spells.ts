@@ -268,6 +268,8 @@ export interface CastView {
     dc?: number;
     revealed: boolean;
     onSuccess: "half" | "none" | "special";
+    /** The target gains nothing from half or three-quarters cover for this save (Sacred Flame). */
+    ignoresCover?: true;
   };
   attack?: { bonus: string };
   damage?: {

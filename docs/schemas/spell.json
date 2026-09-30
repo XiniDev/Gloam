@@ -919,6 +919,11 @@
                 "none",
                 "special"
               ]
+            },
+            "ignoresCover": {
+              "description": "The target gains no benefit from Half Cover or Three-Quarters Cover for this save (Sacred Flame); Total Cover still keeps it from being targeted",
+              "type": "boolean",
+              "const": true
             }
           },
           "required": [

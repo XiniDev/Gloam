@@ -12,6 +12,7 @@ import {
 } from "../schemas/entities.ts";
 import { Sheet } from "../schemas/sheet.ts";
 import { abilityMod } from "./abilities.ts";
+import { effectiveSpeed } from "./conditions.ts";
 import { deriveSheet } from "./sheet.ts";
 
 /** The parts of an actor a token reads (the full sheet document is Appendix F.3). */
@@ -66,7 +67,9 @@ function statsFromParsed(sheet: Sheet): TokenStats {
     senses: { ...c.senses },
     saves,
     dexMod: d["mod.dex"],
-    initBonus: d.initiative,
+    // The bonus beyond Dex alone: every reader adds the Dex modifier itself (the sheet's "initiative" is both, and
+    // counted Dex twice — a Dex 16 fighter rolled +6: rules audit A1, SRD 5.2.1 p. 13).
+    initBonus: d.initiative - d["mod.dex"],
     resist: [...c.resistances],
     immune: [...c.immunities],
     vuln: [...c.vulnerabilities],
@@ -119,7 +122,7 @@ function statsFromLoose(sheet: Record<string, unknown>): TokenStats {
     } satisfies SensesT,
     saves,
     dexMod,
-    initBonus: dexMod + num(obj(core.initiative).bonus, 0),
+    initBonus: num(core.initiativeBonus, num(obj(core.initiative).bonus, 0)),
     resist: strs<DamageType>(core.resistances),
     immune: strs<DamageType>(core.immunities),
     vuln: strs<DamageType>(core.vulnerabilities),
@@ -172,6 +175,21 @@ export function effectiveTokenState(
     },
     status: token.status ?? EMPTY_STATUS,
   };
+}
+
+/**
+ * A creature's Speed now (SRD 5.2.1: "if your Speed is 0" — Dodge, rules audit A10): its fastest way of moving (the
+ * DM's override where there is one), after its conditions (a Speed-0 condition, unless the DM lets it ignore them) and
+ * Exhaustion. 0: it can't move by its own means at all.
+ */
+export function speedNowFt(token: TokenEntity, stats: TokenStats, status: TokenStatusT): number {
+  const s = stats.speeds;
+  return effectiveSpeed(
+    token.overrides.speedOverride ?? Math.max(s.walk, s.fly, s.swim, s.climb, s.burrow),
+    status.conditions.map((c) => c.id as string),
+    status.exhaustion,
+    token.overrides.ignoreConditionSpeed === true,
+  );
 }
 
 /** HP band (SPEC §8.5 Descriptor): 4 Healthy 100 %, 3 Hurt 51–99 %, 2 Bloodied 26–50 %, 1 Critical 1–25 %, 0 Down. */

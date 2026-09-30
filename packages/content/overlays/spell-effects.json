@@ -380,6 +380,25 @@
         }
       }
     },
+    "shining-smite": {
+      "page": 162,
+      "source": "\"The target hit by the strike takes an extra 2d6 Radiant damage from the attack. Until the spell ends, the target sheds Bright Light in a 5-foot radius, attack rolls against it have Advantage, and it can’t benefit from the Invisible condition.\" Outlined as Faerie Fire's targets are (advantage against it, no benefit from Invisible), on the struck creature for the spell's duration (rules audit A12).",
+      "set": {
+        "effect": {
+          "props": {
+            "outline": true,
+            "light": {
+              "bright": 5,
+              "dim": 0,
+              "magical": true,
+              "pierceDarkness": false
+            }
+          },
+          "triggers": [],
+          "attach": "target"
+        }
+      }
+    },
     "flaming-sphere": {
       "page": 132,
       "source": "\"Any creature that ends its turn within 5 feet of the sphere makes a Dexterity saving throw, taking 2d6 Fire damage on a failed save or half as much damage on a successful one. As a Bonus Action, you can move the sphere up to 30 feet … If you move the sphere into a creature’s space, that creature makes the save against the sphere, and the sphere stops moving for the turn.\" Sheds Bright Light 20 ft + Dim 20 ft.",

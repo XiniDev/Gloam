@@ -16,6 +16,11 @@ export interface Region {
    * p. 189: 2 extra feet in Difficult Terrain). Otherwise difficult.
    */
   kind?: "difficult" | "swim" | "halved";
+  /**
+   * The heights it fills, for one made by a spell or effect (a Web's cube, Spirit Guardians' emanation): a flier is
+   * slowed by it only inside those. None: the ground's own (terrain, water), which never slows a flier above it.
+   */
+  z?: { min: number; max: number };
 }
 export interface Bounds {
   minX: number;
@@ -202,6 +207,21 @@ export class MoveWorld {
       else difficult = true;
     }
     return { difficult, swim, halved };
+  }
+
+  /**
+   * What slows a flier at a point and height (§16.4): only regions with heights (an effect's), and only where they
+   * are — a Spirit Guardians' emanation, a Web's cube; not the ground's difficult terrain or water below.
+   */
+  regionsAtHeight(p: P, z: number): { difficult: boolean; halved: boolean } {
+    let difficult = false;
+    let halved = false;
+    for (const r of this.regions) {
+      if (!r.z || z < r.z.min || z > r.z.max || !regionHolds(r, p)) continue;
+      if (r.kind === "halved") halved = true;
+      else if (r.kind !== "swim") difficult = true;
+    }
+    return { difficult, halved };
   }
 
   /** Every t ∈ (0, 1) where pq crosses a region boundary, sorted. */

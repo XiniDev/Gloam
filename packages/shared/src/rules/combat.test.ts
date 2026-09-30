@@ -40,7 +40,12 @@ describe("initiative (§19.5, AC-CMB-02)", () => {
     expect(initiativeHints([], true)).toEqual({ mode: "dis", adv: [], dis: ["Surprised"] });
     // Both: they cancel.
     expect(initiativeHints(["invisible"], true).mode).toBe("normal");
-    expect(initiativeHints(["poisoned"], false).mode).toBe("normal");
+    // Initiative is a Dexterity check (SRD 5.2.1 p. 13): Poisoned's disadvantage on ability checks applies (rules audit
+    // A7 — this once said "normal"); Frightened's too, with its condition.
+    expect(initiativeHints(["poisoned"], false)).toMatchObject({ mode: "dis", dis: ["Poisoned"] });
+    expect(initiativeHints(["frightened"], false).dis[0]).toMatch(/^Frightened/);
+    // Unconscious: disadvantage once (it includes Incapacitated), not twice.
+    expect(initiativeHints(["unconscious"], false).dis).toEqual(["Unconscious"]);
   });
 
   it("the roll and the fixed score (10 + mod, ±5 for advantage or disadvantage)", () => {

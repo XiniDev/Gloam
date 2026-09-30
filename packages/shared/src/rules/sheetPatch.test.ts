@@ -109,7 +109,8 @@ describe("a linked token's numbers come from the sheet (SPEC §8.5, AC-SHEET-09)
   it("HP, AC, speeds, senses and size from the sheet; saves and initiative from its derived values, overrides and all", () => {
     const s = thorin();
     const st = statsFromSheet(s as unknown as Record<string, unknown>);
-    expect(st).toMatchObject({ hp: 44, hpMax: 44, ac: 10, size: "medium", initBonus: 1, dexMod: 1 });
+    // Initiative: the Dex modifier, and apart from it any bonus (none here) — every reader adds the two (SRD 5.2.1 p. 13).
+    expect(st).toMatchObject({ hp: 44, hpMax: 44, ac: 10, size: "medium", initBonus: 0, dexMod: 1 });
     expect(st.speeds.walk).toBe(25);
     expect(st.senses.darkvision).toBe(60);
     expect(st.saves.con).toBe(3 + 3);
@@ -117,6 +118,7 @@ describe("a linked token's numbers come from the sheet (SPEC §8.5, AC-SHEET-09)
     const changed = { ...s, core: { ...s.core, overrides: { "save.con": 9, initiative: 5 } } };
     const o = statsFromSheet(changed as unknown as Record<string, unknown>);
     expect(o.saves.con).toBe(9);
-    expect(o.initBonus).toBe(5);
+    // An initiative of +5 set on the sheet: +1 of it is Dex, the rest the bonus.
+    expect(o.initBonus).toBe(4);
   });
 });

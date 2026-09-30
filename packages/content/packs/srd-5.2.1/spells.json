@@ -1208,7 +1208,8 @@
     },
     "save": {
       "ability": "dex",
-      "onSuccess": "none"
+      "onSuccess": "none",
+      "ignoresCover": true
     },
     "damage": [
       {
@@ -1242,7 +1243,7 @@
       "name": "pdf",
       "range": "pdf",
       "ritual": "pdf",
-      "save": "prose:makes/succeeds on a <Ability> saving throw+foundry",
+      "save": "overlay:spell-mechanics.json",
       "school": "pdf",
       "targeting": "foundry:affects.type=creature",
       "text": "pdf",
@@ -8720,6 +8721,19 @@
         }
       }
     ],
+    "effect": {
+      "props": {
+        "light": {
+          "bright": 5,
+          "dim": 0,
+          "magical": true,
+          "pierceDarkness": false
+        },
+        "outline": true
+      },
+      "triggers": [],
+      "attach": "target"
+    },
     "light": {
       "bright": 5,
       "dim": 0,
@@ -8738,6 +8752,7 @@
       "damage": "foundry",
       "damage.scaling": "prose:increases by NdM for each spell slot level above",
       "duration": "pdf",
+      "effect": "overlay:spell-effects.json",
       "higherLevels": "pdf",
       "id": "pdf",
       "level": "pdf",

@@ -6,7 +6,7 @@
  * for everyone who can see its caster ("Mira casts Fireball (3rd level) — 4 creatures").
  */
 import type { Ability, DamageType } from "@gloam/shared";
-import { COVER_BONUS, coverHint } from "@gloam/shared/aoe";
+import { COVER_BONUS, coverHint, saveCoverBonus } from "@gloam/shared/aoe";
 import { withPenalty } from "@gloam/shared/dice";
 import { type CastTargetView, type CastView, GloamError } from "@gloam/shared/protocol";
 import {
@@ -16,7 +16,9 @@ import {
   critFormula,
   critMaxFormula,
   hintedMode,
+  isDead,
   isDm,
+  speedNowFt,
 } from "@gloam/shared/rules";
 import type { RequestResponse, RequestTarget, RollRequest } from "../dice/requests.ts";
 import type { RollRecord } from "../dice/service.ts";
@@ -39,6 +41,7 @@ import {
   silenced,
 } from "../engine/commands/spells.ts";
 import type { CampaignModel } from "../engine/model.ts";
+import { effectsOn } from "../vision/sources.ts";
 import { roomCtx } from "./roomContext.ts";
 
 export { CAST_FOLLOWUP };
@@ -178,6 +181,7 @@ export class CastFlow {
               ...(d.dc !== null && (v.dm || d.dcRevealed) ? { dc: d.dc } : {}),
               revealed: d.dcRevealed,
               onSuccess: d.save.onSuccess,
+              ...(d.save.ignoresCover ? { ignoresCover: true as const } : {}),
             },
           }
         : {}),
@@ -257,7 +261,7 @@ export class CastFlow {
     if (d.damage?.healing) {
       const amount = parts ? parts.parts.reduce((s, p) => s + p.amount, 0) : null;
       if (amount !== null) {
-        const out = applyHealing(h, amount);
+        const out = applyHealing(h, amount, isDead(h.status));
         row.computed = amount;
         row.hp = { now: h.hp, max: h.hpMax, after: out.hp };
       }
@@ -281,6 +285,8 @@ export class CastFlow {
             isPC: h.isPC,
           },
           inst,
+          // (The DM's edited number is final, as Apply takes it.)
+          { final: t.final != null, rulesPack: ctx.model.campaign.rulesPack },
         );
         hp = p.hp;
         hpTemp = p.hpTemp;
@@ -328,7 +334,9 @@ export class CastFlow {
       {
         conditions: b?.status.conditions.map((c) => c.id) ?? [],
         markers: b?.status.markers.map((x) => x.id) ?? [],
-        outlined: Boolean(b?.status.outlined),
+        // Outlined by the DM's mark or by an effect on it (Faerie Fire's glow, Shining Smite's light).
+        outlined: Boolean(b?.status.outlined) || Boolean(to && effectsOn(m, to).outlined),
+        ...(b?.token ? { speedFt: speedNowFt(b.token, b.stats, b.status) } : {}),
       },
       { withinFt: Math.max(0, within), melee: d.attack?.kind === "melee" },
     );
@@ -551,8 +559,9 @@ export class CastFlow {
     if (c?.status !== "open") return;
     const autoFail = (t.autoFail?.length ?? 0) > 0;
     const row = c.data.targets.find((x) => x.id === t.id);
-    // Cover adds to a Dexterity save (§17.5; rules audit m13) — the card's hint, the DM's to overturn.
-    const cover = c.data.save?.ability === "dex" && row ? (COVER_BONUS[row.cover] ?? 0) : 0;
+    // Cover adds to a Dexterity save (§17.5; rules audit m13), unless the spell says it doesn't (Sacred Flame, A9) —
+    // the card's hint, the DM's to overturn.
+    const cover = row ? saveCoverBonus(c.data.save, row.cover) : 0;
     const success = autoFail ? false : r.dc !== undefined ? res.total + cover >= r.dc : null;
     const pc = row?.pc ?? false;
     this.host.bus().execute(
@@ -791,6 +800,10 @@ function coverNote(d: CastData): string | undefined {
   const what =
     t.cover === "half" ? "half cover" : t.cover === "threeQuarters" ? "three-quarters cover" : "total cover";
   if (bonus === null) return `Cover hint: ${t.name} has total cover (it can't be targeted directly).`;
+  // The spell's own words take the cover away for its save (Sacred Flame: "no benefit from Half Cover or
+  // Three-Quarters Cover for this save"; rules audit A9).
+  if (d.save?.ignoresCover)
+    return `Cover hint: ${t.name} has ${what}, but ${d.name} ignores it: nothing added to its ${ABILITY_SHORT[d.save.ability]} save.`;
   // Cover adds to AC and to Dexterity saves only (§17.5): a save of another ability gets nothing from it.
   const against = !d.save
     ? "to its AC"

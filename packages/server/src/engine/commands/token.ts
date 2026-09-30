@@ -10,7 +10,14 @@ import {
   TokenSetLink,
   TokenUpdate,
 } from "@gloam/shared/protocol";
-import { type ActorLike, controlsToken, effectiveTokenState, isDm } from "@gloam/shared/rules";
+import {
+  type ActorLike,
+  controlsToken,
+  effectiveTokenState,
+  isDm,
+  speedZeroCondition,
+  statusName,
+} from "@gloam/shared/rules";
 import {
   DEFAULT_SPEEDS,
   EMPTY_STATUS,
@@ -24,8 +31,8 @@ import { assets } from "../../db/schema.ts";
 import { newId } from "../../ids.ts";
 import type { CommandCtx, CommandDef } from "../commandBus.ts";
 import { clone, type Op } from "../ops.ts";
-import { createOp, deleteOp, mustGet, requireDm, setOps } from "../plan.ts";
-import { combatOn } from "./combat.ts";
+import { createOp, deleteOp, mustGet, requireDm, setOps, setPathOp } from "../plan.ts";
+import { combatOn, dataOf, movementOf, onItsTurn } from "./combat.ts";
 
 /** An asset reference usable on this campaign's board (approved, or the uploader's own pending upload for DMs). */
 export function assertAsset(ctx: CommandCtx, assetId: string | undefined): void {
@@ -444,6 +451,38 @@ function requireController(ctx: CommandCtx, p: { tokenId: string }): void {
   if (t.locked && !isDm(ctx.actor.role)) throw new GloamError("FORBIDDEN", "The DM locked this token.");
 }
 
+/**
+ * A player's height change in a fight (§16.4; rules audit A3): it's movement — on the creature's turn, a flier's, able
+ * to move, paid for foot for foot out of what's left (the DM, free movement and exploration aren't held to it).
+ * Returns the feet it costs, or null when it isn't counted.
+ */
+function elevationCost(ctx: CommandCtx, t: TokenEntity, to: number): number | null {
+  if (isDm(ctx.actor.role)) return null;
+  const c = combatOn(ctx.model, t.sceneId);
+  const d = c ? dataOf(c) : null;
+  if (!c || !d?.combatants.some((e) => e.tokenId === t.id)) return null;
+  if (d.freeMovement || t.overrides.freeMovement) return null;
+  if (!onItsTurn(ctx, c, t))
+    throw new GloamError(
+      "NOT_YOUR_TURN",
+      d.begun ? "It isn't this creature's turn." : "Initiative is still being found.",
+    );
+  const actor = t.actorId ? ctx.model.get("actor", t.actorId) : undefined;
+  const { stats, status } = effectiveTokenState(t, actor);
+  if (!(stats.speeds.fly > 0))
+    throw new GloamError("INVALID", `${t.name} can't fly — only a flier rises or sinks in a fight.`);
+  if (!t.overrides.ignoreConditionSpeed) {
+    const zero = speedZeroCondition(status.conditions.map((x) => x.id));
+    if (zero) throw new GloamError("SPEED_ZERO", `${t.name} can't move — ${statusName(zero)}.`);
+  }
+  const cost = Math.abs(to - t.elevation);
+  const m = movementOf(ctx.model, t);
+  const left = m ? Math.max(0, m.budget - m.used) : 0;
+  if (cost > left + 0.05)
+    throw new GloamError("OVER_BUDGET", `That's ${cost} ft; ${Math.floor(left)} ft of movement left.`);
+  return cost;
+}
+
 /** `token.elevation` — absolute or relative, snapped to 5-ft steps (AC-TOK-07's stepper; P3 adds Alt+wheel). */
 export const tokenElevation: CommandDef<z.infer<typeof TokenElevation>> = {
   type: "token.elevation",
@@ -454,7 +493,17 @@ export const tokenElevation: CommandDef<z.infer<typeof TokenElevation>> = {
     const t = mustGet(ctx, "token", p.tokenId);
     const raw = p.elevation ?? t.elevation + (p.delta ?? 0);
     const elevation = Math.max(-1000, Math.round(raw / 5) * 5);
+    const cost = elevationCost(ctx, t, elevation);
     const ops = setOps("token", t, { elevation });
+    // In a fight, on its turn: what it spent, as a segment of its movement (undo refunds it).
+    const c = cost !== null && ops.length ? combatOn(ctx.model, t.sceneId) : undefined;
+    const turn = c ? dataOf(c).turn : null;
+    if (c && turn?.tokenId === t.id && cost !== null)
+      for (const op of [
+        setPathOp("combat", c, ["data", "turn", "usedFt"], turn.usedFt + cost),
+        setPathOp("combat", c, ["data", "turn", "segments"], [...turn.segments, { cost }]),
+      ])
+        if (op) ops.push(op);
     const light = t.lightId ? ctx.model.get("light", t.lightId) : undefined;
     if (light && ops.length) ops.push(...setOps("light", light, { elevation: elevation + 3 }));
     return { ops, summary: `${t.name} to ${elevation} ft`, sceneId: t.sceneId };

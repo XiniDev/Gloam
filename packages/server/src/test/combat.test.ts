@@ -1,4 +1,5 @@
 import type { Room } from "@colyseus/sdk";
+import { dist } from "@gloam/shared/geometry";
 import type { CombatView, RequestCard } from "@gloam/shared/protocol";
 import { effectiveTokenState } from "@gloam/shared/rules";
 import { Table, type TableState } from "@gloam/shared/state";
@@ -300,6 +301,86 @@ describe("P8 — combat on the server (§8.12, §16.5)", () => {
     await cmd(dm, "status.change", { tokenId: hero, remove: ["grappled"] });
     await waitFor(() => own(hero)?.stuck === "");
     await cmd(anna().room, "move.reset", { tokenId: hero });
+    // Dash is an action: none while Incapacitated (SRD 5.2.1 p. 184; rules audit A11).
+    await cmd(dm, "status.change", { tokenId: hero, add: [{ id: "incapacitated" }] });
+    await expect(cmd(anna().room, "move.dash", { tokenId: hero })).rejects.toThrow(
+      /is Incapacitated: it can't Dash/,
+    );
+    await cmd(dm, "status.change", { tokenId: hero, remove: ["incapacitated"] });
+  });
+
+  it("rules audit A3: a flight needs a fly speed and pays its 3D length, held to the budget; height in a fight is movement", async () => {
+    await turnOf(hero);
+    await cmd(anna().room, "move.reset", { tokenId: hero });
+    const at = { ...(tokenOf(hero)?.pos as { x: number; y: number }) };
+    const across = { x: at.x + 15, y: at.y };
+    // No fly speed: no flight, no height by walking, no rising by the stepper.
+    await expect(
+      cmd(anna().room, "move.commit", {
+        tokenId: hero,
+        points: [at, across],
+        mode: "fly",
+        elevations: [0, 20],
+      }),
+    ).rejects.toThrow(/can't fly/);
+    await expect(
+      cmd(anna().room, "move.commit", {
+        tokenId: hero,
+        points: [at, across],
+        mode: "walk",
+        elevations: [0, 20],
+      }),
+    ).rejects.toThrow(/Only a flight/);
+    await expect(cmd(anna().room, "token.elevation", { tokenId: hero, delta: 20 })).rejects.toThrow(
+      /can't fly/,
+    );
+    // Brin gains a flying speed.
+    await cmd(anna().room, "actor.change", {
+      actorId: heroActor,
+      changes: [{ path: ["core", "speeds", "fly"], after: 30 }],
+    });
+    // 15 ft across while climbing 20: 25 ft of movement (3-4-5), not 15.
+    const used0 = data().turn?.usedFt ?? 0;
+    await cmd(anna().room, "move.commit", {
+      tokenId: hero,
+      points: [at, across],
+      mode: "fly",
+      elevations: [0, 20],
+    });
+    expect((data().turn?.usedFt ?? 0) - used0).toBeCloseTo(25, 1);
+    expect(tokenOf(hero)?.elevation).toBe(20);
+    // Further than what's left: clamped (the default) — it stops where the budget runs out, no more spent.
+    const left = (own(hero)?.budgetFt ?? 0) - (data().turn?.usedFt ?? 0);
+    const from = { ...(tokenOf(hero)?.pos as { x: number; y: number }) };
+    await cmd(anna().room, "move.commit", {
+      tokenId: hero,
+      // (Toward the arena's far side, whichever way that is: 80 ft wide.)
+      points: [from, { x: from.x + (from.x < 40 ? 1 : -1) * Math.min(left + 20, 35), y: from.y }],
+      mode: "fly",
+      elevations: [20, 20],
+    });
+    expect(data().turn?.usedFt ?? 0).toBeLessThanOrEqual((own(hero)?.budgetFt ?? 0) + 0.05);
+    expect(dist(tokenOf(hero)?.pos as { x: number; y: number }, from)).toBeLessThan(left + 0.5);
+    // The stepper spends what it rises (none left now: refused, with why).
+    await expect(cmd(anna().room, "token.elevation", { tokenId: hero, delta: 5 })).rejects.toThrow(
+      /movement left/,
+    );
+    await cmd(anna().room, "move.reset", { tokenId: hero });
+    const before = data().turn?.usedFt ?? 0;
+    await cmd(anna().room, "token.elevation", { tokenId: hero, delta: 10 });
+    expect((data().turn?.usedFt ?? 0) - before).toBe(10);
+    // Grappled: no rising either.
+    await cmd(dm, "status.change", { tokenId: hero, add: [{ id: "grappled" }] });
+    await expect(cmd(anna().room, "token.elevation", { tokenId: hero, delta: 5 })).rejects.toThrow(
+      /Grappled/,
+    );
+    await cmd(dm, "status.change", { tokenId: hero, remove: ["grappled"] });
+    await cmd(anna().room, "move.reset", { tokenId: hero });
+    await cmd(dm, "token.elevation", { tokenId: hero, elevation: 0 });
+    await cmd(anna().room, "actor.change", {
+      actorId: heroActor,
+      changes: [{ path: ["core", "speeds", "fly"], after: 0 }],
+    });
   });
 
   it("the DM's bonus movement joins the budget (never doubled by Dash) and shows as its own part; free movement lifts turn order (AC-MOV-18, AC-CMB-11)", async () => {
@@ -555,5 +636,21 @@ describe("P8 — combat on the server (§8.12, §16.5)", () => {
     expect(log.filter((e) => e.kind === "combat.summary").at(-1)?.text).toMatch(
       /^Combat called off before it began\./,
     );
+  });
+
+  it("rules audit A8: the server's initiative roll for a creature with Exhaustion 2 takes its −4, as a player's card does", async () => {
+    const tired = await npc("Tired orc", { x: 60, y: 40 });
+    await cmd(dm, "status.change", { tokenId: tired, exhaustion: 2 });
+    dmMsgs.length = 0;
+    await cmd(dm, "combat.start", { participants: [tired], method: "rollAll" });
+    const roll = await waitFor(() =>
+      dmMsgs
+        .filter((m) => m.type === "roll.result")
+        .map((m) => m.payload as { formula: string; label?: string })
+        .find((r) => (r.label ?? "").includes("Tired orc")),
+    );
+    // SRD 5.2.1 p. 181: −2 per level on every D20 Test; initiative is a Dexterity check.
+    expect(roll.formula).toMatch(/- 4/);
+    await cmd(dm, "combat.stop", {});
   });
 });

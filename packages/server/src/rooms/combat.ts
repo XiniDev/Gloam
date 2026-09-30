@@ -7,6 +7,7 @@
  * chime and banner for its players; and when combat stops, its summary in the campaign log.
  */
 
+import { withPenalty } from "@gloam/shared/dice";
 import { hazardPrompts } from "@gloam/shared/movement";
 import type { CombatView, CombatViewEntry } from "@gloam/shared/protocol";
 import { type CombatantEntry, durationExpired, statusName } from "@gloam/shared/rules";
@@ -19,6 +20,7 @@ import {
   type CombatTurn,
   combatOn,
   dataOf,
+  exhaustionOf,
   initiativeModeOf,
   initiativeModOf,
 } from "../engine/commands/combat.ts";
@@ -232,7 +234,11 @@ export class CombatFlow {
       }
       const mod = initiativeModOf(ctx, t);
       const { mode } = initiativeModeOf(ctx, t, e.surprised === true);
-      const formula = `1d20${mod ? ` ${mod < 0 ? "-" : "+"} ${Math.abs(mod)}` : ""}${mode === "normal" ? "" : ` ${mode}`}`;
+      // Exhaustion's −2 a level on the roll, as a player's own card has it (SRD 5.2.1 p. 181; rules audit A8).
+      const formula = withPenalty(
+        `1d20${mod ? ` ${mod < 0 ? "-" : "+"} ${Math.abs(mod)}` : ""}${mode === "normal" ? "" : ` ${mode}`}`,
+        -2 * exhaustionOf(ctx, t),
+      );
       // The creature first (the feed truncates the end of a label, never who it was for); a group's one roll names
       // every creature it's for, and "Initiative" reads as the players' own cards do (critic P8 r2 N1/N2).
       const who = e.group

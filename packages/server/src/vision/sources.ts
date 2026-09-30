@@ -78,7 +78,7 @@ export function slowingEffects(model: CampaignModel, sceneId: string, creatureId
 export function effectSlow(
   model: CampaignModel,
   effects: EffectEntity[],
-): { id: string; poly: P[]; difficult: boolean; halved: boolean }[] {
+): { id: string; poly: P[]; difficult: boolean; halved: boolean; zMin: number; zMax: number }[] {
   return effects.flatMap((e) => {
     const fp = footprint(e, model);
     return fp
@@ -88,6 +88,9 @@ export function effectSlow(
             poly: fp.poly,
             difficult: e.props.difficult === true,
             halved: e.props.speedHalved === true,
+            // (Its heights: a flier is slowed only inside them.)
+            zMin: fp.zMin,
+            zMax: fp.zMax,
           },
         ]
       : [];

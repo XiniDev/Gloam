@@ -1,4 +1,4 @@
-import { CONDITIONS, type ConditionInfo } from "./conditions.ts";
+import { CONDITIONS, type ConditionInfo, expandConditions } from "./conditions.ts";
 
 /**
  * Combat and initiative as pure rules (SPEC §8.12, §19.4–19.5, §34.6): the order, the turn cycle, initiative and its
@@ -77,19 +77,32 @@ const incapacitatedBy = (conditions: readonly string[]): string[] =>
   conditions
     .map((id) => (CONDITIONS as Record<string, ConditionInfo>)[id])
     .filter((c): c is ConditionInfo => Boolean(c?.incapacitated))
-    .map((c) => c.name);
+    .map((c) => c.name)
+    .slice(0, 1);
+
+/**
+ * What a creature's conditions do to its ability checks — initiative is a Dexterity check (SRD 5.2.1 p. 13): Poisoned;
+ * Frightened while the source of its fear is in sight (rules audit A7).
+ */
+const checkDisBy = (conditions: readonly string[]): string[] =>
+  conditions
+    .map((id) => (CONDITIONS as Record<string, ConditionInfo>)[id])
+    .filter((c): c is ConditionInfo => Boolean(c && !c.incapacitated && c.own.check === "dis"))
+    .map((c) => (c.note ? `${c.name} (${c.note})` : c.name));
 
 /**
  * Initiative's automatic hints (§19.5, AC-CMB-02): Invisible → advantage; Incapacitated (or a condition that includes
- * it) → disadvantage; Surprised → disadvantage. Each with why; the roller may set them aside. Advantage and
+ * it) → disadvantage; what gives ability checks disadvantage (Poisoned, Frightened) → disadvantage, initiative being a
+ * Dexterity check; Surprised → disadvantage. Each with why; the roller may set them aside. Advantage and
  * disadvantage cancel.
  */
 export function initiativeHints(
   conditions: readonly string[],
   surprised: boolean,
 ): { mode: "normal" | "adv" | "dis"; adv: string[]; dis: string[] } {
-  const adv = conditions.includes("invisible") ? ["Invisible"] : [];
-  const dis = [...incapacitatedBy(conditions), ...(surprised ? ["Surprised"] : [])];
+  const all = expandConditions(conditions);
+  const adv = all.includes("invisible") ? ["Invisible"] : [];
+  const dis = [...incapacitatedBy(all), ...checkDisBy(all), ...(surprised ? ["Surprised"] : [])];
   const mode = adv.length && dis.length ? "normal" : adv.length ? "adv" : dis.length ? "dis" : "normal";
   return { mode, adv, dis };
 }

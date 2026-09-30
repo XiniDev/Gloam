@@ -118,6 +118,36 @@ const TABLE: [string, Partial<DamageTarget>, DamagePart[], DamageOptions, number
     22,
     0,
   ],
+  // Rules audit A13: "Resistance to all damage" (SRD 5.2.1 p. 186) — untyped damage too, and after a save's half.
+  ["petrified: untyped damage halved too", { conditions: ["petrified"] }, [p(9)], {}, 4, 26, 0],
+  [
+    "petrified: halved on a save, then resisted",
+    { conditions: ["petrified"] },
+    [p(9)],
+    { halved: true },
+    2,
+    28,
+    0,
+  ],
+  // The DM's final number is taken as it is: not halved again, resisted, doubled or cancelled.
+  [
+    "the DM's final number, as it is",
+    { conditions: ["petrified"] },
+    [p(9)],
+    { final: true, halved: true },
+    9,
+    21,
+    0,
+  ],
+  [
+    "a final number ignores immunity and vulnerability too",
+    { immunities: ["fire"], vulnerabilities: ["cold"] },
+    [p(6, "fire"), p(6, "cold")],
+    { final: true },
+    12,
+    18,
+    0,
+  ],
   ["temp HP absorb first", { hpTemp: 5 }, [p(3)], {}, 3, 30, 2],
   ["temp HP absorb, the rest to HP", { hpTemp: 5 }, [p(8)], {}, 8, 27, 0],
   [
@@ -203,6 +233,13 @@ describe("the damage pipeline (SPEC §19.2, SRD 5.2.1; AC-HP-01)", () => {
     expect(concentrationDc(22)).toBe(11);
     expect(concentrationDc(45)).toBe(22);
     expect(concentrationDc(200)).toBe(30);
+    // SRD 5.1 (p. 102) sets no cap (rules audit A12); 5.2.1's pack caps it.
+    expect(concentrationDc(200, "srd-5.1")).toBe(100);
+    expect(concentrationDc(200, "srd-5.2.1")).toBe(30);
+    expect(
+      applyDamage(creature({ concentrating: true, hp: 300, hpMax: 300 }), [p(90)], { rulesPack: "srd-5.1" })
+        .concentrationDc,
+    ).toBe(45);
     expect(applyDamage(creature({ concentrating: true }), [p(30)]).concentrationDc).toBe(15);
     // Damage the temp HP took is still damage taken.
     expect(applyDamage(creature({ concentrating: true, hpTemp: 10 }), [p(4)]).concentrationDc).toBe(10);
@@ -220,6 +257,8 @@ describe("healing and temporary HP (AC-HP-02, AC-HP-03)", () => {
     expect(applyHealing({ hp: 30, hpMax: 30 }, 5)).toEqual({ hp: 30, gained: 0, revived: false });
     expect(applyHealing({ hp: 0, hpMax: 30 }, 1)).toEqual({ hp: 1, gained: 1, revived: true });
     expect(applyHealing({ hp: 0, hpMax: 30 }, 0)).toEqual({ hp: 0, gained: 0, revived: false });
+    // The dead regain nothing (SRD 5.2.1 p. 180: only magic that revives brings them back — rules audit A2).
+    expect(applyHealing({ hp: 0, hpMax: 30 }, 7, true)).toEqual({ hp: 0, gained: 0, revived: false });
   });
 
   it("temp HP don't stack: keep or replace, the higher first", () => {

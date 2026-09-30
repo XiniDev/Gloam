@@ -15,12 +15,16 @@ import {
   applyToStatus,
   CONDITIONS,
   type Consequence,
+  type ConsequenceRules,
+  cantActBecause,
   controlsToken,
   damageConsequences,
   describeConsequence,
   effectiveTokenState,
   healingConsequences,
+  immuneToCondition,
   incapacitates,
+  isDead,
   isDm,
   type PartOutcome,
   projectSheet,
@@ -78,6 +82,18 @@ export interface Holder {
   stats: TokenStats;
   status: TokenStatusT;
   isPC: boolean;
+}
+
+/**
+ * A player's creature that can't act can't cast, attack or Dash: an Incapacitated creature "can't take any action,
+ * Bonus Action, or Reaction" (SRD 5.2.1 p. 184), a dead one does nothing (rules audit A11). The DM still can — a
+ * feature, a house rule, their call (§2 P2).
+ */
+export function mustBeAbleToAct(ctx: CommandCtx, h: Holder, what: string): void {
+  if (isDm(ctx.actor.role)) return;
+  if (isDead(h.status)) throw new GloamError("CONFLICT", `${h.name} is dead: it can't ${what}.`);
+  const by = cantActBecause(h.status.conditions.map((c) => c.id as string));
+  if (by) throw new GloamError("CONFLICT", `${h.name} is ${by}: it can't ${what}.`);
 }
 
 export function holderOf(
@@ -158,10 +174,14 @@ function controls(ctx: CommandCtx, h: Holder): boolean {
   return h.actor?.ownerUserId === ctx.actor.userId;
 }
 
-/** The consequence rules this campaign plays by (Bloodied only in SRD 5.2.1, and only when the DM leaves it on). */
-function consequenceRules(ctx: CommandCtx) {
+/**
+ * The consequence rules this campaign plays by (Bloodied only in SRD 5.2.1, and only when the DM leaves it on; its
+ * rules pack for the Concentration DC's cap).
+ */
+export function consequenceRules(ctx: CommandCtx): ConsequenceRules {
   const r = ctx.model.campaign.houseRules;
-  return { bloodied: r.bloodied && ctx.model.campaign.rulesPack !== "srd-5.1", npcAtZero: r.npcAtZero };
+  const pack = ctx.model.campaign.rulesPack;
+  return { bloodied: r.bloodied && pack !== "srd-5.1", npcAtZero: r.npcAtZero, rulesPack: pack };
 }
 
 export const itemOf = (c: Consequence): PromptItemView => ({
@@ -222,7 +242,7 @@ export function outcomeFor(
   p: z.infer<typeof HpApply>,
   id: string,
   dm: boolean,
-  cRules: { bloodied: boolean; npcAtZero: "dead" | "unconscious" | "keep" },
+  cRules: ConsequenceRules,
 ): HpOutcome {
   if (p.kind === "damage") {
     const total = dm ? p.totals?.[id] : undefined;
@@ -243,7 +263,9 @@ export function outcomeFor(
         isPC: h.isPC,
       },
       parts,
-      total !== undefined ? { crit: p.crit } : { halved: p.halved, crit: p.crit },
+      total !== undefined
+        ? { crit: p.crit, final: true, rulesPack: cRules.rulesPack }
+        : { halved: p.halved, crit: p.crit, rulesPack: cRules.rulesPack },
     );
     const byType = preview.parts
       .filter((x) => x.applied > 0)
@@ -272,14 +294,15 @@ export function outcomeFor(
     };
   }
   if (p.kind === "heal") {
-    const out = applyHealing(h, p.amount ?? 0);
+    const dead = isDead(h.status);
+    const out = applyHealing(h, p.amount ?? 0, dead);
     return {
       hp: out.hp,
       hpTemp: h.hpTemp,
       cons: healingConsequences({ hp: h.hp, hpMax: h.hpMax, status: h.status }, out, cRules),
       fx: { tokenId: id, kind: "heal", amount: out.gained, ...(out.revived ? { revived: true } : {}) },
-      detail: `Regained ${out.gained} HP`,
-      line: `${h.name} regained ${out.gained} HP`,
+      detail: dead ? "Dead: healing can't bring them back" : `Regained ${out.gained} HP`,
+      line: dead ? `${h.name} is dead — no healing takes hold` : `${h.name} regained ${out.gained} HP`,
     };
   }
   // Temporary HP don't stack: keep, replace or the higher (AC-HP-03).
@@ -454,7 +477,7 @@ function withStatus(
     return { ...s, exhaustion: Math.max(1, s.exhaustion) as TokenStatusT["exhaustion"] };
   if ((CONDITIONS as Record<string, unknown>)[id]) {
     if (s.conditions.some((c) => c.id === id)) return s;
-    return {
+    const next = {
       ...s,
       conditions: [
         ...s.conditions,
@@ -465,6 +488,10 @@ function withStatus(
         },
       ],
     };
+    // Falling Unconscious, it falls Prone — and stays Prone when it comes round (SRD 5.2.1 p. 191; rules audit A5).
+    return id === "unconscious" && !next.conditions.some((c) => c.id === "prone")
+      ? { ...next, conditions: [...next.conditions, { id: "prone" as ConditionId }] }
+      : next;
   }
   let next = s;
   if (id === "concentrating" && !s.concentration)
@@ -530,9 +557,15 @@ export const statusChange: CommandDef<
     if (!isDm(ctx.actor.role)) {
       if (p.add?.some((a) => a.id.startsWith("custom:")))
         throw new GloamError("FORBIDDEN", "Only the DM adds custom markers.");
-      const immune = p.add?.find((a) => h.stats.conditionImmune.includes(a.id as ConditionId));
-      if (immune)
-        throw new GloamError("INVALID", `${h.name} can't be ${statusName(immune.id).toLowerCase()}.`);
+      const has = h.status.conditions.map((c) => c.id as string);
+      for (const a of p.add ?? []) {
+        const why = immuneToCondition(h.stats.conditionImmune, has, a.id);
+        if (why)
+          throw new GloamError(
+            "INVALID",
+            `${h.name} can't be ${statusName(a.id).toLowerCase()}${why === "own" ? "" : ` — ${why}`}.`,
+          );
+      }
     }
   },
   plan(ctx, p) {
@@ -642,7 +675,7 @@ export const healthConsequences: CommandDef<z.infer<typeof HealthConsequences>, 
     if (p.stable) s = withStatus(withoutStatus(s, "deathsaves"), { id: "stable" });
     const events: RoomEvent[] = [];
     if (p.regain) {
-      const out = applyHealing(h, p.regain);
+      const out = applyHealing(h, p.regain, isDead(s));
       hp = out.hp;
       if (out.revived) s = applyToStatus(s, { kind: "revive" });
       if (h.token)

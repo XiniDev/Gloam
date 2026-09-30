@@ -525,6 +525,17 @@
         ]
       }
     },
+    "sacred-flame": {
+      "page": 159,
+      "source": "\"The target must succeed on a Dexterity saving throw or take 1d8 Radiant damage. The target gains no benefit from Half Cover or Three-Quarters Cover for this save.\" Nothing on a success; the cover a Dexterity save would otherwise add (+2, +5) is left off (Total Cover still keeps it from being targeted).",
+      "set": {
+        "save": {
+          "ability": "dex",
+          "onSuccess": "none",
+          "ignoresCover": true
+        }
+      }
+    },
     "scorching-ray": {
       "page": 159,
       "source": "\"You hurl three fiery rays. You can hurl them at one target within range or at several. Make a ranged spell attack for each ray.\" \"You create one additional ray for each spell slot level above 2.\"",

@@ -57,17 +57,86 @@ export function segmentCost(world: MoveWorld, a: P, b: P, opts: Partial<MoveOpti
 }
 
 /**
- * A flight's cost (§16.4: "flying movement uses 3D segment length"): each segment's length with its climb or dive —
- * the ground's difficult terrain and water don't slow a creature above them.
+ * A flight's cost (§16.4: "flying movement uses 3D segment length"): each segment's length with its climb or dive,
+ * and — given the world — more inside an effect at that height (a Spirit Guardians' emanation halves Speed: each foot
+ * there costs double; a Web's cube is difficult: +1), as for a walker. The ground's own difficult terrain and water
+ * don't slow a creature above them.
  */
-export function flightCost(points: P[], elevations: readonly number[]): number {
+export function flightCost(points: P[], elevations: readonly number[], world?: MoveWorld): number {
   let cost = 0;
   for (let i = 1; i < points.length; i++)
-    cost += Math.hypot(
-      dist(points[i - 1] as P, points[i] as P),
-      (elevations[i] ?? 0) - (elevations[i - 1] ?? 0),
+    cost += flightSegment(
+      world,
+      points[i - 1] as P,
+      points[i] as P,
+      elevations[i - 1] ?? 0,
+      elevations[i] ?? 0,
     );
   return cost;
+}
+
+function flightSegment(world: MoveWorld | undefined, a: P, b: P, za: number, zb: number): number {
+  const len = Math.hypot(dist(a, b), zb - za);
+  if (len < 1e-12) return 0;
+  const high = world?.regions.filter((r) => r.z) ?? [];
+  if (!world || !high.length) return len;
+  // Pieces between every crossing of an outline (across) or of an effect's top or bottom (up or down).
+  const ts = [0, ...world.regionCrossings(a, b), 1];
+  for (const r of high)
+    for (const z of [r.z?.min as number, r.z?.max as number])
+      if ((za - z) * (zb - z) < 0) ts.push((z - za) / (zb - za));
+  ts.sort((x, y) => x - y);
+  let cost = 0;
+  for (let i = 1; i < ts.length; i++) {
+    const t0 = ts[i - 1] as number;
+    const t1 = ts[i] as number;
+    if (t1 - t0 < 1e-12) continue;
+    const mid = (t0 + t1) / 2;
+    const at = world.regionsAtHeight(lerp(a, b, mid), za + (zb - za) * mid);
+    cost += len * (t1 - t0) * (1 + (at.difficult ? 1 : 0)) * (at.halved ? 2 : 1);
+  }
+  return cost;
+}
+
+/**
+ * A flight cut short where its cost reaches `budget` (§16.5 step 5 "clamp"): the whole segments it can pay for, then
+ * the point part-way along the next where the budget runs out, at the height it has climbed or dived to by then.
+ */
+export function clampFlight(
+  world: MoveWorld | undefined,
+  points: P[],
+  elevations: readonly number[],
+  budget: number,
+): { points: P[]; elevations: number[] } {
+  const outP: P[] = [points[0] as P];
+  const outZ: number[] = [elevations[0] ?? 0];
+  let spent = 0;
+  for (let i = 1; i < points.length; i++) {
+    const a = points[i - 1] as P;
+    const b = points[i] as P;
+    const za = elevations[i - 1] ?? 0;
+    const zb = elevations[i] ?? 0;
+    const c = flightSegment(world, a, b, za, zb);
+    if (spent + c <= budget + 1e-9) {
+      outP.push(b);
+      outZ.push(zb);
+      spent += c;
+      continue;
+    }
+    let lo = 0;
+    let hi = 1;
+    for (let k = 0; k < 40; k++) {
+      const m = (lo + hi) / 2;
+      if (spent + flightSegment(world, a, lerp(a, b, m), za, za + (zb - za) * m) <= budget) lo = m;
+      else hi = m;
+    }
+    if (lo > 1e-6) {
+      outP.push(lerp(a, b, lo));
+      outZ.push(za + (zb - za) * lo);
+    }
+    break;
+  }
+  return { points: outP, elevations: outZ };
 }
 
 /** Cost of a polyline. */

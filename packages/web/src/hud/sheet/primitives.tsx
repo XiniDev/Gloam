@@ -2,6 +2,7 @@ import type { ActorView } from "@gloam/shared/protocol";
 import { Lock, Minus, Pencil, Plus, RotateCcw } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { D20Icon } from "../../icons/dice.tsx";
+import { useBoard } from "../../state/entities.ts";
 import { DeathPip } from "../../ui/DeathPip.tsx";
 import { hintFor, modeOf, type RollMode, type RollTest, testOf } from "./rollMode.ts";
 import { rollFromSheet, rollPhysically } from "./sheetActions.ts";
@@ -42,7 +43,18 @@ export function Rollable({
   const ref = useRef<HTMLSpanElement>(null);
   // Its conditions' advantage or disadvantage (AC-DICE-11): a click rolls with it; Alt / Ctrl choose, and the menu
   // (right-click, or a long press) sets it aside with "Normal".
-  const hint = hintFor(actor.sheet.core.conditions, test === undefined ? testOf(formula) : test);
+  // Dodging, from its token (rules audit A10): "" not dodging, "dodging", or "speed0" — dodging at a Speed of 0.
+  const dodge = useBoard((d) => {
+    for (const t of d.tokens.values())
+      if (t.actorId === actor.id && (!t.dm || t.dm.link === "linked") && t.markers.includes("dodging"))
+        return t.own?.stuck === "speed0" ? "speed0" : "dodging";
+    return "";
+  });
+  const hint = hintFor(
+    actor.sheet.core.conditions,
+    test === undefined ? testOf(formula) : test,
+    dodge ? { markers: ["dodging"], ...(dodge === "speed0" ? { speedFt: 0 } : {}) } : undefined,
+  );
   // An attack says so: in combat, on its creature's turn, it marks the Action (AC-CMB-08).
   const kind = test === undefined ? testOf(formula)?.kind : test?.kind;
   const roll = (mode: RollMode) =>

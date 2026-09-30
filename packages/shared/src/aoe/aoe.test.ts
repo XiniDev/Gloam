@@ -7,6 +7,7 @@ import {
   coverHint,
   footprint,
   overlaps,
+  saveCoverBonus,
   scaledDimension,
   verticalExtent,
 } from "./index.ts";
@@ -146,6 +147,20 @@ describe("areas of effect (§17)", () => {
     expect(scaledDimension(20, 20, 1, 1)).toBe(20);
     expect(scaledDimension(20, 20, 1, 3)).toBe(60);
     expect(scaledDimension(15, undefined, 1, 5)).toBe(15);
+  });
+
+  it("what cover adds to a save: a Dexterity save only, and nothing where the spell ignores it (Sacred Flame; rules audit A9)", () => {
+    const dex = { ability: "dex" };
+    expect([
+      saveCoverBonus(dex, "none"),
+      saveCoverBonus(dex, "half"),
+      saveCoverBonus(dex, "threeQuarters"),
+    ]).toEqual([0, 2, 5]);
+    // Total cover is no bonus: the creature can't be targeted at all.
+    expect(saveCoverBonus(dex, "total")).toBe(0);
+    expect(saveCoverBonus({ ability: "wis" }, "half")).toBe(0);
+    expect(saveCoverBonus({ ability: "dex", ignoresCover: true }, "threeQuarters")).toBe(0);
+    expect(saveCoverBonus(null, "half")).toBe(0);
   });
 
   it("the cover hint (§17.5): five rays — none, half, three-quarters, total; a creature in the way gives half", () => {

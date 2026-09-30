@@ -465,15 +465,24 @@ function TargetRow({
             {t.times > 1 ? <span className="text-muted"> ×{t.times}</span> : null}
           </span>
           {t.cover !== "none" ? (
+            // A spell whose save ignores half and three-quarters cover (Sacred Flame) says so on the chip: the
+            // number would be wrong for this save.
             <span
               className="shrink-0 whitespace-nowrap rounded-[var(--radius-chip)] bg-brass/15 px-1.5 text-12 text-brass"
-              title={`Cover hint (§17.5): ${COVER[t.cover]}`}
+              title={
+                c.save?.ignoresCover && t.cover !== "total"
+                  ? `Cover hint (§17.5): ${COVER[t.cover]}, but ${c.name} ignores it for this save`
+                  : `Cover hint (§17.5): ${COVER[t.cover]}`
+              }
+              data-testid="cover-chip"
             >
-              {t.cover === "threeQuarters"
-                ? "¾ cover · +5 AC"
-                : t.cover === "half"
-                  ? "½ cover · +2 AC"
-                  : "total cover"}
+              {t.cover === "total"
+                ? "total cover"
+                : c.save?.ignoresCover
+                  ? `${t.cover === "half" ? "½" : "¾"} cover · ignored`
+                  : t.cover === "threeQuarters"
+                    ? "¾ cover · +5 AC"
+                    : "½ cover · +2 AC"}
             </span>
           ) : null}
         </span>

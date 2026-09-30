@@ -27,6 +27,13 @@ export interface ConditionInfo {
   critWithin5?: boolean;
   /** When the roll depends on the source being in sight (Frightened): shown with the hint. */
   note?: string;
+  /**
+   * The conditions it includes (SRD 5.2.1: Unconscious — "you have the Incapacitated and Prone conditions"; Paralyzed,
+   * Petrified, Stunned — Incapacitated): what they do, it does (rules audit A5).
+   */
+  implies?: ConditionId[];
+  /** Conditions it makes the creature immune to (Petrified: "Immunity to the Poisoned condition", rules audit A12). */
+  immuneTo?: ConditionId[];
 }
 
 const c = (
@@ -96,13 +103,27 @@ export const CONDITIONS: Record<ConditionId, ConditionInfo> = {
     "Paralyzed",
     "Incapacitated, Speed 0; fails Str and Dex saves; attacks against it have advantage; hits within 5 ft crit.",
     "186",
-    { speedZero: true, incapacitated: true, autoFailStrDex: true, against: "adv", critWithin5: true },
+    {
+      speedZero: true,
+      incapacitated: true,
+      autoFailStrDex: true,
+      against: "adv",
+      critWithin5: true,
+      implies: ["incapacitated"],
+    },
   ),
   petrified: c(
     "Petrified",
     "As Paralyzed without the automatic crits; resistance to all damage; immune to Poisoned.",
     "186",
-    { speedZero: true, incapacitated: true, autoFailStrDex: true, against: "adv" },
+    {
+      speedZero: true,
+      incapacitated: true,
+      autoFailStrDex: true,
+      against: "adv",
+      implies: ["incapacitated"],
+      immuneTo: ["poisoned"],
+    },
   ),
   poisoned: c("Poisoned", "Disadvantage on attack rolls and ability checks.", "186", {
     own: { attack: "dis", check: "dis" },
@@ -123,6 +144,7 @@ export const CONDITIONS: Record<ConditionId, ConditionInfo> = {
     incapacitated: true,
     autoFailStrDex: true,
     against: "adv",
+    implies: ["incapacitated"],
   }),
   unconscious: c(
     "Unconscious",
@@ -135,9 +157,45 @@ export const CONDITIONS: Record<ConditionId, ConditionInfo> = {
       autoFailStrDex: true,
       against: "adv",
       critWithin5: true,
+      implies: ["incapacitated", "prone"],
     },
   ),
 };
+
+/**
+ * A creature's conditions with the ones they include (Unconscious: Incapacitated and Prone), each once, less any that
+ * another makes it immune to (a Petrified creature's Poisoned does nothing) — what the roll hints and the rules read
+ * (rules audit A5: a ranged attack from 30 ft at an Unconscious creature is a plain roll, its Advantage and the Prone
+ * target's Disadvantage cancelling; A12).
+ */
+export function expandConditions(ids: readonly string[]): string[] {
+  const out = new Set<string>();
+  const add = (id: string) => {
+    if (out.has(id)) return;
+    out.add(id);
+    for (const x of (CONDITIONS as Record<string, ConditionInfo>)[id]?.implies ?? []) add(x);
+  };
+  for (const id of ids) add(id);
+  for (const id of [...out])
+    for (const x of (CONDITIONS as Record<string, ConditionInfo>)[id]?.immuneTo ?? []) out.delete(x);
+  return [...out];
+}
+
+/**
+ * Why a creature can't have a condition, if it can't: its own immunity (a stat block's Condition Immunities), or one
+ * a condition it has grants (Petrified: "Immunity to the Poisoned condition", SRD 5.2.1 p. 186; rules audit A12).
+ */
+export function immuneToCondition(
+  immunities: readonly string[],
+  conditions: readonly string[],
+  id: string,
+): "own" | string | null {
+  if (immunities.includes(id)) return "own";
+  for (const c of conditions)
+    if ((CONDITIONS as Record<string, ConditionInfo>)[c]?.immuneTo?.includes(id as ConditionId))
+      return (CONDITIONS as Record<string, ConditionInfo>)[c]?.name ?? c;
+  return null;
+}
 
 export interface MarkerInfo {
   name: string;
@@ -228,31 +286,61 @@ export function rollHints(
   exhaustion: number,
   kind: RollKind,
   ability?: string,
+  /** Its markers and its Speed now, where they're known (Dodging's advantage on Dexterity saves, rules audit A10). */
+  creature?: { markers: readonly string[]; speedFt?: number },
 ): RollHints {
   const out: RollHints = { adv: [], dis: [], penalty: 0, autoFail: [] };
-  for (const id of conditions) {
+  // (Each condition with those it includes; Incapacitated's initiative disadvantage counted once, named for what
+  // brought it.)
+  let incapacitatedDis = false;
+  for (const id of expandConditions(conditions)) {
     const info = (CONDITIONS as Record<string, ConditionInfo>)[id];
     if (!info) continue;
-    const own = info.own[kind];
+    // (Initiative is a Dexterity check: what a condition does to ability checks, it does to initiative — rules audit A7.)
+    const own = info.own[kind] ?? (kind === "initiative" ? info.own.check : undefined);
     const hint = { from: info.name, ...(info.note ? { note: info.note } : {}) };
-    if (own === "adv") out.adv.push(hint);
-    if (own === "dis") out.dis.push(hint);
-    // A condition that includes Incapacitated (Stunned, Paralyzed, Petrified, Unconscious) brings its initiative
-    // disadvantage with it (SRD 5.2.1).
-    else if (kind === "initiative" && info.incapacitated && !own) out.dis.push({ from: info.name });
+    // Incapacitated — or a condition that includes it (Stunned, Paralyzed, Petrified, Unconscious) — gives initiative
+    // disadvantage (SRD 5.2.1): once, named for the first that brings it.
+    if (kind === "initiative" && info.incapacitated) {
+      if (!incapacitatedDis) out.dis.push(hint);
+      incapacitatedDis = true;
+    } else {
+      if (own === "adv") out.adv.push(hint);
+      if (own === "dis") out.dis.push(hint);
+    }
     if (kind === "save" && ability === "dex" && info.dexSave === "dis") out.dis.push({ from: info.name });
     if (kind === "save" && (ability === "str" || ability === "dex") && info.autoFailStrDex)
       out.autoFail.push(info.name);
   }
+  // Dodge: "you make Dexterity saving throws with Advantage" — while it holds (SRD 5.2.1 p. 181).
+  if (kind === "save" && ability === "dex" && creature && dodgeHolds({ conditions, ...creature }))
+    out.adv.push({ from: "Dodging" });
   // Exhaustion: every D20 Test (attacks, ability checks, saves; initiative is a Dex check).
   const lvl = Math.max(0, Math.min(6, Math.trunc(exhaustion)));
   if (lvl) out.penalty = -2 * lvl;
   return out;
 }
 
+/**
+ * Whether a creature's Dodge still protects it (SRD 5.2.1 p. 181, "Dodge"): attacks against it at a disadvantage, its
+ * Dexterity saves at an advantage — "You lose these benefits if you have the Incapacitated condition or if your Speed
+ * is 0" (rules audit A10). A condition that includes Incapacitated (Stunned, Paralyzed, Petrified, Unconscious) ends it
+ * too; so does a Speed-0 condition (Grappled, Restrained) or a Speed of 0 by other means, where the caller knows it.
+ */
+export function dodgeHolds(c: {
+  conditions: readonly string[];
+  markers: readonly string[];
+  speedFt?: number;
+}): boolean {
+  if (!c.markers.includes("dodging")) return false;
+  const all = expandConditions(c.conditions);
+  if (incapacitates(all) || speedZeroCondition(all)) return false;
+  return c.speedFt === undefined || c.speedFt > 0;
+}
+
 /** An attack's hints: the attacker's and the target's, and whether a hit is a critical hit. */
 export interface AttackHints extends RollHints {
-  /** A hit is a critical hit — why (Paralyzed, Unconscious: a hit from within 5 ft, SRD 5.2.1 pp. 186, 191). */
+  /** A hit is a critical hit — why (Paralyzed, Unconscious: any hit from within 5 ft, SRD 5.2.1 pp. 186, 191). */
   critOnHit: string | null;
 }
 
@@ -260,13 +348,14 @@ export interface AttackHints extends RollHints {
  * What an attack gets (SRD 5.2.1 §19.3; the card's attack rolls): the attacker's own conditions (Poisoned, Prone,
  * Restrained, Blinded: disadvantage; Invisible: advantage) and Exhaustion's penalty; what the target's give attackers
  * (Restrained, Stunned, Paralyzed, Blinded, Unconscious: advantage; Prone: advantage within 5 ft, else disadvantage;
- * Invisible: disadvantage — unless it's outlined, Faerie Fire p. 129; Dodging: disadvantage; outlined: advantage); and
- * a melee hit from within 5 ft on a Paralyzed or Unconscious creature is a critical hit. Each hint says why; the
- * roller can take any of them away before rolling.
+ * Invisible: disadvantage — unless it's outlined, Faerie Fire p. 129; Dodging, while it holds: disadvantage; outlined:
+ * advantage); and
+ * a hit from within 5 ft on a Paralyzed or Unconscious creature — any attack roll, melee or ranged — is a critical hit.
+ * Each hint says why; the roller can take any of them away before rolling.
  */
 export function attackHints(
   attacker: { conditions: readonly string[]; exhaustion: number },
-  target: { conditions: readonly string[]; markers: readonly string[]; outlined: boolean },
+  target: { conditions: readonly string[]; markers: readonly string[]; outlined: boolean; speedFt?: number },
   at: { withinFt: number; melee: boolean },
 ): AttackHints {
   const out: AttackHints = {
@@ -274,7 +363,7 @@ export function attackHints(
     critOnHit: null,
   };
   const near = at.withinFt <= 5 + 1e-6;
-  for (const id of target.conditions) {
+  for (const id of expandConditions(target.conditions)) {
     const info = (CONDITIONS as Record<string, ConditionInfo>)[id];
     if (!info) continue;
     const from = `target ${info.name}`;
@@ -283,9 +372,11 @@ export function attackHints(
       (near ? out.adv : out.dis).push({ from: `${from} (${near ? "within" : "beyond"} 5 ft)` });
     else if (info.against === "dis" && !(id === "invisible" && target.outlined))
       out.dis.push({ from, ...(info.note ? { note: info.note } : {}) });
-    if (info.critWithin5 && at.melee && near && !out.critOnHit) out.critOnHit = info.name;
+    // Any attack roll that hits from within 5 ft — melee or not: "Any attack roll that hits you is a Critical Hit if
+    // the attacker is within 5 feet of you" (SRD 5.2.1 pp. 186, 191; rules audit A6: a Fire Bolt from 5 ft counts).
+    if (info.critWithin5 && near && !out.critOnHit) out.critOnHit = info.name;
   }
-  if (target.markers.includes("dodging")) out.dis.push({ from: "target Dodging" });
+  if (dodgeHolds(target)) out.dis.push({ from: "target Dodging" });
   if (target.outlined) out.adv.push({ from: "target outlined" });
   return out;
 }
@@ -329,6 +420,20 @@ export function stuckName(code: string): string {
   if (code === "locked") return "Locked by the DM";
   if (code === "speed0") return "Speed 0";
   return statusName(code);
+}
+
+/**
+ * Why a creature can't act (SRD 5.2.1 p. 184, Incapacitated: it "can't take any action, Bonus Action, or Reaction"):
+ * the name of the first of its conditions that incapacitates it — Incapacitated, or one that includes it (Stunned,
+ * Paralyzed, Petrified, Unconscious); null when none does (rules audit A11).
+ */
+export function cantActBecause(conditions: readonly string[]): string | null {
+  for (const id of conditions) {
+    const all = expandConditions([id]);
+    if (all.some((x) => (CONDITIONS as Record<string, ConditionInfo>)[x]?.incapacitated))
+      return (CONDITIONS as Record<string, ConditionInfo>)[id]?.name ?? null;
+  }
+  return null;
 }
 
 /** Whether any condition incapacitates (it breaks concentration, §8.11). */

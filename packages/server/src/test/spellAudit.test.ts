@@ -400,6 +400,215 @@ describe("P9 — the rules audit's fixes on the card", () => {
     await place(ogre, { x: 30, y: 30 });
   });
 
+  it("A9: Sacred Flame's target gains no benefit from half cover for its Dexterity save (SRD p. 159); Lightning Bolt's does (+2)", async () => {
+    await fresh();
+    const dmMsgs: Msg[] = [];
+    const off = dm.onMessage("*", (type, payload) => dmMsgs.push({ type: String(type), payload }));
+    // The ogre stands between the Mage and Sera: half cover (its base in the way).
+    await place(sera, { x: 10, y: 20 });
+    await place(ogre, { x: 25, y: 20 });
+    /** Cast at Sera; the DM sets DC 12 (the Mage has no sheet); Anna enters 11 on her save card. */
+    const saveAt11 = async (spellId: string, level: number, extra: object) => {
+      const mark = anna.msgs.length;
+      const r = await cmd<{ castId: string }>(dm, "spell.cast", {
+        casterTokenId: mage,
+        spellId,
+        mode: "free",
+        level,
+        ...extra,
+      });
+      const row = () =>
+        room()
+          .model.get("cast", r.castId)
+          ?.data.targets.find((x) => x.id === sera);
+      expect(row()?.cover, spellId).toBe("half");
+      await cmd(dm, "cast.setDc", { castId: r.castId, dc: 12 });
+      const card = await waitFor(() =>
+        anna.msgs
+          .slice(mark)
+          .filter((m) => m.type === "request.card")
+          .map((m) => m.payload as { requestId: string; targetId: string; dc?: number })
+          .find((c) => c.targetId === sera),
+      );
+      await cmd(anna.room, "request.respond", {
+        requestId: card.requestId,
+        target: sera,
+        action: "manual",
+        total: 11,
+      });
+      await waitFor(() => row()?.save?.total === 11);
+      const answered = row()?.save?.success;
+      // Judged again when the DM moves the DC (to 13: 11 + 2 still makes it; 11 alone doesn't).
+      await cmd(dm, "cast.setDc", { castId: r.castId, dc: 13 });
+      const rejudged = row()?.save?.success;
+      return { castId: r.castId, answered, rejudged };
+    };
+    const flame = await saveAt11("sacred-flame", 0, { targets: [sera] });
+    expect(flame).toMatchObject({ answered: false, rejudged: false });
+    // The DM's card says why the chip's cover counts for nothing here.
+    type View = { id: string; save?: { ignoresCover?: boolean }; coverNote?: string };
+    const viewsOf = (m: Msg): View[] =>
+      m.type === "cast.view" ? [m.payload as View] : m.type === "cast.views" ? (m.payload as View[]) : [];
+    const flameView = await waitFor(() =>
+      dmMsgs
+        .flatMap(viewsOf)
+        .reverse()
+        .find((v) => v.id === flame.castId && v.coverNote),
+    );
+    expect(flameView.save?.ignoresCover).toBe(true);
+    expect(flameView.coverNote).toMatch(/Sacred Flame ignores it: nothing added to its DEX save/);
+    await closeAll();
+    const bolt = await saveAt11("lightning-bolt", 3, {
+      placement: { origin: { x: 40, y: 20, z: 0 }, dirDeg: 90 },
+    });
+    expect(bolt).toMatchObject({ answered: true, rejudged: true });
+    off();
+    await closeAll();
+    await place(ogre, { x: 30, y: 30 });
+  });
+
+  it("A11: a player's creature that's Incapacitated — or Unconscious, Stunned, dead — can't cast or attack; the DM still can (SRD 5.2.1 p. 184)", async () => {
+    await fresh();
+    await place(sera, { x: 10, y: 20 });
+    await place(ogre, { x: 15, y: 20 });
+    const tok = room().model.get("token", sera);
+    await cmd(dm, "actor.change", {
+      actorId: tok?.actorId,
+      changes: [
+        {
+          path: ["core", "attacks"],
+          after: [{ name: "Mace", attack: "1d20 + 2", damage: "1d6 [bludgeoning]", range: "5 ft" }],
+        },
+      ],
+    });
+    const flame = (r: TableRoomClient) =>
+      cmd<{ castId: string }>(r, "spell.cast", {
+        casterTokenId: sera,
+        spellId: "sacred-flame",
+        mode: "slot",
+        targets: [ogre],
+      });
+    const swing = () => cmd(anna.room, "attack.start", { tokenId: sera, attack: 0, targets: [ogre] });
+    await cmd(dm, "status.change", { tokenId: sera, add: [{ id: "unconscious" }] });
+    await expect(flame(anna.room)).rejects.toThrow(/Sera is Unconscious: it can't cast a spell/);
+    await expect(swing()).rejects.toThrow(/Sera is Unconscious: it can't attack/);
+    await cmd(dm, "status.change", {
+      tokenId: sera,
+      remove: ["unconscious", "prone"],
+      add: [{ id: "stunned" }],
+    });
+    await expect(flame(anna.room)).rejects.toThrow(/Sera is Stunned/);
+    // The DM's call stands (a feature, a house rule).
+    const r = await flame(dm);
+    expect(room().model.get("cast", r.castId)?.status).toBe("open");
+    await closeAll();
+    await cmd(dm, "status.change", { tokenId: sera, remove: ["stunned"], add: [{ id: "dead" }] });
+    await expect(flame(anna.room)).rejects.toThrow(/Sera is dead: it can't cast a spell/);
+    await cmd(dm, "status.change", { tokenId: sera, remove: ["dead"] });
+    // Able again: both go through.
+    const ok = await flame(anna.room);
+    expect(room().model.get("cast", ok.castId)?.status).toBe("open");
+    await closeAll();
+    const a = await swing();
+    expect((a as { castId: string }).castId).toBeTruthy();
+    await closeAll();
+    await place(ogre, { x: 30, y: 30 });
+  });
+
+  it("A12 / A13: Shining Smite outlines the creature it strikes; a Petrified creature can't be Poisoned and halves untyped damage — the DM's final number still stands", async () => {
+    await fresh();
+    const dmMsgs: Msg[] = [];
+    const off = dm.onMessage("*", (type, payload) => dmMsgs.push({ type: String(type), payload }));
+    type Row = { id: string; attackHints?: { adv: string[] } };
+    type View = { id: string; targets: Row[] };
+    const viewsOf = (m: Msg): View[] =>
+      m.type === "cast.view" ? [m.payload as View] : m.type === "cast.views" ? (m.payload as View[]) : [];
+    const hintsOn = (castId: string, id: string) =>
+      dmMsgs
+        .flatMap(viewsOf)
+        .filter((v) => v.id === castId)
+        .flatMap((v) => v.targets)
+        .reverse()
+        .find((r) => r.id === id && r.attackHints)?.attackHints;
+    const ogreTok = () => room().model.get("token", ogre);
+    const hpOf = () => (ogreTok()?.stats as { hp: number } | undefined)?.hp ?? -1;
+    // Struck by the Mage (next to it): light on it and outlined, for the spell's minute (SRD 5.2.1 p. 162).
+    await place(ogre, { x: 45, y: 20 });
+    await cmd(dm, "spell.cast", {
+      casterTokenId: mage,
+      spellId: "shining-smite",
+      mode: "free",
+      level: 2,
+      targets: [ogre],
+      endConcentration: true,
+    });
+    const fx = room()
+      .model.inScene("effect", sceneId)
+      .find((e) => e.attachedTokenId === ogre);
+    expect(fx?.props.outline).toBe(true);
+    expect(fx?.props.light?.bright).toBe(5);
+    await closeAll();
+    // An attack at it: advantage — "target outlined" (the effect's, not only a DM's mark).
+    await place(ogre, { x: 30, y: 30 });
+    const fb = await cmd<{ castId: string }>(dm, "spell.cast", {
+      casterTokenId: mage,
+      spellId: "fire-bolt",
+      mode: "slot",
+      targets: [ogre],
+    });
+    expect((await waitFor(() => hintsOn(fb.castId, ogre)))?.adv).toContain("target outlined");
+    await closeAll();
+    for (const e of room().model.inScene("effect", sceneId))
+      await cmd(dm, "effect.remove", { effectId: e.id });
+    await cmd(dm, "status.change", { tokenId: mage, concentration: null });
+
+    // Petrified: immune to Poisoned — refused on a player's creature, left off by a spell's card.
+    await cmd(dm, "status.change", { tokenId: sera, add: [{ id: "petrified" }] });
+    await expect(
+      cmd(anna.room, "status.change", { tokenId: sera, add: [{ id: "poisoned" }] }),
+    ).rejects.toThrow(/Sera can't be poisoned — Petrified/);
+    /** Ray of Sickness at the ogre, a hit (its Poisoned rides on the hit — on the card, where the hit is known). */
+    const ray = async () => {
+      const r = await cmd<{ castId: string }>(dm, "spell.cast", {
+        casterTokenId: mage,
+        spellId: "ray-of-sickness",
+        mode: "free",
+        level: 1,
+        targets: [ogre],
+      });
+      await cmd(dm, "cast.roll", { castId: r.castId, what: "attack", targetId: ogre, entered: 30 });
+      expect(room().model.get("cast", r.castId)?.data.targets[0]?.attack?.hit).toBe(true);
+      await cmd(dm, "cast.set", { castId: r.castId, targetId: ogre, final: 0 });
+      await cmd(dm, "cast.apply", { castId: r.castId });
+      expect(room().model.get("cast", r.castId)?.data.targets[0]?.state).toBe("applied");
+      await closeAll();
+      return statusOf(ogre).status.conditions.map((c) => c.id);
+    };
+    expect(await ray()).toContain("poisoned");
+    await cmd(dm, "status.change", { tokenId: ogre, remove: ["poisoned"], add: [{ id: "petrified" }] });
+    expect(await ray()).not.toContain("poisoned");
+    // Untyped damage is resisted too: 10 → 5.
+    const hp0 = hpOf();
+    await cmd(dm, "hp.apply", { targets: [ogre], kind: "damage", amount: 10 });
+    expect(hpOf()).toBe(hp0 - 5);
+    // The DM's edited number on a card is final: 8 is 8 (not halved again).
+    const fb2 = await cmd<{ castId: string }>(dm, "spell.cast", {
+      casterTokenId: mage,
+      spellId: "fire-bolt",
+      mode: "slot",
+      targets: [ogre],
+    });
+    await cmd(dm, "cast.roll", { castId: fb2.castId, what: "attack", targetId: ogre, entered: 30 });
+    await cmd(dm, "cast.set", { castId: fb2.castId, targetId: ogre, final: 8 });
+    await cmd(dm, "cast.apply", { castId: fb2.castId });
+    expect(hpOf()).toBe(hp0 - 5 - 8);
+    await closeAll();
+    off();
+    await cmd(dm, "status.change", { tokenId: ogre, remove: ["petrified"] });
+    await cmd(dm, "status.change", { tokenId: sera, remove: ["petrified"] });
+    await cmd(dm, "hp.apply", { targets: [ogre], kind: "heal", amount: 40 });
+  });
+
   it("I11: a choice lands one of its group (Blindness/Deafness: Blinded); a later stage waits (Sleep: Incapacitated, not yet Unconscious); what the DM judges waits for them (Divine Word)", async () => {
     await fresh();
     await place(ogre, { x: 30, y: 30 });

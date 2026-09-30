@@ -54,6 +54,7 @@ import {
   type RollKind,
   rollHints,
   type SheetChange,
+  speedNowFt,
   statusFromActor,
 } from "@gloam/shared/rules";
 import type { Sheet, TokenEntity, TokenStatusT } from "@gloam/shared/schemas";
@@ -1066,7 +1067,10 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
     const targets: RequestTarget[] = [...new Set(p.targets)].map((id) => {
       const x = this.requestTarget(id);
       const conds = x.status.conditions.map((c) => c.id as string);
-      const h = rollHints(conds, x.status.exhaustion, kind ?? "check", ability);
+      const h = rollHints(conds, x.status.exhaustion, kind ?? "check", ability, {
+        markers: x.status.markers.map((m) => m.id as string),
+        ...(x.speedFt !== undefined ? { speedFt: x.speedFt } : {}),
+      });
       if (surprised.has(id)) h.dis.push({ from: "Surprised" });
       // Exhaustion takes 2 × its level off every D20 Test (AC-HP-05), in the formula for everyone to see.
       const formula = withPenalty(targetFormula(base, creatureRefs(x.token, x.sheet), p.adv), h.penalty);
@@ -1151,17 +1155,21 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
     sheet?: Sheet;
     /** Its conditions and exhaustion now (hints and penalties for its rolls). */
     status: TokenStatusT;
+    /** Its Speed now, on the board (Dodge lapses at 0). */
+    speedFt?: number;
   } {
     const token = this.model.get("token", id);
     if (token) {
       const actor = token.actorId ? this.model.get("actor", token.actorId) : undefined;
       const sheet = actor && actor.deletedAt === null ? readSheet(actor) : undefined;
       const linked = actor && actor.deletedAt === null && token.link === "linked" ? actor : undefined;
+      const { stats, status } = effectiveTokenState(token, linked);
       return {
         target: { id, kind: "token", name: token.name, controllers: this.playersAmong(token.ownerIds) },
         token,
         ...(sheet ? { sheet } : {}),
-        status: effectiveTokenState(token, linked).status,
+        status,
+        speedFt: speedNowFt(token, stats, status),
       };
     }
     const actor = this.model.get("actor", id);

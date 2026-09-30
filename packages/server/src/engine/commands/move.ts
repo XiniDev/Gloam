@@ -1,6 +1,7 @@
 import { SIZES, type Size } from "@gloam/shared";
 import { dist, type P, pathLength } from "@gloam/shared/geometry";
 import {
+  clampFlight,
   clampToBudget,
   clearanceRadius,
   flightCost,
@@ -54,6 +55,15 @@ export interface MoveResult {
  * animates it along the committed path (`token.moved`). DM moves ignore blocking (§8.6 DM moves). Budgets, turn
  * order and speed-zero conditions join with combat (Phase 8), creature spaces with it too.
  */
+/** How each way of moving reads in a refusal ("can't fly"). */
+const MODE_VERB: Record<z.infer<typeof MoveCommit>["mode"], string> = {
+  walk: "walk",
+  fly: "fly",
+  swim: "swim",
+  climb: "climb",
+  burrow: "burrow",
+};
+
 export const moveCommit: CommandDef<z.infer<typeof MoveCommit>, MoveResult> = {
   type: "move.commit",
   schema: MoveCommit,
@@ -79,6 +89,16 @@ export const moveCommit: CommandDef<z.infer<typeof MoveCommit>, MoveResult> = {
       const zero = speedZeroCondition(status.conditions.map((x) => x.id));
       if (zero) throw new GloamError("SPEED_ZERO", `${t.name} can't move — ${statusName(zero)}.`);
     }
+    // A way of moving it has (§16.4, §19.4; rules audit A3): a flight, a swim, a climb or a burrow needs that speed;
+    // height changes only in flight; a Prone flier falls rather than flies (unless it hovers).
+    const actor = t.actorId ? ctx.model.get("actor", t.actorId) : undefined;
+    const { stats, status } = effectiveTokenState(t, actor);
+    if (p.mode !== "walk" && !((stats.speeds[p.mode] ?? 0) > 0))
+      throw new GloamError("INVALID", `${t.name} can't ${MODE_VERB[p.mode]}.`);
+    if (p.elevations && p.mode !== "fly")
+      throw new GloamError("INVALID", "Only a flight changes height as it goes.");
+    if (p.mode === "fly" && !stats.speeds.hover && status.conditions.some((c) => c.id === "prone"))
+      throw new GloamError("INVALID", `${t.name} is Prone — stand up before flying.`);
   },
   plan(ctx, p) {
     const t = mustGet(ctx, "token", p.tokenId);
@@ -136,15 +156,39 @@ export const moveCommit: CommandDef<z.infer<typeof MoveCommit>, MoveResult> = {
     let bumped = false;
     let unseen = false;
     let cost: number;
+    // Flying (§16.4): paid by its 3D length — its climbs and dives, and the effects it flies through at their heights
+    // — and held to the budget by that, not by the ground route's length (rules audit A3: the cost was the 3D length
+    // set after a 2D clamp, and less than was checked).
+    const flying = p.mode === "fly" && p.elevations !== undefined;
+    let elevs: number[] | null = flying ? [t.elevation, ...(p.elevations as number[]).slice(1)] : null;
+    const overBudget = (c: number, b: number) =>
+      new GloamError(
+        "OVER_BUDGET",
+        turnBudget === null && explore !== null
+          ? `That move is ${Math.round(c)} ft; one move goes at most ${Math.floor(explore)} ft (its speed).`
+          : `That move is ${Math.round(c)} ft; ${Math.floor(b)} ft of movement left.`,
+      );
+    const holdFlight = (clampOnly: boolean) => {
+      if (!elevs) return;
+      cost = flightCost(path, elevs, world);
+      if (budget === null || cost <= budget + 0.05) return;
+      if (!clampOnly && rules.overlongMoves === "reject") throw overBudget(cost, budget);
+      const c = clampFlight(world, path, elevs, budget);
+      path = c.points;
+      elevs = c.elevations;
+      cost = flightCost(path, elevs, world);
+    };
     if (dm) {
       cost = pathCost(world, path, { crawl }).cost;
-      if (budget !== null && cost > budget + 0.05) {
+      if (flying) holdFlight(true);
+      else if (budget !== null && cost > budget + 0.05) {
         path = clampToBudget(world, path, { crawl }, budget);
         cost = pathCost(world, path, { crawl }).cost;
       }
     } else {
       const rc = clearanceRadius(t.sizeFt, rules.squeeze);
-      const v = validateMove(world, points, { rc, crawl }, budget, rules.overlongMoves);
+      // (A flight's walls checked on the ground route, unclamped: its cost and budget are its own, below.)
+      const v = validateMove(world, points, { rc, crawl }, flying ? null : budget, rules.overlongMoves);
       if ("error" in v)
         throw new GloamError(
           "OVER_BUDGET",
@@ -156,22 +200,24 @@ export const moveCommit: CommandDef<z.infer<typeof MoveCommit>, MoveResult> = {
       bumped = v.bumped;
       cost = v.cost;
       if (v.hitWall !== null) unseen = hiddenFromPlayers(ctx.model, world.walls[v.hitWall]?.id);
+      // Stopped at a wall: it stays at its height (the heights asked for were for the route it didn't finish).
+      if (elevs && bumped) elevs = path.map(() => t.elevation);
+      holdFlight(false);
       // It may not end in another creature's space: back along the path to where it may (§16.5 step 6).
       if (spaces) {
         const clear = lastClearPoint(path, me, crowd);
         if (!clear) throw new GloamError("BLOCKED", "There's no room to end the move there.");
         if (clear.points.length !== path.length || dist(clear.at, path[path.length - 1] as P) > 1e-6) {
           path = clear.points;
-          cost = pathCost(world, path, { rc, crawl }).cost;
+          if (elevs) {
+            elevs = elevs.slice(0, path.length);
+            cost = flightCost(path, elevs, world);
+          } else cost = pathCost(world, path, { rc, crawl }).cost;
         }
       }
     }
-    // Flying: the 3D length, climbs and dives included (§16.4); from the token's own height.
-    if (p.mode === "fly" && p.elevations && !bumped)
-      cost = flightCost(path, [t.elevation, ...p.elevations.slice(1)]);
     const end = path[path.length - 1] as P;
-    const elevation =
-      p.elevations && !bumped ? (p.elevations[p.elevations.length - 1] as number) : t.elevation;
+    const elevation = elevs ? (elevs[elevs.length - 1] as number) : t.elevation;
     const patch: Partial<TokenEntity> = {};
     if (dist(end, t.pos) > 1e-6) patch.pos = end;
     // A 3D mini ends facing the way it walked (campaign setting Auto-facing, §16.7): its last real heading.
@@ -192,8 +238,14 @@ export const moveCommit: CommandDef<z.infer<typeof MoveCommit>, MoveResult> = {
     if (light && patch.pos) ops.push(...setOps("light", light, { pos: patch.pos }));
     if (ops.length)
       ops.push({ k: "set", e: "token", id: t.id, path: ["updatedAt"], value: ctx.now, prev: t.updatedAt });
-    // The turn's bookkeeping (§16.5 step 7): what it spent, and the move as a segment (undo refunds it).
-    if (combat && d?.turn?.tokenId === t.id && budget !== null && patch.pos) {
+    // The turn's bookkeeping (§16.5 step 7): what it spent, and the move as a segment (undo refunds it) — a flight
+    // straight up or down too.
+    if (
+      combat &&
+      d?.turn?.tokenId === t.id &&
+      budget !== null &&
+      (patch.pos !== undefined || patch.elevation !== undefined)
+    ) {
       for (const op of [
         setPathOp("combat", combat, ["data", "turn", "usedFt"], d.turn.usedFt + cost),
         setPathOp("combat", combat, ["data", "turn", "segments"], [...d.turn.segments, { cost }]),

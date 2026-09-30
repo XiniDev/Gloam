@@ -31,6 +31,13 @@ export interface DamageOptions {
   halved?: boolean;
   /** From a critical hit: two death-save failures for a creature already at 0 HP. */
   crit?: boolean;
+  /**
+   * The DM's own final number (a card's edited total, the HP dialog's total): taken as it is — no halving, resistance,
+   * vulnerability or immunity, which the number already allows for.
+   */
+  final?: boolean;
+  /** The rules pack played: SRD 5.1's Concentration DC has no cap (5.2.1's is at most 30). */
+  rulesPack?: string;
 }
 
 /** What happened to one instance, for the preview ("12 slashing → 6, resisted"). */
@@ -70,18 +77,26 @@ export function applyDamage(
   const resist = new Set<string>(t.resistances);
   const immune = new Set<string>(t.immunities);
   const vuln = new Set<string>(t.vulnerabilities);
-  if (t.conditions.includes("petrified")) for (const d of DAMAGE_TYPES) resist.add(d);
+  // Petrified: "Resistance to all damage" (SRD 5.2.1 p. 186) — untyped damage too (rules audit A13).
+  const resistAll = t.conditions.includes("petrified");
+  if (resistAll) for (const d of DAMAGE_TYPES) resist.add(d);
   let total = 0;
   const outcomes: PartOutcome[] = [];
   for (const part of parts) {
     let a = Math.trunc(part.amount);
     const steps: PartOutcome["steps"] = [];
-    if (o.halved) {
-      a = Math.floor(a / 2);
-      steps.push("halved");
-    }
-    if (part.type !== "untyped") {
-      if (immune.has(part.type)) {
+    // (The DM's final number: nothing more to apply.)
+    if (!o.final) {
+      if (o.halved) {
+        a = Math.floor(a / 2);
+        steps.push("halved");
+      }
+      if (part.type === "untyped") {
+        if (resistAll) {
+          a = Math.floor(a / 2);
+          steps.push("resisted");
+        }
+      } else if (immune.has(part.type)) {
         a = 0;
         steps.push("immune");
       } else {
@@ -116,13 +131,17 @@ export function applyDamage(
     down: !atZero && hp === 0 && rest > 0,
     deathSaveFailures: t.isPC && atZero && rest > 0 ? (o.crit ? 2 : 1) : 0,
     massiveDeath: t.isPC && hp === 0 && rest > 0 && overflow >= t.hpMax,
-    concentrationDc: total > 0 && t.concentrating ? concentrationDc(total) : null,
+    concentrationDc: total > 0 && t.concentrating ? concentrationDc(total, o.rulesPack) : null,
   };
 }
 
-/** The Constitution save to keep concentrating after taking `damage`: DC max(10, ⌊damage ÷ 2⌋), at most 30. */
-export function concentrationDc(damage: number): number {
-  return Math.min(30, Math.max(10, Math.floor(damage / 2)));
+/**
+ * The Constitution save to keep concentrating after taking `damage`: DC max(10, ⌊damage ÷ 2⌋) — at most 30 in SRD
+ * 5.2.1 (p. 179); SRD 5.1 (p. 102) sets no cap (rules audit A12).
+ */
+export function concentrationDc(damage: number, rulesPack?: string): number {
+  const dc = Math.max(10, Math.floor(damage / 2));
+  return rulesPack === "srd-5.1" ? dc : Math.min(30, dc);
 }
 
 export interface HealingOutcome {
@@ -132,9 +151,18 @@ export interface HealingOutcome {
   revived: boolean;
 }
 
-/** Healing never exceeds the maximum; from 0 HP it brings the creature round (§19.2). */
-export function applyHealing(t: Pick<DamageTarget, "hp" | "hpMax">, amount: number): HealingOutcome {
+/**
+ * Healing never exceeds the maximum; from 0 HP it brings the creature round (§19.2). The dead regain nothing: "a dead
+ * creature has no Hit Points and can't regain them unless it is first revived by magic" (SRD 5.2.1 p. 180; rules
+ * audit A2) — Healing Word on a corpse revived it. Revival is the DM's own act (clearing Dead), healing after it.
+ */
+export function applyHealing(
+  t: Pick<DamageTarget, "hp" | "hpMax">,
+  amount: number,
+  dead = false,
+): HealingOutcome {
   const before = Math.max(0, t.hp);
+  if (dead) return { hp: before, gained: 0, revived: false };
   const heal = Math.max(0, Math.trunc(amount));
   const hp = Math.min(t.hpMax, before + heal);
   return { hp: Math.max(before, hp), gained: Math.max(0, hp - before), revived: before === 0 && hp > 0 };

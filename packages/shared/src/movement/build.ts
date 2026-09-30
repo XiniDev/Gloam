@@ -48,7 +48,15 @@ export function buildMoveWorld(input: {
   /** Solid effect walls (Wall of Force, Wall of Stone…): they block movement like walls (§17.1). */
   solid?: Iterable<{ a: P; b: P; id?: string }>;
   /** Effects that slow the ground (Web, Spike Growth: difficult; Spirit Guardians: Speed halved), as outlines. */
-  slow?: Iterable<{ poly?: P[]; circle?: { c: P; r: number }; difficult: boolean; halved: boolean }>;
+  slow?: Iterable<{
+    poly?: P[];
+    circle?: { c: P; r: number };
+    difficult: boolean;
+    halved: boolean;
+    /** The heights the effect fills (a flier is slowed only there). */
+    zMin?: number;
+    zMax?: number;
+  }>;
 }): MoveWorld {
   const walls: { a: P; b: P; id?: string }[] = [];
   for (const w of input.walls)
@@ -68,8 +76,12 @@ export function buildMoveWorld(input: {
     }
   }
   for (const e of input.slow ?? []) {
-    const shape = e.circle ? { circle: e.circle } : e.poly ? { poly: e.poly } : null;
-    if (!shape) continue;
+    const outline = e.circle ? { circle: e.circle } : e.poly ? { poly: e.poly } : null;
+    if (!outline) continue;
+    const shape =
+      e.zMin !== undefined && e.zMax !== undefined
+        ? { ...outline, z: { min: e.zMin, max: e.zMax } }
+        : outline;
     if (e.difficult) regions.push({ ...shape, kind: "difficult" });
     if (e.halved) regions.push({ ...shape, kind: "halved" });
   }
