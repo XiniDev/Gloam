@@ -2185,6 +2185,34 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
     return { admitted, spectators };
   }
 
+  /** Someone's profile changed (the Admin renamed them): their presence follows at once. */
+  profileChanged(userId: string): void {
+    const p = this.state.presence.get(userId);
+    const user = roomCtx().profiles.get(userId);
+    if (!p || !user) return;
+    p.name = user.displayName;
+    p.color = user.color;
+  }
+
+  /**
+   * Reassigns everything a person played here to someone else (or no one — the DM's): their characters' ownership and
+   * their place among each token's owners, through the bus like any change (as the Admin), so the table sees it at
+   * once and the history has it.
+   */
+  reassignOwner(fromUserId: string, toUserId: string | null, adminUserId: string): void {
+    const actor = this.actorOfUser(adminUserId);
+    for (const a of this.model.all("actor"))
+      if (a.ownerUserId === fromUserId && a.deletedAt === null)
+        this.bus.execute("actor.setOwner", { actorId: a.id, ownerUserId: toUserId }, actor);
+    for (const t of this.model.all("token"))
+      if (t.ownerIds.includes(fromUserId)) {
+        const ownerIds = [...new Set(t.ownerIds.map((u) => (u === fromUserId ? toUserId : u)))].filter(
+          (u): u is string => Boolean(u),
+        );
+        this.bus.execute("token.update", { tokenId: t.id, ownerIds }, actor);
+      }
+  }
+
   onlineUserIds(): Set<string> {
     return new Set(this.clientsByUser.keys());
   }

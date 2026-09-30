@@ -1,21 +1,29 @@
+import { X } from "lucide-react";
 import { useRef } from "react";
 import { useDiceStage } from "../dice/state.ts";
 import { useSheets } from "../net/sheets.ts";
 import { useTable } from "../net/table.ts";
 import { useBoard } from "../state/entities.ts";
 import { useUi } from "../state/ui.ts";
-import { Button } from "../ui/Button.tsx";
+import { Button, IconButton } from "../ui/Button.tsx";
 import { useCover, useIsPhone, useObstacle } from "./insets.ts";
 
-/** A player at the table without a character yet (known once the first sheets snapshot has come). */
+/**
+ * A player at the table with nothing to play yet — no character (known once the first sheets snapshot has come) and no
+ * token of their own on the board (a DM may hand them one without a sheet) — who hasn't put the hint away.
+ */
 export function useNeedsCharacter(): boolean {
   const role = useTable((s) => s.me?.role);
   const me = useTable((s) => s.me?.userId);
   const hasScene = useBoard((d) => d.scene !== null);
+  const ownsToken = useBoard((d) =>
+    me ? [...d.tokens.values()].some((t) => t.ownerIds.includes(me)) : false,
+  );
   const none = useSheets(
     (s) => s.loaded && ![...s.actors.values()].some((a) => a.ownerUserId === me && a.kind === "character"),
   );
-  return role === "player" && hasScene && none;
+  const dismissed = useUi((s) => s.firstStepsDismissed);
+  return role === "player" && hasScene && none && !ownsToken && !dismissed;
 }
 
 /**
@@ -31,14 +39,16 @@ export function FirstSteps() {
   // (Aside, too, while the emote wheel is open: it opens where the player is, and the callout isn't what they're doing.)
   const dice = useDiceStage((s) => s.on);
   const wheel = useUi((s) => s.emoteWheel !== null);
-  const away = dice || wheel;
+  // A board tool picked (measuring, pinging…): they're doing something else on the board — the hint steps aside.
+  const busy = useUi((s) => s.tool !== "select");
+  const away = dice || wheel || busy;
   useCover("first-steps", ref, !away);
   useObstacle("first-steps", ref, !away);
   if (away) return null;
   return (
     <div
       ref={ref}
-      className={`panel pointer-events-auto absolute flex flex-col gap-2 px-3.5 py-3 ${
+      className={`panel pointer-events-auto absolute flex select-none flex-col gap-2 px-3.5 py-3 ${
         phone
           ? "right-0 top-[calc(100%+14px)] w-[min(300px,calc(100vw-24px))]"
           : "right-[calc(100%+12px)] top-1/2 w-[280px] -translate-y-1/2"
@@ -55,7 +65,17 @@ export function FirstSteps() {
         }`}
         aria-hidden
       />
-      <p className="text-14 font-bold text-bone">Make your character</p>
+      <span className="flex items-start gap-2">
+        <p className="min-w-0 flex-1 text-14 font-bold text-bone">Make your character</p>
+        {/* Put away (for this visit): it never stands between a player and the board. */}
+        <IconButton
+          label="Not now"
+          className="-mr-2 -mt-2"
+          onClick={() => useUi.getState().set({ firstStepsDismissed: true })}
+        >
+          <X size={15} />
+        </IconButton>
+      </span>
       <p className="text-13 text-muted">A name, a class, HP, AC and speed — the sheet you'll play from.</p>
       <Button
         variant="primary"

@@ -1,6 +1,16 @@
-import { and, asc, desc, eq, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, ne } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
-import { campaigns, logEntries, memberships, tableSessions, users } from "../db/schema.ts";
+import {
+  actors,
+  campaigns,
+  content,
+  logEntries,
+  memberships,
+  scenes,
+  tableSessions,
+  tokens,
+  users,
+} from "../db/schema.ts";
 import { newId } from "../ids.ts";
 
 export type CampaignRow = typeof campaigns.$inferSelect;
@@ -69,6 +79,74 @@ export class CampaignService {
 
   delete(id: string): void {
     this.db.delete(campaigns).where(eq(campaigns.id, id)).run();
+  }
+
+  /** A campaign's homebrew spells by status (SPEC §8.20 Content: the homebrew overview). */
+  homebrewCounts(campaignId: string): { active: number; proposed: number; rejected: number } {
+    const out = { active: 0, proposed: 0, rejected: 0 };
+    for (const r of this.db
+      .select({ status: content.status })
+      .from(content)
+      .where(and(eq(content.campaignId, campaignId), eq(content.type, "spell")))
+      .all())
+      out[r.status]++;
+    return out;
+  }
+
+  /** Whether any campaign has a scene with a map (the first-run checklist's "add a map"). */
+  anyMap(): boolean {
+    return (
+      this.db
+        .select({ id: scenes.id })
+        .from(scenes)
+        .where(and(isNull(scenes.deletedAt), ne(scenes.mapKind, "blank")))
+        .limit(1)
+        .all().length > 0
+    );
+  }
+
+  /** How much of a campaign a person plays: characters they own, tokens they're among the owners of. */
+  ownedBy(campaignId: string, userId: string): { actors: number; tokens: number } {
+    const a = this.db
+      .select({ id: actors.id })
+      .from(actors)
+      .where(and(eq(actors.campaignId, campaignId), eq(actors.ownerUserId, userId), isNull(actors.deletedAt)))
+      .all().length;
+    const t = this.tokensOf(campaignId).filter((x) => ownersOf(x.ownerIdsJson).includes(userId)).length;
+    return { actors: a, tokens: t };
+  }
+
+  /**
+   * Hands a person's characters and token ownership in a campaign that isn't at the table to someone else, or no one
+   * (SPEC §8.20 delete with reassignment). A campaign at the table goes through its room's bus instead.
+   */
+  reassignOwner(campaignId: string, fromUserId: string, toUserId: string | null): void {
+    this.db.transaction((tx) => {
+      tx.update(actors)
+        .set({ ownerUserId: toUserId })
+        .where(and(eq(actors.campaignId, campaignId), eq(actors.ownerUserId, fromUserId)))
+        .run();
+      for (const t of this.tokensOf(campaignId)) {
+        const owners = ownersOf(t.ownerIdsJson);
+        if (!owners.includes(fromUserId)) continue;
+        const next = [...new Set(owners.map((u) => (u === fromUserId ? toUserId : u)))].filter(
+          (u): u is string => Boolean(u),
+        );
+        tx.update(tokens)
+          .set({ ownerIdsJson: JSON.stringify(next) })
+          .where(eq(tokens.id, t.id))
+          .run();
+      }
+    });
+  }
+
+  private tokensOf(campaignId: string): { id: string; ownerIdsJson: unknown }[] {
+    return this.db
+      .select({ id: tokens.id, ownerIdsJson: tokens.ownerIdsJson })
+      .from(tokens)
+      .innerJoin(scenes, eq(scenes.id, tokens.sceneId))
+      .where(eq(scenes.campaignId, campaignId))
+      .all();
   }
 
   // ── roles ──────────────────────────────────────────────────────────────────────────────────────────────
@@ -221,4 +299,10 @@ export class CampaignService {
         createdAt: r.createdAt,
       }));
   }
+}
+
+/** A token row's owners (the column holds a JSON array; a driver may hand it back parsed or as text). */
+function ownersOf(v: unknown): string[] {
+  const arr = typeof v === "string" ? (JSON.parse(v) as unknown) : v;
+  return Array.isArray(arr) ? arr.filter((x): x is string => typeof x === "string") : [];
 }

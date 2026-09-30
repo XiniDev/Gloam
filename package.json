@@ -23,6 +23,7 @@
     "content:build": "pnpm --filter @gloam/content build",
     "features:extract": "node tools/extract-features.mjs",
     "features:status": "node tools/features-status.mjs",
+    "licences": "node tools/gen-licences.mjs",
     "db:generate": "pnpm --filter @gloam/server exec drizzle-kit generate --config drizzle.config.ts"
   },
   "devDependencies": {

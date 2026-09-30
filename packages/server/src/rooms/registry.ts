@@ -33,6 +33,10 @@ export interface TableRoomApi {
   flushFog(): void;
   /** A track's length became known: time the music again (SPEC §25.3). */
   audioChanged(): void;
+  /** Someone's profile changed (renamed): their presence follows. */
+  profileChanged(userId: string): void;
+  /** Hands a person's characters and token ownership to someone else, or no one, through the bus. */
+  reassignOwner(fromUserId: string, toUserId: string | null, adminUserId: string): void;
 }
 
 /** Live room instances, registered by the rooms themselves on create/dispose. */
@@ -51,6 +55,8 @@ export const CLOSE = {
   banned: 4003,
   denied: 4004,
   tableClosed: 4005,
+  /** Their role at this table changed (the Admin made them a DM, or a player again): rejoin to take it up. */
+  roleChanged: 4012,
   rateLimited: 4029,
   revoked: 4401,
 } as const;

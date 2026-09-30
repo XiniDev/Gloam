@@ -27,6 +27,9 @@ export const HouseRules = z
 export type HouseRules = z.infer<typeof HouseRules>;
 export const DEFAULT_HOUSE_RULES: HouseRules = HouseRules.parse({});
 
+/** The content packs Gloam ships (SPEC §33). */
+export const CONTENT_PACKS = ["srd-5.2.1"] as const;
+
 /** Per-campaign settings that aren't rules (SPEC §8.2, §8.5, §8.12). */
 export const CampaignSettings = z
   .object({
@@ -36,6 +39,11 @@ export const CampaignSettings = z
     revealHiddenCombatantCount: z.boolean().default(false),
     /** Party vision (SPEC §8.8 Vision sharing): every player sees what any party member sees. Off by default. */
     partyVision: z.boolean().default(false),
+    /**
+     * The content packs this campaign plays with (SPEC §8.20 Content: packs enabled per campaign). Off, a pack's spells
+     * aren't offered and can't be cast here; the campaign's homebrew is unaffected.
+     */
+    packs: z.array(z.enum(CONTENT_PACKS)).max(8).default(["srd-5.2.1"]),
     /** Music, ambience, playlists (SPEC §8.17): the audio commands' alone, never `campaign.update`'s. */
     audio: CampaignAudio.optional(),
   })

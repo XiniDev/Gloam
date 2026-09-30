@@ -56,6 +56,8 @@ export interface UiStore {
   jumpTo: boolean;
   /** The token whose DM settings (per-token overrides, SPEC §8.19) are open, or null. */
   tokenSettings: string | null;
+  /** The player put the "Make your character" hint away (for this visit). */
+  firstStepsDismissed: boolean;
   /** The scene whose 3D map the DM is aligning (transform gizmo + Generate walls), or null. */
   mapTool: string | null;
   /** The New scene wizard: open (true) or open with a map already chosen (its asset id), or closed. */
@@ -139,6 +141,7 @@ export const useUi = create<UiStore>((set, get) => ({
   emoteWheel: null,
   jumpTo: false,
   tokenSettings: null,
+  firstStepsDismissed: false,
   mapTool: null,
   sceneWizard: null,
   cameras: initial.cameras ?? {},

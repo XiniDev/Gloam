@@ -121,6 +121,13 @@ export function assetRoutes(app: Express, ctx: ServerContext): void {
     const fail = (status: number, code: Parameters<typeof sendError>[2], message: string, abort = false) => {
       if (responded) return;
       responded = true;
+      // Every refused upload is a security event (AC-ADM-04): who, from where, why (never the file's bytes).
+      if (status !== 401)
+        ctx.security.record("upload.rejected", {
+          userId: req.gloam.auth?.user.id ?? null,
+          ip: req.gloam.ip,
+          detail: { status, reason: message, purpose: String(req.query.purpose ?? "") },
+        });
       if (abort) {
         // Stop storing at once and answer now (AC-AST-02). Whatever the client is still sending is read and
         // discarded (Node drains it after the response), never stored. Closing with unread input would send a TCP

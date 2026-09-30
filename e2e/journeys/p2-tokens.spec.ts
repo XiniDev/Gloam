@@ -174,6 +174,8 @@ test.describe("P2 — tokens (TOK)", () => {
       "Request",
       "Hide",
       "Lock",
+      // Its DM settings (§8.19 per-token overrides, P12).
+      "Settings",
       "Duplicate",
       "Delete",
     ]);
@@ -184,6 +186,8 @@ test.describe("P2 — tokens (TOK)", () => {
     await closeRadial(admin);
     // The owner: only their own token's controls.
     expect(labels(await openRadial(dave, hero))).toEqual([
+      // Their own emotes, from their own token (§8.18, P11).
+      "Emote",
       "Elevation",
       "Facing",
       "Look",
@@ -191,8 +195,8 @@ test.describe("P2 — tokens (TOK)", () => {
       "HP",
       "Conditions",
     ]);
-    // Number keys pick a slice; the Elevation ring raises the token 5 ft.
-    await dave.keyboard.press("1");
+    // Number keys pick a slice (Elevation is the second, after Emote); the Elevation ring raises the token 5 ft.
+    await dave.keyboard.press("2");
     await expect(dave.getByRole("menuitem", { name: "Up 5 ft" })).toBeVisible();
     await dave.keyboard.press("1");
     await expect
@@ -206,7 +210,8 @@ test.describe("P2 — tokens (TOK)", () => {
     // creature's, not the token's).
     await req(admin, "token.update", { tokenId: hero, locked: true });
     await expect.poll(async () => ((await tokenView(dave, hero)) as { locked: boolean }).locked).toBe(true);
-    expect(labels(await openRadial(dave, hero))).toEqual(["Look", "HP", "Conditions"]);
+    // (Locked: no Elevation or Facing — its emotes still.)
+    expect(labels(await openRadial(dave, hero))).toEqual(["Emote", "Look", "HP", "Conditions"]);
     await closeRadial(dave);
 
     // Long-press (touch) opens it too.

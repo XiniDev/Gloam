@@ -11,6 +11,7 @@ import { ChevronLeft, Search, SlidersHorizontal } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { StatusIcon } from "../../icons/status.tsx";
 import { allSpells, loadSrdSpells, useSpells } from "../../net/spells.ts";
+import { useTable } from "../../net/table.ts";
 import { IconButton } from "../../ui/Button.tsx";
 import { EmptyState } from "../../ui/EmptyState.tsx";
 import { ScrollFade } from "../../ui/ScrollFade.tsx";
@@ -52,7 +53,8 @@ export function SpellBrowser({
   useEffect(() => {
     void loadSrdSpells().catch(() => {});
   }, []);
-  const spells = useMemo(() => allSpells({ srd, homebrew }), [srd, homebrew]);
+  const packs = useTable((s) => s.campaignSettings.packs);
+  const spells = useMemo(() => allSpells({ srd, homebrew }, packs), [srd, homebrew, packs]);
   const classes = useMemo(() => spellClasses(spells), [spells]);
   const [f, setF] = useState<SpellFilter>({});
   const [showFilters, setShowFilters] = useState(false);

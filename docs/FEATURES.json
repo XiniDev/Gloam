@@ -1999,10 +1999,10 @@
       "code": "ADM",
       "phase": "P12",
       "text": "People management supports rename, PIN set/clear, DM assignment, kick, ban/unban and delete with character reassignment.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p12-admin.spec.ts › People: Dave renamed Davey, a PIN set, made a DM, banned (badge) and unbanned, deleted; server: packages/server/src/test/adminconsole.test.ts › AC-ADM-02 — rename follows into the table's presence, PIN 4–8 digits proves a returning player and clears, role per campaign (a DM rejoins with 4012), kick/ban/unban, delete hands characters and token ownership on (the table's campaign through the bus — history — another on disk), the Admin's own profile refused",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-30T08:46:19.308Z"
     },
     {
       "id": "AC-ADM-03",
@@ -2010,10 +2010,10 @@
       "code": "ADM",
       "phase": "P12",
       "text": "The Admin has every DM capability in every campaign plus the admin-only actions; admin sessions expire after 12 hours of inactivity; by default the Admin can log in only from the host PC (setting: allow admin login through the doorway).",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/adminconsole.test.ts › AC-ADM-03 — every capability a DM has the Admin has, admin.manage the Admin's alone; an admin session idle 12 h is refused (401); an admin login through the doorway (Cloudflare headers) is refused by default (403) and allowed only with 'allow admin login through the doorway'; the LAN case: security.test.ts › AC-SEC-04",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-30T08:06:47.426Z"
     },
     {
       "id": "AC-ADM-04",
@@ -2032,10 +2032,10 @@
       "code": "ADM",
       "phase": "P12",
       "text": "About & Credits shows the exact SRD 5.2.1 attribution statement (Appendix I) and the licences of bundled fonts and libraries.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p12-admin.spec.ts › About & Credits shows the SRD 5.2.1 attribution word for word, four font licences (OFL) and the library licences (artifacts/screens/p12/admin-about.png); server: adminconsole.test.ts › AC-ADM-05 — the attribution equals Appendix I and the pack's own statement, OFL texts for Fraunces, Alegreya Sans, Cinzel, JetBrains Mono, production libraries (three, react, colyseus, zod…) and the vendored ZzFX; admin only",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-30T08:46:19.382Z"
     },
     {
       "id": "AC-ADM-06",
@@ -2043,10 +2043,10 @@
       "code": "ADM",
       "phase": "P12",
       "text": "The first-run checklist tracks the five steps and disappears when all are done.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p12-admin.spec.ts › the checklist on a fresh install (password done, campaign to do), the demo ticks campaign and map, opening the table ticks the last and the card is gone (artifacts/screens/p12/admin-checklist.png); server: adminconsole.test.ts › AC-ADM-06 — the five steps computed and done only when all are",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-30T08:46:19.459Z"
     },
     {
       "id": "AC-RSP-01",

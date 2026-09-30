@@ -150,6 +150,7 @@ export function TablePage() {
         </div>
       </header>
 
+      <FirstRunChecklist refresh={`${s.status}|${campaigns.length}|${selected?.id ?? ""}`} />
       {!selected ? <FirstCampaign onCreated={() => void loadCampaigns()} /> : null}
 
       <section className="panel mt-6 p-5 sm:p-6" aria-labelledby="table-status">
@@ -670,5 +671,86 @@ function FirstCampaign({ onCreated }: { onCreated: () => void }) {
         </Button>
       </div>
     </form>
+  );
+}
+
+interface Checklist {
+  steps: { password: boolean; cloudflared: boolean; campaign: boolean; map: boolean; tableOpened: boolean };
+  done: boolean;
+}
+
+const STEPS: { key: keyof Checklist["steps"]; label: string; how: string }[] = [
+  { key: "password", label: "Set the Admin password", how: "Done when you first opened the console." },
+  {
+    key: "cloudflared",
+    label: "Install cloudflared",
+    how: "For friends outside your home — see the doorway card below. Playing on one network? Skip it with LAN.",
+  },
+  {
+    key: "campaign",
+    label: "Create or import a campaign",
+    how: "Below, or on Campaigns — or start with the demo.",
+  },
+  { key: "map", label: "Add a map", how: "At the table: DM panel → Scenes → New scene." },
+  {
+    key: "tableOpened",
+    label: "Open the table",
+    how: "Choose how friends reach you below, then Open table.",
+  },
+];
+
+/**
+ * The first-run checklist (SPEC §8.20; AC-ADM-06): the five steps to a first game, ticked as they're done, on top of
+ * the console until all are — then gone.
+ */
+function FirstRunChecklist({ refresh }: { refresh: string }) {
+  const [c, setC] = useState<Checklist | null>(null);
+  useEffect(() => {
+    void refresh;
+    void get<Checklist>("/api/admin/checklist").then(setC, () => {});
+  }, [refresh]);
+  if (!c || c.done) return null;
+  const left = STEPS.filter((x) => !c.steps[x.key]).length;
+  return (
+    <section
+      className="panel relative mt-6 p-5 sm:p-6"
+      aria-labelledby="first-run"
+      data-testid="first-run-checklist"
+    >
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 id="first-run" className="text-22 text-bone">
+          Getting started
+        </h2>
+        <span className="tabular text-13 text-muted">
+          {STEPS.length - left} of {STEPS.length} done
+        </span>
+      </div>
+      <ol className="mt-4 flex flex-col gap-3">
+        {STEPS.map((x, i) => {
+          const done = c.steps[x.key];
+          return (
+            <li key={x.key} className="flex items-start gap-3" data-step={x.key} data-done={done ? "1" : "0"}>
+              <span
+                className={`tabular mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full text-13 font-bold ${
+                  done ? "bg-verdigris text-ink-950" : "border border-line text-muted"
+                }`}
+                aria-hidden
+              >
+                {done ? "✓" : i + 1}
+              </span>
+              <span className="flex min-w-0 flex-col">
+                <span
+                  className={`text-16 ${done ? "text-muted line-through decoration-1" : "font-bold text-bone"}`}
+                >
+                  {x.label}
+                  <span className="sr-only">{done ? " — done" : " — to do"}</span>
+                </span>
+                {done ? null : <span className="text-13 text-muted">{x.how}</span>}
+              </span>
+            </li>
+          );
+        })}
+      </ol>
+    </section>
   );
 }

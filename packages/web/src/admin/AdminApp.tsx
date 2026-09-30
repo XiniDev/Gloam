@@ -1,5 +1,17 @@
 import type { Room } from "@colyseus/sdk";
-import { Archive, LogOut, Settings as SettingsIcon, Swords, Table2 } from "lucide-react";
+import {
+  Archive,
+  BookOpen,
+  FolderOpen,
+  Images,
+  Info,
+  LogOut,
+  Settings as SettingsIcon,
+  ShieldCheck,
+  Swords,
+  Table2,
+  Users,
+} from "lucide-react";
 import { type FormEvent, type ReactNode, useEffect, useState } from "react";
 import { NavLink, Route, Routes, useNavigate, useSearchParams } from "react-router";
 import { leaveRoom } from "../net/colyseus.ts";
@@ -10,8 +22,14 @@ import { TextInput } from "../ui/Field.tsx";
 import { FullScreenLoader } from "../ui/FullScreenLoader.tsx";
 import { Filigree, Sparkle } from "../ui/ornaments.tsx";
 import { SoundChip } from "../ui/SoundChip.tsx";
+import { AboutPage } from "./AboutPage.tsx";
+import { AssetsPage } from "./AssetsPage.tsx";
+import { CampaignsPage } from "./CampaignsPage.tsx";
+import { ContentPage } from "./ContentPage.tsx";
+import { PeoplePage } from "./PeoplePage.tsx";
 import { useAdminLive, watchLobby } from "./realtime.ts";
 import { SavesPage } from "./SavesPage.tsx";
+import { SecurityPage } from "./SecurityPage.tsx";
 import { SettingsPage } from "./SettingsPage.tsx";
 import { TablePage } from "./TablePage.tsx";
 
@@ -154,11 +172,29 @@ function Console() {
           <NavItem to="/admin" icon={<Table2 size={17} />}>
             Table
           </NavItem>
+          <NavItem to="/admin/people" icon={<Users size={17} />}>
+            People
+          </NavItem>
+          <NavItem to="/admin/campaigns" icon={<FolderOpen size={17} />}>
+            Campaigns
+          </NavItem>
           <NavItem to="/admin/saves" icon={<Archive size={17} />}>
             Saves
           </NavItem>
+          <NavItem to="/admin/assets" icon={<Images size={17} />}>
+            Assets
+          </NavItem>
+          <NavItem to="/admin/content" icon={<BookOpen size={17} />}>
+            Content
+          </NavItem>
           <NavItem to="/admin/settings" icon={<SettingsIcon size={17} />}>
             Settings
+          </NavItem>
+          <NavItem to="/admin/security" icon={<ShieldCheck size={17} />}>
+            Security log
+          </NavItem>
+          <NavItem to="/admin/about" icon={<Info size={17} />}>
+            About
           </NavItem>
         </nav>
         <div className="mt-auto hidden flex-col gap-1 pt-4 md:flex">
@@ -184,8 +220,14 @@ function Console() {
       <main className="min-w-0 flex-1 px-4 py-6 md:px-10 md:py-8">
         <Routes>
           <Route index element={<TablePage />} />
+          <Route path="people" element={<PeoplePage />} />
+          <Route path="campaigns" element={<CampaignsPage />} />
           <Route path="saves" element={<SavesPage />} />
+          <Route path="assets" element={<AssetsPage />} />
+          <Route path="content" element={<ContentPage />} />
           <Route path="settings" element={<SettingsPage />} />
+          <Route path="security" element={<SecurityPage />} />
+          <Route path="about" element={<AboutPage />} />
           <Route path="*" element={<TablePage />} />
         </Routes>
       </main>

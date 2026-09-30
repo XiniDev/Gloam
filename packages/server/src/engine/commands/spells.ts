@@ -150,7 +150,9 @@ export interface CastFollowup {
 
 /** A spell by id: the SRD pack's, else the campaign's homebrew (active only). */
 export function spellById(ctx: CommandCtx, id: string): Spell | null {
-  const srd = ctx.app.content.spellById.get(id);
+  // (The SRD's only where the campaign plays with the pack — SPEC §8.20 Content.)
+  const packs = ctx.model.campaign.settings.packs ?? ["srd-5.2.1"];
+  const srd = packs.includes("srd-5.2.1") ? ctx.app.content.spellById.get(id) : undefined;
   if (srd) return srd;
   // In use; the DM's own only for the DM (and the table itself acting for them).
   const dm = isDm(ctx.actor.role);

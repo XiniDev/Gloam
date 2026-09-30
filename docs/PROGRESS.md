@@ -596,3 +596,23 @@ groundwork; its restart test still to write: spawnServer({ dataDir, env: { PORT 
 - Fixed on the way: a late joiner's audio state lost to the replay bus; the DM re-told of a hand already up;
   spectators refused a hand; half-scale white noise.
 - Open: P11 key screens + visual critic; P10 key screens; the full E2E run; then P12.
+
+## 2026-09-30 — P10–P11 key screens (critic 5/10 → 6/10, the last round, all findings fixed); P12 DM panel and admin console
+
+- Critic rounds 1 and 2 on the P10–P11 screens: every finding fixed (emote pops and feed, tooltips, toasts around
+  dialogs and on phones, handout reveal as a proper modal, parchment log, legible hand badge, preset tiles, the sound
+  board, the phone tracker and callout overlaps). `check-tokens` now catches off-scale text sizes.
+- Found and fixed on the way: every dialog's focus effect re-ran on each render with an inline `onClose` (Enter hit
+  the opener); the phone dock rail is a row in the corner (the column squeezed phone dice under their floor since
+  P11); a track's start self-corrects its seek; creating a campaign could switch an open table to it.
+- P12 DM panel (AC-DMP-01…05 passing): the vertical rail of 17 sections, Ctrl/Cmd+K Jump to, per-token DM settings
+  with hover-card badges, Act as ("DM as <character>" on history, rolls and log), the Approvals inbox (knocks,
+  uploads, sheet and homebrew proposals, one live count), DM notes never sent to players, House rules (Exploration
+  movement now enforced; party vision honours the rule).
+- P12 demo (AC-DEMO-01/02 passing): the Lantern Crypt made by code.
+- P12 admin console: People (rename, PIN, role per campaign, kick, ban/unban, delete with reassignment), Campaigns,
+  Assets, Content (per-campaign packs that really gate SRD spells), Security log (refused uploads logged), About &
+  Credits (SRD attribution verbatim, generated licences), the first-run checklist. AC-ADM-03 passing; ADM-01/02/05/06
+  wait on the console journey; ADM-04 on P13's API tokens.
+- Open: AC-DEMO-03 (first run under 3 min on software GL), the admin journey, full E2E run failures (p11-music timing,
+  p2-tokens ring list updated, p3-movement, p3-tools), P12 key screens + critic, then P13.

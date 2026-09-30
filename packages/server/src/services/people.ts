@@ -179,6 +179,118 @@ export class PeopleService {
     this.ctx.table.changed();
   }
 
+  // ── the Admin's people management (SPEC §8.20 People; AC-ADM-02) ──────────────────────────────────────────
+
+  private requireAdmin(actor: Actor): void {
+    if (actor.role !== "admin") throw new GloamError("FORBIDDEN");
+  }
+
+  private person(userId: string) {
+    const user = this.ctx.profiles.get(userId);
+    if (!user || user.deletedAt !== null)
+      throw new GloamError("NOT_FOUND", "That person isn't here any more.");
+    return user;
+  }
+
+  /** Renames someone (their name at every table from now on, and on the table they're at now). */
+  rename(targetUserId: string, name: string, actor: Actor): void {
+    this.requireAdmin(actor);
+    const user = this.person(targetUserId);
+    this.ctx.profiles.update(user.id, { displayName: name });
+    this.ctx.security.record("profile.update", {
+      userId: user.id,
+      ip: actor.ip,
+      detail: { by: actor.userId, field: "name" },
+    });
+    this.ctx.rooms.table(this.ctx.table.campaignId)?.profileChanged(user.id);
+    this.ctx.table.changed();
+  }
+
+  /** Sets or clears someone's PIN (a returning player proves who they are with it, SPEC §8.2). */
+  async setPin(targetUserId: string, pin: string | null, actor: Actor): Promise<void> {
+    this.requireAdmin(actor);
+    const user = this.person(targetUserId);
+    if (user.isAdmin) throw new GloamError("FORBIDDEN", "The Admin signs in with a password, not a PIN.");
+    await this.ctx.profiles.setPin(user.id, pin);
+    this.ctx.security.record("profile.update", {
+      userId: user.id,
+      ip: actor.ip,
+      detail: { by: actor.userId, field: pin ? "pin set" : "pin cleared" },
+    });
+  }
+
+  /**
+   * Someone's role in a campaign (assign DM, or back to player; spectator; or none). If they're at that table now, they
+   * rejoin with it at once.
+   */
+  setRole(
+    targetUserId: string,
+    campaignId: string,
+    role: "dm" | "player" | "spectator" | null,
+    actor: Actor,
+  ): void {
+    this.requireAdmin(actor);
+    const user = this.person(targetUserId);
+    if (user.isAdmin) throw new GloamError("FORBIDDEN", "The Admin is every campaign's DM already.");
+    if (!this.ctx.campaigns.get(campaignId)) throw new GloamError("NOT_FOUND", "That campaign isn't here.");
+    if (role) this.ctx.campaigns.setMembership(campaignId, user.id, role);
+    else this.ctx.campaigns.removeMembership(campaignId, user.id);
+    this.ctx.security.record("profile.update", {
+      userId: user.id,
+      ip: actor.ip,
+      detail: { by: actor.userId, field: "role", role: role ?? "none", campaignId },
+    });
+    if (this.ctx.table.campaignId === campaignId)
+      this.ctx.rooms
+        .table(campaignId)
+        ?.disconnectUser(
+          user.id,
+          "role.changed",
+          { message: role === "dm" ? "You're a DM at this table now." : "Your role at this table changed." },
+          CLOSE.roleChanged,
+        );
+    this.ctx.table.changed();
+  }
+
+  /**
+   * Deletes a profile (SPEC §8.20: with character reassignment): the characters and tokens they played go to
+   * `reassignTo` (made a player where they weren't one) or to no one (the DMs'); their sessions end, their memberships
+   * go, the profile is soft-deleted. The table they're at hears it through the bus; other campaigns change on disk.
+   */
+  deleteProfile(targetUserId: string, reassignTo: string | null, actor: Actor): { reassigned: number } {
+    this.requireAdmin(actor);
+    const user = this.person(targetUserId);
+    if (user.isAdmin) throw new GloamError("FORBIDDEN", "The Admin's profile can't be deleted.");
+    if (reassignTo === user.id) throw new GloamError("INVALID", "Give their characters to someone else.");
+    if (reassignTo) this.person(reassignTo);
+    // Off the table first: whoever it is doesn't stay connected while their things change hands.
+    if (this.ctx.table.campaignId)
+      this.ctx.rooms
+        .table(this.ctx.table.campaignId)
+        ?.disconnectUser(user.id, "kicked", { message: "Your profile was removed." }, CLOSE.revoked);
+    this.ctx.sessions.revokeAllForUser(user.id);
+    let reassigned = 0;
+    for (const c of this.ctx.campaigns.list(true)) {
+      const owned = this.ctx.campaigns.ownedBy(c.id, user.id);
+      if (!owned.actors && !owned.tokens) continue;
+      reassigned += owned.actors;
+      if (reassignTo && !this.ctx.campaigns.membership(c.id, reassignTo))
+        this.ctx.campaigns.setMembership(c.id, reassignTo, "player");
+      const room = this.ctx.rooms.table(c.id);
+      if (room) room.reassignOwner(user.id, reassignTo, actor.userId);
+      else this.ctx.campaigns.reassignOwner(c.id, user.id, reassignTo);
+    }
+    for (const c of this.ctx.campaigns.list(true)) this.ctx.campaigns.removeMembership(c.id, user.id);
+    this.ctx.profiles.softDelete(user.id);
+    this.ctx.security.record("profile.delete", {
+      userId: user.id,
+      ip: actor.ip,
+      detail: { by: actor.userId, reassigned, to: reassignTo },
+    });
+    this.ctx.table.changed();
+    return { reassigned };
+  }
+
   unban(targetUserId: string, actor: Actor): void {
     if (actor.role !== "admin") throw new GloamError("FORBIDDEN");
     const user = this.ctx.profiles.get(targetUserId);

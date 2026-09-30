@@ -481,6 +481,75 @@ export class AssetService {
     return { path: abs, mime: v.mime, etag: `"${file.id}-${v.name}"` };
   }
 
+  /**
+   * Every campaign's uploads at a glance (SPEC §8.20 Assets): how many, how much they take (each file once per
+   * campaign), how many wait for approval; and what a clean-up would remove — files nothing references, rejected
+   * uploads past their 24 h.
+   */
+  overview(now = Date.now()): {
+    campaigns: { campaignId: string; name: string; assets: number; bytes: number; pending: number }[];
+    files: number;
+    fileBytes: number;
+    orphans: { files: number; bytes: number; rejected: number };
+  } {
+    const rows = this.ctx.db
+      .select({
+        campaignId: assets.campaignId,
+        fileId: assets.fileId,
+        status: assets.status,
+        deletedAt: assets.deletedAt,
+        reviewedAt: assets.reviewedAt,
+      })
+      .from(assets)
+      .all();
+    const files = new Map(
+      this.ctx.db
+        .select()
+        .from(assetFiles)
+        .all()
+        .map((f) => [f.id, f]),
+    );
+    const byCampaign = new Map<string, { assets: number; files: Set<string>; pending: number }>();
+    for (const r of rows) {
+      if (r.deletedAt !== null) continue;
+      const c = byCampaign.get(r.campaignId) ?? { assets: 0, files: new Set<string>(), pending: 0 };
+      c.assets++;
+      c.files.add(r.fileId);
+      if (r.status === "pending") c.pending++;
+      byCampaign.set(r.campaignId, c);
+    }
+    const names = new Map(this.ctx.campaigns.list(true).map((c) => [c.id, c.name]));
+    const used = new Set(rows.map((r) => r.fileId));
+    let orphanFiles = 0;
+    let orphanBytes = 0;
+    let fileBytes = 0;
+    for (const f of files.values()) {
+      fileBytes += f.bytes;
+      if (!used.has(f.id)) {
+        orphanFiles++;
+        orphanBytes += f.bytes;
+      }
+    }
+    return {
+      campaigns: [...byCampaign.entries()].map(([campaignId, c]) => ({
+        campaignId,
+        name: names.get(campaignId) ?? "A deleted campaign",
+        assets: c.assets,
+        bytes: [...c.files].reduce((n, id) => n + (files.get(id)?.bytes ?? 0), 0),
+        pending: c.pending,
+      })),
+      files: files.size,
+      fileBytes,
+      orphans: {
+        files: orphanFiles,
+        bytes: orphanBytes,
+        rejected: rows.filter(
+          (r) => r.status === "rejected" && r.reviewedAt !== null && r.reviewedAt < now - REJECTED_TTL_MS,
+        ).length,
+      },
+    };
+  }
+
   /** Rejected references older than 24 h are purged, then files nothing references (SPEC §8.16 Approval). */
   purge(now = Date.now()): { references: number; files: number } {
     const stale = this.ctx.db

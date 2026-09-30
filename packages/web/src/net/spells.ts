@@ -10,7 +10,7 @@ import { create } from "zustand";
 import { provideTestHook } from "../test/hooks.ts";
 import { toast } from "../ui/Toast.tsx";
 import { get } from "./http.ts";
-import { request, tableEvents } from "./table.ts";
+import { request, tableEvents, useTable } from "./table.ts";
 
 /** A homebrew spell as the room lists it: its content id, whether it's in use or waiting on the DM, who made it. */
 export interface HomebrewSpell {
@@ -77,11 +77,17 @@ export function loadSrdSpells(): Promise<Spell[]> {
 }
 
 /** Every spell the table can cast: the SRD's and the homebrew in use (a player's own proposals marked as such). */
-export function allSpells(s: Pick<SpellsStore, "srd" | "homebrew">): Spell[] {
-  // In use: the table's, and the DM's own (only a DM is ever sent those).
+export function allSpells(
+  s: Pick<SpellsStore, "srd" | "homebrew">,
+  packs: readonly string[] = srdPacks(),
+): Spell[] {
+  // In use: the table's, and the DM's own (only a DM is ever sent those); the SRD's where the campaign plays with it.
   const brew = s.homebrew.filter((h) => h.status === "active" || h.status === "private").map((h) => h.spell);
-  return [...(s.srd ?? []), ...brew];
+  return [...(packs.includes("srd-5.2.1") ? (s.srd ?? []) : []), ...brew];
 }
+
+/** The content packs the table's campaign plays with (SPEC §8.20 Content). */
+export const srdPacks = (): readonly string[] => useTable.getState().campaignSettings.packs ?? ["srd-5.2.1"];
 
 /** A spell by id (SRD slug or homebrew slug). */
 export function spellOf(id: string): Spell | undefined {
