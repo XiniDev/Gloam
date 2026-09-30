@@ -123,7 +123,7 @@ function Log() {
                     // Three columns — when, what kind, what — so every line's text starts at one edge.
                     <li
                       key={e.id}
-                      className="grid grid-cols-[56px_72px_minmax(0,1fr)] items-baseline gap-2 text-14"
+                      className="grid grid-cols-[56px_84px_minmax(0,1fr)] items-baseline gap-2 text-14"
                       data-testid="log-entry"
                       data-kind={e.kind}
                     >

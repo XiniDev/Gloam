@@ -237,7 +237,10 @@ export function SavesPage() {
                 >
                   <Trash2 size={15} />
                 </IconButton>
-              ) : null}
+              ) : (
+                // (An automatic snapshot can't be deleted: its slot kept, so every row's Restore lines up.)
+                <span className="hit shrink-0" aria-hidden />
+              )}
             </li>
           ))}
         </ol>

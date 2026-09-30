@@ -22,15 +22,19 @@ export function useNeedsCharacter(): boolean {
  * The first thing a new player does, said plainly (AC-DEMO-03): a callout at the rail's Sheet button — it points at
  * what to press — until they have a character: beside it on a desktop, below it on a phone (whose rail is a row in
  * the corner). Never over the board's middle or the roll feed; HUD the dice and plates keep clear of — and while dice
- * are on the board it steps aside (they need a phone's room; it comes back when they've gone).
+ * are on the board it steps aside (they need a phone's room; it comes back when they've gone), as it does for the
+ * emote wheel.
  */
 export function FirstSteps() {
   const ref = useRef<HTMLDivElement>(null);
   const phone = useIsPhone();
+  // (Aside, too, while the emote wheel is open: it opens where the player is, and the callout isn't what they're doing.)
   const dice = useDiceStage((s) => s.on);
-  useCover("first-steps", ref, !dice);
-  useObstacle("first-steps", ref, !dice);
-  if (dice) return null;
+  const wheel = useUi((s) => s.emoteWheel !== null);
+  const away = dice || wheel;
+  useCover("first-steps", ref, !away);
+  useObstacle("first-steps", ref, !away);
+  if (away) return null;
   return (
     <div
       ref={ref}

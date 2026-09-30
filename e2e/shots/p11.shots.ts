@@ -69,7 +69,9 @@ test("P10–P11 key screens", async ({ admin, browser, gloam, guardLog }, info) 
       if (capture) await shot(page, name);
     } catch (e) {
       const lines = (e as Error).message.split("\n");
-      notes.push(`${name}: ${lines.slice(0, 3).join(" | ")}`);
+      notes.push(
+        `${name}: ${lines.slice(0, 3).join(" | ")} ${lines.filter((l) => l.includes("Received")).join(" ")}`,
+      );
       await page.screenshot({ path: join(dir, `_failed-${name}.png`) }).catch(() => {});
     }
   };
@@ -80,15 +82,15 @@ test("P10–P11 key screens", async ({ admin, browser, gloam, guardLog }, info) 
         () =>
           pop.evaluate((el) => {
             const inner = el.firstElementChild as HTMLElement | null;
-            if (!inner) return false;
+            if (!inner) return "no inner";
             const cs = getComputedStyle(inner);
-            return (
-              cs.opacity === "1" && (cs.transform === "none" || cs.transform === "matrix(1, 0, 0, 1, 0, 0)")
-            );
+            const m = new DOMMatrix(cs.transform === "none" ? undefined : cs.transform);
+            const still = Math.abs(m.a - 1) < 0.01 && Math.abs(m.d - 1) < 0.01 && Math.abs(m.f) < 0.5;
+            return Number(cs.opacity) > 0.99 && still ? "at rest" : `opacity ${cs.opacity}, ${cs.transform}`;
           }),
         { timeout: 3000, intervals: [50] },
       )
-      .toBe(true);
+      .toBe("at rest");
   // No dice on the board (they're not what these shots are about).
   const diceClear = async (p: Page, name: string) =>
     expect
@@ -209,6 +211,12 @@ test("P10–P11 key screens", async ({ admin, browser, gloam, guardLog }, info) 
     }
     await expect(dave.getByTestId("emote-wheel")).toBeVisible();
   });
+  // The pops as they rest: under software GL a big page draws a few frames a second and Motion advances at most 40 ms
+  // a frame, so a 2.5-s pop never finishes its bounce — the watching pages take reduced motion (a quick fade in) here.
+  for (const p of [admin, erin]) {
+    await p.emulateMedia({ reducedMotion: "reduce" });
+    await hook(p, "emoteHold", 20_000);
+  }
   await step(
     "06-emote-over-token",
     admin,
@@ -218,8 +226,11 @@ test("P10–P11 key screens", async ({ admin, browser, gloam, guardLog }, info) 
       const onErin = erin.locator(`[data-testid="emote-pop"][data-user="${daveId}"]`);
       await expect(onAdmin).toBeVisible();
       await expect(onErin).toBeVisible();
+      // (A page behind gets no animation frames: each comes to the front to be watched.)
+      await admin.bringToFront();
       await popSettled(onAdmin);
       await admin.screenshot({ path: join(dir, "06-emote-over-token.png") });
+      await erin.bringToFront();
       await popSettled(onErin);
       await erin.screenshot({ path: join(dir, "07-emote-under-portrait.png") });
     },
@@ -231,6 +242,7 @@ test("P10–P11 key screens", async ({ admin, browser, gloam, guardLog }, info) 
     erin,
     async () => {
       await req(dave, "emote.send", { phrase: "I have a plan…" });
+      await erin.bringToFront();
       const pop = erin.locator('[data-testid="emote-pop"]', { hasText: "I have a plan" });
       await expect(pop).toBeVisible();
       await popSettled(pop);
@@ -238,6 +250,11 @@ test("P10–P11 key screens", async ({ admin, browser, gloam, guardLog }, info) 
     },
     false,
   );
+
+  for (const p of [admin, erin]) {
+    await p.emulateMedia({ reducedMotion: "no-preference" });
+    await hook(p, "emoteHold", null);
+  }
 
   // ── The raised hand ──
   await req(dave, "hand.toggle", { raised: true });

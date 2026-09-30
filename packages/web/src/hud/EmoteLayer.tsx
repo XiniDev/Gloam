@@ -138,16 +138,22 @@ function Pop({ e }: { e: LiveEmote }) {
 export function EmoteLayer() {
   const emotes = useFun((s) => s.emotes);
   useEffect(() => provideTestHook("emotePops", () => popLog.map((p) => ({ ...p }))), []);
+  // Test builds: pops held this long (key screens under software GL can't photograph a 2.5-s pop at rest).
+  const [popMs, setPopMs] = useState(EMOTE_MS);
+  useEffect(() => provideTestHook("emoteHold", (ms: number | null) => setPopMs(ms ?? EMOTE_MS)), []);
   const [now, setNow] = useState(() => performance.now());
   // Each pop goes when its 2.5 s are up — a timer for the next one due, not a poll that could hold it a beat longer.
   useEffect(() => {
     const t = performance.now();
-    const due = emotes.map((e) => e.shownAt + EMOTE_MS).filter((d) => d > now);
+    const due = emotes.map((e) => e.shownAt + popMs).filter((d) => d > now);
     if (!due.length) return;
     const id = setTimeout(() => setNow(performance.now()), Math.max(0, Math.min(...due) - t) + 5);
     return () => clearTimeout(id);
-  }, [emotes, now]);
-  const showing = emotes.filter((e) => now - e.shownAt < EMOTE_MS);
+  }, [emotes, now, popMs]);
+  // One pop per person: a new one takes the place of their last (two at one anchor drew over each other).
+  const latest = new Map<string, LiveEmote>();
+  for (const e of emotes) if (now - e.shownAt < popMs) latest.set(e.userId, e);
+  const showing = [...latest.values()];
   const feed = emotes.slice(-4);
   // The feed is HUD over the board while it holds a line: plates keep out from under it.
   const ref = useRef<HTMLOListElement>(null);

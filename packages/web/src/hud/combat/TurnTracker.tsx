@@ -29,9 +29,14 @@ import { useAssetImage } from "../useAssetImage.ts";
 
 /** Widths the strip is laid out with (px): a portrait's column, the active one's, their gap, the round divider, "+n". */
 const W = { entry: 40, active: 52, gap: 6, wrap: 34, more: 40 } as const;
-/** A phone's compact strip (§29.4: 48 px tall): the same, smaller. */
-const PHONE = { entry: 34, active: 36, gap: 6, wrap: 28, more: 34 } as const;
-type Widths = typeof W | typeof PHONE;
+/** A phone's compact strip (§29.4: 48 px tall): its portraits, the active one's, the "+n" disc. */
+const PHONE = { entry: 34, active: 36, more: 34 } as const;
+/**
+ * The phone strip's columns as laid out: each portrait sits in a finger-sized button (the 44-px hit target, AC-RSP-03)
+ * — fitted by its portrait's size, a third portrait ran under Begin (critic P11 r1 B4).
+ */
+const PHONE_FIT = { entry: 44, active: 44, gap: 6, wrap: 28, more: PHONE.more } as const;
+type Widths = typeof W | typeof PHONE_FIT;
 
 /**
  * The turn tracker (SPEC §8.12, §29.4; AC-CMB-04): a strip of portraits at the top centre, from the creature whose turn
@@ -99,7 +104,7 @@ export function TurnTracker() {
   });
   // As many whole portraits as the strip has room for beside the round and the controls — a phone's too (critic P11
   // r1 B4: a fixed three ran under the DM's Begin button on a narrow phone).
-  const visible = fit(order, room, view.begun, phone ? PHONE : W);
+  const visible = fit(order, room, view.begun, phone ? PHONE_FIT : W);
   const hidden = order.length - visible.length;
   const wrapAt = visible.findIndex((x) => x.next);
   const drop = (target: string) => {
@@ -113,7 +118,33 @@ export function TurnTracker() {
   };
   const act = (p: Promise<unknown>, what: string) =>
     void p.catch((e: Error) => toast.danger(what, e.message));
-  const roundLabel = (
+  const roundLabel = phone ? (
+    // A phone's compact strip (§29.4 "R2"): the round in one short line, a d20 while initiative is found — the room
+    // is the portraits' (a spelled-out "Initiative" left one portrait beside the controls).
+    <span
+      ref={labelRef}
+      className="caps flex shrink-0 items-center px-0.5 text-13 leading-none text-bone"
+      data-testid="combat-round-label"
+    >
+      {view.begun ? (
+        <>
+          <span aria-hidden>R</span>
+          <span className="tabular" data-testid="combat-round">
+            {view.round}
+          </span>
+          <span className="sr-only">Round {view.round}</span>
+        </>
+      ) : (
+        <D20Icon
+          size={20}
+          role="img"
+          aria-hidden={false}
+          aria-label="Finding initiative"
+          className="text-brass"
+        />
+      )}
+    </span>
+  ) : (
     <span
       ref={labelRef}
       className="caps flex shrink-0 flex-col items-center leading-tight text-12 text-fog pointer-coarse:text-13"
