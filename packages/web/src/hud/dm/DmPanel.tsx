@@ -1,157 +1,150 @@
-import { ChevronDown } from "lucide-react";
-import { useLayoutEffect, useRef, useState } from "react";
-import { pendingProposals, useSheets } from "../../net/sheets.ts";
-import { pendingCount, useLibrary } from "../../state/library.ts";
-import { type DmSection, useUi } from "../../state/ui.ts";
-import { Menu } from "../../ui/Menu.tsx";
+import { Search } from "lucide-react";
+import { useUi } from "../../state/ui.ts";
+import { KeyHint } from "../../ui/KeyHint.tsx";
 import { WaxSeal } from "../../ui/ornaments.tsx";
-import { TAB_CLASS, Tab } from "../../ui/Tabs.tsx";
-import { visibleTabs } from "../sheet/tabsLayout.ts";
-import { ApprovalsPanel } from "./ApprovalsPanel.tsx";
+import { Tooltip } from "../../ui/Tooltip.tsx";
+import { ApprovalsPanel, useApprovalsCount } from "./ApprovalsPanel.tsx";
 import { CombatPanel } from "./CombatPanel.tsx";
 import { EffectsPanel } from "./EffectsPanel.tsx";
 import { HandoutsPanel } from "./HandoutsPanel.tsx";
 import { HealthPanel } from "./HealthPanel.tsx";
 import { HistoryPanel } from "./HistoryPanel.tsx";
+import { HouseRulesPanel } from "./HouseRulesPanel.tsx";
 import { LibraryPanel } from "./LibraryPanel.tsx";
+import { LightsSection } from "./LightsSection.tsx";
+import { NotesSection } from "./NotesSection.tsx";
+import { PartySection } from "./PartySection.tsx";
 import { RequestsPanel } from "./RequestsPanel.tsx";
 import { ScenesPanel } from "./ScenesPanel.tsx";
 import { SoundPanel } from "./SoundPanel.tsx";
 import { SpellsPanel } from "./SpellsPanel.tsx";
-
-const SECTIONS: { id: DmSection; label: string }[] = [
-  { id: "scenes", label: "Scenes" },
-  { id: "library", label: "Library" },
-  { id: "requests", label: "Requests" },
-  { id: "health", label: "Health" },
-  { id: "combat", label: "Combat" },
-  { id: "spells", label: "Spells" },
-  { id: "effects", label: "Effects" },
-  { id: "sound", label: "Sound" },
-  { id: "handouts", label: "Handouts" },
-  { id: "history", label: "History" },
-  { id: "approvals", label: "Approvals" },
-];
-
-/** The tabs' gap (`gap-1`). */
-const GAP = 4;
+import { SECTIONS, sectionOf } from "./sections.ts";
+import { TokensSection } from "./TokensSection.tsx";
+import { VisionSection } from "./VisionSection.tsx";
+import { WallsSection } from "./WallsSection.tsx";
 
 /**
- * The panel's sections in one row, in their fixed order — as many as the row holds, the rest under "+n" (as the
- * sheet's; critic P7 r2 #12: a tab cut mid-glyph read as broken). Widths come from an invisible copy of every tab and
- * of the More button, measured again as the panel is resized and once the fonts have loaded.
+ * The DM panel's sections as a vertical icon rail (SPEC §8.19): every section one click away, named on hover (beside
+ * the rail) and to screen readers, the open one lit in brass; Approvals carries the count of what's waiting.
  */
-function DmTabs({ section, pending }: { section: DmSection; pending: number }) {
-  const bar = useRef<HTMLDivElement>(null);
-  const ruler = useRef<HTMLDivElement>(null);
-  const [room, setRoom] = useState<{ avail: number; widths: number[]; moreW: number } | null>(null);
-  useLayoutEffect(() => {
-    const el = bar.current;
-    const m = ruler.current;
-    if (!el || !m) return;
-    const update = () => {
-      const cs = getComputedStyle(el);
-      const avail = el.clientWidth - Number.parseFloat(cs.paddingLeft) - Number.parseFloat(cs.paddingRight);
-      const all = [...m.children].map((c) => (c as HTMLElement).getBoundingClientRect().width);
-      const moreW = all.pop() ?? 0;
-      setRoom((r) =>
-        r && r.avail === avail && r.moreW === moreW && r.widths.every((w, k) => w === all[k])
-          ? r
-          : { avail, widths: all, moreW },
-      );
-    };
-    update();
-    const ro = new ResizeObserver(update);
-    ro.observe(el);
-    ro.observe(m);
-    void document.fonts?.ready.then(update);
-    return () => ro.disconnect();
-  }, []);
-  const active = Math.max(
-    0,
-    SECTIONS.findIndex((s) => s.id === section),
-  );
-  const shown = room
-    ? visibleTabs(room.widths, room.moreW, room.avail, active, GAP)
-    : SECTIONS.map((_, k) => k);
-  const rest = SECTIONS.filter((_, k) => !shown.includes(k));
-  const pick = (id: DmSection) => useUi.getState().set({ dmSection: id });
-  const badge = (id: DmSection) =>
-    id === "approvals" && pending ? (
-      <span className="tabular grid h-[18px] min-w-[18px] place-items-center rounded-full bg-accent px-1 text-12 text-ink-950">
-        {pending}
-      </span>
-    ) : null;
-  const restPending = rest.some((s) => s.id === "approvals") && pending > 0;
+function DmRail() {
+  const section = useUi((s) => s.dmSection);
+  const waiting = useApprovalsCount();
   return (
-    <div ref={bar} className="relative flex shrink-0 items-center border-b border-line px-3">
-      {/* The widths' ruler, laid out inside a box of no size. */}
-      <div
-        aria-hidden
-        className="pointer-events-none invisible absolute left-0 top-0 h-0 w-0 overflow-hidden"
-      >
-        <div ref={ruler} className="flex w-max">
-          {SECTIONS.map((s) => (
-            <span key={s.id} className={TAB_CLASS}>
-              {s.label}
-              {badge(s.id)}
-            </span>
-          ))}
-          <span className="inline-flex h-9 items-center gap-1 px-2 text-13 font-bold">
-            +{SECTIONS.length - 1} ●
-            <ChevronDown size={14} />
-          </span>
-        </div>
-      </div>
-      <div role="tablist" aria-label="DM panel sections" className="flex min-w-0 flex-1 gap-1">
-        {shown.map((k) => {
-          const s = SECTIONS[k] as (typeof SECTIONS)[number];
-          const on = s.id === section;
-          return (
-            <Tab key={s.id} on={on} onSelect={() => pick(s.id)}>
-              {s.label}
-              {badge(s.id)}
-            </Tab>
-          );
-        })}
-      </div>
-      {rest.length ? (
-        <Menu
-          label="More sections"
-          text={`+${rest.length}${restPending ? " ●" : ""}`}
-          items={rest.map((s) => ({
-            label: s.id === "approvals" && pending ? `${s.label} (${pending})` : s.label,
-            onSelect: () => pick(s.id),
-          }))}
-        />
-      ) : null}
+    <div
+      role="tablist"
+      aria-label="DM panel sections"
+      aria-orientation="vertical"
+      className="flex w-12 shrink-0 flex-col items-center gap-0.5 overflow-y-auto border-r border-line py-1.5"
+      onKeyDown={(e) => {
+        // Up/Down move between the sections (the tablist pattern).
+        if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+        e.preventDefault();
+        const i = SECTIONS.findIndex((s) => s.id === section);
+        const next = SECTIONS[(i + (e.key === "ArrowDown" ? 1 : -1) + SECTIONS.length) % SECTIONS.length];
+        if (!next) return;
+        useUi.getState().set({ dmSection: next.id });
+        requestAnimationFrame(() =>
+          (e.currentTarget.querySelector(`[data-section="${next.id}"]`) as HTMLElement | null)?.focus(),
+        );
+      }}
+    >
+      {SECTIONS.map((s) => {
+        const on = s.id === section;
+        const Icon = s.icon;
+        const count = s.id === "approvals" ? waiting : 0;
+        return (
+          <Tooltip key={s.id} label={count ? `${s.label} (${count} waiting)` : s.label} side="left">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={on}
+              aria-label={s.label}
+              tabIndex={on ? 0 : -1}
+              data-section={s.id}
+              onClick={() => useUi.getState().set({ dmSection: s.id })}
+              className={`hit relative grid h-10 w-10 shrink-0 place-items-center rounded-[var(--radius-control)] transition-colors duration-[var(--dur-fast)] ${
+                on
+                  ? "bg-raised text-brass-bright shadow-[inset_0_0_0_1px_var(--brass-600)]"
+                  : "text-muted hover:bg-raised hover:text-bone"
+              }`}
+            >
+              <Icon size={18} aria-hidden />
+              {count ? (
+                <span
+                  className="tabular pointer-events-none absolute -right-0.5 -top-0.5 grid h-[18px] min-w-[18px] place-items-center rounded-full bg-accent px-1 text-12 font-bold text-ink-950"
+                  aria-hidden
+                >
+                  {count}
+                </span>
+              ) : null}
+            </button>
+          </Tooltip>
+        );
+      })}
     </div>
   );
 }
 
-/** The DM panel (SPEC §8.3 DM scene tools, §8.16 Library and Approvals). Later phases add their sections here. */
+/**
+ * The DM panel (SPEC §8.19): the rail of sections on its left, the open section beside it, and "Jump to…" (Ctrl/Cmd+K)
+ * in its header — any section or command by name.
+ */
 export default function DmPanel() {
   const section = useUi((s) => s.dmSection);
-  const pending = useLibrary(pendingCount) + useSheets(pendingProposals);
+  const def = sectionOf(section);
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <header className="flex items-center gap-2 border-b border-line px-4 pb-0 pt-3">
+      <header className="flex items-center gap-2 border-b border-line py-2 pl-4 pr-2">
         <WaxSeal size={20} />
-        <h2 className="text-18 text-bone">DM panel</h2>
+        <h2 className="min-w-0 truncate text-18 text-bone">
+          DM panel <span className="text-muted">·</span> <span className="text-bone">{def.label}</span>
+        </h2>
+        <button
+          type="button"
+          onClick={() => useUi.getState().set({ jumpTo: true })}
+          className="hit ml-auto flex h-8 shrink-0 items-center gap-2 rounded-[var(--radius-control)] border border-line px-2.5 text-13 text-muted hover:border-brass-deep hover:text-bone"
+          aria-keyshortcuts="Control+K Meta+K"
+        >
+          <Search size={14} aria-hidden />
+          <span className="max-sm:hidden">Jump to…</span>
+          <span className="pointer-coarse:hidden">
+            <KeyHint keys="Mod+K" />
+          </span>
+        </button>
       </header>
-      <DmTabs section={section} pending={pending} />
-      <div role="tabpanel" className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-clip">
-        {section === "scenes" ? <ScenesPanel /> : null}
-        {section === "library" ? <LibraryPanel /> : null}
-        {section === "requests" ? <RequestsPanel /> : null}
-        {section === "health" ? <HealthPanel /> : null}
-        {section === "combat" ? <CombatPanel /> : null}
-        {section === "spells" ? <SpellsPanel /> : null}
-        {section === "history" ? <HistoryPanel /> : null}
-        {section === "sound" ? <SoundPanel /> : null}
-        {section === "handouts" ? <HandoutsPanel /> : null}
-        {section === "effects" ? <EffectsPanel /> : null}
-        {section === "approvals" ? <ApprovalsPanel /> : null}
+      <div className="flex min-h-0 min-w-0 flex-1">
+        <DmRail />
+        <div
+          role="tabpanel"
+          aria-label={def.label}
+          className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-clip"
+          data-testid="dm-section"
+          data-section={section}
+        >
+          {section === "scenes" ? <ScenesPanel /> : null}
+          {section === "tokens" ? <TokensSection /> : null}
+          {section === "vision" ? <VisionSection /> : null}
+          {section === "walls" ? <WallsSection /> : null}
+          {section === "lights" ? <LightsSection /> : null}
+          {section === "combat" ? <CombatPanel /> : null}
+          {section === "health" ? <HealthPanel /> : null}
+          {section === "requests" ? <RequestsPanel /> : null}
+          {section === "effects" ? <EffectsPanel /> : null}
+          {section === "spells" ? <SpellsPanel /> : null}
+          {section === "library" ? <LibraryPanel /> : null}
+          {section === "sound" ? <SoundPanel /> : null}
+          {section === "party" ? <PartySection /> : null}
+          {section === "handouts" ? (
+            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+              <HandoutsPanel />
+              <NotesSection />
+            </div>
+          ) : null}
+          {section === "approvals" ? <ApprovalsPanel /> : null}
+          {section === "history" ? <HistoryPanel /> : null}
+          {section === "rules" ? <HouseRulesPanel /> : null}
+        </div>
       </div>
     </div>
   );

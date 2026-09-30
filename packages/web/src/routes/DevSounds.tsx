@@ -13,7 +13,8 @@ import { SoundChip } from "../ui/SoundChip.tsx";
 
 type Level = { peakDb: number; lufsM: number };
 
-const fmt = (db: number) => (Number.isFinite(db) ? db.toFixed(1) : "—");
+/** A level in dB, with a true minus sign (U+2212), as a figure is printed. */
+const fmt = (db: number) => (Number.isFinite(db) ? db.toFixed(1).replace("-", "−") : "—");
 
 /** Every event's channel, for the chips (a board sound's channel is its recipe's). */
 function channelOf(name: SfxName): Channel {
@@ -193,7 +194,7 @@ interface SoundRow {
 /** A column header with its unit set in the body face (Cinzel caps would turn "dBFS" into "DBFS"). */
 function Head({ name, unit, className = "" }: { name: string; unit?: string; className?: string }) {
   return (
-    <th className={`text-right font-normal ${className}`}>
+    <th className={`pl-4 text-right font-normal ${className}`}>
       <span className="caps">{name}</span>
       {unit ? (
         <span className="ml-1 font-ui text-12 normal-case tracking-normal text-faint">{unit}</span>
@@ -245,9 +246,9 @@ function SoundRows({ rows }: { rows: SoundRow[] }) {
       <colgroup>
         <col />
         <col className="w-[120px]" />
-        <col className="w-[104px]" />
+        <col className="w-[112px]" />
+        <col className="w-[148px]" />
         <col className="w-[128px]" />
-        <col className="w-[96px]" />
         <col className="w-[56px]" />
       </colgroup>
       <thead>

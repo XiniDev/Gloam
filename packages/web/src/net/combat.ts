@@ -73,7 +73,9 @@ function onMessage(type: string, payload: unknown): void {
         p.rounds > 0
           ? `Combat ended · ${p.rounds} ${p.rounds === 1 ? "round" : "rounds"}`
           : "Combat called off",
-        createElement(CombatSummary, { downed: p.downed ?? [], tally: p.tally ?? [] }),
+        p.rounds > 0 || p.tally?.length || p.downed?.length
+          ? createElement(CombatSummary, { downed: p.downed ?? [], tally: p.tally ?? [] })
+          : undefined,
       );
       s.set({ turn: null });
       return;

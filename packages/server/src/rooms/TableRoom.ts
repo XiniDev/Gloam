@@ -4,6 +4,8 @@ import { BOARD_COLORS, SKILLS, type SkillId } from "@gloam/shared";
 import { DiceError, isD20Test, parseFormula, withHint, withPenalty } from "@gloam/shared/dice";
 import type { P } from "@gloam/shared/geometry";
 import {
+  ActAs,
+  type ActingAsView,
   ActorPropose,
   AdminBan,
   AdminUnban,
@@ -48,6 +50,7 @@ import {
   diffSheet,
   effectiveTokenState,
   hintedMode,
+  isDm,
   type RollKind,
   rollHints,
   type SheetChange,
@@ -148,6 +151,8 @@ export interface TableRoomOptions {
 export class TableRoom extends Room<{ state: TableState }> implements TableRoomApi {
   campaignId = "";
   private readonly clientsByUser = new Map<string, Set<Client>>();
+  /** Act as (AC-DMP-03): the character each DM at the table is acting as, by their user id. */
+  private readonly actingAs = new Map<string, { actorId: string; name: string }>();
   private readonly closing = new WeakSet<Client>();
   model!: CampaignModel;
   bus!: CommandBus;
@@ -255,7 +260,26 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
       "profile.phrases": def(ProfilePhrases, MESSAGE_RATES["profile.phrases"], ({ auth }, p) => ({
         phrases: this.fun.setPhrases(auth.userId, p.phrases),
       })),
-      "log.add": def(LogAdd, MESSAGE_RATES["log.add"], ({ auth }, p) => this.fun.add(auth, p.text)),
+      "log.add": def(LogAdd, MESSAGE_RATES["log.add"], ({ auth }, p) =>
+        this.fun.add(auth, p.text, this.actingAs.get(auth.userId)?.name ?? null),
+      ),
+      // Act as (SPEC §8.19, AC-DMP-03): a DM takes a character's controls on its player's behalf, or lets go. What they
+      // do meanwhile — commands, rolls, log entries — is the character's, recorded as "DM as <character>".
+      "act.as": def(ActAs, MESSAGE_RATES["act.as"], ({ auth }, p): ActingAsView => {
+        if (!can(auth.role, "actAs")) throw new GloamError("FORBIDDEN");
+        const before = this.actingAs.get(auth.userId);
+        if (p.actorId === null) this.actingAs.delete(auth.userId);
+        else {
+          const a = this.model.get("actor", p.actorId);
+          if (!a || a.deletedAt !== null || a.kind !== "character")
+            throw new GloamError("NOT_FOUND", "That character isn't in this campaign.");
+          this.actingAs.set(auth.userId, {
+            actorId: a.id,
+            name: readSheet(a).core.name || "their character",
+          });
+        }
+        return this.actingChanged(auth, before?.actorId ?? null);
+      }),
       "log.list": def(LogList, MESSAGE_RATES["log.list"], ({ auth }, p) =>
         this.fun.list(auth, p.sinceSession, p.limit),
       ),
@@ -273,6 +297,14 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
         }
         this.prepSubs.set(client, scene.id);
         return prepSnapshot(scene, this.projectionCtx());
+      }),
+      // A scene's DM notes (SPEC §8.19 Handouts & Notes): the DM's alone — asked for, never in the synchronised state,
+      // pushed to DMs when they change (AC-DMP-05).
+      "scene.notes": def(SceneRef, MESSAGE_RATES["scene.notes"], ({ auth }, p) => {
+        this.requireDm(auth);
+        const scene = this.model.get("scene", p.sceneId);
+        if (!scene || scene.deletedAt) throw new GloamError("NOT_FOUND", "That scene no longer exists.");
+        return { sceneId: scene.id, notes: scene.dmNotes ?? "" };
       }),
       "prep.close": def(z.strictObject({}), MESSAGE_RATES["prep.close"], ({ client, auth }) => {
         this.requireDm(auth);
@@ -314,7 +346,10 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
       }),
       // Dice (SPEC §8.9, §18): the server rolls; each client gets what its visibility row allows (§18.3).
       "dice.roll": def(DiceRoll, MESSAGE_RATES["dice.roll"], ({ auth }, p) => {
-        const dm = auth.role === "admin" || auth.role === "dm";
+        // (A DM acting as a character rolls as its player would: the player's visibilities, a card that isn't masked
+        // as the DM's, the character's sheet behind `@` references — AC-DMP-03.)
+        const roller = this.rollerOf(auth);
+        const dm = roller.dm;
         this.checkRollVisibility(dm, p.visibility);
         let token: TokenEntity | undefined;
         if (p.context?.tokenId) {
@@ -322,7 +357,8 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
           if (!token || !controlsToken(auth.role, auth.userId, token)) throw new GloamError("FORBIDDEN");
         }
         // `@` references answer from the creature's sheet: the token's character, or the character rolled for.
-        const actorId = p.context?.actorId ?? token?.actorId ?? undefined;
+        const actorId =
+          p.context?.actorId ?? token?.actorId ?? this.actingAs.get(auth.userId)?.actorId ?? undefined;
         const actor = actorId ? this.model.get("actor", actorId) : undefined;
         if (
           p.context?.actorId &&
@@ -338,7 +374,7 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
             ? statusFromActor(live.status)
             : null;
         const formula = status?.exhaustion ? withPenalty(p.formula, -2 * status.exhaustion) : p.formula;
-        const r = this.dice.roll(this.campaignId, this.projector.activeSceneId || null, this.rollerOf(auth), {
+        const r = this.dice.roll(this.campaignId, this.projector.activeSceneId || null, roller, {
           formula,
           visibility: p.visibility,
           ...(p.label ? { label: p.label } : {}),
@@ -352,20 +388,16 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
         return { id: r.id };
       }),
       "dice.manual": def(DiceManual, MESSAGE_RATES["dice.manual"], ({ auth }, p) => {
-        const dm = auth.role === "admin" || auth.role === "dm";
+        const roller = this.rollerOf(auth);
+        const dm = roller.dm;
         this.checkRollVisibility(dm, p.visibility);
-        const r = this.dice.manual(
-          this.campaignId,
-          this.projector.activeSceneId || null,
-          this.rollerOf(auth),
-          {
-            formula: p.formula,
-            visibility: p.visibility,
-            ...(p.values ? { values: p.values } : {}),
-            ...(p.total !== undefined ? { total: p.total } : {}),
-            ...(p.label ? { label: p.label } : {}),
-          },
-        );
+        const r = this.dice.manual(this.campaignId, this.projector.activeSceneId || null, roller, {
+          formula: p.formula,
+          visibility: p.visibility,
+          ...(p.values ? { values: p.values } : {}),
+          ...(p.total !== undefined ? { total: p.total } : {}),
+          ...(p.label ? { label: p.label } : {}),
+        });
         this.deliverRoll(r, dm);
         return { id: r.id };
       }),
@@ -1470,6 +1502,7 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
       at: e.createdAt,
       userId: e.userId,
       userName: this.nameOf(e.userId),
+      actingAs: e.actingAs,
       type: e.type,
       summary: e.summary,
       sceneId: e.sceneId,
@@ -1512,6 +1545,10 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
       this.audioTimer.changed();
     }
     if (info.ops.some((o) => (o.k === "set" || o.k === "create") && o.e === "campaign")) this.syncCampaign();
+    // A scene's DM notes changed (an edit, an undo): the DMs' copies follow; no one else is told.
+    for (const o of info.ops)
+      if (o.k === "set" && o.e === "scene" && o.path[0] === "dmNotes")
+        this.toDms("scene.notes", { sceneId: o.id, notes: (o.value as string | undefined) ?? "" });
     const active = this.model.activeScene;
     const nextActive = active && !active.deletedAt ? active.id : "";
     if (nextActive !== this.projector.activeSceneId) this.views.detachAll();
@@ -1655,7 +1692,12 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
   }
 
   actorFor(auth: ClientAuth): CommandActor {
-    const actor: CommandActor = { userId: auth.userId, role: auth.role, name: auth.name, actingAs: null };
+    const actor: CommandActor = {
+      userId: auth.userId,
+      role: auth.role,
+      name: auth.name,
+      actingAs: isDm(auth.role) ? (this.actingAs.get(auth.userId) ?? null) : null,
+    };
     // What a player may aim at: the tokens one of their connections can see now (§13.4).
     if (auth.role === "player" || auth.role === "spectator")
       actor.sees = (tokenId) =>
@@ -1801,6 +1843,12 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
     set?.delete(client);
     if (!set || set.size === 0) {
       this.clientsByUser.delete(auth.userId);
+      // Gone from the table: whoever they were acting as is back in their player's hands.
+      const acting = this.actingAs.get(auth.userId);
+      if (acting) {
+        this.actingAs.delete(auth.userId);
+        this.actingChanged(auth, acting.actorId);
+      }
       const p = this.state.presence.get(auth.userId);
       if (p) {
         p.online = false;
@@ -1848,6 +1896,21 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
     } catch {
       // a skin that doesn't parse: the default dice
     }
+    // Acting as a character (AC-DMP-03): the roll is the character's — its name, its player's colour, not a DM's roll
+    // (never masked as "The DM rolls…"); the card says who rolled it for them.
+    const acting = isDm(auth.role) ? this.actingAs.get(auth.userId) : undefined;
+    if (acting) {
+      const a = this.model.get("actor", acting.actorId);
+      const owner = a?.ownerUserId ? roomCtx().profiles.get(a.ownerUserId) : undefined;
+      return {
+        userId: auth.userId,
+        name: acting.name,
+        color: owner?.color ?? user?.color ?? auth.color,
+        skin,
+        dm: false,
+        actingAs: acting.name,
+      };
+    }
     return {
       userId: auth.userId,
       name: user?.displayName ?? auth.name,
@@ -1855,6 +1918,28 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
       skin,
       dm: auth.role === "admin" || auth.role === "dm",
     };
+  }
+
+  /**
+   * Tells the table who is acting as whom (AC-DMP-03): every DM, and the players of the character taken or let go (so
+   * a player knows the DM has their character's controls). Returns the acting DM's view of it.
+   */
+  private actingChanged(auth: ClientAuth, previousActorId: string | null): ActingAsView {
+    const now = this.actingAs.get(auth.userId) ?? null;
+    const view: ActingAsView = {
+      userId: auth.userId,
+      dmName: auth.name,
+      actorId: now?.actorId ?? null,
+      name: now?.name ?? null,
+    };
+    this.toDms("act.as", view);
+    const owners = new Set<string>();
+    for (const id of [previousActorId, now?.actorId ?? null]) {
+      const a = id ? this.model.get("actor", id) : undefined;
+      if (a?.ownerUserId) owners.add(a.ownerUserId);
+    }
+    for (const u of owners) if (u !== auth.userId) this.toUser(u, "act.as", view);
+    return view;
   }
 
   /** Sends a roll to every client as its row of §18.3 allows: the roll, a masked card, or nothing. */

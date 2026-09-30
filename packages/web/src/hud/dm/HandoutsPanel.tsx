@@ -110,7 +110,9 @@ function HandoutRow({ h, players }: { h: HandoutView; players: PresenceView[] })
     <li className="flex flex-col gap-1 px-3 py-2.5" data-testid="dm-handout" data-id={h.id}>
       <div className="flex items-center gap-2">
         <div className="min-w-0 flex-1">
-          <p className="truncate text-14 text-bone">{note ? `“${h.bodyMd}”` : h.title}</p>
+          <p className={`text-14 text-bone ${note ? "line-clamp-2" : "truncate"}`}>
+            {note ? `“${h.bodyMd}”` : h.title}
+          </p>
           <p className="truncate text-12 text-muted">{heldBy(h, players)}</p>
         </div>
         {note ? null : (

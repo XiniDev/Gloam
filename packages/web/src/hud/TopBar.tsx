@@ -1,6 +1,9 @@
+import { VenetianMask } from "lucide-react";
 import { useRef } from "react";
 import { useNavigate } from "react-router";
+import { actAs, useActAs } from "../net/actAs.ts";
 import { type PresenceView, useTable } from "../net/table.ts";
+import { Button } from "../ui/Button.tsx";
 import { Sparkle } from "../ui/ornaments.tsx";
 import { Portrait } from "../ui/Portrait.tsx";
 import { SoundChip } from "../ui/SoundChip.tsx";
@@ -52,6 +55,7 @@ export function TopBar() {
   const me = useTable((s) => s.me);
   // A phone's top bar keeps its room for the title: the Admin console moves into Settings there.
   const phone = useIsPhone();
+  const acting = useActAs((s) => s.mine);
   const title = useRef<HTMLDivElement>(null);
   const people = useRef<HTMLDivElement>(null);
   useCover("title", title);
@@ -61,30 +65,49 @@ export function TopBar() {
       {...hudOrder(0)}
       className="pointer-events-none absolute inset-x-0 top-0 z-40 flex h-14 items-center gap-3 px-3 sm:px-4"
     >
-      <div
-        ref={title}
-        className="pointer-events-auto flex min-w-0 items-center gap-2 rounded-[var(--radius-control)] bg-[var(--scrim-soft)] px-3 py-1.5 backdrop-blur-[3px]"
-      >
-        {/* A phone gives the mark's room to the name: one line whenever it fits (critic P11 r1 I10). */}
-        {phone ? null : <Sparkle size={16} />}
-        <h1
-          // A phone: two lines rather than the name cut short (critic P8 r1 #30) — only when one won't hold it.
-          className={phone ? "line-clamp-2 text-14 leading-tight text-bone" : "truncate text-18 text-bone"}
-          title={name || undefined}
+      {acting && phone ? null : (
+        <div
+          ref={title}
+          className="pointer-events-auto flex min-w-0 items-center gap-2 rounded-[var(--radius-control)] bg-[var(--scrim-soft)] px-3 py-1.5 backdrop-blur-[3px]"
         >
-          {name || "The table"}
-        </h1>
-        {sessionNo ? (
-          <span className="caps hidden text-12 text-fog sm:inline">Session {sessionNo}</span>
-        ) : null}
-      </div>
+          {/* A phone gives the mark's room to the name: one line whenever it fits (critic P11 r1 I10). */}
+          {phone ? null : <Sparkle size={16} />}
+          <h1
+            // A phone: two lines rather than the name cut short (critic P8 r1 #30) — only when one won't hold it.
+            className={phone ? "line-clamp-2 text-14 leading-tight text-bone" : "truncate text-18 text-bone"}
+            title={name || undefined}
+          >
+            {name || "The table"}
+          </h1>
+          {sessionNo ? (
+            <span className="caps hidden text-12 text-fog sm:inline">Session {sessionNo}</span>
+          ) : null}
+        </div>
+      )}
+      {acting ? (
+        // Act as (SPEC §8.19): whose controls the DM has, and the way back — in the bar, not over the board (on a
+        // phone in the title's place).
+        <div
+          role="status"
+          data-testid="acting-as"
+          className={`panel pointer-events-auto flex min-w-0 items-center gap-2 py-1 pl-3 pr-1 shadow-[inset_0_0_0_1px_var(--brass-600)] ${phone ? "" : "mx-auto"}`}
+        >
+          <VenetianMask size={16} className="shrink-0 text-brass" aria-hidden />
+          <span className="truncate text-14 text-bone">
+            Acting as <span className="font-bold">{acting.name}</span>
+          </span>
+          <Button size="S" variant="ghost" onClick={() => void actAs(null).catch(() => {})}>
+            Stop
+          </Button>
+        </div>
+      ) : null}
       {/* Backed like the title: the grey sound and settings icons stay readable over pale stone. */}
       <div
         ref={people}
         className="pointer-events-auto ml-auto flex items-center gap-1.5 rounded-[var(--radius-control)] bg-[var(--scrim-soft)] py-1 pl-2 pr-1 backdrop-blur-[3px] sm:gap-3"
       >
         {/* 16-px gaps: a portrait's seal or raised hand never touches its neighbour's ring. */}
-        <ul className="flex items-center gap-4" aria-label="At the table">
+        <ul className="flex items-center gap-3 sm:gap-4" aria-label="At the table">
           {presence
             .filter((p) => p.online || p.role !== "admin")
             .map((p) => (

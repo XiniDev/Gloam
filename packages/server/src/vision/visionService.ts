@@ -489,7 +489,9 @@ export class VisionService implements Perception, FogApplier {
 
   /** The tokens a user sees through: their own, those shared with them, and the party's with party vision on. */
   private viewerTokens(userId: string): TokenEntity[] {
-    const party = this.model.campaign.settings.partyVision === true;
+    const party =
+      this.model.campaign.houseRules.partyVision === true ||
+      this.model.campaign.settings.partyVision === true;
     return this.model
       .inScene("token", this.sceneId)
       .filter(

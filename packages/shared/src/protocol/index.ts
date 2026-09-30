@@ -128,6 +128,8 @@ export const MESSAGE_RATES = {
   "log.list": rate(1, 3),
   "handout.list": rate(1, 3),
   "prep.open": rate(2),
+  "scene.notes": rate(2, 5),
+  "act.as": rate(1, 3),
   "prep.close": rate(2),
   "scene.list": rate(5),
   "scene.preload": rate(1),

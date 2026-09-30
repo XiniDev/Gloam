@@ -50,6 +50,8 @@ test("P10–P11 key screens", async ({ admin, browser, gloam, guardLog }, info) 
   const phone = viewport.width < 640;
   const shot = async (page: Page, name: string) => {
     await page.bringToFront();
+    // The pointer off anything it could be hovering (a Revert button stayed lit — critic P11 r2 N26).
+    await page.mouse.move(Math.round(viewport.width / 2), 1);
     await page.evaluate(() =>
       Promise.race([
         Promise.all(

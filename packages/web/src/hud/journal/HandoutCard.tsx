@@ -22,15 +22,17 @@ export function HandoutCard({
   const note = h.kind === "note";
   return (
     <article
-      className={`parchment deckle relative flex flex-col gap-3 ${compact ? "p-4" : "px-8 pb-8 pt-10"}`}
+      className={`parchment deckle relative flex flex-col gap-3 ${compact ? "px-4 pb-4 pt-6" : "px-8 pb-8 pt-10"}`}
       aria-label={note ? "A secret note" : h.title}
       data-testid="handout-card"
     >
       {compact ? null : <Filigree tone="ink" />}
       <header className="flex items-start gap-3">
         <div className="flex min-w-0 flex-1 flex-col gap-1">
-          {eyebrow || note ? (
-            <p className="caps text-12 text-paper-muted">{eyebrow ?? "A secret note"}</p>
+          {eyebrow || note || compact ? (
+            <p className="caps text-12 text-paper-muted">
+              {eyebrow ?? (note ? "A secret note" : "A handout")}
+            </p>
           ) : null}
           {/* A note has no title: its words are the note (a fixed heading echoed them — critic P11 r1 I4). */}
           {note ? null : (
@@ -48,7 +50,7 @@ export function HandoutCard({
       ) : null}
       {h.bodyMd ? (
         <div
-          className={`doc-md leading-relaxed ${note ? (compact ? "font-display text-16" : "font-display text-22") : compact ? "text-14" : "text-16"}`}
+          className={`doc-md [text-wrap:pretty] ${note ? `font-display leading-[var(--leading-display)] ${compact ? "text-16" : "text-22"}` : `leading-[var(--leading-body)] ${compact ? "text-14" : "text-16"}`}`}
         >
           <Markdown remarkPlugins={[remarkGfm]}>{h.bodyMd}</Markdown>
         </div>

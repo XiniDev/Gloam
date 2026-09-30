@@ -7,6 +7,10 @@ export type WallDrawKind = "wall" | "door" | "window" | "curtain" | "invisible" 
 export type DockTab = "party" | "sheet" | "spells" | "journal" | "dm";
 export type DmSection =
   | "scenes"
+  | "tokens"
+  | "vision"
+  | "walls"
+  | "lights"
   | "library"
   | "requests"
   | "health"
@@ -15,8 +19,10 @@ export type DmSection =
   | "effects"
   | "history"
   | "sound"
+  | "party"
   | "handouts"
-  | "approvals";
+  | "approvals"
+  | "rules";
 export type SheetTab =
   | "overview"
   | "abilities"
@@ -46,6 +52,10 @@ export interface UiStore {
   quickUnit: { x: number; y: number } | null;
   /** The emote wheel (SPEC §8.18), open where it was asked for (screen px), or closed. */
   emoteWheel: { x: number; y: number } | null;
+  /** The DM's "Jump to…" palette (Ctrl/Cmd+K, SPEC §8.19) is open. */
+  jumpTo: boolean;
+  /** The token whose DM settings (per-token overrides, SPEC §8.19) are open, or null. */
+  tokenSettings: string | null;
   /** The scene whose 3D map the DM is aligning (transform gizmo + Generate walls), or null. */
   mapTool: string | null;
   /** The New scene wizard: open (true) or open with a map already chosen (its asset id), or closed. */
@@ -127,6 +137,8 @@ export const useUi = create<UiStore>((set, get) => ({
   radial: null,
   quickUnit: null,
   emoteWheel: null,
+  jumpTo: false,
+  tokenSettings: null,
   mapTool: null,
   sceneWizard: null,
   cameras: initial.cameras ?? {},

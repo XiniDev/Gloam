@@ -43,6 +43,9 @@ export function ActionBar() {
   return <Bar tray={tray} />;
 }
 
+/** The least room (px) beside the roll feed the bar takes before it spans the feed's column instead. */
+const BESIDE_FEED = 200;
+
 function Bar({ tray }: { tray: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
   const phone = useIsPhone();
@@ -52,14 +55,23 @@ function Bar({ tray }: { tray: boolean }) {
   // Centred in the board's clear width — between the toolbar and the dock or its open panel (§29.3), never over them
   // (critic P8 r2 B1) — and fitted to it: the turn controls step down (a menu for the rest, the portrait alone, two
   // rows) until the bar fits.
-  const hudLeft = useHudInsets((s) => s.left);
+  const toolbarLeft = useHudInsets((s) => s.left);
   const hudRight = useHudInsets((s) => s.right);
+  // …and right of the roll feed's column when there's room beside it (at 1024 with the dock open the dice button
+  // hung under the feed — critic P11 r2 N9); only a bar too wide for that room spans the feed's column too.
+  const feed = useHudInsets((s) => s.feed);
   const [vw, setVw] = useState(() => window.innerWidth);
   useEffect(() => {
     const on = () => setVw(window.innerWidth);
     window.addEventListener("resize", on);
     return () => window.removeEventListener("resize", on);
   }, []);
+  // (Centred as usual unless that would stand in the feed's column.)
+  const barW = ref.current?.getBoundingClientRect().width ?? 0;
+  const centred = (toolbarLeft + vw - hudRight) / 2;
+  const inFeed = feed > toolbarLeft && centred - barW / 2 < feed + 8;
+  const hudLeft =
+    !phone && inFeed && vw - hudRight - feed >= Math.max(BESIDE_FEED, barW) ? feed : toolbarLeft;
   const [asking, setAsking] = useState<"dash" | null>(null);
   const [density, setDensity] = useState<Density>(phone ? 3 : 0);
   // What sets the bar's natural width: the room, whose turn and what it shows, the selection (the height stepper).

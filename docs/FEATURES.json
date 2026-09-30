@@ -1933,10 +1933,10 @@
       "code": "DMP",
       "phase": "P12",
       "text": "Every DM section listed is reachable within two clicks or taps, and `Ctrl/Cmd+K` jumps to any section or command by name.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p12-dmpanel.spec.ts › each of the 15 listed sections opened from the rail in two clicks (the dock's DM button, then the section: tab selected, its tabpanel shown); Ctrl+K → Jump to: 'combat' → Combat, 'quick unit' → the Quick unit dialog, 'goblin' → the goblin selected, 'house rules' → House rules; artifacts/screens/p12/jump-to.png",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-30T07:38:10.926Z"
     },
     {
       "id": "AC-DMP-02",
@@ -1944,10 +1944,10 @@
       "code": "DMP",
       "phase": "P12",
       "text": "All per-token overrides work and are shown as badges in the DM's token hover card.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p12-dmpanel.spec.ts › the goblin's DM settings (speed override 40, +10 ft this turn, free movement, lock movement, conditions' speed ignored, DM moves counted, hidden, always shown to all, sight shared with Dave, HP exact, linked, a note) → all twelve badges on the DM's hover card (artifacts/screens/p12/hover-badges.png); hidden outranks reveal, players never get the DM view; server: packages/server/src/test/dmpanel.test.ts › AC-DMP-02 (server) — speed override, per-token free/locked movement, conditions' speed, reveal modes and HP display take effect (bonus movement, counted DM moves, shared vision, link: combat/vision/sheets tests)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-30T07:38:11.011Z"
     },
     {
       "id": "AC-DMP-03",
@@ -1955,10 +1955,10 @@
       "code": "DMP",
       "phase": "P12",
       "text": "Act as lets the DM control any character; resulting log entries and history entries record \"DM as <character>\".",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p12-dmpanel.spec.ts › Party → Act as Thorin: 'Acting as Thorin' in the bar, Dave told; a tray roll with @str reads 'DM as Thorin' on Dave's card; the damage's History row 'as Thorin'; a log line by 'Admin as Thorin'; Stop gives it back (Dave told); server: packages/server/src/test/dmpanel.test.ts › AC-DMP-03 — act.as DM-only and characters only, history actingAs, the roll's name/actingAs and Thorin's @str (+3), the log author, cleared on letting go",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-30T07:38:11.079Z"
     },
     {
       "id": "AC-DMP-04",
@@ -1966,10 +1966,10 @@
       "code": "DMP",
       "phase": "P12",
       "text": "The Approvals inbox aggregates knocks, uploads, sheet proposals and homebrew proposals with a live badge count.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p12-dmpanel.spec.ts › Approvals: a knock (count 1), a player's homebrew spell (2), a player's upload (3), a proposed sheet change on a fully locked sheet (4) — decided in the panel (Admit, Approve…) with the rail's count following to 0 and 'Nothing waiting'; the dock's DM badge uses the same count; artifacts/screens/p12/approvals.png",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-30T07:38:11.148Z"
     },
     {
       "id": "AC-DMP-05",
@@ -1977,10 +1977,10 @@
       "code": "DMP",
       "phase": "P12",
       "text": "DM notes (per scene and per token) are never sent to players (asserted in a test).",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/dmpanel.test.ts › AC-DMP-05: a visible token's DM note and the active scene's DM notes reach the DM (token.dm.secretNote; scene.notes on request and pushed on change, undo/redo included) and never the player — absent from state and messages, a player's scene.notes request is FORBIDDEN, and the needles are in no raw WebSocket frame of the player (in the DM's); prep scenes: board.test.ts › AC-SCN-03",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-30T00:25:53.462Z"
     },
     {
       "id": "AC-ADM-01",

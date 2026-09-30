@@ -14,7 +14,7 @@ import { createPortal } from "react-dom";
 import { KeyHint } from "./KeyHint.tsx";
 
 /** Where a tooltip stands beside its trigger. */
-type Side = "above" | "below" | "left" | "right";
+export type Side = "above" | "below" | "left" | "right";
 /** Room kept between a tooltip and the screen's edge, and between it and its trigger (px). */
 const MARGIN = 8;
 /** A trigger this close to the screen's left or right edge is on a rail: its tooltip stands beside it (px). */
@@ -28,10 +28,13 @@ const RAIL = 72;
 export function Tooltip({
   label,
   shortcut,
+  side,
   children,
 }: {
   label: ReactNode;
   shortcut?: string;
+  /** Where it stands, when its trigger's place on screen doesn't say (a rail inside a panel: beside it). */
+  side?: Side;
   children: ReactElement;
 }) {
   const [open, setOpen] = useState(false);
@@ -50,7 +53,12 @@ export function Tooltip({
       if (!el) return;
       const r = el.getBoundingClientRect();
       const cy = r.top + r.height / 2;
-      if (r.right > window.innerWidth - RAIL && r.top >= 56)
+      const cx = r.left + r.width / 2;
+      if (side === "left") setPos({ x: r.left - MARGIN, y: cy, side });
+      else if (side === "right") setPos({ x: r.right + MARGIN, y: cy, side });
+      else if (side === "above") setPos({ x: cx, y: r.top - MARGIN, side });
+      else if (side === "below") setPos({ x: cx, y: r.bottom + MARGIN, side });
+      else if (r.right > window.innerWidth - RAIL && r.top >= 56)
         setPos({ x: r.left - MARGIN, y: cy, side: "left" });
       else if (r.left < RAIL && r.top >= 56 && r.width < RAIL)
         setPos({ x: r.right + MARGIN, y: cy, side: "right" });

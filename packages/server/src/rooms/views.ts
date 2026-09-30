@@ -103,7 +103,9 @@ export class ViewManager {
     const players = spectator ? this.playerIds() : [];
     const tokens = m.inScene("token", activeSceneId);
     const visibleTokens = new Set<string>();
-    const partyVision = m.campaign.settings.partyVision === true;
+    // Party vision (§19.6): the house rule, or the campaign setting it began as.
+    const partyVision =
+      m.campaign.houseRules.partyVision === true || m.campaign.settings.partyVision === true;
     for (const t of tokens) {
       if (dm) {
         out.tokens.set(t.id, ALL_TOKEN_TAGS);

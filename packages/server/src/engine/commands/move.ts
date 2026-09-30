@@ -15,6 +15,7 @@ import {
 import { GloamError, MoveCommit } from "@gloam/shared/protocol";
 import {
   controlsToken,
+  effectiveSpeed,
   effectiveTokenState,
   incapacitates,
   isDm,
@@ -108,8 +109,23 @@ export const moveCommit: CommandDef<z.infer<typeof MoveCommit>, MoveResult> = {
     const d = combat ? dataOf(combat) : null;
     const m = movementOf(ctx.model, t);
     const free = d?.freeMovement === true || t.overrides.freeMovement === true;
-    const counts = !dm || t.overrides.countAsMovement === true;
-    const budget = m?.active && !free && counts ? Math.max(0, m.budget - m.used) : null;
+    // (A DM acting as this creature's character moves on its player's behalf: that counts too — AC-DMP-03.)
+    const actingFor = Boolean(t.actorId) && ctx.actor.actingAs?.actorId === t.actorId;
+    const counts = !dm || t.overrides.countAsMovement === true || actingFor;
+    const turnBudget = m?.active && !free && counts ? Math.max(0, m.budget - m.used) : null;
+    // Outside combat, with the house rule Exploration movement "Limited to speed per move" (§19.6): a player's one move
+    // goes at most its Speed (conditions, its override and Exhaustion counted) — clamped or refused as Overlong moves
+    // says. Free movement and the DM's own drags aren't limited.
+    const explore =
+      !combat && !dm && rules.explorationMovement === "limited" && t.overrides.freeMovement !== true
+        ? effectiveSpeed(
+            t.overrides.speedOverride ?? stats.speeds.walk,
+            status.conditions.map((x) => x.id as string),
+            status.exhaustion,
+            t.overrides.ignoreConditionSpeed === true,
+          )
+        : null;
+    const budget = turnBudget ?? explore;
     // Creature spaces (§16.5 step 6, AC-MOV-16): players' moves, when the house rule enforces them.
     const spaces =
       !dm && (rules.creatureSpaces === "always" || (rules.creatureSpaces === "combat" && Boolean(combat)));
@@ -132,7 +148,9 @@ export const moveCommit: CommandDef<z.infer<typeof MoveCommit>, MoveResult> = {
       if ("error" in v)
         throw new GloamError(
           "OVER_BUDGET",
-          `That move is ${Math.round(v.cost)} ft; ${Math.floor(budget ?? 0)} ft of movement left.`,
+          turnBudget === null && explore !== null
+            ? `That move is ${Math.round(v.cost)} ft; one move goes at most ${Math.floor(explore)} ft (its speed).`
+            : `That move is ${Math.round(v.cost)} ft; ${Math.floor(budget ?? 0)} ft of movement left.`,
         );
       path = v.points;
       bumped = v.bumped;

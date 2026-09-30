@@ -158,9 +158,12 @@ export class FunFlow {
   }
 
   /** A manual entry: the DM's or a player's (a recap, a note to the party). */
-  add(auth: ClientAuth, text: string): LogEntryView {
+  add(auth: ClientAuth, text: string, actingAs?: string | null): LogEntryView {
     if (auth.role === "spectator") throw new GloamError("FORBIDDEN");
-    this.append("manual", text, { userId: auth.userId, data: { author: auth.name } });
+    this.append("manual", text, {
+      userId: auth.userId,
+      data: { author: actingAs ? `${auth.name} as ${actingAs}` : auth.name },
+    });
     const last = this.list(auth, undefined, 1)[0];
     if (!last) throw new GloamError("INVALID");
     return last;

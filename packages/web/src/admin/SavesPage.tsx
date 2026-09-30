@@ -215,7 +215,8 @@ export function SavesPage() {
               <span className="flex min-w-0 flex-1 flex-col">
                 <span className="truncate text-14 text-bone">{s.name}</span>
                 <span className="text-12 text-muted">
-                  {KIND[s.kind]} · {when(s.createdAt)} · {size(s.bytes)}
+                  {KIND[s.kind]} · <span className="whitespace-nowrap">{when(s.createdAt)}</span> ·{" "}
+                  {size(s.bytes)}
                 </span>
               </span>
               <Button size="S" variant="ghost" icon={<RotateCcw size={14} />} onClick={() => setRestore(s)}>
@@ -311,7 +312,7 @@ export function SavesPage() {
               )
             }
           >
-            Backup now
+            Back up now
           </Button>
         </div>
         <p className="text-14 text-muted">
@@ -319,19 +320,29 @@ export function SavesPage() {
           too.
           {backups ? ` The data folder is ${size(backups.dataDirBytes)}.` : ""}
         </p>
-        <ul
-          className="flex flex-col divide-y divide-line/60 rounded-[var(--radius-control)] border border-line"
-          aria-label="Backups"
-        >
-          {(backups?.backups ?? []).map((b) => (
-            <li key={b.name} className="flex items-center gap-3 px-3 py-2 text-14" data-testid="backup-row">
-              <span className="tabular min-w-0 flex-1 truncate text-bone">{b.name}</span>
-              <span className="text-12 text-muted">
-                {when(b.createdAt)} · {size(b.bytes)}
-              </span>
-            </li>
-          ))}
-        </ul>
+        {backups && backups.backups.length === 0 ? (
+          <p
+            className="rounded-[var(--radius-control)] border border-dashed border-line px-4 py-3 text-14 text-muted"
+            data-testid="backups-empty"
+          >
+            No backups yet — the first is made tonight, or now with Back up now.
+          </p>
+        ) : null}
+        {backups?.backups.length ? (
+          <ul
+            className="flex flex-col divide-y divide-line/60 rounded-[var(--radius-control)] border border-line"
+            aria-label="Backups"
+          >
+            {backups.backups.map((b) => (
+              <li key={b.name} className="flex items-center gap-3 px-3 py-2 text-14" data-testid="backup-row">
+                <span className="tabular min-w-0 flex-1 truncate text-bone">{b.name}</span>
+                <span className="text-12 text-muted">
+                  {when(b.createdAt)} · {size(b.bytes)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : null}
       </section>
 
       <Dialog

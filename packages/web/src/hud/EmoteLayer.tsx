@@ -17,39 +17,79 @@ const DISC = 52;
 /** A phrase pop's height (px). */
 const PHRASE_H = 40;
 
+/** A pop's size on screen (px): a disc for an emote, a one-line bubble for a phrase (its width by its words). */
+function popSize(e: LiveEmote): { w: number; h: number } {
+  return e.emote
+    ? { w: DISC, h: DISC }
+    : { w: Math.min(240, 32 + (e.phrase?.length ?? 0) * 8.5), h: PHRASE_H };
+}
+
+type Box = { x0: number; x1: number; y0: number; y1: number };
+const overlaps = (a: Box, b: Box) => a.x0 < b.x1 && a.x1 > b.x0 && a.y0 < b.y1 && a.y1 > b.y0;
+
 /**
- * Where an emote pops: above its sender's token when this page sees it on screen — above its plate, never over its
- * name, and up past any other creature the pop would cover — else under their portrait in the top bar.
+ * Where a pop under a portrait stands, clear of the HUD (critic P11 r2 N3): under the portrait if nothing's there;
+ * else slid along the band to the nearest clear spot (the pop still ringed in its sender's colour); else under the
+ * lowest piece of HUD in its column.
+ */
+function clearOfHud(x: number, y: number, size: { w: number; h: number }): { x: number; y: number } {
+  const covers = Object.entries(useBoardCovers.getState().rects)
+    .filter(([name]) => name !== "emote-feed" && name !== "toasts")
+    .map(([, r]) => ({ x0: r.left, x1: r.right, y0: r.top, y1: r.bottom }));
+  const at = (cx: number, top: number): Box => ({
+    x0: cx - size.w / 2,
+    x1: cx + size.w / 2,
+    y0: top,
+    y1: top + size.h,
+  });
+  const free = (b: Box) => b.x0 >= 8 && b.x1 <= window.innerWidth - 8 && !covers.some((c) => overlaps(b, c));
+  if (free(at(x, y))) return { x, y };
+  for (let d = 8; d <= 320; d += 8) for (const cx of [x - d, x + d]) if (free(at(cx, y))) return { x: cx, y };
+  let top = y;
+  for (let i = 0; i < 6; i++) {
+    const hit = covers.filter((c) => overlaps(at(x, top), c));
+    if (!hit.length) break;
+    top = Math.max(...hit.map((c) => c.y1)) + 8;
+  }
+  return { x: Math.min(Math.max(x, size.w / 2 + 8), window.innerWidth - size.w / 2 - 8), y: top };
+}
+
+/**
+ * Where an emote pops: above its sender's token when this page sees it on screen — above the token and its plate both,
+ * never over its name or its own body (critic P11 r2 N4), and up past any other creature it would cover — else under
+ * their portrait in the top bar, clear of the HUD there.
  */
 function anchorOf(e: LiveEmote): { x: number; y: number; over: "token" | "portrait" } | null {
+  const size = popSize(e);
   if (e.tokenId) {
     const t = boardData(useEntities.getState()).tokens.get(e.tokenId);
     const canvas = boardApi.element?.getBoundingClientRect();
-    // Above its plate, else above its body, as the board has placed them (canvas px).
-    const top = t && canvas ? (plateRectOf(e.tokenId) ?? bodyRectOf(e.tokenId)) : null;
+    const plate = t && canvas ? plateRectOf(e.tokenId) : null;
+    const body = t && canvas ? bodyRectOf(e.tokenId) : null;
+    const top = plate && body ? (plate.y0 < body.y0 ? plate : body) : (plate ?? body);
     if (top && canvas) {
-      const x = (top.x0 + top.x1) / 2;
-      const h = e.emote ? DISC : PHRASE_H;
-      const w = e.emote ? DISC : 200;
-      let y = top.y0 - 6;
-      // Another creature where the pop would stand: the pop rises above it (a few at most — a crowd stacks up).
-      const others = bodyRects().filter((b) => b.id !== e.tokenId);
-      for (let i = 0; i < 4; i++) {
-        const hit = others.find(({ r }) => r.x0 < x + w / 2 && r.x1 > x - w / 2 && r.y0 < y && r.y1 > y - h);
+      const x = ((plate ?? top).x0 + (plate ?? top).x1) / 2;
+      let y = Math.min(plate?.y0 ?? Number.POSITIVE_INFINITY, body?.y0 ?? Number.POSITIVE_INFINITY) - 6;
+      // A creature (its own body too) where the pop would stand: the pop rises above it (a crowd stacks it up).
+      const bodies = bodyRects();
+      for (let i = 0; i < 5; i++) {
+        const box = { x0: x - size.w / 2, x1: x + size.w / 2, y0: y - size.h, y1: y };
+        const hit = bodies.find(({ r }) => overlaps(box, r));
         if (!hit) break;
         y = hit.r.y0 - 4;
       }
       const sx = canvas.left + x;
       const sy = canvas.top + y;
-      if (sx > 0 && sy - h > 60 && sx < window.innerWidth && sy < window.innerHeight)
+      if (sx > 0 && sy - size.h > 60 && sx < window.innerWidth && sy < window.innerHeight)
         return { x: sx, y: sy, over: "token" };
     }
   }
   const el = document.querySelector<HTMLElement>(`[data-presence="${CSS.escape(e.userId)}"]`);
   if (!el) return null;
   const r = el.getBoundingClientRect();
-  // Below the portrait (the top bar is at the screen's top edge).
-  return { x: r.left + r.width / 2, y: r.bottom + 10, over: "portrait" };
+  // Below the portrait (the top bar is at the screen's top edge), clear of the HUD under it.
+  const p = clearOfHud(r.left + r.width / 2, r.bottom + 10, size);
+  return { x: p.x, y: p.y, over: "portrait" };
 }
 
 /** Test builds: every pop shown here — whose, over what, and for how long (AC-FUN-01). */
@@ -101,6 +141,7 @@ function Pop({ e }: { e: LiveEmote }) {
       data-user={e.userId}
     >
       <motion.div
+        key={e.key}
         initial={still ? { opacity: 0 } : { opacity: 0, scale: 0.3, y: below ? -6 : 8 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         // (It bounces in; it goes in a quick fade — the entry's spring made its going last as long again.)
@@ -160,15 +201,29 @@ export function EmoteLayer() {
   useCover("emote-feed", ref, feed.length > 0);
   const covers = useBoardCovers((s) => s.rects);
   const phone = useHudInsets((s) => s.cornerLeft) > 0;
-  const x0 = phone ? (covers.toolbar?.right ?? 12) + 8 : 16;
-  const width = Math.min(260, window.innerWidth - x0 - 12);
   const { "emote-feed": _self, ...others } = covers;
-  const top = stackTop(phone ? 12 : 64, x0, x0 + width, others, ref.current?.offsetHeight ?? 0);
+  const h = ref.current?.offsetHeight ?? 0;
+  // A phone's column starts right of its tools button — or back at the gutter once the feed stands below the button
+  // (pushed down by the callout or the tracker; critic P11 r2 N27).
+  const beside = phone ? (covers.toolbar?.right ?? 12) + 8 : 16;
+  const besideTop = stackTop(
+    phone ? 12 : 64,
+    beside,
+    beside + Math.min(260, window.innerWidth - beside - 12),
+    others,
+    h,
+  );
+  const below = phone && covers.toolbar && besideTop >= covers.toolbar.bottom;
+  const x0 = below ? 12 : beside;
+  const width = Math.min(260, window.innerWidth - x0 - 12);
+  const top = below ? stackTop(besideTop, x0, x0 + width, others, h) : besideTop;
   return createPortal(
     <>
       <AnimatePresence>
         {showing.map((e) => (
-          <Pop key={e.key} e={e} />
+          // One per person: keyed by who, so a new one takes the old one's place at once (never two, one fading
+          // under the other — critic P11 r2 N5); the pop inside is keyed by the emote, so it bounces in afresh.
+          <Pop key={e.userId} e={e} />
         ))}
       </AnimatePresence>
       <ol

@@ -18,15 +18,18 @@ import {
   RotateCw,
   ScrollText,
   ShieldPlus,
+  SlidersHorizontal,
   Smile,
   Trash2,
   Unlock,
+  VenetianMask,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { type ReactElement, useEffect, useMemo, useRef, useState } from "react";
 import { D20Icon } from "../icons/dice.tsx";
 import { LightPresetIcon } from "../icons/lights.tsx";
 import { StatusIcon } from "../icons/status.tsx";
+import { actAs, useActAs } from "../net/actAs.ts";
 import { request, useTable } from "../net/table.ts";
 import { boardData, useEntities } from "../state/entities.ts";
 import { useLibrary } from "../state/library.ts";
@@ -78,6 +81,7 @@ export function RadialMenu() {
     return undefined;
   });
 
+  const acting = useActAs((s) => s.mine);
   const slices = useMemo<Slice[]>(() => {
     if (!token || !me) return [];
     const dm = me.role === "dm" || me.role === "admin";
@@ -269,6 +273,38 @@ export function RadialMenu() {
               icon: <Lock size={18} />,
               run: () => send("lock it", "token.update", { tokenId: id, locked: true }),
             },
+        // Its DM settings (§8.19 per-token overrides): speed, movement, who sees it, its link, its note.
+        {
+          id: "settings",
+          label: "DM settings…",
+          short: "Settings",
+          icon: <SlidersHorizontal size={18} />,
+          run: () => useUi.getState().set({ tokenSettings: id }),
+        },
+        // Act as (§8.19): a character's controls, on its player's behalf — or back to its player.
+        ...(token.kind === "character" && token.actorId
+          ? [
+              acting?.actorId === token.actorId
+                ? {
+                    id: "actas",
+                    label: `Stop acting as ${token.name}`,
+                    short: "Stop acting",
+                    icon: <VenetianMask size={18} />,
+                    run: () =>
+                      void actAs(null).catch((e: Error) => toast.danger("Couldn't let go", e.message)),
+                  }
+                : {
+                    id: "actas",
+                    label: `Act as ${token.name}`,
+                    short: "Act as",
+                    icon: <VenetianMask size={18} />,
+                    run: () =>
+                      void actAs(token.actorId).catch((e: Error) =>
+                        toast.danger("Couldn't take its controls", e.message),
+                      ),
+                  },
+            ]
+          : []),
         // Dying (at 0 HP, death saves running): ask for a death saving throw, outside combat (§8.11).
         ...(token.markers.includes("deathsaves") && !token.markers.includes("stable") && !token.dead
           ? [
@@ -312,7 +348,7 @@ export function RadialMenu() {
       out.push({ id: "dm", label: "DM", icon: <WaxSeal size={20} />, ring: dmRing });
     }
     return out;
-  }, [token, me, assets, carried, radial]);
+  }, [token, me, assets, carried, radial, acting]);
 
   const shown = ring ?? slices;
   const close = () => {

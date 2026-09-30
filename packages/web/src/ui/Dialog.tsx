@@ -39,48 +39,8 @@ export function Dialog({
   const ref = useRef<HTMLDivElement>(null);
   const titleId = useId();
   const descId = useId();
-  const opener = useRef<Element | null>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    opener.current = document.activeElement;
-    const t = window.setTimeout(() => {
-      // Never away from where the person already is in it (a busy frame can hold the timer back past their first
-      // click: focus pulled back to the first field sent their typing there — "12" then "9" read "129").
-      if (ref.current?.contains(document.activeElement)) return;
-      const first =
-        ref.current?.querySelector<HTMLElement>("[data-autofocus]") ??
-        ref.current?.querySelector<HTMLElement>(FOCUSABLE);
-      first?.focus();
-    }, 20);
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && dismissible) {
-        e.stopPropagation();
-        onClose();
-      }
-      if (e.key === "Tab" && ref.current) {
-        const items = [...ref.current.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
-          (el) => el.offsetParent !== null,
-        );
-        if (items.length === 0) return;
-        const first = items[0] as HTMLElement;
-        const last = items[items.length - 1] as HTMLElement;
-        if (e.shiftKey && document.activeElement === first) {
-          e.preventDefault();
-          last.focus();
-        } else if (!e.shiftKey && document.activeElement === last) {
-          e.preventDefault();
-          first.focus();
-        }
-      }
-    };
-    window.addEventListener("keydown", onKey, true);
-    return () => {
-      window.clearTimeout(t);
-      window.removeEventListener("keydown", onKey, true);
-      (opener.current as HTMLElement | null)?.focus?.();
-    };
-  }, [open, onClose, dismissible]);
+  useModalFocus(ref, open, onClose, dismissible);
 
   const parchment = variant === "parchment";
   return createPortal(
@@ -114,6 +74,64 @@ export function Dialog({
 }
 
 /**
+ * A modal's keyboard (SPEC §28 Dialog): focus goes in (to `[data-autofocus]`, else the first control), Tab stays in,
+ * Esc closes (when it may), and focus returns to whatever opened it.
+ */
+export function useModalFocus(
+  ref: RefObject<HTMLElement | null>,
+  open: boolean,
+  onClose: () => void,
+  dismissible = true,
+): void {
+  const opener = useRef<Element | null>(null);
+  // The latest close, read when a key asks for it: the effect below runs once per opening, not again on every render
+  // an inline `onClose` makes — each rerun sent focus back to the opener mid-typing, so Enter pressed its button
+  // (Jump to's Enter pressed the DM panel's rail tab).
+  const close = useRef(onClose);
+  close.current = onClose;
+  useEffect(() => {
+    if (!open) return;
+    opener.current = document.activeElement;
+    const t = window.setTimeout(() => {
+      // Never away from where the person already is in it (a busy frame can hold the timer back past their first
+      // click: focus pulled back to the first field sent their typing there — "12" then "9" read "129").
+      if (ref.current?.contains(document.activeElement)) return;
+      const first =
+        ref.current?.querySelector<HTMLElement>("[data-autofocus]") ??
+        ref.current?.querySelector<HTMLElement>(FOCUSABLE);
+      first?.focus();
+    }, 20);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && dismissible) {
+        e.stopPropagation();
+        close.current();
+      }
+      if (e.key === "Tab" && ref.current) {
+        const items = [...ref.current.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
+          (el) => el.offsetParent !== null,
+        );
+        if (items.length === 0) return;
+        const first = items[0] as HTMLElement;
+        const last = items[items.length - 1] as HTMLElement;
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => {
+      window.clearTimeout(t);
+      window.removeEventListener("keydown", onKey, true);
+      (opener.current as HTMLElement | null)?.focus?.();
+    };
+  }, [open, dismissible, ref]);
+}
+
+/**
  * How many modal dialogs are open, and where the top one's card stands at rest (screen px): the toasts keep out of it.
  */
 export const useModalOpen = create<{
@@ -121,13 +139,18 @@ export const useModalOpen = create<{
   box: { left: number; top: number; right: number; bottom: number } | null;
 }>(() => ({ count: 0, box: null }));
 
-/** The scrim and the layer the dialog sits in: nothing under it is clickable — until it starts to leave. */
-function DialogLayer({ children }: { children: ReactNode }) {
-  const present = useIsPresent();
+/** Counts a modal as open while the calling component is mounted (the toasts keep out of it). */
+export function useModalCount(): void {
   useEffect(() => {
     useModalOpen.setState((s) => ({ count: s.count + 1 }));
     return () => useModalOpen.setState((s) => ({ count: Math.max(0, s.count - 1) }));
   }, []);
+}
+
+/** The scrim and the layer the dialog sits in: nothing under it is clickable — until it starts to leave. */
+function DialogLayer({ children }: { children: ReactNode }) {
+  const present = useIsPresent();
+  useModalCount();
   return (
     <motion.div
       className={`fixed inset-0 z-[900] grid place-items-center p-4 ${present ? "" : "pointer-events-none"}`}
@@ -139,6 +162,40 @@ function DialogLayer({ children }: { children: ReactNode }) {
       {children}
     </motion.div>
   );
+}
+
+/**
+ * Reports a modal card's box at rest (its layout box, not an entrance transform's) while `present`: the toasts keep out
+ * of it. The card's offset parent must be the screen (a fixed, full-screen layer).
+ */
+export function useModalBox(cardRef: RefObject<HTMLElement | null>, present: boolean): void {
+  useLayoutEffect(() => {
+    const el = cardRef.current;
+    if (!el || !present) return;
+    const put = () => {
+      const r = { left: el.offsetLeft, top: el.offsetTop, right: 0, bottom: 0 };
+      r.right = r.left + el.offsetWidth;
+      r.bottom = r.top + el.offsetHeight;
+      const cur = useModalOpen.getState().box;
+      if (
+        !cur ||
+        cur.left !== r.left ||
+        cur.top !== r.top ||
+        cur.right !== r.right ||
+        cur.bottom !== r.bottom
+      )
+        useModalOpen.setState({ box: r });
+    };
+    put();
+    const ro = new ResizeObserver(put);
+    ro.observe(el);
+    window.addEventListener("resize", put);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", put);
+      useModalOpen.setState({ box: null });
+    };
+  }, [cardRef, present]);
 }
 
 /** The dialog itself (inside the presence so it knows when it's leaving). */
@@ -168,34 +225,7 @@ function DialogCard({
   children?: ReactNode;
 }) {
   const present = useIsPresent();
-  // Its box at rest (layout, not the entrance's transform), for the toasts to keep out of.
-  useLayoutEffect(() => {
-    const el = cardRef.current;
-    if (!el || !present) return;
-    const put = () => {
-      const r = { left: el.offsetLeft, top: el.offsetTop, right: 0, bottom: 0 };
-      r.right = r.left + el.offsetWidth;
-      r.bottom = r.top + el.offsetHeight;
-      const cur = useModalOpen.getState().box;
-      if (
-        !cur ||
-        cur.left !== r.left ||
-        cur.top !== r.top ||
-        cur.right !== r.right ||
-        cur.bottom !== r.bottom
-      )
-        useModalOpen.setState({ box: r });
-    };
-    put();
-    const ro = new ResizeObserver(put);
-    ro.observe(el);
-    window.addEventListener("resize", put);
-    return () => {
-      ro.disconnect();
-      window.removeEventListener("resize", put);
-      useModalOpen.setState({ box: null });
-    };
-  }, [cardRef, present]);
+  useModalBox(cardRef, present);
   return (
     <motion.div
       ref={cardRef}

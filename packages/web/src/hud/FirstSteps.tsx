@@ -56,7 +56,7 @@ export function FirstSteps() {
         aria-hidden
       />
       <p className="text-14 font-bold text-bone">Make your character</p>
-      <p className="text-13 text-muted">A name, a class, HP, AC and speed — and its token joins the board.</p>
+      <p className="text-13 text-muted">A name, a class, HP, AC and speed — the sheet you'll play from.</p>
       <Button
         variant="primary"
         size="S"

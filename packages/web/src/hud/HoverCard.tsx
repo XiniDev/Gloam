@@ -4,9 +4,11 @@ import { useEffect, useRef, useState } from "react";
 import { boardApi } from "../board/boardApi.ts";
 import { bodyRectOf, bodyRects, plateCovers, plateRectOf, plateRects } from "../board/tokens/declutter.ts";
 import { StatusIcon } from "../icons/status.tsx";
+import { useTable } from "../net/table.ts";
 import { useBoard } from "../state/entities.ts";
 import { useUi } from "../state/ui.ts";
 import { Portrait } from "../ui/Portrait.tsx";
+import { overrideBadges } from "./dm/tokenDm.tsx";
 import { useIsPhone } from "./insets.ts";
 import { useAssetImage } from "./useAssetImage.ts";
 
@@ -22,6 +24,8 @@ export const HOVER_CARD_MS = 400;
 export function HoverCard() {
   const hover = useUi((s) => s.hover);
   const radial = useUi((s) => s.radial);
+  const people = useTable((s) => s.presence);
+  const npcHp = useTable((s) => s.houseRules.npcHpDisplay);
   const phone = useIsPhone();
   const [shown, setShown] = useState<string | null>(null);
   // How long the pointer had rested when it showed (ms; the tests check the 400 ms).
@@ -71,6 +75,10 @@ export function HoverCard() {
         ? HP_BAND_LABELS[token.hpBand]
         : null;
   const statuses = [...token.conditions, ...token.markers.filter((m) => !m.startsWith("custom:"))];
+  // The DM's view: the token's overrides and settings that aren't its defaults, as badges (AC-DMP-02).
+  const badges = token.dm
+    ? overrideBadges(token, (id) => people.find((p) => p.userId === id)?.name ?? "someone", npcHp)
+    : [];
   const customs = parseCustomMarkers(token.customMarkers);
   const { left, top } = placeCard(token.id, at, W, card.current?.offsetHeight ?? 200);
   return (
@@ -108,6 +116,26 @@ export function HoverCard() {
           </>
         ) : null}
       </dl>
+      {badges.length ? (
+        <ul
+          className="flex flex-wrap gap-1 border-t border-line/60 pt-2"
+          aria-label="DM settings"
+          data-testid="dm-badges"
+        >
+          {badges.map((b) => (
+            <li
+              key={b.key}
+              title={b.title}
+              data-badge={b.key}
+              className="inline-flex max-w-full items-center gap-1 rounded-[var(--radius-chip)] border border-brass-deep/60 bg-ink-900 px-1.5 py-0.5 text-12 text-bone"
+            >
+              <b.icon size={12} className="shrink-0 text-brass" aria-hidden />
+              <span className="truncate">{b.text}</span>
+              <span className="sr-only">: {b.title}</span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
       {statuses.length || customs.length || token.exhaustion ? (
         <ul
           className="flex flex-col gap-1.5 border-t border-line/60 pt-2"

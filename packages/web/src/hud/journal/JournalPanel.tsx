@@ -9,7 +9,7 @@ import { Tabs } from "../../ui/Tabs.tsx";
 import { toast } from "../../ui/Toast.tsx";
 import { HandoutCard } from "./HandoutCard.tsx";
 
-const time = (at: number) => new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+const time = (at: number) => new Date(at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 const day = (at: number) =>
   new Date(at).toLocaleDateString([], { day: "numeric", month: "long", year: "numeric" });
 
@@ -100,7 +100,7 @@ function Log() {
           Markdown
         </Button>
       </div>
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-2">
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 py-3">
         {!loaded ? null : groups.length ? (
           // The log itself is a document (§27.1): the sessions on a parchment sheet, the search and the pen on ink.
           <div className="parchment flex flex-col gap-4 px-4 py-3" data-testid="log-sheet">
@@ -118,20 +118,23 @@ function Log() {
                     {day((entries[0] as LogEntryView).createdAt)}
                   </span>
                 </h3>
-                <ol className="flex flex-col gap-1.5">
+                <ol className="flex flex-col gap-2.5">
                   {entries.map((e) => (
-                    // Three columns — when, what kind, what — so every line's text starts at one edge.
+                    // When and what kind on a line of their own, the entry under them at the sheet's full width (in
+                    // columns the text had a sliver and broke every other line — critic P11 r2 N8).
                     <li
                       key={e.id}
-                      className="grid grid-cols-[56px_84px_minmax(0,1fr)] items-baseline gap-2 text-14"
+                      className="flex flex-col gap-0.5"
                       data-testid="log-entry"
                       data-kind={e.kind}
                     >
-                      <span className="tabular whitespace-nowrap text-12 text-paper-muted">
-                        {time(e.createdAt)}
+                      <span className="flex items-baseline gap-2 text-12">
+                        <span className="tabular whitespace-nowrap text-paper-muted">
+                          {time(e.createdAt)}
+                        </span>
+                        <span className="caps text-wax">{KIND[e.kind] ?? ""}</span>
                       </span>
-                      <span className="caps truncate text-12 text-brass-deep">{KIND[e.kind] ?? ""}</span>
-                      <span className="text-paper-ink">
+                      <span className="text-14 leading-[var(--leading-body)] text-paper-ink [text-wrap:pretty]">
                         {e.kind === "manual" ? (
                           <>
                             <span className="font-bold">{e.author ?? "Someone"}</span>{" "}

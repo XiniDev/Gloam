@@ -108,6 +108,19 @@ export interface HandoutView {
 
 /** `log.add`: a manual entry (a recap, a note) — the DM's or a player's. */
 export const LogAdd = z.strictObject({ text: z.string().trim().min(1).max(4000) });
+
+/**
+ * Act as (SPEC §8.19, AC-DMP-03): the DM (or Admin) takes control of a character on its player's behalf — what they
+ * then do is recorded as "DM as <character>" — or lets go (`null`).
+ */
+export const ActAs = z.strictObject({ actorId: z.string().min(1).max(64).nullable() });
+/** Who is acting as whom now (to the DMs; to the character's players, their own). */
+export interface ActingAsView {
+  userId: string;
+  dmName: string;
+  actorId: string | null;
+  name: string | null;
+}
 export const LogList = z.strictObject({
   sinceSession: z.number().int().min(0).optional(),
   limit: z.number().int().min(1).max(5000).default(2000),

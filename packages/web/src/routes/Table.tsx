@@ -7,8 +7,10 @@ import { TurnTracker } from "../hud/combat/TurnTracker.tsx";
 import { useCombatKeys } from "../hud/combat/useCombatKeys.ts";
 import { DiceTray } from "../hud/DiceTray.tsx";
 import { Dock } from "../hud/Dock.tsx";
+import { JumpTo } from "../hud/dm/JumpTo.tsx";
 import { MapToolsPanel } from "../hud/dm/MapToolsPanel.tsx";
 import { NewSceneWizard } from "../hud/dm/NewSceneWizard.tsx";
+import { TokenSettingsDialog } from "../hud/dm/TokenSettingsDialog.tsx";
 import { EmoteLayer } from "../hud/EmoteLayer.tsx";
 import { EmoteWheel } from "../hud/EmoteWheel.tsx";
 import { FloatingCards } from "../hud/FloatingCards.tsx";
@@ -42,6 +44,7 @@ import { ViewAsBanner } from "../hud/ViewAsBanner.tsx";
 import { WallChips } from "../hud/WallChips.tsx";
 import { WallsPanel } from "../hud/WallsPanel.tsx";
 import { ZoneEditor, ZonesPanel } from "../hud/ZonesPanel.tsx";
+import { watchActAs } from "../net/actAs.ts";
 import { watchAudio } from "../net/audio.ts";
 import { watchClock } from "../net/clock.ts";
 import { joinErrorCode } from "../net/colyseus.ts";
@@ -85,6 +88,7 @@ export default function TableRoute() {
   useEffect(() => watchClock(), []);
   useEffect(() => watchAudio(), []);
   useEffect(() => watchFun(), []);
+  useEffect(() => watchActAs(), []);
   useEffect(() => watchSpells(), []);
   useEffect(() => watchPendingArt(), []);
   useEffect(() => {
@@ -212,6 +216,8 @@ export default function TableRoute() {
       <ViewAsBanner />
       <ZoneEditor />
       <QuickUnitDialog />
+      <TokenSettingsDialog />
+      <JumpTo />
       <SceneWizardHost />
       <ConnectionBanner connection={connection} />
       <Intro />

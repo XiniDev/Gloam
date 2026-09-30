@@ -345,7 +345,9 @@ function RollCard({
   // The DM's rolls, public or masked, carry the seal and the wax bar: one look for the DM wherever they roll.
   const byDm = isMasked(roll) ? roll.byDm : role === "dm" || role === "admin";
   // A masked card says its sentence once ("The DM rolls…", "Dave rolled privately"), as its heading.
-  const name = isMasked(roll) ? roll.text : mine ? "You" : roll.name;
+  // A DM acting as a character (AC-DMP-03): the card is the character's, and says who rolled it for them.
+  const acting = !isMasked(roll) && roll.actingAs ? roll.actingAs : null;
+  const name = isMasked(roll) ? roll.text : acting ? `DM as ${acting}` : mine ? "You" : roll.name;
   const hidden = !masked && roll.visibility !== "public" ? PRIVATE[roll.visibility] : null;
   return (
     <button

@@ -122,6 +122,27 @@ test.describe("P11 — table flavour (FUN)", () => {
     await dave.keyboard.press("h");
     const daveOnTop = (p: Page) => p.locator(`[data-presence="${daveId}"]`).getByTestId("hand-badge");
     for (const p of [admin, dave, erin]) await expect(daveOnTop(p)).toBeVisible();
+    // The badge rides the portrait's top-right corner, and the portrait stays in line with its neighbours (critic P11
+    // r2 N1: laid out in the row, it lifted the portrait and sat on its ring's foot).
+    const place = await admin.evaluate((id) => {
+      const box = (el: Element | null | undefined) => el?.getBoundingClientRect();
+      const cell = document.querySelector(`[data-presence="${id}"]`);
+      const badge = box(cell?.querySelector('[data-testid="hand-badge"]'));
+      const face = box(cell?.querySelector('[aria-hidden="true"].rounded-full, .rounded-full'));
+      const others = [...document.querySelectorAll("[data-presence]")]
+        .filter((c) => c !== cell)
+        .map((c) => box(c.querySelector(".rounded-full"))?.top ?? 0);
+      return { badge, face, others };
+    }, daveId);
+    const b = place.badge as DOMRect;
+    const f = place.face as DOMRect;
+    expect(b.left + b.width / 2, "badge centre right of the portrait's middle").toBeGreaterThan(
+      f.left + f.width / 2,
+    );
+    expect(b.top + b.height / 2, "badge centre above the portrait's middle").toBeLessThan(
+      f.top + f.height / 2,
+    );
+    for (const top of place.others) expect(Math.abs(top - f.top), "portraits in line").toBeLessThanOrEqual(1);
     await expect.poll(() => sounds(admin, "handRaised")).toBe(bellsBefore + 1);
     await expect(admin.getByText("Dave raised a hand")).toBeVisible();
     // …and in the tracker, on his creature's portrait.

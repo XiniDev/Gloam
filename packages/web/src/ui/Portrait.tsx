@@ -27,7 +27,8 @@ export function Portrait({
 }) {
   const ring = size >= 28 ? 1.5 : 1;
   const ringColor = dm ? "var(--brass-400)" : color || "var(--border)";
-  const seal = Math.max(14, Math.round(size * 0.5));
+  // Big enough to read as a seal — its scalloped wax and embossed star — not a notification dot (critic P11 r2 N21).
+  const seal = Math.max(18, Math.round(size * 0.56));
   // The seal's centre on a circle just outside the rim, at four o'clock (30° below the horizontal).
   const sealX = size / 2 + size * 0.56 * Math.cos(Math.PI / 6) - seal / 2;
   const sealY = size / 2 + size * 0.56 * Math.sin(Math.PI / 6) - seal / 2;

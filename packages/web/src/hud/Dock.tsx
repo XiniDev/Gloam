@@ -1,14 +1,13 @@
 import { BookOpen, ScrollText, Users, X } from "lucide-react";
 import { type ReactElement, Suspense, useEffect, useRef, useState } from "react";
 import { useFun } from "../net/fun.ts";
-import { pendingProposals, useSheets } from "../net/sheets.ts";
 import { useTable } from "../net/table.ts";
-import { pendingCount, useLibrary } from "../state/library.ts";
 import { type DockTab, useUi } from "../state/ui.ts";
 import { IconButton } from "../ui/Button.tsx";
 import { ErrorBoundary } from "../ui/ErrorBoundary.tsx";
 import { lazyPage } from "../ui/lazyPage.ts";
 import { Sparkle } from "../ui/ornaments.tsx";
+import { useApprovalsCount } from "./dm/approvalsCount.ts";
 import { FirstSteps, useNeedsCharacter } from "./FirstSteps.tsx";
 import { PromptCards } from "./health/PromptCards.tsx";
 import { hudOrder } from "./Intro.tsx";
@@ -46,7 +45,8 @@ export function Dock() {
   const tab = useUi((s) => s.dock);
   const role = useTable((s) => s.me?.role);
   const dm = role === "dm" || role === "admin";
-  const pending = useLibrary(pendingCount) + useSheets(pendingProposals);
+  // Everything waiting for the DM (AC-DMP-04): knocks, uploads, sheet and homebrew proposals.
+  const pending = useApprovalsCount();
   // Handouts given since the Journal was last open (a player's reminder that something is waiting).
   const unread = useFun((s) => s.unread);
   const [width, setWidth] = useState(loadWidth);

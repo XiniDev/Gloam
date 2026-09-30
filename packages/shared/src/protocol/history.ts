@@ -4,6 +4,8 @@ export interface HistoryListEntry {
   at: number;
   userId: string;
   userName: string;
+  /** "DM as <character>": the character the DM was acting as (AC-DMP-03). */
+  actingAs: string | null;
   type: string;
   summary: string;
   sceneId: string | null;

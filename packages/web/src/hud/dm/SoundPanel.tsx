@@ -132,7 +132,11 @@ function NowPlaying({ tracks }: { tracks: Map<string, AssetItem> }) {
   const volume = useThrottled((v) => act(setMusicVolume(v), "Couldn't change the volume"));
   const playing = m.kind !== "none";
   return (
-    <section className="panel flex flex-col gap-2.5 p-3" aria-label="Now playing" data-testid="now-playing">
+    <section
+      className="panel flex scroll-mt-4 flex-col gap-2.5 p-3"
+      aria-label="Now playing"
+      data-testid="now-playing"
+    >
       <div className="min-w-0">
         <p className="truncate font-display text-18 text-bone">{title}</p>
         <p className="tabular truncate text-13 text-muted">{sub}</p>
@@ -274,14 +278,13 @@ function Presets() {
               }
               className={`flex min-h-[64px] flex-col items-start gap-0.5 rounded-[var(--radius-control)] border px-3 py-2 text-left transition-colors duration-[var(--dur-fast)] ${on ? "border-brass bg-raised" : "border-line hover:border-brass-deep hover:bg-raised"}`}
             >
-              <span className="flex w-full items-center gap-2">
-                <span className={`text-14 font-bold ${on ? "text-brass-bright" : "text-bone"}`}>
-                  {PRESET_LABEL[p].name}
-                </span>
+              {/* Its mark on a row of its own, the level bars at the far end while it plays; the name under them. */}
+              <span className="flex w-full items-center justify-between gap-2">
+                <Motif p={p} on={on} />
                 {on ? <LevelBars /> : null}
-                <span className="ml-auto">
-                  <Motif p={p} on={on} />
-                </span>
+              </span>
+              <span className={`text-14 font-bold ${on ? "text-brass-bright" : "text-bone"}`}>
+                {PRESET_LABEL[p].name}
               </span>
               <span className="text-12 leading-snug text-muted">{PRESET_LABEL[p].mood}</span>
             </button>
@@ -319,7 +322,9 @@ function TrackRow({
         </IconButton>
         <div className="min-w-0 flex-1">
           <p className={`truncate text-14 ${playing ? "text-brass-bright" : "text-bone"}`}>{t.name}</p>
-          <p className="tabular text-12 text-muted">{t.durationMs ? clock(t.durationMs) : "—:—"}</p>
+          <p className="tabular text-12 text-muted">
+            {t.durationMs ? clock(t.durationMs) : "length after its first play"}
+          </p>
         </div>
         {playlists.length ? (
           <Menu

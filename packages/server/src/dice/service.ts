@@ -206,6 +206,7 @@ export class DiceService {
       at,
     };
     if (p.token) r.tokenId = p.token.id;
+    if (roller.actingAs) r.actingAs = roller.actingAs;
     if (p.label) r.label = p.label;
     if (p.purpose) r.purpose = p.purpose;
     // Written before anyone hears of it (SPEC §5 "Nothing is lost").

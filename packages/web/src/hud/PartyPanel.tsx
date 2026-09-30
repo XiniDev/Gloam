@@ -1,7 +1,7 @@
 import type { ActorView } from "@gloam/shared/protocol";
 import { deriveSheet, statusName } from "@gloam/shared/rules";
 import { Users } from "lucide-react";
-import { useMemo, useState } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 import { StatusIcon } from "../icons/status.tsx";
 import { useSheets } from "../net/sheets.ts";
 import { useTable } from "../net/table.ts";
@@ -24,7 +24,18 @@ const ROLE_LABEL: Record<string, string> = {
  * A character at a glance (§8.3 Party): portrait, name and classes, HP on a track of one width for every row (so they
  * compare), the conditions by name, the three passive scores; it opens the sheet.
  */
-function CharacterRow({ a, color, player }: { a: ActorView; color: string; player: string | null }) {
+export function CharacterRow({
+  a,
+  color,
+  player,
+  actions,
+}: {
+  a: ActorView;
+  color: string;
+  player: string | null;
+  /** The DM's own controls for this character (DM panel → Party), beside the row. */
+  actions?: ReactNode;
+}) {
   const c = a.sheet.core;
   const portrait = useAssetImage(c.portraitAssetId, 96);
   const d = useMemo(() => deriveSheet(c).values, [c]);
@@ -32,13 +43,13 @@ function CharacterRow({ a, color, player }: { a: ActorView; color: string; playe
   const hpColor = frac > 0.5 ? "var(--hp-high)" : frac > 0.25 ? "var(--hp-mid)" : "var(--hp-low)";
   const classes = c.classes.map((k) => `${k.name} ${k.level}`).join(" / ");
   return (
-    <li>
+    <li className="flex items-start gap-1">
       <button
         type="button"
         data-testid="party-character"
         data-actor={a.id}
         onClick={() => useUi.getState().set({ dock: "sheet", sheetActor: a.id })}
-        className="flex w-full items-start gap-3 rounded-[var(--radius-control)] px-2 py-2 text-left hover:bg-raised"
+        className="flex min-w-0 flex-1 items-start gap-3 rounded-[var(--radius-control)] px-2 py-2 text-left hover:bg-raised"
       >
         <Portrait name={c.name} color={color} size={36} src={portrait} />
         <span className="min-w-0 flex-1">
@@ -78,6 +89,7 @@ function CharacterRow({ a, color, player }: { a: ActorView; color: string; playe
           </span>
         </span>
       </button>
+      {actions ? <span className="flex shrink-0 flex-col items-end gap-1 py-2">{actions}</span> : null}
     </li>
   );
 }

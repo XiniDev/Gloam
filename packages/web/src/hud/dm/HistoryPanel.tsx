@@ -181,6 +181,7 @@ export function HistoryPanel() {
               </span>
               <span className="truncate text-12 text-muted">
                 {e.userName}
+                {e.actingAs ? <span className="text-brass"> as {e.actingAs}</span> : null}
                 {e.sceneName ? ` · ${e.sceneName}` : ""} · {ago(e.at)}
                 {e.undoneAt !== null ? ` · undone${e.undoneByName ? ` by ${e.undoneByName}` : ""}` : ""}
               </span>

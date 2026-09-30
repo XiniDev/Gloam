@@ -33,6 +33,8 @@ export interface RollRecord extends RollOutcome {
   /** The dice to throw, the first 20 physically (§8.9). */
   tumble: TumbleDie[];
   at: number;
+  /** Rolled by a DM acting as this character (AC-DMP-03): the card reads "DM as <character>". */
+  actingAs?: string;
 }
 
 /** What someone who may not see a roll gets instead (§18.3): who rolled, and dice with "?" faces. */
@@ -69,6 +71,8 @@ export interface Roller {
   color: string;
   skin: DiceSkin;
   dm: boolean;
+  /** A DM acting as a character: its name (the roll is the character's). */
+  actingAs?: string;
 }
 
 /** The rows of §18.3: what a viewer gets of a roll. */
