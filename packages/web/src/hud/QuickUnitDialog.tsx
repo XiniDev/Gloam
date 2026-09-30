@@ -9,6 +9,7 @@ import { Button } from "../ui/Button.tsx";
 import { Segmented, Select, Toggle } from "../ui/controls.tsx";
 import { Dialog } from "../ui/Dialog.tsx";
 import { TextInput } from "../ui/Field.tsx";
+import { LoadGate, useLoad } from "../ui/Loadable.tsx";
 import { toast } from "../ui/Toast.tsx";
 import { UploadZone } from "./dm/UploadZone.tsx";
 import { useAssetImage } from "./useAssetImage.ts";
@@ -146,12 +147,13 @@ function ArtPicker({
 }) {
   const assets = useLibrary((s) => s.assets);
   const [uploading, setUploading] = useState(false);
-  useEffect(() => {
-    void request<AssetItem[]>("asset.list", { tab: look === "model" ? "minis" : "tokens" }).then(
-      (l) => useLibrary.getState().upsert(l),
-      () => {},
-    );
-  }, [look]);
+  const loaded = useLoad(
+    () =>
+      request<AssetItem[]>("asset.list", { tab: look === "model" ? "minis" : "tokens" }).then((l) =>
+        useLibrary.getState().upsert(l),
+      ),
+    [look],
+  );
   const items = [...assets.values()]
     .filter(
       (a) =>
@@ -172,6 +174,10 @@ function ArtPicker({
             </li>
           ))}
         </ul>
+      ) : loaded.status !== "ready" ? (
+        <LoadGate load={loaded} what={look === "model" ? "the minis" : "the token art"} compact>
+          {() => null}
+        </LoadGate>
       ) : (
         <p className="text-13 text-muted">
           {look === "model" ? "No minis in the Library yet." : "No token art in the Library yet."}

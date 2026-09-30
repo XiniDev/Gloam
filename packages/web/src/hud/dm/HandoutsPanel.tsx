@@ -1,10 +1,19 @@
 import type { HandoutView } from "@gloam/shared/protocol";
 import { ImageOff, Pencil, Send, Trash2 } from "lucide-react";
 import { useState } from "react";
-import { createHandout, deleteHandout, sendNote, showHandout, updateHandout, useFun } from "../../net/fun.ts";
+import {
+  createHandout,
+  deleteHandout,
+  sendNote,
+  showHandout,
+  updateHandout,
+  useFun,
+  useFunLists,
+} from "../../net/fun.ts";
 import { type PresenceView, useTable } from "../../net/table.ts";
 import { Button, IconButton } from "../../ui/Button.tsx";
 import { Select } from "../../ui/controls.tsx";
+import { LoadGate } from "../../ui/Loadable.tsx";
 import { SECTION_HEADING } from "../../ui/labels.ts";
 import { Menu } from "../../ui/Menu.tsx";
 import { toast } from "../../ui/Toast.tsx";
@@ -214,6 +223,7 @@ function SecretNote({ players }: { players: PresenceView[] }) {
  */
 export function HandoutsPanel() {
   const handouts = useFun((s) => s.handouts);
+  const lists = useFunLists();
   const presence = useTable((s) => s.presence);
   const players = presence.filter((p) => p.role === "player");
   const [adding, setAdding] = useState(false);
@@ -233,7 +243,11 @@ export function HandoutsPanel() {
           )}
         </div>
         {adding ? <HandoutForm onDone={() => setAdding(false)} /> : null}
-        {list.length ? (
+        {lists.status !== "ready" ? (
+          <LoadGate load={lists} what="the handouts">
+            {() => null}
+          </LoadGate>
+        ) : list.length ? (
           <ul className="flex flex-col divide-y divide-line/60 rounded-[var(--radius-control)] border border-line">
             {list.map((h) => (
               <HandoutRow key={h.id} h={h} players={players} />

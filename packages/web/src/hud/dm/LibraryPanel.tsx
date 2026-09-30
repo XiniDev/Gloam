@@ -1,11 +1,12 @@
 import { Box, Music, Plus, Trash2, Undo2, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { request } from "../../net/table.ts";
 import type { UploadPurpose } from "../../net/upload.ts";
 import { ASSET_DRAG_TYPE, type AssetDragPayload, type AssetItem, useLibrary } from "../../state/library.ts";
 import { Button } from "../../ui/Button.tsx";
 import { Segmented, Select } from "../../ui/controls.tsx";
 import { EmptyState } from "../../ui/EmptyState.tsx";
+import { LoadGate, useLoad } from "../../ui/Loadable.tsx";
 import { Menu } from "../../ui/Menu.tsx";
 import { toast } from "../../ui/Toast.tsx";
 import { useAssetImage } from "../useAssetImage.ts";
@@ -215,15 +216,13 @@ export function LibraryPanel() {
   const [trash, setTrash] = useState(false);
   const [uploading, setUploading] = useState(false);
 
-  useEffect(() => {
-    void request<AssetItem[]>("asset.list", { tab: "all" }).then(
-      (l) => useLibrary.getState().upsert(l),
-      () => {},
-    );
-    void request<AssetItem[]>("asset.list", { tab: "all", trash: true }).then(
-      (l) => useLibrary.getState().upsert(l),
-      () => {},
-    );
+  // Everything in the Library and its trash (changes are pushed after this).
+  const loaded = useLoad(async () => {
+    const [live, gone] = await Promise.all([
+      request<AssetItem[]>("asset.list", { tab: "all" }),
+      request<AssetItem[]>("asset.list", { tab: "all", trash: true }),
+    ]);
+    useLibrary.getState().upsert([...live, ...gone]);
   }, []);
 
   const inTab = useMemo(
@@ -321,7 +320,11 @@ export function LibraryPanel() {
           <UploadZone purpose={TAB_UPLOAD[tab]} hint={TAB_HINT[tab]} onUploaded={() => setUploading(false)} />
         ) : null}
       </div>
-      {shown.length === 0 ? (
+      {shown.length === 0 && loaded.status !== "ready" ? (
+        <LoadGate load={loaded} what="the Library">
+          {() => null}
+        </LoadGate>
+      ) : shown.length === 0 ? (
         <EmptyState
           art="scroll"
           title={

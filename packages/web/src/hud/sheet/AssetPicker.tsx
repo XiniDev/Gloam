@@ -1,7 +1,8 @@
 import { ImagePlus, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { request } from "../../net/table.ts";
 import { type AssetItem, useLibrary } from "../../state/library.ts";
+import { LoadGate, useLoad } from "../../ui/Loadable.tsx";
 import { toast } from "../../ui/Toast.tsx";
 import { UploadZone } from "../dm/UploadZone.tsx";
 import { useAssetImage } from "../useAssetImage.ts";
@@ -23,23 +24,24 @@ export function AssetPicker({
   purpose: "portrait" | "token" | "art";
 }) {
   const [open, setOpen] = useState(false);
-  const [items, setItems] = useState<AssetItem[] | null>(null);
+  // Asked for each time it opens.
+  const loaded = useLoad(
+    () =>
+      open
+        ? request<AssetItem[]>("asset.list", {}).then((list) =>
+            list.filter((a) => a.cls === "image" && !a.deleted && a.status !== "rejected"),
+          )
+        : Promise.resolve(null),
+    [open],
+  );
+  // (Uploaded here since it opened: shown first.)
+  const [added, setAdded] = useState<AssetItem[]>([]);
+  const items = loaded.data
+    ? [...added, ...loaded.data.filter((a) => !added.some((x) => x.id === a.id))]
+    : null;
   const current = useAssetImage(value, 96);
   // An upload's approval (or rejection) arrives while the picker is open: the library store has the news.
   const live = useLibrary((s) => s.assets);
-  useEffect(() => {
-    if (!open) return;
-    let cancelled = false;
-    void request<AssetItem[]>("asset.list", {})
-      .then((list) => {
-        if (!cancelled)
-          setItems(list.filter((a) => a.cls === "image" && !a.deleted && a.status !== "rejected"));
-      })
-      .catch((e) => toast.danger("Couldn't load your images", (e as Error).message));
-    return () => {
-      cancelled = true;
-    };
-  }, [open]);
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex items-center gap-2">
@@ -70,8 +72,14 @@ export function AssetPicker({
       </div>
       {open ? (
         <div className="panel flex flex-col gap-2 p-2" data-testid="asset-picker">
-          {items === null ? <p className="text-13 text-muted">Loading…</p> : null}
-          {items?.length === 0 ? <p className="text-13 text-muted">No images yet — upload one.</p> : null}
+          {loaded.status !== "ready" ? (
+            <LoadGate load={loaded} what="your images" compact>
+              {() => null}
+            </LoadGate>
+          ) : null}
+          {loaded.status === "ready" && items?.length === 0 ? (
+            <p className="text-13 text-muted">No images yet — upload one.</p>
+          ) : null}
           <div className="grid grid-cols-4 gap-1.5">
             {items
               ?.map((a) => live.get(a.id) ?? a)
@@ -93,7 +101,7 @@ export function AssetPicker({
             hint="PNG, JPEG or WebP — drop it here or pick a file"
             accept="image/png,image/jpeg,image/webp"
             onUploaded={(a) => {
-              setItems((list) => [a, ...(list ?? [])]);
+              setAdded((list) => [a, ...list]);
               if (a.status === "approved") {
                 onChange(a.id);
                 setOpen(false);

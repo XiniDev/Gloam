@@ -5,6 +5,7 @@ import { ApiError, get, post } from "../net/http.ts";
 import { Button } from "../ui/Button.tsx";
 import { TextInput } from "../ui/Field.tsx";
 import { FullScreenLoader } from "../ui/FullScreenLoader.tsx";
+import { LoadFailed } from "../ui/Loadable.tsx";
 import { Divider, Filigree, Sparkle } from "../ui/ornaments.tsx";
 
 const LABELS = ["Too short", "Weak", "Fair", "Strong", "Excellent"];
@@ -21,17 +22,29 @@ export default function Setup() {
   const [params] = useSearchParams();
   const token = params.get("token") ?? "";
   const navigate = useNavigate();
-  const [status, setStatus] = useState<"checking" | "ready" | "invalid" | "done">("checking");
+  const [status, setStatus] = useState<"checking" | "ready" | "invalid" | "done" | "unreachable">("checking");
+  const [unreachable, setUnreachable] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
   const [pw, setPw] = useState("");
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  // (A link the server turned down has expired; a server that couldn't be asked is a different thing — said so, with
+  // Try again, rather than calling a good link expired.)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a new attempt (Try again) asks again
   useEffect(() => {
+    setStatus("checking");
     void get<{ needed: boolean; tokenValid: boolean }>(`/api/setup/status?token=${encodeURIComponent(token)}`)
       .then((r) => setStatus(!r.needed ? "done" : r.tokenValid ? "ready" : "invalid"))
-      .catch(() => setStatus("invalid"));
-  }, [token]);
+      .catch((e: Error) => {
+        if (e instanceof ApiError && e.code !== "NETWORK" && e.status < 500) setStatus("invalid");
+        else {
+          setUnreachable(e.message || null);
+          setStatus("unreachable");
+        }
+      });
+  }, [token, attempt]);
 
   const score = pw.length < MIN_ADMIN_PASSWORD ? 0 : passwordStrength(pw);
   const mismatch = confirm.length > 0 && confirm !== pw;
@@ -62,7 +75,11 @@ export default function Setup() {
           <Sparkle size={20} />
           <span className="display text-22 font-semibold tracking-[0.04em] text-bone">GLOAM</span>
         </div>
-        {status === "invalid" ? (
+        {status === "unreachable" ? (
+          <div className="mt-6">
+            <LoadFailed what="the setup page" error={unreachable} retry={() => setAttempt((n) => n + 1)} />
+          </div>
+        ) : status === "invalid" ? (
           <div className="mt-6">
             <h1 className="text-28 text-bone">This setup link has expired</h1>
             <p className="mt-3 text-16 text-muted">

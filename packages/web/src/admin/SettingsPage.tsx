@@ -3,6 +3,7 @@ import { ApiError, get, patch } from "../net/http.ts";
 import { Button } from "../ui/Button.tsx";
 import { Select, Toggle } from "../ui/controls.tsx";
 import { TextInput } from "../ui/Field.tsx";
+import { LoadPanel, useLoad } from "../ui/Loadable.tsx";
 import { Divider } from "../ui/ornaments.tsx";
 import { toast } from "../ui/Toast.tsx";
 
@@ -42,6 +43,7 @@ function Section({
 
 /** Admin → Settings (SPEC §8.20; port/LAN/tunnel/cloudflared-path only from the host PC, §22.3). */
 export function SettingsPage() {
+  const loaded = useLoad(() => get<SettingsDto>("/api/admin/settings"), []);
   const [s, setS] = useState<SettingsDto | null>(null);
   const [token, setToken] = useState("");
   const [host, setHost] = useState("");
@@ -49,13 +51,13 @@ export function SettingsPage() {
   const [port, setPort] = useState("");
 
   useEffect(() => {
-    void get<SettingsDto>("/api/admin/settings").then((r) => {
-      setS(r);
-      setHost(r.publicHostname ?? "");
-      setCfPath(r.cloudflaredPath ?? "");
-      setPort(r.port ? String(r.port) : "");
-    });
-  }, []);
+    const r = loaded.data;
+    if (!r) return;
+    setS(r);
+    setHost(r.publicHostname ?? "");
+    setCfPath(r.cloudflaredPath ?? "");
+    setPort(r.port ? String(r.port) : "");
+  }, [loaded.data]);
 
   async function save(p: Record<string, unknown>, ok = "Saved") {
     try {
@@ -69,6 +71,13 @@ export function SettingsPage() {
     }
   }
 
+  if (!s && loaded.status === "error")
+    return (
+      <div className="max-w-[880px]">
+        <h1 className="text-36 text-bone">Settings</h1>
+        <LoadPanel load={loaded} what="the settings" />
+      </div>
+    );
   if (!s) {
     return (
       <div className="max-w-[880px] space-y-4">

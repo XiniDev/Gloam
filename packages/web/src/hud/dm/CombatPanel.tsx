@@ -106,6 +106,11 @@ export function CombatPanel() {
           </>
         )}
       </div>
+      {view.entries.length === 0 ? (
+        <p className="px-4 py-3 text-14 text-muted">
+          No one in this fight — select creatures on the board, then add them below.
+        </p>
+      ) : null}
       <ol className="flex flex-col" aria-label="Combatants">
         {view.entries.map((e, i) => {
           // "Until after" the one right before it changes nothing: not offered (critic P8 r1 #27).

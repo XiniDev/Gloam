@@ -17,7 +17,7 @@ import {
 import { useLayoutEffect, useRef, useState } from "react";
 import { StatusIcon } from "../../icons/status.tsx";
 import { changeStatus } from "../../net/health.ts";
-import { useSheets } from "../../net/sheets.ts";
+import { useSheets, useSheetsLoad } from "../../net/sheets.ts";
 import { request, useTable } from "../../net/table.ts";
 import { useBoard } from "../../state/entities.ts";
 import { prefersReducedMotion } from "../../state/settings.ts";
@@ -26,6 +26,7 @@ import { Button, IconButton } from "../../ui/Button.tsx";
 import { Segmented } from "../../ui/controls.tsx";
 import { Dialog } from "../../ui/Dialog.tsx";
 import { EmptyState } from "../../ui/EmptyState.tsx";
+import { LoadGate } from "../../ui/Loadable.tsx";
 import { Menu } from "../../ui/Menu.tsx";
 import { Portrait } from "../../ui/Portrait.tsx";
 import { toast } from "../../ui/Toast.tsx";
@@ -80,6 +81,7 @@ function useShownActor(): { actor: ActorView | undefined; readable: ActorView[] 
  */
 export function SheetPanel() {
   const { actor, readable } = useShownActor();
+  const sheetsLoad = useSheetsLoad();
   const [creating, setCreating] = useState(false);
   const [importing, setImporting] = useState<"json" | "ai" | null>(null);
   return (
@@ -110,6 +112,10 @@ export function SheetPanel() {
       </div>
       {actor ? (
         <SheetPage key={actor.id} actor={actor} onImport={setImporting} />
+      ) : sheetsLoad.status !== "ready" ? (
+        <LoadGate load={sheetsLoad} what="the sheets">
+          {() => null}
+        </LoadGate>
       ) : (
         <div className="p-4">
           <EmptyState title="No character yet. Make one in a minute — a name, a class, HP, AC and speed are enough to play — or bring one from another sheet." />

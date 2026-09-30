@@ -14,8 +14,8 @@ import { allSpells, loadSrdSpells, useSpells } from "../../net/spells.ts";
 import { useTable } from "../../net/table.ts";
 import { IconButton } from "../../ui/Button.tsx";
 import { EmptyState } from "../../ui/EmptyState.tsx";
+import { LoadGate } from "../../ui/Loadable.tsx";
 import { ScrollFade } from "../../ui/ScrollFade.tsx";
-import { D20Spinner } from "../../ui/Spinner.tsx";
 import { useIsPhone } from "../insets.ts";
 import { SpellCard } from "./SpellCard.tsx";
 
@@ -77,16 +77,19 @@ export function SpellBrowser({
       return { ...x, [k]: next.length ? next : undefined };
     });
   const active = Object.entries(f).filter(([k, v]) => k !== "q" && v !== undefined).length;
-  if (!srd && loading)
-    return (
-      <div className="grid place-items-center py-12 text-muted" data-testid="spell-browser">
-        <D20Spinner size={28} label="Loading spells" />
-      </div>
-    );
-  if (!srd && failed)
+  if (!srd && (loading || failed))
     return (
       <div data-testid="spell-browser">
-        <EmptyState art="die" title={`The spells couldn't be loaded: ${failed}`} />
+        <LoadGate
+          load={{
+            status: failed ? "error" : "loading",
+            error: failed,
+            retry: () => void loadSrdSpells().catch(() => {}),
+          }}
+          what="the spells"
+        >
+          {() => null}
+        </LoadGate>
       </div>
     );
   const list = (

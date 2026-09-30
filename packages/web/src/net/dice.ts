@@ -3,22 +3,39 @@
  * and `roll.masked` as they come; rolling goes through `dice.roll` / `dice.manual`, the server deciding every die.
  */
 import type { MaskedRoll, RollRecord, RollVisibility } from "@gloam/shared/dice";
+import { create } from "zustand";
 import { type FeedRoll, useRolls } from "../dice/state.ts";
 import { useSettings } from "../state/settings.ts";
 import { provideTestHook } from "../test/hooks.ts";
+import type { LoadState, LoadStatus } from "../ui/Loadable.tsx";
 import { request, tableEvents, useTable } from "./table.ts";
 
 let asked = "";
 let seq = 0;
 
+/** The feed's fetch for this connection (the Rolls panel's loading and failed states, AC-DS-05). */
+const useFeedLoad = create<{ status: LoadStatus; error: string | null }>(() => ({
+  status: "loading",
+  error: null,
+}));
+
+export function useFeedState(): LoadState {
+  const status = useFeedLoad((s) => s.status);
+  const error = useFeedLoad((s) => s.error);
+  return { status, error, retry: () => void loadFeed() };
+}
+
 export async function loadFeed(): Promise<void> {
   const my = ++seq;
+  useFeedLoad.setState({ status: "loading", error: null });
   try {
     const list = await request<FeedRoll[]>("dice.feed", {});
     if (my !== seq) return;
     useRolls.getState().reset(list);
-  } catch {
-    // Not connected any more; the next connection asks again.
+    useFeedLoad.setState({ status: "ready" });
+  } catch (e) {
+    // (Asked again on the next connection, or with Try again.)
+    if (my === seq) useFeedLoad.setState({ status: "error", error: (e as Error).message || null });
   }
 }
 
@@ -35,6 +52,7 @@ export function watchDice(): () => void {
   if (__GLOAM_TEST__) {
     provideTestHook("rollArrivals", () => rollArrivals.slice());
     provideTestHook("rollFeed", () => useRolls.getState().feed);
+    provideTestHook("reloadFeed", () => loadFeed());
   }
   const off = useTable.subscribe(check);
   const offMsg = tableEvents.on("message", ({ type, payload }) => {

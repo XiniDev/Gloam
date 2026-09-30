@@ -1,9 +1,10 @@
 import { ShieldCheck } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { get } from "../net/http.ts";
 import { Button } from "../ui/Button.tsx";
 import { Select } from "../ui/controls.tsx";
 import { EmptyState } from "../ui/EmptyState.tsx";
+import { LoadGate, useLoad } from "../ui/Loadable.tsx";
 import { toast } from "../ui/Toast.tsx";
 import { detailText } from "./securityDetail.ts";
 
@@ -67,19 +68,25 @@ const when = (at: number) =>
  */
 export function SecurityPage() {
   const [event, setEvent] = useState("");
-  const [rows, setRows] = useState<Entry[] | null>(null);
-  const [more, setMore] = useState(false);
-  const load = useCallback(async (kind: string, before?: number) => {
-    const q = new URLSearchParams();
-    if (kind) q.set("event", kind);
-    if (before) q.set("before", String(before));
-    const list = await get<Entry[]>(`/api/admin/security-log${q.size ? `?${q}` : ""}`);
-    setRows((cur) => (before ? [...(cur ?? []), ...list] : list));
-    setMore(list.length === 200);
-  }, []);
-  useEffect(() => {
-    void load(event).catch((e: Error) => toast.danger("Couldn't load the log", e.message));
-  }, [event, load]);
+  // The newest 200 of the kind shown (its loading and failed states), then older pages as asked for.
+  const first = useLoad(() => page(event), [event]);
+  const [older, setOlder] = useState<{ event: string; rows: Entry[]; more: boolean } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const extra = older?.event === event ? older : null;
+  const rows = first.data ? [...first.data, ...(extra?.rows ?? [])] : null;
+  const more = extra ? extra.more : first.data?.length === 200;
+  const loadOlder = async () => {
+    if (!rows?.length) return;
+    setBusy(true);
+    try {
+      const list = await page(event, rows[rows.length - 1]?.id);
+      setOlder({ event, rows: [...(extra?.rows ?? []), ...list], more: list.length === 200 });
+    } catch (e) {
+      toast.danger("Couldn't load older events", (e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
     <div className="max-w-[880px]" data-testid="security-page">
       <header>
@@ -106,42 +113,50 @@ export function SecurityPage() {
             />
           </div>
         </div>
-        {rows && rows.length === 0 ? (
-          <EmptyState art="door" title="Nothing logged of this kind yet." />
-        ) : (
-          <ol className="flex flex-col divide-y divide-line/60" aria-label="Security events">
-            {(rows ?? []).map((r) => (
-              <li
-                key={r.id}
-                className="grid gap-x-4 gap-y-0.5 py-2.5 text-14 sm:grid-cols-[176px_minmax(0,1fr)_132px]"
-                data-testid="security-row"
-                data-event={r.event}
-              >
-                <span className="tabular whitespace-nowrap text-13 text-muted">{when(r.createdAt)}</span>
-                <span className="min-w-0">
-                  <span className="text-bone">{EVENT[r.event] ?? r.event}</span>
-                  {r.userName ? <span className="text-muted"> · {r.userName}</span> : null}
-                  {detailText(r.detail) ? (
-                    <span className="block truncate text-12 text-faint">{detailText(r.detail)}</span>
-                  ) : null}
-                </span>
-                <span className="tabular truncate text-13 text-muted sm:text-right" title="Client IP">
-                  {r.ip ?? "—"}
-                </span>
-              </li>
-            ))}
-          </ol>
-        )}
+        <LoadGate load={first} what="the log">
+          {() =>
+            !rows?.length ? (
+              <EmptyState art="door" title="Nothing logged of this kind yet." />
+            ) : (
+              <ol className="flex flex-col divide-y divide-line/60" aria-label="Security events">
+                {(rows ?? []).map((r) => (
+                  <li
+                    key={r.id}
+                    className="grid gap-x-4 gap-y-0.5 py-2.5 text-14 sm:grid-cols-[176px_minmax(0,1fr)_132px]"
+                    data-testid="security-row"
+                    data-event={r.event}
+                  >
+                    <span className="tabular whitespace-nowrap text-13 text-muted">{when(r.createdAt)}</span>
+                    <span className="min-w-0">
+                      <span className="text-bone">{EVENT[r.event] ?? r.event}</span>
+                      {r.userName ? <span className="text-muted"> · {r.userName}</span> : null}
+                      {detailText(r.detail) ? (
+                        <span className="block truncate text-12 text-faint">{detailText(r.detail)}</span>
+                      ) : null}
+                    </span>
+                    <span className="tabular truncate text-13 text-muted sm:text-right" title="Client IP">
+                      {r.ip ?? "—"}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            )
+          }
+        </LoadGate>
         {more && rows?.length ? (
-          <Button
-            variant="ghost"
-            className="self-center"
-            onClick={() => void load(event, rows[rows.length - 1]?.id).catch(() => {})}
-          >
+          <Button variant="ghost" className="self-center" loading={busy} onClick={() => void loadOlder()}>
             Older
           </Button>
         ) : null}
       </section>
     </div>
   );
+}
+
+/** A page of the log: the newest 200 of a kind (all kinds when empty), or the 200 before an entry. */
+function page(kind: string, before?: number): Promise<Entry[]> {
+  const q = new URLSearchParams();
+  if (kind) q.set("event", kind);
+  if (before) q.set("before", String(before));
+  return get<Entry[]>(`/api/admin/security-log${q.size ? `?${q}` : ""}`);
 }

@@ -9,6 +9,7 @@ import { Button } from "../../ui/Button.tsx";
 import { Segmented } from "../../ui/controls.tsx";
 import { Dialog } from "../../ui/Dialog.tsx";
 import { TextInput } from "../../ui/Field.tsx";
+import { LoadGate, useLoad } from "../../ui/Loadable.tsx";
 import { toast } from "../../ui/Toast.tsx";
 import { useAssetImage } from "../useAssetImage.ts";
 import { CalibrationEditor } from "./CalibrationEditor.tsx";
@@ -53,11 +54,14 @@ const SOURCES: { id: Source; title: string; body: string; icon: ReactElement }[]
 ];
 
 function LibraryMaps({ onPick }: { onPick: (a: AssetItem) => void }) {
-  const [items, setItems] = useState<AssetItem[] | null>(null);
-  useEffect(() => {
-    void request<AssetItem[]>("asset.list", { tab: "maps" }).then(setItems, () => setItems([]));
-  }, []);
-  if (!items) return <p className="text-14 text-muted">Opening the Library…</p>;
+  const loaded = useLoad(() => request<AssetItem[]>("asset.list", { tab: "maps" }), []);
+  const items = loaded.data;
+  if (!items)
+    return (
+      <LoadGate load={loaded} what="the Library's maps" compact>
+        {() => null}
+      </LoadGate>
+    );
   if (!items.length)
     return <p className="text-14 text-muted">No maps in the Library yet — upload one instead.</p>;
   return (

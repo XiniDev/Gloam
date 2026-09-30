@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { watchSoundCues } from "../audio/cues.ts";
 import { ActionBar } from "../hud/ActionBar.tsx";
@@ -61,6 +61,7 @@ import { useSession } from "../state/session.ts";
 import { useUi } from "../state/ui.ts";
 import { ConnectionBanner } from "../ui/ConnectionBanner.tsx";
 import { FullScreenLoader } from "../ui/FullScreenLoader.tsx";
+import { LoadFailed } from "../ui/Loadable.tsx";
 import { toast } from "../ui/Toast.tsx";
 import { TableStage } from "./TableStage.tsx";
 
@@ -92,6 +93,11 @@ export default function TableRoute() {
   useEffect(() => watchActAs(), []);
   useEffect(() => watchSpells(), []);
   useEffect(() => watchPendingArt(), []);
+  // The first join failing for a reason other than a closed table or a lost seat: said, with Try again (AC-DS-05) —
+  // the candle waiting forever said nothing.
+  const [failed, setFailed] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a new attempt (Try again) joins again
   useEffect(() => {
     let cancelled = false;
     const offs: (() => void)[] = [];
@@ -164,7 +170,7 @@ export default function TableRoute() {
         const code = joinErrorCode(err);
         if (code === "TABLE_CLOSED") navigate("/closed", { replace: true });
         else if (code === "FORBIDDEN" || code === "UNAUTHENTICATED") navigate("/", { replace: true });
-        else toast.danger("Couldn't reach the table", "Check your connection and reload.");
+        else setFailed((err as Error).message || "The table didn't answer.");
       }
     })();
     return () => {
@@ -172,8 +178,23 @@ export default function TableRoute() {
       for (const off of offs) off();
       disconnectTable();
     };
-  }, [navigate, refresh]);
+  }, [navigate, refresh, attempt]);
 
+  if (!me && failed)
+    return (
+      <div className="grid min-h-[100dvh] place-items-center bg-bg p-4">
+        <div className="panel w-full max-w-md">
+          <LoadFailed
+            what="the table"
+            error={failed}
+            retry={() => {
+              setFailed(null);
+              setAttempt((n) => n + 1);
+            }}
+          />
+        </div>
+      </div>
+    );
   if (!me) return <FullScreenLoader label="Opening the door…" />;
   return (
     <div

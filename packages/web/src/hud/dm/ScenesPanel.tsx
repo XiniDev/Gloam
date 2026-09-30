@@ -10,12 +10,13 @@ import {
   Trash2,
   Undo2,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { openPrep, refreshScenes, request } from "../../net/table.ts";
 import { type SceneListItem, useLibrary } from "../../state/library.ts";
 import { useUi } from "../../state/ui.ts";
 import { Button } from "../../ui/Button.tsx";
 import { EmptyState } from "../../ui/EmptyState.tsx";
+import { LoadGate, useLoad } from "../../ui/Loadable.tsx";
 import { Menu } from "../../ui/Menu.tsx";
 import { toast, useToasts } from "../../ui/Toast.tsx";
 import { useAssetImage } from "../useAssetImage.ts";
@@ -60,9 +61,8 @@ export function ScenesPanel() {
   const [renaming, setRenaming] = useState<string | null>(null);
   const [dragId, setDragId] = useState<string | null>(null);
 
-  useEffect(() => {
-    void refreshScenes().catch(() => {});
-  }, []);
+  // (The list is pushed on every change too: what's known shows while it's fetched.)
+  const loaded = useLoad(() => refreshScenes(), []);
 
   const live = scenes.filter((s) => !s.archived && !s.deleted).sort((a, b) => a.sort - b.sort);
   const archived = scenes.filter((s) => s.archived && !s.deleted);
@@ -92,7 +92,11 @@ export function ScenesPanel() {
           New scene
         </Button>
       </div>
-      {live.length === 0 ? (
+      {live.length === 0 && loaded.status !== "ready" ? (
+        <LoadGate load={loaded} what="the scenes">
+          {() => null}
+        </LoadGate>
+      ) : live.length === 0 ? (
         <EmptyState
           art="map"
           title="No scenes yet. Start with a map image, a 3D map, or a procedural floor."

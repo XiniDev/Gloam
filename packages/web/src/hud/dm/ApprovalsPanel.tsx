@@ -8,6 +8,7 @@ import { type AssetItem, useLibrary } from "../../state/library.ts";
 import { useUi } from "../../state/ui.ts";
 import { Button } from "../../ui/Button.tsx";
 import { EmptyState } from "../../ui/EmptyState.tsx";
+import { LoadFailed, LoadGate, useLoad } from "../../ui/Loadable.tsx";
 import { lazyPage } from "../../ui/lazyPage.ts";
 import { toast } from "../../ui/Toast.tsx";
 import { IDENTITY_TEXT, waited } from "../KnockCards.tsx";
@@ -163,17 +164,25 @@ export function ApprovalsPanel() {
   const homebrew = useMemo(() => allHomebrew.filter((h) => h.status === "proposed"), [allHomebrew]);
   const all = useLibrary((s) => s.assets);
   const [open, setOpen] = useState<string | null>(null);
-  useEffect(() => {
-    void request<AssetItem[]>("asset.list", { status: "pending" }).then(
-      (l) => useLibrary.getState().upsert(l),
-      () => {},
-    );
-  }, []);
+  // The uploads waiting (knocks, proposals and homebrew come with the table's state).
+  const uploads = useLoad(
+    () =>
+      request<AssetItem[]>("asset.list", { status: "pending" }).then((l) => useLibrary.getState().upsert(l)),
+    [],
+  );
   const pending = [...all.values()]
     .filter((a) => a.status === "pending" && !a.deleted)
     .sort((x, y) => x.createdAt - y.createdAt);
   const kinds = [knocks.length, pending.length, proposals, homebrew.length].filter((n) => n > 0).length;
-  return pending.length === 0 && proposals === 0 && knocks.length === 0 && homebrew.length === 0 ? (
+  const none = pending.length === 0 && proposals === 0 && knocks.length === 0 && homebrew.length === 0;
+  // (Nothing waiting is only known once the uploads are in.)
+  if (none && uploads.status !== "ready")
+    return (
+      <LoadGate load={uploads} what="what's waiting">
+        {() => null}
+      </LoadGate>
+    );
+  return none ? (
     <EmptyState
       art="door"
       title="Nothing waiting. Knocks at the door, players' uploads, proposed sheet changes and homebrew spells appear here for you to decide."
@@ -183,6 +192,9 @@ export function ApprovalsPanel() {
       className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-y-auto overflow-x-clip px-3 py-3"
       data-testid="approvals-panel"
     >
+      {uploads.status === "error" ? (
+        <LoadFailed what="the uploads waiting" error={uploads.error} retry={uploads.retry} />
+      ) : null}
       {knocks.length ? (
         <section className="flex flex-col gap-2" aria-label="At the door">
           <h3 className="caps text-12 text-muted">At the door</h3>

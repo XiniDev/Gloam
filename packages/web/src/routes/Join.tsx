@@ -388,6 +388,11 @@ function Returning({
             <span className="caps text-12 text-faint">{p.hasPin ? "PIN" : "no PIN"}</span>
           </button>
         ))}
+        {shown.length === 0 ? (
+          <p className="px-1 py-2 text-14 text-muted">
+            No one by that name. Check the spelling — or join as someone new.
+          </p>
+        ) : null}
       </div>
       {chosen ? (
         chosen.hasPin ? (

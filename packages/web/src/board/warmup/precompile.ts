@@ -21,7 +21,6 @@ import {
   NoToneMapping,
   type Object3D,
   OrthographicCamera,
-  PerspectiveCamera,
   PlaneGeometry,
   Points,
   Scene,

@@ -403,6 +403,12 @@ async function join(campaignId: string): Promise<Room<unknown, TableState>> {
     });
     provideTestHook("connectionLog", () => log.slice());
   }
+  provideTestHook("failRequests", (types: string[]) => {
+    requestFaults.fail = new Set(types);
+  });
+  provideTestHook("holdRequests", (types: string[]) => {
+    requestFaults.hold = new Set(types);
+  });
   // Uploads through the real client path (CSRF, progress, server pipeline) with bytes handed in by the test.
   provideTestHook("upload", async (b64: string, name: string, purpose: UploadPurpose) => {
     const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
@@ -411,10 +417,20 @@ async function join(campaignId: string): Promise<Room<unknown, TableState>> {
   return room;
 }
 
+/**
+ * Test builds only: room requests made to fail, or held until released, by type — the panels' failed and loading
+ * states are exercised through the real code path (AC-DS-05; test hooks "failRequests" and "holdRequests").
+ */
+export const requestFaults = { fail: new Set<string>(), hold: new Set<string>() };
+
 /** Typed request with friendly errors (SPEC §23.3). */
 export async function request<T = unknown>(type: string, payload: unknown = {}): Promise<T> {
   const room = useTable.getState().room;
   if (!room) throw new Error("Not connected to the table.");
+  if (__GLOAM_TEST__) {
+    while (requestFaults.hold.has(type)) await new Promise((r) => setTimeout(r, 50));
+    if (requestFaults.fail.has(type)) throw new Error("The table didn't answer.");
+  }
   try {
     return (await room.request(type, payload, { timeout: 8000 })) as T;
   } catch (err) {

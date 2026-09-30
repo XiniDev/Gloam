@@ -9,6 +9,7 @@ import { ChevronDown, ChevronUp, EyeOff, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { type FeedRoll, isMasked, useRolls } from "../dice/state.ts";
 import { HandDieIcon, SparkIcon } from "../icons/dice.tsx";
+import { useFeedState } from "../net/dice.ts";
 import { useTable } from "../net/table.ts";
 import { useBoard } from "../state/entities.ts";
 import { useTargeting } from "../state/targeting.ts";
@@ -17,6 +18,7 @@ import { BottomSheet } from "../ui/BottomSheet.tsx";
 import { IconButton } from "../ui/Button.tsx";
 import { EmptyState } from "../ui/EmptyState.tsx";
 import { FormulaText } from "../ui/FormulaText.tsx";
+import { LoadGate } from "../ui/Loadable.tsx";
 import { WaxSeal } from "../ui/ornaments.tsx";
 import { Portrait } from "../ui/Portrait.tsx";
 import { D20Spinner } from "../ui/Spinner.tsx";
@@ -245,6 +247,7 @@ function RollLine({ line, settled, onOpen }: { line: Line; settled: boolean; onO
 /** A phone's rolls, newest first, as a bottom sheet (its tab bar's Log). */
 function PhoneRolls({ feed }: { feed: FeedRoll[] }) {
   const rolling = useRolls((s) => s.rolling);
+  const feedLoad = useFeedState();
   const [expanded, setExpanded] = useState<string | null>(null);
   const close = () => useUi.getState().set({ rollsOpen: false });
   return (
@@ -261,6 +264,12 @@ function PhoneRolls({ feed }: { feed: FeedRoll[] }) {
         </header>
       }
     >
+      {/* (Rolls made since joining show even when the earlier ones couldn't be fetched: the failure says so above.) */}
+      {feedLoad.status === "error" || (feedLoad.status === "loading" && !feed.length) ? (
+        <LoadGate load={feedLoad} what="the rolls">
+          {() => null}
+        </LoadGate>
+      ) : null}
       {feed.length ? (
         <ol className="flex flex-col gap-1.5">
           {feed.slice(0, 30).map((r) => (
@@ -274,9 +283,9 @@ function PhoneRolls({ feed }: { feed: FeedRoll[] }) {
             </li>
           ))}
         </ol>
-      ) : (
+      ) : feedLoad.status === "ready" ? (
         <EmptyState art="die" title="No rolls yet. The dice are a tap away in the bar below." />
-      )}
+      ) : null}
     </BottomSheet>
   );
 }

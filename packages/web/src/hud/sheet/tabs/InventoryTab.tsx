@@ -49,6 +49,11 @@ export function InventoryTab({ ctx }: { ctx: SheetCtx }) {
           style={{ width: `${Math.min(100, (load / Math.max(1, cap)) * 100)}%` }}
         />
       </div>
+      {c.inventory.length === 0 ? (
+        <p className="text-13 italic text-paper-muted">
+          Nothing carried yet{ro ? "." : " — add an item below."}
+        </p>
+      ) : null}
       <ul className="@container flex flex-col" data-testid="sheet-inventory">
         {c.inventory.map((it, i) => (
           <ItemRow

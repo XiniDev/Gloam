@@ -3,11 +3,12 @@ import { useMemo, useState } from "react";
 import { StatusIcon } from "../../icons/status.tsx";
 import { actAs, useActAs } from "../../net/actAs.ts";
 import { requestDeathSaves } from "../../net/health.ts";
-import { useSheets } from "../../net/sheets.ts";
+import { useSheets, useSheetsLoad } from "../../net/sheets.ts";
 import { request, useTable } from "../../net/table.ts";
 import { useBoard } from "../../state/entities.ts";
 import { Button, IconButton } from "../../ui/Button.tsx";
 import { EmptyState } from "../../ui/EmptyState.tsx";
+import { LoadGate } from "../../ui/Loadable.tsx";
 import { RestDialog } from "../health/RestDialog.tsx";
 import { CharacterRow } from "../PartyPanel.tsx";
 import { act } from "./tokenDm.tsx";
@@ -19,6 +20,7 @@ import { act } from "./tokenDm.tsx";
  */
 export function PartySection() {
   const actors = useSheets((s) => s.actors);
+  const sheetsLoad = useSheetsLoad();
   const presence = useTable((s) => s.presence);
   const tokens = useBoard((d) => d.tokens);
   const acting = useActAs((s) => s.mine);
@@ -30,6 +32,12 @@ export function PartySection() {
         .sort((x, y) => x.sheet.core.name.localeCompare(y.sheet.core.name)),
     [actors],
   );
+  if (!characters.length && sheetsLoad.status !== "ready")
+    return (
+      <LoadGate load={sheetsLoad} what="the characters">
+        {() => null}
+      </LoadGate>
+    );
   if (!characters.length)
     return (
       <EmptyState

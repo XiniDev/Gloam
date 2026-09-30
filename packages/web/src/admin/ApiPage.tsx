@@ -1,5 +1,5 @@
 import { Copy, KeyRound, Plug, Terminal } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { get, patch, post } from "../net/http.ts";
 import { Button } from "../ui/Button.tsx";
 import { copyText } from "../ui/clipboard.ts";
@@ -7,6 +7,7 @@ import { Toggle } from "../ui/controls.tsx";
 import { Dialog } from "../ui/Dialog.tsx";
 import { EmptyState } from "../ui/EmptyState.tsx";
 import { TextInput } from "../ui/Field.tsx";
+import { LoadPanel, useLoad } from "../ui/Loadable.tsx";
 import { FIELD_LABEL } from "../ui/labels.ts";
 import { toast } from "../ui/Toast.tsx";
 
@@ -70,14 +71,19 @@ export function setupLines(info: Pick<ApiInfo, "url" | "mcpEntry">, token: strin
  * a token just made filled in.
  */
 export function ApiPage() {
-  const [info, setInfo] = useState<ApiInfo | null>(null);
+  const loaded = useLoad(() => get<ApiInfo>("/api/admin/api"), []);
+  const info = loaded.data ?? null;
   const [making, setMaking] = useState(false);
   const [fresh, setFresh] = useState<{ token: string; name: string } | null>(null);
   const [revoking, setRevoking] = useState<TokenInfo | null>(null);
-  const load = useCallback(async () => setInfo(await get<ApiInfo>("/api/admin/api")), []);
-  useEffect(() => {
-    void load().catch((e: Error) => toast.danger("Couldn't load it", e.message));
-  }, [load]);
+  const load = loaded.reload;
+  if (!info && loaded.status === "error")
+    return (
+      <div className="max-w-[880px]">
+        <h1 className="text-36 text-bone">API &amp; MCP</h1>
+        <LoadPanel load={loaded} what="the API settings" />
+      </div>
+    );
   if (!info)
     return (
       <div className="max-w-[880px] space-y-4">

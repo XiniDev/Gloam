@@ -43,6 +43,7 @@ import { type AssetItem, useLibrary } from "../../state/library.ts";
 import { prefersReducedMotion } from "../../state/settings.ts";
 import { Button, IconButton } from "../../ui/Button.tsx";
 import { Slider } from "../../ui/controls.tsx";
+import { LoadGate, useLoad } from "../../ui/Loadable.tsx";
 import { SECTION_HEADING } from "../../ui/labels.ts";
 import { Menu } from "../../ui/Menu.tsx";
 import { toast } from "../../ui/Toast.tsx";
@@ -370,6 +371,9 @@ function Playlists({ tracks }: { tracks: Map<string, AssetItem> }) {
   return (
     <section className="flex flex-col gap-2" aria-label="Playlists">
       <Heading>Playlists</Heading>
+      {a.playlists.length === 0 ? (
+        <p className="text-13 text-muted">No playlists yet — name one below, then add tracks to it.</p>
+      ) : null}
       {a.playlists.length ? (
         <ul className="flex flex-col divide-y divide-line/60 rounded-[var(--radius-control)] border border-line">
           {a.playlists.map((p) => {
@@ -561,11 +565,13 @@ function LayerSlider({ layer, level }: { layer: AmbienceLayer; level: number }) 
 export function SoundPanel() {
   const assets = useLibrary((s) => s.assets);
   const playlists = useAudioSync((s) => s.state.playlists);
-  useEffect(() => {
-    void request<AssetItem[]>("asset.list", { tab: "audio" })
-      .then((items) => useLibrary.getState().upsert(items))
-      .catch(() => {});
-  }, []);
+  const loaded = useLoad(
+    () =>
+      request<AssetItem[]>("asset.list", { tab: "audio" }).then((items) =>
+        useLibrary.getState().upsert(items),
+      ),
+    [],
+  );
   const tracks = new Map(
     [...assets.values()]
       .filter((a) => a.cls === "audio" && !a.deleted && a.status === "approved")
@@ -584,7 +590,15 @@ export function SoundPanel() {
               <TrackRow key={t.id} t={t} playlists={playlists} />
             ))}
           </ul>
-        ) : null}
+        ) : loaded.status !== "ready" ? (
+          <LoadGate load={loaded} what="the tracks">
+            {() => null}
+          </LoadGate>
+        ) : (
+          <p className="text-13 text-muted">
+            No tracks yet — upload music here. The presets above play without any.
+          </p>
+        )}
         <UploadZone
           purpose="audio"
           hint="MP3, OGG, WAV, M4A or FLAC · up to 50 MB"

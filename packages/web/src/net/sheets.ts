@@ -10,6 +10,7 @@ import { applyPatch, type JsonPatchOp } from "@gloam/shared/rules";
 import type { Sheet } from "@gloam/shared/schemas";
 import { create } from "zustand";
 import { provideTestHook } from "../test/hooks.ts";
+import type { LoadState } from "../ui/Loadable.tsx";
 import { toast } from "../ui/Toast.tsx";
 import { request, tableEvents, useTable } from "./table.ts";
 
@@ -22,6 +23,8 @@ interface SheetsStore {
   requests: Map<string, RollRequestView>;
   /** The first snapshot has come (until then "no character" means "not known yet"). */
   loaded: boolean;
+  /** Why asking for the sheets failed (until they come: the panels say so, with Try again). */
+  syncError: string | null;
   set(p: Partial<Omit<SheetsStore, "set">>): void;
 }
 
@@ -31,6 +34,7 @@ export const useSheets = create<SheetsStore>((set) => ({
   cards: new Map(),
   requests: new Map(),
   loaded: false,
+  syncError: null,
   set: (p) => set(p),
 }));
 
@@ -44,10 +48,12 @@ let resyncing = false;
 async function resync(): Promise<void> {
   if (resyncing) return;
   resyncing = true;
+  useSheets.getState().set({ syncError: null });
   try {
     await request("sheets.sync", {});
-  } catch {
-    // Not connected: the next connection sends its snapshot.
+  } catch (e) {
+    // Not connected: the next connection sends its snapshot (or Try again asks now).
+    useSheets.getState().set({ syncError: (e as Error).message || "The table didn't answer." });
   } finally {
     resyncing = false;
   }
@@ -253,4 +259,11 @@ export function myCharacters(userId: string | undefined): ActorView[] {
   return [...useSheets.getState().actors.values()].filter(
     (a) => a.ownerUserId === userId && a.kind === "character",
   );
+}
+
+/** The sheets' arrival, for a panel's loading and failed states (AC-DS-05): ready once the first snapshot has come. */
+export function useSheetsLoad(): LoadState {
+  const loaded = useSheets((s) => s.loaded);
+  const error = useSheets((s) => s.syncError);
+  return { status: loaded ? "ready" : error ? "error" : "loading", error, retry: () => void resync() };
 }

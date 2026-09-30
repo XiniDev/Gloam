@@ -2450,10 +2450,10 @@
       "code": "DS",
       "phase": "P15",
       "text": "Empty states, loading states and error states exist for every panel (no blank panels).",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p15-states.spec.ts — (1) every Admin page (People, Campaigns, Saves backups, Assets, Content, API & MCP, Settings, Security log, About, Table) with its request held shows 'Loading …' (or its skeleton) and dropped shows 'Couldn't load … — Can't reach the table right now.' with Try again, which brings the page; (2) the Journal log and handouts, Library, Sound, Approvals, Handouts & Notes and History with their room requests held/failed (test-build request faults) show loading, the failure with its reason, and Try again restores them; (3) a new campaign's Sheet, Party and Journal and all 17 DM panel sections hold words, none still loading. Shared states in ui/Loadable.tsx (useLoad, LoadGate, LoadFailed).",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-30T17:36:36.828Z"
     },
     {
       "id": "AC-DS-06",

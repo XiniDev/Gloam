@@ -4,6 +4,7 @@ import { audio } from "../audio/engine.ts";
 import { playOnBoard } from "../board/boardSound.ts";
 import { boardData, useEntities } from "../state/entities.ts";
 import { provideTestHook } from "../test/hooks.ts";
+import type { LoadState, LoadStatus } from "../ui/Loadable.tsx";
 import { request, tableEvents, useTable } from "./table.ts";
 
 /** The reveal put away: the next waiting one unfurls. */
@@ -33,7 +34,9 @@ interface FunStore {
   queue: HandoutView[];
   /** The campaign log as this person may read it, oldest first. */
   log: LogEntryView[];
-  logLoaded: boolean;
+  /** The handouts and the log fetched for this connection: loading, failed (and why) or ready (AC-DS-05). */
+  lists: LoadStatus;
+  listsError: string | null;
   /** Handouts and notes given since the Journal was last looked at. */
   unread: number;
   set(p: Partial<FunStore>): void;
@@ -45,7 +48,8 @@ export const useFun = create<FunStore>((set) => ({
   reveal: null,
   queue: [],
   log: [],
-  logLoaded: false,
+  lists: "loading",
+  listsError: null,
   unread: 0,
   set: (p) => set(p),
 }));
@@ -125,15 +129,31 @@ async function load(): Promise<void> {
   const k = t.room && t.me ? `${t.room.roomId}|${t.room.sessionId}` : "";
   if (!k || k === loadedFor) return;
   loadedFor = k;
+  useFun.getState().set({ lists: "loading", listsError: null });
   try {
     const [handouts, log] = await Promise.all([
       request<HandoutView[]>("handout.list", {}),
       request<LogEntryView[]>("log.list", {}),
     ]);
-    useFun.getState().set({ handouts, log, logLoaded: true });
-  } catch {
+    useFun.getState().set({ handouts, log, lists: "ready" });
+  } catch (e) {
+    // (Asked again on the next connection, or with Try again.)
     loadedFor = "";
+    useFun.getState().set({ lists: "error", listsError: (e as Error).message || null });
   }
+}
+
+/** Fetches the handouts and the log again (Try again). */
+export function retryFunLists(): void {
+  loadedFor = "";
+  void load();
+}
+
+/** The handouts' and the log's load, for a panel's loading and failed states. */
+export function useFunLists(): LoadState {
+  const status = useFun((s) => s.lists);
+  const error = useFun((s) => s.listsError);
+  return { status, error, retry: retryFunLists };
 }
 
 /** Starts following emotes, handouts and the log (once per page); lists fetched for each room session. */
@@ -142,6 +162,7 @@ export function watchFun(): () => void {
     provideTestHook("emotes", () => useFun.getState().emotes.map(({ key: _k, shownAt: _s, ...e }) => e));
     provideTestHook("handouts", () => useFun.getState().handouts);
     provideTestHook("campaignLog", () => useFun.getState().log);
+    provideTestHook("reloadFunLists", () => retryFunLists());
   }
   const offMsg = tableEvents.on("message", ({ type, payload }) => onMessage(type, payload));
   const offConn = useTable.subscribe(() => void load());
@@ -150,9 +171,16 @@ export function watchFun(): () => void {
     offMsg();
     offConn();
     loadedFor = "";
-    useFun
-      .getState()
-      .set({ emotes: [], handouts: [], reveal: null, queue: [], log: [], logLoaded: false, unread: 0 });
+    useFun.getState().set({
+      emotes: [],
+      handouts: [],
+      reveal: null,
+      queue: [],
+      log: [],
+      lists: "loading",
+      listsError: null,
+      unread: 0,
+    });
   };
 }
 

@@ -7,7 +7,11 @@ import { ROOT } from "./features-lib.mjs";
 
 const isWin = process.platform === "win32";
 const pnpm = isWin ? "pnpm.cmd" : "pnpm";
-const run = (args) => spawnSync(pnpm, args, { cwd: ROOT, stdio: "inherit", shell: isWin }).status ?? 1;
+// (Windows runs pnpm.cmd through cmd.exe: an argument holding | & < > ^ ( ) or a space — a -g pattern — is quoted, or
+// cmd would take it as a pipe or a split.)
+const arg = (a) => (isWin && /[\s|&<>^()"]/.test(a) ? `"${a.replace(/"/g, '""')}"` : a);
+const run = (args) =>
+  spawnSync(pnpm, args.map(arg), { cwd: ROOT, stdio: "inherit", shell: isWin }).status ?? 1;
 
 if (!process.argv.includes("--no-build")) {
   const b = run(["--filter", "@gloam/web", "build:test"]);
@@ -27,7 +31,7 @@ if (extra.some((a) => a.startsWith("--project"))) process.exit(pw(extra));
 if (extra.length) {
   const listed = spawnSync(
     pnpm,
-    ["exec", "playwright", "test", "-c", join("e2e", "playwright.config.ts"), "--list", ...extra],
+    ["exec", "playwright", "test", "-c", join("e2e", "playwright.config.ts"), "--list", ...extra].map(arg),
     { cwd: ROOT, encoding: "utf8", shell: isWin },
   );
   const total = /Total: (\d+) tests?/.exec(listed.stdout ?? "");

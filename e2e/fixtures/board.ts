@@ -82,6 +82,8 @@ export interface CameraState {
   zoom: number;
   /** The camera that draws and picks is where the controls report (not a frame behind). */
   inSync: boolean;
+  /** Still on its way somewhere (a slide, a preset, a follow). */
+  moving: boolean;
 }
 export const camera = (page: Page, set?: Record<string, unknown>) => hook<CameraState>(page, "camera", set);
 

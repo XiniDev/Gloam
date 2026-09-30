@@ -1,10 +1,11 @@
 import type { LogEntryView } from "@gloam/shared/protocol";
 import { Download, Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { addLogEntry, logMarkdown, useFun } from "../../net/fun.ts";
+import { addLogEntry, logMarkdown, useFun, useFunLists } from "../../net/fun.ts";
 import { useTable } from "../../net/table.ts";
 import { Button } from "../../ui/Button.tsx";
 import { EmptyState } from "../../ui/EmptyState.tsx";
+import { LoadGate } from "../../ui/Loadable.tsx";
 import { Tabs } from "../../ui/Tabs.tsx";
 import { toast } from "../../ui/Toast.tsx";
 import { HandoutCard } from "./HandoutCard.tsx";
@@ -28,7 +29,7 @@ const KIND: Record<string, string> = {
 
 function Log() {
   const log = useFun((s) => s.log);
-  const loaded = useFun((s) => s.logLoaded);
+  const lists = useFunLists();
   const me = useTable((s) => s.me);
   const campaign = useTable((s) => s.campaignName);
   const [q, setQ] = useState("");
@@ -101,7 +102,11 @@ function Log() {
         </Button>
       </div>
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 py-3">
-        {!loaded ? null : groups.length ? (
+        {lists.status !== "ready" ? (
+          <LoadGate load={lists} what="the log">
+            {() => null}
+          </LoadGate>
+        ) : groups.length ? (
           // The log itself is a document (§27.1): the sessions on a parchment sheet, the search and the pen on ink.
           <div className="parchment flex flex-col gap-4 px-4 py-3" data-testid="log-sheet">
             {groups.map(([session, entries]) => (
@@ -198,13 +203,18 @@ function Log() {
 
 function Handouts() {
   const handouts = useFun((s) => s.handouts);
+  const lists = useFunLists();
   const dm = useTable((s) => s.me?.role === "dm" || s.me?.role === "admin");
   const mine = dm
     ? handouts.filter((h) => h.recipients === "all" || (h.recipients?.length ?? 0) > 0)
     : handouts;
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4" data-testid="handouts-list">
-      {mine.length ? (
+      {lists.status !== "ready" ? (
+        <LoadGate load={lists} what="the handouts">
+          {() => null}
+        </LoadGate>
+      ) : mine.length ? (
         mine.map((h) => <HandoutCard key={h.id} h={h} compact />)
       ) : (
         <EmptyState title="No handouts yet: when the DM shows you a map, a letter or a riddle, it stays here." />

@@ -1,5 +1,5 @@
 import { Archive, Download, HardDriveDownload, History, RotateCcw, Save, Trash2, Upload } from "lucide-react";
-import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 import { del, get, post } from "../net/http.ts";
 import { UploadError, uploadTo } from "../net/upload.ts";
 import { Button, IconButton } from "../ui/Button.tsx";
@@ -7,6 +7,7 @@ import { Select } from "../ui/controls.tsx";
 import { Dialog } from "../ui/Dialog.tsx";
 import { EmptyState } from "../ui/EmptyState.tsx";
 import { TextInput } from "../ui/Field.tsx";
+import { LoadGate, useLoad } from "../ui/Loadable.tsx";
 import { toast } from "../ui/Toast.tsx";
 
 interface CampaignItem {
@@ -52,35 +53,36 @@ const when = (at: number) =>
  * (downloaded at once), import one as a new campaign.
  */
 export function SavesPage() {
-  const [campaigns, setCampaigns] = useState<CampaignItem[] | null>(null);
   const [campaignId, setCampaignId] = useState<string>("");
-  const [snaps, setSnaps] = useState<Snapshot[] | null>(null);
-  const [backups, setBackups] = useState<{ backups: Backup[]; dataDirBytes: number } | null>(null);
   const [name, setName] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [restore, setRestore] = useState<Snapshot | null>(null);
   const [importing, setImporting] = useState<number | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
-  const loadCampaigns = useCallback(async () => {
-    const list = await get<CampaignItem[]>("/api/admin/campaigns");
-    setCampaigns(list);
-    setCampaignId((cur) => cur || list.find((c) => c.selected)?.id || list[0]?.id || "");
-  }, []);
-  const loadSnaps = useCallback(async (id: string) => {
-    if (!id) return setSnaps([]);
-    setSnaps(await get<Snapshot[]>(`/api/admin/campaigns/${id}/snapshots`));
-  }, []);
-  const loadBackups = useCallback(async () => {
-    setBackups(await get<{ backups: Backup[]; dataDirBytes: number }>("/api/admin/backups"));
-  }, []);
+  // Each part loads on its own, each with its loading and failed states (AC-DS-05).
+  const campaignsLoad = useLoad(() => get<CampaignItem[]>("/api/admin/campaigns"), []);
+  const campaigns = campaignsLoad.data;
+  const loadCampaigns = campaignsLoad.reload;
   useEffect(() => {
-    void loadCampaigns().catch((e: Error) => toast.danger("Couldn't load the campaigns", e.message));
-    void loadBackups().catch(() => {});
-  }, [loadCampaigns, loadBackups]);
-  useEffect(() => {
-    void loadSnaps(campaignId).catch((e: Error) => toast.danger("Couldn't load the saves", e.message));
-  }, [campaignId, loadSnaps]);
+    if (campaigns)
+      setCampaignId((cur) => cur || campaigns.find((c) => c.selected)?.id || campaigns[0]?.id || "");
+  }, [campaigns]);
+  const snapsLoad = useLoad(
+    () =>
+      campaignId ? get<Snapshot[]>(`/api/admin/campaigns/${campaignId}/snapshots`) : Promise.resolve([]),
+    [campaignId],
+  );
+  const snaps = snapsLoad.data;
+  const loadSnaps = (_id: string) => snapsLoad.reload();
+  const backupsLoad = useLoad(
+    () => get<{ backups: Backup[]; dataDirBytes: number }>("/api/admin/backups"),
+    [],
+  );
+  const backups = backupsLoad.data;
+  const loadBackups = backupsLoad.reload;
+  // (Until the campaigns are known, which campaign's snapshots to show isn't either.)
+  const snapsState = campaignsLoad.status !== "ready" ? campaignsLoad : snapsLoad;
 
   const run = async (key: string, f: () => Promise<unknown>, fail: string) => {
     setBusy(key);
@@ -198,53 +200,66 @@ export function SavesPage() {
             Save now
           </Button>
         </form>
-        {snaps && !snaps.length ? (
-          <EmptyState art="scroll" title="No snapshots of this campaign yet." />
-        ) : null}
-        <ol
-          className="flex flex-col divide-y divide-line/60 rounded-[var(--radius-control)] border border-line"
-          aria-label="Snapshots"
+        <LoadGate
+          load={snapsState}
+          what={campaignsLoad.status !== "ready" ? "the campaigns" : "the snapshots"}
         >
-          {(snaps ?? []).map((s) => (
-            <li
-              key={s.id}
-              className="flex items-center gap-3 px-3 py-2"
-              data-testid="snapshot-row"
-              data-kind={s.kind}
-            >
-              <span className="flex min-w-0 flex-1 flex-col">
-                <span className="truncate text-14 text-bone">{s.name}</span>
-                <span className="text-12 text-muted">
-                  {KIND[s.kind]} · <span className="whitespace-nowrap">{when(s.createdAt)}</span> ·{" "}
-                  {size(s.bytes)}
-                </span>
-              </span>
-              <Button size="S" variant="ghost" icon={<RotateCcw size={14} />} onClick={() => setRestore(s)}>
-                Restore…
-              </Button>
-              {s.kind === "manual" ? (
-                <IconButton
-                  label={`Delete ${s.name}`}
-                  onClick={() =>
-                    void run(
-                      `del:${s.id}`,
-                      async () => {
-                        await del(`/api/admin/snapshots/${s.id}`);
-                        await loadSnaps(campaignId);
-                      },
-                      "Couldn't delete it",
-                    )
-                  }
-                >
-                  <Trash2 size={15} />
-                </IconButton>
-              ) : (
-                // (An automatic snapshot can't be deleted: its slot kept, so every row's Restore lines up.)
-                <span className="hit shrink-0" aria-hidden />
-              )}
-            </li>
-          ))}
-        </ol>
+          {() =>
+            !snaps?.length ? (
+              <EmptyState art="scroll" title="No snapshots of this campaign yet." />
+            ) : (
+              <ol
+                className="flex flex-col divide-y divide-line/60 rounded-[var(--radius-control)] border border-line"
+                aria-label="Snapshots"
+              >
+                {(snaps ?? []).map((s) => (
+                  <li
+                    key={s.id}
+                    className="flex items-center gap-3 px-3 py-2"
+                    data-testid="snapshot-row"
+                    data-kind={s.kind}
+                  >
+                    <span className="flex min-w-0 flex-1 flex-col">
+                      <span className="truncate text-14 text-bone">{s.name}</span>
+                      <span className="text-12 text-muted">
+                        {KIND[s.kind]} · <span className="whitespace-nowrap">{when(s.createdAt)}</span> ·{" "}
+                        {size(s.bytes)}
+                      </span>
+                    </span>
+                    <Button
+                      size="S"
+                      variant="ghost"
+                      icon={<RotateCcw size={14} />}
+                      onClick={() => setRestore(s)}
+                    >
+                      Restore…
+                    </Button>
+                    {s.kind === "manual" ? (
+                      <IconButton
+                        label={`Delete ${s.name}`}
+                        onClick={() =>
+                          void run(
+                            `del:${s.id}`,
+                            async () => {
+                              await del(`/api/admin/snapshots/${s.id}`);
+                              await loadSnaps(campaignId);
+                            },
+                            "Couldn't delete it",
+                          )
+                        }
+                      >
+                        <Trash2 size={15} />
+                      </IconButton>
+                    ) : (
+                      // (An automatic snapshot can't be deleted: its slot kept, so every row's Restore lines up.)
+                      <span className="hit shrink-0" aria-hidden />
+                    )}
+                  </li>
+                ))}
+              </ol>
+            )
+          }
+        </LoadGate>
       </section>
 
       <section className="panel mt-6 flex flex-col gap-4 p-5 sm:p-6" aria-labelledby="saves-move">
@@ -320,6 +335,11 @@ export function SavesPage() {
           too.
           {backups ? ` The data folder is ${size(backups.dataDirBytes)}.` : ""}
         </p>
+        {backupsLoad.status !== "ready" ? (
+          <LoadGate load={backupsLoad} what="the backups">
+            {() => null}
+          </LoadGate>
+        ) : null}
         {backups && backups.backups.length === 0 ? (
           <p
             className="rounded-[var(--radius-control)] border border-dashed border-line px-4 py-3 text-14 text-muted"

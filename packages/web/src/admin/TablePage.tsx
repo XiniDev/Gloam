@@ -18,6 +18,7 @@ import { Segmented, Select, Toggle } from "../ui/controls.tsx";
 import { Dialog } from "../ui/Dialog.tsx";
 import { EmptyState } from "../ui/EmptyState.tsx";
 import { TextInput } from "../ui/Field.tsx";
+import { LoadPanel, useLoad } from "../ui/Loadable.tsx";
 import { Divider } from "../ui/ornaments.tsx";
 import { toast } from "../ui/Toast.tsx";
 import { decideKnock, type TableStatusDto, useAdminLive } from "./realtime.ts";
@@ -71,14 +72,21 @@ export function TablePage() {
   const [campaigns, setCampaigns] = useState<{ id: string; name: string; selected: boolean }[] | null>(null);
   const [now, setNow] = useState(Date.now());
 
+  // The table's status and the campaigns, together: the page waits for both, and says so if they can't be had.
+  const initial = useLoad(async () => {
+    const [status, list] = await Promise.all([
+      get<TableStatusDto>("/api/admin/table"),
+      get<{ id: string; name: string; selected: boolean }[]>("/api/admin/campaigns"),
+    ]);
+    useAdminLive.getState().set({ status });
+    if (status.mode) setMode(status.mode);
+    setCampaigns(list);
+  }, []);
   useEffect(() => {
-    void get<TableStatusDto>("/api/admin/table").then((s) => {
-      useAdminLive.getState().set({ status: s });
-      if (s.mode) setMode(s.mode);
-    });
-    void get<{ id: string; name: string; selected: boolean }[]>("/api/admin/campaigns").then(setCampaigns);
-    void post<TableStatusDto>("/api/admin/table/cloudflared/recheck").then((s) =>
-      useAdminLive.getState().set({ status: s }),
+    // (Is cloudflared there now? The status above stands until the answer comes, and stands if none does.)
+    void post<TableStatusDto>("/api/admin/table/cloudflared/recheck").then(
+      (s) => useAdminLive.getState().set({ status: s }),
+      () => {},
     );
     const t = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(t);
@@ -128,6 +136,13 @@ export function TablePage() {
     return r;
   }
 
+  if ((!s || !campaigns) && initial.status === "error")
+    return (
+      <div className="max-w-[880px]">
+        <h1 className="text-36 text-bone">Table</h1>
+        <LoadPanel load={initial} what="the table" />
+      </div>
+    );
   if (!s || !campaigns) {
     return (
       <div className="max-w-[880px] space-y-4">

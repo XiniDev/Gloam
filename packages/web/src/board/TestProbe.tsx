@@ -144,8 +144,13 @@ export function TestProbe() {
         // The camera that draws and picks (its world matrix) is where the controls are now — not a frame behind.
         const now = c.getPosition(new Vector3(), false);
         const drawn = new Vector3().setFromMatrixPosition(c.camera.matrixWorld);
+        // Still on its way somewhere (a slide, a preset, a follow): where it is isn't where it's going.
+        const endT = c.getTarget(new Vector3(), true);
+        const nowT = c.getTarget(new Vector3(), false);
+        const endP = c.getPosition(new Vector3(), true);
         return {
           inSync: drawn.distanceTo(now) < 1e-3,
+          moving: endT.distanceTo(nowT) > 1e-3 || endP.distanceTo(now) > 1e-3 || c.active,
           target: [t.x, t.y, t.z],
           position: [p.x, p.y, p.z],
           pitchDeg: cameraRig.pitchDeg(),

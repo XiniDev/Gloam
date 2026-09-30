@@ -1,11 +1,12 @@
 import { Archive, ArchiveRestore, Pencil, Plus, Star, Trash2 } from "lucide-react";
-import { type FormEvent, useCallback, useEffect, useState } from "react";
+import { type FormEvent, useState } from "react";
 import { useNavigate } from "react-router";
 import { get, patch, post } from "../net/http.ts";
 import { Button } from "../ui/Button.tsx";
 import { Dialog } from "../ui/Dialog.tsx";
 import { EmptyState } from "../ui/EmptyState.tsx";
 import { TextInput } from "../ui/Field.tsx";
+import { LoadGate, useLoad } from "../ui/Loadable.tsx";
 import { Menu } from "../ui/Menu.tsx";
 import { Sparkle } from "../ui/ornaments.tsx";
 import { toast } from "../ui/Toast.tsx";
@@ -29,17 +30,15 @@ const day = (at: number) => new Date(at).toLocaleDateString(undefined, { dateSty
  */
 export function CampaignsPage() {
   const navigate = useNavigate();
-  const [list, setList] = useState<CampaignItem[] | null>(null);
+  const loaded = useLoad(() => get<CampaignItem[]>("/api/admin/campaigns"), []);
+  const list = loaded.data;
   const [name, setName] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<CampaignItem | null>(null);
   const [newName, setNewName] = useState("");
   const [deleting, setDeleting] = useState<CampaignItem | null>(null);
   const [confirm, setConfirm] = useState("");
-  const load = useCallback(async () => setList(await get<CampaignItem[]>("/api/admin/campaigns")), []);
-  useEffect(() => {
-    void load().catch((e: Error) => toast.danger("Couldn't load the campaigns", e.message));
-  }, [load]);
+  const load = loaded.reload;
   const run = async (key: string, f: () => Promise<unknown>, done: string | null, fail: string) => {
     setBusy(key);
     try {
@@ -202,11 +201,18 @@ export function CampaignsPage() {
         </form>
       </section>
       <section className="panel mt-6 flex flex-col gap-2 p-5 sm:p-6" aria-label="Campaigns">
-        {list && live.length === 0 ? (
-          <EmptyState art="door" title="No campaigns yet. Make one above, or add the demo to look around." />
-        ) : (
-          <ul className="flex flex-col divide-y divide-line/60">{live.map(row)}</ul>
-        )}
+        <LoadGate load={loaded} what="the campaigns">
+          {() =>
+            live.length === 0 ? (
+              <EmptyState
+                art="door"
+                title="No campaigns yet. Make one above, or add the demo to look around."
+              />
+            ) : (
+              <ul className="flex flex-col divide-y divide-line/60">{live.map(row)}</ul>
+            )
+          }
+        </LoadGate>
       </section>
       {archived.length ? (
         <section className="panel mt-6 flex flex-col gap-2 p-5 sm:p-6" aria-label="Archived">

@@ -691,7 +691,9 @@ test.describe("P9 — spells (SPL)", () => {
     if (await dave.getByRole("region", { name: "Character sheet", exact: true }).isVisible())
       await dave.getByRole("button", { name: "Sheet", exact: true }).click();
     await expect(dave.getByRole("region", { name: "Character sheet", exact: true })).toBeHidden();
-    // The view slides back by what the sheet's opening moved it (CameraRig): press the handle once it's still.
+    // The view slides back by what the sheet's opening moved it (CameraRig): press the handle once it's still — the
+    // camera at rest where it was going (two equal readings alone can come before the slide's first frame).
+    await expect.poll(async () => (await camera(dave))?.moving, { timeout: 15_000 }).toBe(false);
     let last = { sx: -1, sy: -1 };
     await expect
       .poll(async () => {

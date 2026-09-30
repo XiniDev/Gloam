@@ -128,10 +128,11 @@ test.describe("P11 — table flavour (FUN)", () => {
       const box = (el: Element | null | undefined) => el?.getBoundingClientRect();
       const cell = document.querySelector(`[data-presence="${id}"]`);
       const badge = box(cell?.querySelector('[data-testid="hand-badge"]'));
-      const face = box(cell?.querySelector('[aria-hidden="true"].rounded-full, .rounded-full'));
+      // (The portraits' faces: your own sits in a round emote button whose 44-px press area reaches past it.)
+      const face = box(cell?.querySelector('[data-part="face"]'));
       const others = [...document.querySelectorAll("[data-presence]")]
         .filter((c) => c !== cell)
-        .map((c) => box(c.querySelector(".rounded-full"))?.top ?? 0);
+        .map((c) => box(c.querySelector('[data-part="face"]'))?.top ?? 0);
       return { badge, face, others };
     }, daveId);
     const b = place.badge as DOMRect;

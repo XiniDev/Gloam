@@ -1,11 +1,12 @@
 import { Ban, KeyRound, Pencil, Trash2, Users, UserX } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { get, patch, post } from "../net/http.ts";
 import { Button } from "../ui/Button.tsx";
 import { Select } from "../ui/controls.tsx";
 import { Dialog } from "../ui/Dialog.tsx";
 import { EmptyState } from "../ui/EmptyState.tsx";
 import { TextInput } from "../ui/Field.tsx";
+import { LoadGate, useLoad } from "../ui/Loadable.tsx";
 import { Menu } from "../ui/Menu.tsx";
 import { Portrait } from "../ui/Portrait.tsx";
 import { toast } from "../ui/Toast.tsx";
@@ -48,31 +49,26 @@ type Edit =
  * characters handed to someone else.
  */
 export function PeoplePage() {
-  const [people, setPeople] = useState<Person[] | null>(null);
-  const [campaigns, setCampaigns] = useState<CampaignItem[]>([]);
   const [edit, setEdit] = useState<Edit | null>(null);
-  const load = useCallback(async () => {
-    const [p, c] = await Promise.all([
+  const loaded = useLoad(async () => {
+    const [people, campaigns] = await Promise.all([
       get<Person[]>("/api/admin/people"),
       get<CampaignItem[]>("/api/admin/campaigns"),
     ]);
-    setPeople(p);
-    setCampaigns(c);
+    return { people, campaigns };
   }, []);
-  useEffect(() => {
-    void load().catch((e: Error) => toast.danger("Couldn't load people", e.message));
-  }, [load]);
+  const campaigns = loaded.data?.campaigns ?? [];
   const act = async (f: () => Promise<unknown>, done: string, fail: string) => {
     try {
       await f();
       toast.success(done);
       setEdit(null);
-      await load();
+      await loaded.reload();
     } catch (e) {
       toast.danger(fail, (e as Error).message);
     }
   };
-  const list = (people ?? []).filter((p) => !p.isAdmin);
+  const list = (loaded.data?.people ?? []).filter((p) => !p.isAdmin);
   const kick = (p: Person) =>
     void act(
       () => post(`/api/admin/people/${p.id}/kick`),
@@ -95,142 +91,149 @@ export function PeoplePage() {
         </p>
       </header>
       <section className="panel mt-6 flex flex-col gap-2 p-5 sm:p-6" aria-label="Profiles">
-        {people && list.length === 0 ? (
-          <EmptyState art="door" title="No one yet. When friends join with your invite code, they're here." />
-        ) : (
-          <ul className="flex flex-col divide-y divide-line/60">
-            {list.map((p) => (
-              <li
-                key={p.id}
-                className="flex flex-wrap items-center gap-3 py-3"
-                data-testid="person-row"
-                data-user={p.id}
-              >
-                <Portrait name={p.name} color={p.color} size={36} dim={!p.online} />
-                {/* Who: at least 20rem — narrower, its actions go to the next line rather than squeeze it. */}
-                <span className="flex min-w-0 flex-[1_1_20rem] flex-col">
-                  <span className="flex min-w-0 items-center gap-2">
-                    <span className="min-w-0 truncate text-16 font-bold text-bone">{p.name}</span>
-                    {p.banned ? (
-                      <span className="caps shrink-0 rounded-chip border border-danger px-1.5 text-12 text-danger-text">
-                        Banned
+        <LoadGate load={loaded} what="the people">
+          {() =>
+            list.length === 0 ? (
+              <EmptyState
+                art="door"
+                title="No one yet. When friends join with your invite code, they're here."
+              />
+            ) : (
+              <ul className="flex flex-col divide-y divide-line/60">
+                {list.map((p) => (
+                  <li
+                    key={p.id}
+                    className="flex flex-wrap items-center gap-3 py-3"
+                    data-testid="person-row"
+                    data-user={p.id}
+                  >
+                    <Portrait name={p.name} color={p.color} size={36} dim={!p.online} />
+                    {/* Who: at least 20rem — narrower, its actions go to the next line rather than squeeze it. */}
+                    <span className="flex min-w-0 flex-[1_1_20rem] flex-col">
+                      <span className="flex min-w-0 items-center gap-2">
+                        <span className="min-w-0 truncate text-16 font-bold text-bone">{p.name}</span>
+                        {p.banned ? (
+                          <span className="caps shrink-0 rounded-chip border border-danger px-1.5 text-12 text-danger-text">
+                            Banned
+                          </span>
+                        ) : p.online ? (
+                          <span className="caps shrink-0 whitespace-nowrap text-12 text-verdigris">
+                            At the table
+                          </span>
+                        ) : null}
                       </span>
-                    ) : p.online ? (
-                      <span className="caps shrink-0 whitespace-nowrap text-12 text-verdigris">
-                        At the table
+                      <span className="text-13 text-muted">
+                        {p.role ? ROLE[p.role] : "Not in this campaign"} · {p.hasPin ? "PIN set" : "no PIN"} ·
+                        last seen <span className="whitespace-nowrap">{seen(p.lastSeenAt)}</span>
+                        {p.devices.length
+                          ? ` · ${p.devices.length} ${p.devices.length === 1 ? "device" : "devices"}`
+                          : ""}
                       </span>
-                    ) : null}
-                  </span>
-                  <span className="text-13 text-muted">
-                    {p.role ? ROLE[p.role] : "Not in this campaign"} · {p.hasPin ? "PIN set" : "no PIN"} ·
-                    last seen <span className="whitespace-nowrap">{seen(p.lastSeenAt)}</span>
-                    {p.devices.length
-                      ? ` · ${p.devices.length} ${p.devices.length === 1 ? "device" : "devices"}`
-                      : ""}
-                  </span>
-                </span>
-                {/* A phone: one menu of them. */}
-                <span className="sm:hidden">
-                  <Menu
-                    label={`${p.name}: actions`}
-                    items={[
-                      {
-                        label: "Rename",
-                        icon: <Pencil size={15} />,
-                        onSelect: () => setEdit({ kind: "rename", p }),
-                      },
-                      {
-                        label: "PIN",
-                        icon: <KeyRound size={15} />,
-                        onSelect: () => setEdit({ kind: "pin", p }),
-                      },
-                      {
-                        label: "Role",
-                        icon: <Users size={15} />,
-                        onSelect: () => setEdit({ kind: "role", p }),
-                      },
-                      ...(p.online
-                        ? [
-                            {
-                              label: "Back to the waiting room",
-                              icon: <UserX size={15} />,
-                              onSelect: () => kick(p),
-                            },
-                          ]
-                        : []),
-                      p.banned
-                        ? { label: "Unban", onSelect: () => unban(p) }
-                        : {
-                            label: "Ban…",
-                            icon: <Ban size={15} />,
-                            onSelect: () => setEdit({ kind: "ban", p }),
+                    </span>
+                    {/* A phone: one menu of them. */}
+                    <span className="sm:hidden">
+                      <Menu
+                        label={`${p.name}: actions`}
+                        items={[
+                          {
+                            label: "Rename",
+                            icon: <Pencil size={15} />,
+                            onSelect: () => setEdit({ kind: "rename", p }),
                           },
-                      {
-                        label: "Delete…",
-                        icon: <Trash2 size={15} />,
-                        danger: true,
-                        onSelect: () => setEdit({ kind: "delete", p }),
-                      },
-                    ]}
-                  />
-                </span>
-                <span className="flex flex-wrap gap-1 max-sm:hidden">
-                  <Button
-                    size="S"
-                    variant="ghost"
-                    icon={<Pencil size={14} />}
-                    onClick={() => setEdit({ kind: "rename", p })}
-                  >
-                    Rename
-                  </Button>
-                  <Button
-                    size="S"
-                    variant="ghost"
-                    icon={<KeyRound size={14} />}
-                    onClick={() => setEdit({ kind: "pin", p })}
-                  >
-                    PIN
-                  </Button>
-                  <Button
-                    size="S"
-                    variant="ghost"
-                    icon={<Users size={14} />}
-                    onClick={() => setEdit({ kind: "role", p })}
-                  >
-                    Role
-                  </Button>
-                  {p.online ? (
-                    <Button size="S" variant="ghost" icon={<UserX size={14} />} onClick={() => kick(p)}>
-                      Kick
-                    </Button>
-                  ) : null}
-                  {p.banned ? (
-                    <Button size="S" variant="ghost" onClick={() => unban(p)}>
-                      Unban
-                    </Button>
-                  ) : (
-                    <Button
-                      size="S"
-                      variant="ghost"
-                      icon={<Ban size={14} />}
-                      onClick={() => setEdit({ kind: "ban", p })}
-                    >
-                      Ban
-                    </Button>
-                  )}
-                  <Button
-                    size="S"
-                    variant="danger"
-                    icon={<Trash2 size={14} />}
-                    onClick={() => setEdit({ kind: "delete", p })}
-                  >
-                    Delete
-                  </Button>
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
+                          {
+                            label: "PIN",
+                            icon: <KeyRound size={15} />,
+                            onSelect: () => setEdit({ kind: "pin", p }),
+                          },
+                          {
+                            label: "Role",
+                            icon: <Users size={15} />,
+                            onSelect: () => setEdit({ kind: "role", p }),
+                          },
+                          ...(p.online
+                            ? [
+                                {
+                                  label: "Back to the waiting room",
+                                  icon: <UserX size={15} />,
+                                  onSelect: () => kick(p),
+                                },
+                              ]
+                            : []),
+                          p.banned
+                            ? { label: "Unban", onSelect: () => unban(p) }
+                            : {
+                                label: "Ban…",
+                                icon: <Ban size={15} />,
+                                onSelect: () => setEdit({ kind: "ban", p }),
+                              },
+                          {
+                            label: "Delete…",
+                            icon: <Trash2 size={15} />,
+                            danger: true,
+                            onSelect: () => setEdit({ kind: "delete", p }),
+                          },
+                        ]}
+                      />
+                    </span>
+                    <span className="flex flex-wrap gap-1 max-sm:hidden">
+                      <Button
+                        size="S"
+                        variant="ghost"
+                        icon={<Pencil size={14} />}
+                        onClick={() => setEdit({ kind: "rename", p })}
+                      >
+                        Rename
+                      </Button>
+                      <Button
+                        size="S"
+                        variant="ghost"
+                        icon={<KeyRound size={14} />}
+                        onClick={() => setEdit({ kind: "pin", p })}
+                      >
+                        PIN
+                      </Button>
+                      <Button
+                        size="S"
+                        variant="ghost"
+                        icon={<Users size={14} />}
+                        onClick={() => setEdit({ kind: "role", p })}
+                      >
+                        Role
+                      </Button>
+                      {p.online ? (
+                        <Button size="S" variant="ghost" icon={<UserX size={14} />} onClick={() => kick(p)}>
+                          Kick
+                        </Button>
+                      ) : null}
+                      {p.banned ? (
+                        <Button size="S" variant="ghost" onClick={() => unban(p)}>
+                          Unban
+                        </Button>
+                      ) : (
+                        <Button
+                          size="S"
+                          variant="ghost"
+                          icon={<Ban size={14} />}
+                          onClick={() => setEdit({ kind: "ban", p })}
+                        >
+                          Ban
+                        </Button>
+                      )}
+                      <Button
+                        size="S"
+                        variant="danger"
+                        icon={<Trash2 size={14} />}
+                        onClick={() => setEdit({ kind: "delete", p })}
+                      >
+                        Delete
+                      </Button>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )
+          }
+        </LoadGate>
       </section>
       {edit ? (
         <EditDialog edit={edit} people={list} campaigns={campaigns} onClose={() => setEdit(null)} act={act} />

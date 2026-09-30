@@ -1,8 +1,7 @@
 import { ChevronRight, Scale } from "lucide-react";
-import { useEffect, useState } from "react";
 import { get } from "../net/http.ts";
+import { LoadPanel, useLoad } from "../ui/Loadable.tsx";
 import { Sparkle } from "../ui/ornaments.tsx";
-import { toast } from "../ui/Toast.tsx";
 
 interface About {
   version: string;
@@ -20,10 +19,8 @@ interface About {
  * the other sources the rules content came from, the fonts' licence texts, and every bundled library's licence.
  */
 export function AboutPage() {
-  const [a, setA] = useState<About | null>(null);
-  useEffect(() => {
-    void get<About>("/api/admin/about").then(setA, (e: Error) => toast.danger("Couldn't load it", e.message));
-  }, []);
+  const loaded = useLoad(() => get<About>("/api/admin/about"), []);
+  const a = loaded.data ?? null;
   return (
     <div className="max-w-[880px]" data-testid="about-page">
       <header>
@@ -34,6 +31,7 @@ export function AboutPage() {
           {a ? `Version ${a.version} · Node ${a.node}` : " "} · a self-hosted tabletop for your group.
         </p>
       </header>
+      <LoadPanel load={loaded} what="the credits" />
       {a ? (
         <>
           <section className="panel mt-6 flex flex-col gap-4 p-5 sm:p-6" aria-label="Rules content">

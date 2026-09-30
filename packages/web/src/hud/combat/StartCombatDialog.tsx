@@ -117,6 +117,11 @@ export function StartCombatDialog({ open, onClose }: { open: boolean; onClose: (
               <span className="flex-1">Creature</span>
               <span className="w-20 text-center">Surprised</span>
             </div>
+            {all.length === 0 ? (
+              <p className="px-3 py-4 text-14 text-muted">
+                No creatures on this scene yet — place the party and their foes, then start.
+              </p>
+            ) : null}
             <ScrollFade>
               <ul className="flex flex-col divide-y divide-line/60">
                 {all.map((t) => (

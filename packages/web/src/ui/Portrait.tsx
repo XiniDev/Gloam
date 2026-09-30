@@ -42,6 +42,7 @@ export function Portrait({
       }}
     >
       <span
+        data-part="face"
         className="grid h-full w-full place-items-center overflow-hidden rounded-full bg-ink-800 font-caps leading-none text-bone [font-size:var(--mono)] pointer-coarse:[font-size:max(13px,var(--mono))]"
         style={
           {

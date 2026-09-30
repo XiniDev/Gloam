@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { request, useTable } from "../../net/table.ts";
 import { useUi } from "../../state/ui.ts";
 import { Button } from "../../ui/Button.tsx";
 import { Dialog } from "../../ui/Dialog.tsx";
 import { TextInput } from "../../ui/Field.tsx";
+import { LoadFailed, useLoad } from "../../ui/Loadable.tsx";
 import { toast } from "../../ui/Toast.tsx";
 import { AssetPicker } from "./AssetPicker.tsx";
 import { isDmRole } from "./sheetActions.ts";
@@ -36,14 +37,13 @@ export function QuickCreateDialog({ open, onClose }: { open: boolean; onClose: (
     portraitAssetId: undefined as string | undefined,
     tokenAssetId: undefined as string | undefined,
   });
-  const [templates, setTemplates] = useState<TemplateItem[]>([]);
+  // The campaign's templates (optional: none, and the choice isn't offered; a failure says so, with Try again).
+  const loadedTemplates = useLoad(
+    () => (open ? request<TemplateItem[]>("template.list", {}) : Promise.resolve([])),
+    [open],
+  );
+  const templates = loadedTemplates.data ?? [];
   const [busy, setBusy] = useState(false);
-  useEffect(() => {
-    if (!open) return;
-    void request<TemplateItem[]>("template.list", {})
-      .then(setTemplates)
-      .catch(() => setTemplates([]));
-  }, [open]);
   const num = (v: string) => Math.max(0, Math.floor(Number(v) || 0));
   const valid = f.name.trim().length > 0 && num(f.hpMax) >= 1;
   const create = async () => {
@@ -134,6 +134,16 @@ export function QuickCreateDialog({ open, onClose }: { open: boolean; onClose: (
               ))}
             </select>
           </label>
+        ) : null}
+        {loadedTemplates.status === "error" ? (
+          <div className="col-span-2">
+            <LoadFailed
+              what="the templates"
+              error={loadedTemplates.error}
+              retry={loadedTemplates.retry}
+              compact
+            />
+          </div>
         ) : null}
         {templates.length ? (
           <label className="col-span-2 flex flex-col gap-1.5">

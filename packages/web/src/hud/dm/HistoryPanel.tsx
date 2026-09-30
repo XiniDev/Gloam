@@ -5,6 +5,7 @@ import { request, tableEvents } from "../../net/table.ts";
 import { Button } from "../../ui/Button.tsx";
 import { Dialog } from "../../ui/Dialog.tsx";
 import { EmptyState } from "../../ui/EmptyState.tsx";
+import { LoadFailed, LoadGate } from "../../ui/Loadable.tsx";
 import { Menu } from "../../ui/Menu.tsx";
 import { toast } from "../../ui/Toast.tsx";
 
@@ -153,8 +154,16 @@ export function HistoryPanel() {
           (v) => setFilter((f) => ({ ...f, sceneId: v })),
         )}
       </div>
-      {failed ? (
-        <p className="text-13 text-[var(--ember-400)]">The history couldn't be loaded: {failed}</p>
+      {/* Before the first page: loading, or why it failed (Try again); a later page's failure says so above the list. */}
+      {!data ? (
+        <LoadGate
+          load={{ status: failed ? "error" : "loading", error: failed, retry: () => void load() }}
+          what="the history"
+        >
+          {() => null}
+        </LoadGate>
+      ) : failed ? (
+        <LoadFailed what="the latest history" error={failed} retry={() => void load()} compact />
       ) : null}
       {data && !data.entries.length ? (
         <EmptyState
@@ -162,49 +171,53 @@ export function HistoryPanel() {
           title="Nothing has changed at this table yet — or nothing matches those filters."
         />
       ) : null}
-      <ol
-        className="flex min-h-0 flex-1 flex-col divide-y divide-line/60 overflow-y-auto rounded-[var(--radius-control)] border border-line"
-        aria-label="History"
-      >
-        {(data?.entries ?? []).map((e) => (
-          <li
-            key={e.id}
-            className="flex items-center gap-2 px-3 py-2"
-            data-testid="history-row"
-            data-entry={e.id}
-            data-type={e.type}
-            data-undone={e.undoneAt !== null}
-          >
-            <span className="flex min-w-0 flex-1 flex-col">
-              <span className={`text-14 ${e.undoneAt !== null ? "text-fog line-through" : "text-bone"}`}>
-                {e.summary}
+      {data?.entries.length ? (
+        <ol
+          className="flex min-h-0 flex-1 flex-col divide-y divide-line/60 overflow-y-auto rounded-[var(--radius-control)] border border-line"
+          aria-label="History"
+        >
+          {(data?.entries ?? []).map((e) => (
+            <li
+              key={e.id}
+              className="flex items-center gap-2 px-3 py-2"
+              data-testid="history-row"
+              data-entry={e.id}
+              data-type={e.type}
+              data-undone={e.undoneAt !== null}
+            >
+              <span className="flex min-w-0 flex-1 flex-col">
+                <span className={`text-14 ${e.undoneAt !== null ? "text-fog line-through" : "text-bone"}`}>
+                  {e.summary}
+                </span>
+                <span className="truncate text-12 text-muted">
+                  {e.userName}
+                  {e.actingAs ? <span className="text-brass"> as {e.actingAs}</span> : null}
+                  {e.sceneName ? ` · ${e.sceneName}` : ""} · {ago(e.at)}
+                  {e.undoneAt !== null ? ` · undone${e.undoneByName ? ` by ${e.undoneByName}` : ""}` : ""}
+                </span>
               </span>
-              <span className="truncate text-12 text-muted">
-                {e.userName}
-                {e.actingAs ? <span className="text-brass"> as {e.actingAs}</span> : null}
-                {e.sceneName ? ` · ${e.sceneName}` : ""} · {ago(e.at)}
-                {e.undoneAt !== null ? ` · undone${e.undoneByName ? ` by ${e.undoneByName}` : ""}` : ""}
-              </span>
-            </span>
-            {e.undoable && e.undoneAt === null ? (
-              <>
-                <Button
-                  size="S"
-                  variant="ghost"
-                  icon={<RotateCcw size={14} />}
-                  onClick={() => act(revert(e), "Couldn't revert it")}
-                >
-                  Revert
-                </Button>
-                <Menu
-                  label={`More for “${e.summary}”`}
-                  items={[{ label: "Restore to here…", onSelect: () => act(restore(e), "Couldn't restore") }]}
-                />
-              </>
-            ) : null}
-          </li>
-        ))}
-      </ol>
+              {e.undoable && e.undoneAt === null ? (
+                <>
+                  <Button
+                    size="S"
+                    variant="ghost"
+                    icon={<RotateCcw size={14} />}
+                    onClick={() => act(revert(e), "Couldn't revert it")}
+                  >
+                    Revert
+                  </Button>
+                  <Menu
+                    label={`More for “${e.summary}”`}
+                    items={[
+                      { label: "Restore to here…", onSelect: () => act(restore(e), "Couldn't restore") },
+                    ]}
+                  />
+                </>
+              ) : null}
+            </li>
+          ))}
+        </ol>
+      ) : null}
       {data?.more ? (
         <Button
           size="S"

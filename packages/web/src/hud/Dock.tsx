@@ -6,6 +6,7 @@ import { type DockTab, useUi } from "../state/ui.ts";
 import { BottomSheet } from "../ui/BottomSheet.tsx";
 import { IconButton } from "../ui/Button.tsx";
 import { ErrorBoundary } from "../ui/ErrorBoundary.tsx";
+import { Loading } from "../ui/Loadable.tsx";
 import { lazyPage } from "../ui/lazyPage.ts";
 import { Sparkle } from "../ui/ornaments.tsx";
 import { useApprovalsCount } from "./dm/approvalsCount.ts";
@@ -135,7 +136,7 @@ export function Dock() {
       {tab === "sheet" ? <SheetPanel /> : null}
       {tab === "journal" ? <JournalPanel /> : null}
       {tab === "dm" && dm ? (
-        <Suspense fallback={null}>
+        <Suspense fallback={<Loading what="the DM panel" />}>
           <DmPanel />
         </Suspense>
       ) : null}

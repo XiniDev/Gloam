@@ -163,6 +163,14 @@ export function SpellsTab({ ctx }: { ctx: SheetCtx }) {
         />
       </div>
 
+      {byLevel.size === 0 ? (
+        <>
+          <SectionTitle>Spells</SectionTitle>
+          <p className="text-13 italic text-paper-muted">
+            No spells known yet{ro ? "." : " — add them below."}
+          </p>
+        </>
+      ) : null}
       {[...byLevel.keys()]
         .sort((a, b) => a - b)
         .map((level) => (
