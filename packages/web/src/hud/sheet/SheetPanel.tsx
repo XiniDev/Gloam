@@ -554,12 +554,23 @@ function Stat({ label, children }: { label: string; children: React.ReactNode })
  * as its token and hover card say (critic P7 r2 #11) — with its base speed under it when they differ.
  */
 function SpeedValue({ core: c }: { core: SheetCtx["sheet"]["core"] }) {
-  const now = effectiveSpeed(c.speeds.walk, c.conditions, c.exhaustion);
+  // (The campaign's pack: SRD 5.1's Exhaustion halves Speed from level 2, Stunned holds it at 0 — rules audit C2.)
+  const pack = useTable((s) => s.rulesPack);
+  const now = effectiveSpeed(c.speeds.walk, c.conditions, c.exhaustion, false, pack);
+  const srd51 = pack === "srd-5.1";
+  const tired =
+    c.exhaustion > 0 && (!srd51 || c.exhaustion >= 2)
+      ? [
+          srd51
+            ? `Exhaustion ${c.exhaustion}: ${c.exhaustion >= 5 ? "Speed 0" : "Speed halved"}`
+            : `Exhaustion ${c.exhaustion}: −${5 * c.exhaustion} ft`,
+        ]
+      : [];
   const why = [
     ...c.conditions
-      .filter((id) => effectiveSpeed(30, [id], 0) === 0)
+      .filter((id) => effectiveSpeed(30, [id], 0, false, pack) === 0)
       .map((id) => `${statusName(id)}: Speed 0`),
-    ...(c.exhaustion > 0 ? [`Exhaustion ${c.exhaustion}: −${5 * c.exhaustion} ft`] : []),
+    ...tired,
   ].join(" · ");
   return (
     <span

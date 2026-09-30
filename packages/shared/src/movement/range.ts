@@ -32,6 +32,11 @@ export interface RangeOptions extends Partial<MoveOptions> {
   rc: number;
   /** Movement left (combat) or its speed (exploration), ft. */
   budget: number;
+  /**
+   * On ground that halves its Speed (Spirit Guardians), what it may have spent there: half the turn's budget less what
+   * it had used (rules audit Q1; `Budget.halvedLeft`). Absent: the same as `budget`.
+   */
+  halvedBudget?: number;
 }
 
 /** Is the straight step a→b clear of walls (by the clearance radius) and solids? */
@@ -177,6 +182,10 @@ export function rangeField(world: MoveWorld, origin: P, opts: RangeOptions): Ran
   };
   const heap = new Heap();
   const limit = budget + 2 * h;
+  // Ground that halves its Speed: there only while what it has spent is within the halved cap (rules audit Q1).
+  const halvedCap = Math.min(budget, opts.halvedBudget ?? budget);
+  const halving = halvedCap < budget && world.regions.some((r) => r.kind === "halved");
+  const halvedAt = (k: number) => world.regionsAt(centre(k)).halved;
   // Seed: the cells round the origin that it sees, their cost straight from it.
   const oc = Math.floor((origin.x - x0) / h);
   const or = Math.floor((origin.y - y0) / h);
@@ -202,6 +211,8 @@ export function rangeField(world: MoveWorld, origin: P, opts: RangeOptions): Ran
     if (known[k] || t > (cost[k] as number) + 1e-9) continue;
     known[k] = 1;
     if (t > limit) break;
+    // Past the halved cap on halving ground: it can't be here, nor go on from here.
+    if (halving && t > halvedCap + 1e-9 && halvedAt(k)) continue;
     const c = k % cols;
     const r = Math.floor(k / cols);
     const here = centre(k);
@@ -264,7 +275,14 @@ export function rangeField(world: MoveWorld, origin: P, opts: RangeOptions): Ran
       }
     }
   }
-  return { h, x0, y0, cols, rows, cost: Float32Array.from(cost), budget };
+  // Shown against the one limit (`budget`): halving ground's costs raised by what its cap lacks, so the limit line
+  // falls where the halved cap is reached there.
+  const shown = Float32Array.from(cost);
+  if (halving)
+    for (let k = 0; k < N; k++)
+      if (Number.isFinite(cost[k] as number) && halvedAt(k))
+        shown[k] = (cost[k] as number) + (budget - halvedCap);
+  return { h, x0, y0, cols, rows, cost: shown, budget };
 }
 
 /** The field's cost at a point (bilinear between cell centres; +Infinity next to an unreachable cell). */

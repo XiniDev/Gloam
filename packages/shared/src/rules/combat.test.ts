@@ -37,6 +37,13 @@ describe("initiative (§19.5, AC-CMB-02)", () => {
     expect(initiativeHints(["invisible"], false)).toEqual({ mode: "adv", adv: ["Invisible"], dis: [] });
     expect(initiativeHints(["incapacitated"], false).mode).toBe("dis");
     expect(initiativeHints(["stunned"], false).dis).toEqual(["Stunned"]);
+    // SRD 5.1 (rules audit C2): nothing from Invisible or Incapacitated; its Exhaustion table's Disadvantage on checks.
+    expect(initiativeHints(["invisible", "incapacitated"], false, "srd-5.1")).toEqual({
+      mode: "normal",
+      adv: [],
+      dis: [],
+    });
+    expect(initiativeHints([], false, "srd-5.1", 1)).toEqual({ mode: "dis", adv: [], dis: ["Exhaustion 1"] });
     expect(initiativeHints([], true)).toEqual({ mode: "dis", adv: [], dis: ["Surprised"] });
     // Both: they cancel.
     expect(initiativeHints(["invisible"], true).mode).toBe("normal");

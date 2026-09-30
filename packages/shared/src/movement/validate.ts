@@ -8,7 +8,16 @@ import {
   sweepCircleCircle,
   sweepCircleSeg,
 } from "../geometry/index.ts";
-import { type MoveOptions, pathCost, type RouteResult, relaxFrom, segmentCost } from "./route.ts";
+import {
+  type Budget,
+  budgetOf,
+  type MoveOptions,
+  pathCost,
+  type RouteResult,
+  relaxFrom,
+  segmentPieces,
+  stopAlong,
+} from "./route.ts";
 import type { MoveWorld } from "./world.ts";
 
 export interface Validated extends RouteResult {
@@ -85,37 +94,37 @@ export function truncateAtCollision(
   return { points: out, bumped: false, hitWall: null };
 }
 
-/** Cuts a path at the arc length where its cumulative cost reaches `budget` (§16.5 step 5, clamp). */
+/** Where a path's spending first breaks the allowance (null: never): see `stopAlong`. */
+function stopOn(
+  world: MoveWorld,
+  points: P[],
+  opts: Partial<MoveOptions>,
+  budget: number | Budget,
+): { i: number; t: number } | null {
+  return stopAlong(
+    points.length - 1,
+    (i) => segmentPieces(world, points[i] as P, points[i + 1] as P, opts),
+    budgetOf(budget),
+    FT_EPSILON,
+  );
+}
+
+/**
+ * Cuts a path where its spending reaches the allowance (§16.5 step 5, clamp) — its cost, or on ground that halves its
+ * Speed the lower cap there (rules audit Q1).
+ */
 export function clampToBudget(
   world: MoveWorld,
   points: P[],
   opts: Partial<MoveOptions>,
-  budget: number,
+  budget: number | Budget,
 ): P[] {
-  const out: P[] = [points[0] as P];
-  let spent = 0;
-  for (let i = 1; i < points.length; i++) {
-    const a = points[i - 1] as P;
-    const b = points[i] as P;
-    const c = segmentCost(world, a, b, opts).cost;
-    if (spent + c <= budget + FT_EPSILON) {
-      out.push(b);
-      spent += c;
-      continue;
-    }
-    // Bisect along this segment for the point where the cost reaches the remaining budget.
-    const left = budget - spent;
-    let lo = 0;
-    let hi = 1;
-    for (let k = 0; k < 50; k++) {
-      const mid = (lo + hi) / 2;
-      if (segmentCost(world, a, lerp(a, b, mid), opts).cost <= left) lo = mid;
-      else hi = mid;
-    }
-    const stop = lerp(a, b, lo);
-    if (dist(stop, a) > 1e-9) out.push(stop);
-    break;
-  }
+  const stop = stopOn(world, points, opts, budget);
+  if (!stop) return [...points];
+  const out = points.slice(0, stop.i + 1);
+  const a = points[stop.i] as P;
+  const at = lerp(a, points[stop.i + 1] as P, stop.t);
+  if (dist(at, a) > 1e-9) out.push(at);
   return out;
 }
 
@@ -127,14 +136,14 @@ export function validateMove(
   world: MoveWorld,
   points: P[],
   opts: MoveOptions,
-  budget: number | null,
+  budget: number | Budget | null,
   overlong: "clamp" | "reject" = "clamp",
 ): Validated | { error: "OVER_BUDGET"; cost: number } {
   const cut = truncateAtCollision(world, points, opts);
   let pts = cut.points;
   let result = pathCost(world, pts, opts);
   let clamped = false;
-  if (budget !== null && result.cost > budget + FT_EPSILON) {
+  if (budget !== null && stopOn(world, pts, opts, budget) !== null) {
     if (overlong === "reject") return { error: "OVER_BUDGET", cost: result.cost };
     pts = clampToBudget(world, pts, opts, budget);
     result = pathCost(world, pts, opts);
@@ -148,10 +157,9 @@ export function maxReachPoint(
   world: MoveWorld,
   points: P[],
   opts: Partial<MoveOptions>,
-  budget: number,
+  budget: number | Budget,
 ): P | null {
-  const all = pathCost(world, points, opts);
-  if (all.cost <= budget + FT_EPSILON) return null;
+  if (!stopOn(world, points, opts, budget)) return null;
   const cut = clampToBudget(world, points, opts, budget);
   return cut[cut.length - 1] ?? null;
 }

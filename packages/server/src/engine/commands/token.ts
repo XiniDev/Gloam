@@ -6,6 +6,7 @@ import {
   TokenDuplicate,
   TokenElevation,
   TokenFacing,
+  TokenMoveMode,
   TokenPlace,
   TokenSetLink,
   TokenUpdate,
@@ -472,7 +473,10 @@ function elevationCost(ctx: CommandCtx, t: TokenEntity, to: number): number | nu
   if (!(stats.speeds.fly > 0))
     throw new GloamError("INVALID", `${t.name} can't fly — only a flier rises or sinks in a fight.`);
   if (!t.overrides.ignoreConditionSpeed) {
-    const zero = speedZeroCondition(status.conditions.map((x) => x.id));
+    const zero = speedZeroCondition(
+      status.conditions.map((x) => x.id),
+      ctx.model.campaign.rulesPack,
+    );
     if (zero) throw new GloamError("SPEED_ZERO", `${t.name} can't move — ${statusName(zero)}.`);
   }
   const cost = Math.abs(to - t.elevation);
@@ -510,6 +514,46 @@ export const tokenElevation: CommandDef<z.infer<typeof TokenElevation>> = {
   },
 };
 
+const MOVING = {
+  walk: "walking",
+  fly: "flying",
+  swim: "swimming",
+  climb: "climbing",
+  burrow: "burrowing",
+} as const;
+
+/**
+ * `token.moveMode` (controller or DM; rules audit C1): the speed it moves by now — one it has (walking always), not
+ * flying while Prone (it stands first) unless it hovers, and not leaving the air above the ground but by flying down.
+ * Its budget in a fight is the new speed's, less what it has moved this turn (SRD 5.2.1 p. 188).
+ */
+export const tokenMoveMode: CommandDef<z.infer<typeof TokenMoveMode>, { mode: string }> = {
+  type: "token.moveMode",
+  schema: TokenMoveMode,
+  undoable: true,
+  authorize(ctx, p) {
+    requireController(ctx, p);
+    const t = mustGet(ctx, "token", p.tokenId);
+    const a = t.actorId ? ctx.model.get("actor", t.actorId) : undefined;
+    const { stats, status } = effectiveTokenState(t, a && a.deletedAt === null ? a : undefined);
+    if (p.mode !== "walk" && !((stats.speeds[p.mode] ?? 0) > 0))
+      throw new GloamError("INVALID", `${t.name} has no ${MOVING[p.mode]} speed.`);
+    if (p.mode === "fly" && !stats.speeds.hover && status.conditions.some((c) => c.id === "prone"))
+      throw new GloamError("INVALID", `${t.name} is Prone: it stands before it flies.`);
+    if (p.mode !== "fly" && t.moveMode === "fly" && t.elevation > 0 && !isDm(ctx.actor.role))
+      throw new GloamError("INVALID", `${t.name} is ${t.elevation} ft up: it flies down first.`);
+  },
+  plan(ctx, p) {
+    const t = mustGet(ctx, "token", p.tokenId);
+    return {
+      ops: setOps("token", t, { moveMode: p.mode }),
+      summary: `${t.name} moves by ${MOVING[p.mode]}`,
+      sceneId: t.sceneId,
+      result: { mode: p.mode },
+    };
+  },
+};
+
 /** `token.facing` — turn the token (SPEC §8.5 Facing). */
 export const tokenFacing: CommandDef<z.infer<typeof TokenFacing>> = {
   type: "token.facing",
@@ -527,6 +571,7 @@ export const tokenFacing: CommandDef<z.infer<typeof TokenFacing>> = {
 export const TOKEN_COMMANDS = [
   tokenSetLink,
   tokenElevation,
+  tokenMoveMode,
   tokenFacing,
   tokenCreate,
   tokenUpdate,

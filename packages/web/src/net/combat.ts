@@ -120,4 +120,7 @@ export const resetMove = (tokenId: string) => request("move.reset", { tokenId })
 export const dash = (tokenId: string) => request("move.dash", { tokenId });
 export const disengage = (tokenId: string) => request("move.disengage", { tokenId });
 export const dodge = (tokenId: string) => request("move.dodge", { tokenId });
+/** Which of its speeds the creature moves by now (rules audit C1). */
+export const setMoveMode = (tokenId: string, mode: "walk" | "fly" | "swim" | "climb" | "burrow") =>
+  request("token.moveMode", { tokenId, mode });
 export const standUp = (tokenId: string) => request("move.stand", { tokenId });

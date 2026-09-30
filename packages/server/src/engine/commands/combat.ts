@@ -30,8 +30,10 @@ import {
   initiativeHints,
   isDm,
   moveAfter,
+  moveModeOf,
   orderCombatants,
   PIP,
+  speedZeroCondition,
   standUpCost,
   stepTurn,
   type TieBreak,
@@ -154,12 +156,17 @@ export function initiativeModeOf(ctx: CommandCtx, t: TokenEntity, surprised: boo
   return initiativeHints(
     status.conditions.map((c) => c.id as string),
     surprised && pack !== "srd-5.1",
+    pack,
+    status.exhaustion,
   );
 }
 
-/** A combatant's Exhaustion level (its −2 a level on every D20 Test, initiative's roll included). */
+/**
+ * A combatant's Exhaustion level as a penalty on its initiative roll: −2 a level on every D20 Test (SRD 5.2.1) — none
+ * in SRD 5.1, whose table gives Disadvantage instead (`initiativeHints`).
+ */
 export function exhaustionOf(ctx: CommandCtx, t: TokenEntity): number {
-  return stateOf(ctx, t).status.exhaustion;
+  return ctx.model.campaign.rulesPack === "srd-5.1" ? 0 : stateOf(ctx, t).status.exhaustion;
 }
 
 /** A combatant's initiative modifier: Dex modifier plus any initiative bonus (§19.5). */
@@ -758,18 +765,22 @@ export function movementOf(
   if (!d.combatants.some((e) => e.tokenId === t.id)) return null;
   const a = t.actorId ? model.get("actor", t.actorId) : undefined;
   const { stats, status } = effectiveTokenState(t, a && a.deletedAt === null ? a : undefined);
-  const modes = ["walk", "fly", "swim", "climb", "burrow"] as const;
-  const mode = modes.find((m) => m === t.moveMode) ?? "walk";
+  // By the speed it moves with now (rules audit C1): what it has moved this turn counts against it.
+  const mode = moveModeOf(t.moveMode, stats.speeds);
   const speed = effectiveSpeed(
     t.overrides.speedOverride ?? stats.speeds[mode],
     status.conditions.map((x) => x.id as string),
     status.exhaustion,
     t.overrides.ignoreConditionSpeed === true,
+    model.campaign.rulesPack,
   );
   // A Speed of 0 can't be increased (SPEC R1 §19.4): a Speed-0 condition zeroes the bonus with the rest.
   const zeroed =
     t.overrides.ignoreConditionSpeed !== true &&
-    status.conditions.some((x) => (CONDITIONS as Record<string, ConditionInfo>)[x.id]?.speedZero);
+    speedZeroCondition(
+      status.conditions.map((x) => x.id as string),
+      model.campaign.rulesPack,
+    ) !== null;
   const bonus =
     !zeroed && bonusMoveActive(t.overrides.bonusMove, c.round) ? (t.overrides.bonusMove?.ft ?? 0) : 0;
   const active = d.begun && d.combatants[c.turnIndex]?.tokenId === t.id;
@@ -940,6 +951,7 @@ export const moveStand: CommandDef<z.infer<typeof MoveTurn>, { cost: number }> =
         status.conditions.map((x) => x.id as string),
         status.exhaustion,
         t.overrides.ignoreConditionSpeed === true,
+        ctx.model.campaign.rulesPack,
       );
     })();
     const cost = standUpCost(walk);

@@ -3,7 +3,17 @@ import type { TokenView } from "@gloam/shared/state";
 import { ringColorOf } from "../../board/colors.ts";
 import { HeldIcon } from "../../icons/combat.tsx";
 import { StatusIcon } from "../../icons/status.tsx";
-import { dash, disengage, dodge, endTurn, resetMove, setPip, standUp, useCombat } from "../../net/combat.ts";
+import {
+  dash,
+  disengage,
+  dodge,
+  endTurn,
+  resetMove,
+  setMoveMode,
+  setPip,
+  standUp,
+  useCombat,
+} from "../../net/combat.ts";
 import { useTable } from "../../net/table.ts";
 import { boardData, useEntities } from "../../state/entities.ts";
 import { useSettings } from "../../state/settings.ts";
@@ -30,6 +40,8 @@ const act = (p: Promise<unknown>, what: string) => void p.catch((e: Error) => to
  * two rows (a phone's layout).
  */
 export type Density = 0 | 1 | 2 | 3;
+
+const MODE_LABEL = { walk: "Walk", fly: "Fly", swim: "Swim", climb: "Climb", burrow: "Burrow" } as const;
 
 /** The actions the bar takes for a turn (each its Action): Dash, Disengage, Dodge (SRD 5.2.1 pp. 9–10). */
 export type TurnAction = "dash" | "disengage" | "dodge";
@@ -105,6 +117,15 @@ export function TurnControls({
         onSelect: () => act(standUp(mine.id), "Couldn't stand up"),
       }
     : null;
+  const speeds = (
+    [
+      ["walk", own.speedWalk],
+      ["fly", own.speedFly],
+      ["swim", own.speedSwim],
+      ["climb", own.speedClimb],
+      ["burrow", own.speedBurrow],
+    ] as const
+  ).filter(([mode, ft]) => mode === "walk" || ft > 0);
   const rest: { label: string; disabled?: boolean; hint?: string | undefined; onSelect: () => void }[] = [
     {
       label: "Dash",
@@ -117,6 +138,13 @@ export function TurnControls({
       label: TURN_ACTION[a].label,
       onSelect: () => (actionUsed ? setAsking(a) : take(a)),
     })),
+    // Its speeds, where it has more than one: the one it moves by, ticked — its budget follows (rules audit C1).
+    ...(speeds.length > 1
+      ? speeds.map(([mode, ft]) => ({
+          label: `${MODE_LABEL[mode]} ${ft} ft${own.mode === mode ? " ✓" : ""}`,
+          onSelect: () => act(setMoveMode(mine.id, mode), "Couldn't change how it moves"),
+        }))
+      : []),
     {
       label: "Reset move",
       disabled: own.usedFt <= 0 && own.segments === 0,

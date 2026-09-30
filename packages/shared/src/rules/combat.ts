@@ -99,10 +99,20 @@ const checkDisBy = (conditions: readonly string[]): string[] =>
 export function initiativeHints(
   conditions: readonly string[],
   surprised: boolean,
+  /** SRD 5.1: nothing from Invisible or Incapacitated; its Exhaustion (level 1 on) gives checks — initiative too —
+   * Disadvantage (rules audit C2). */
+  pack?: string,
+  exhaustion = 0,
 ): { mode: "normal" | "adv" | "dis"; adv: string[]; dis: string[] } {
   const all = expandConditions(conditions);
-  const adv = all.includes("invisible") ? ["Invisible"] : [];
-  const dis = [...incapacitatedBy(all), ...checkDisBy(all), ...(surprised ? ["Surprised"] : [])];
+  const srd51 = pack === "srd-5.1";
+  const adv = all.includes("invisible") && !srd51 ? ["Invisible"] : [];
+  const dis = [
+    ...(srd51 ? [] : incapacitatedBy(all)),
+    ...checkDisBy(all),
+    ...(srd51 && exhaustion >= 1 ? [`Exhaustion ${Math.min(6, Math.trunc(exhaustion))}`] : []),
+    ...(surprised ? ["Surprised"] : []),
+  ];
   const mode = adv.length && dis.length ? "normal" : adv.length ? "adv" : dis.length ? "dis" : "normal";
   return { mode, adv, dis };
 }

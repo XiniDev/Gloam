@@ -193,6 +193,27 @@ describe("P9 — the named persistent effects (§8.13, AC-SPL-08)", () => {
     await place(cleric, { x: 20, y: 60 });
   });
 
+  it("rules audit Q1: Spirit Guardians halves Speed — a cap on what may be spent inside, not a price on each foot: 20 ft used outside, no step in", async () => {
+    await fresh();
+    await toTurnOf(cleric);
+    await place(cleric, { x: 20, y: 60 });
+    await cast("spirit-guardians", 3);
+    // Goblin 2's moves count as its movement (the DM moving it on its turn).
+    await cmd(dm, "token.update", { tokenId: g2, overrides: { countAsMovement: true } });
+    await place(g2, { x: 60, y: 60 });
+    await toTurnOf(g2);
+    await cmd(dm, "move.commit", { tokenId: g2, points: [tokenOf(g2)?.pos, { x: 40, y: 60 }] });
+    // 20 of its 30 ft used: more than half — into the emanation it can't go; it stops at its edge.
+    await cmd(dm, "move.commit", { tokenId: g2, points: [tokenOf(g2)?.pos, { x: 22, y: 60 }] });
+    const at = tokenOf(g2)?.pos as { x: number; y: number };
+    const edge = 15 + (tokenOf(cleric)?.sizeFt ?? 5) / 2;
+    expect(Math.hypot(at.x - 20, at.y - 60)).toBeGreaterThan(edge - 0.1);
+    expect(at.x).toBeLessThan(40);
+    await clearCards();
+    await clearEffects();
+    await cmd(dm, "token.update", { tokenId: g2, overrides: { countAsMovement: false } });
+  });
+
   it("rules audit A4: a lasting effect reaches as its cast did — not through a wall, not a flier high over it", async () => {
     await fresh();
     await toTurnOf(cleric);

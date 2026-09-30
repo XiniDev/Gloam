@@ -400,10 +400,16 @@ export const MOVE_MODES = ["walk", "fly", "swim", "climb", "burrow"] as const;
  * `move.commit` (SPEC §13.5, §16.5): a token's move along a path the client previewed — routed, freehand or through
  * waypoints. Points in feet, the first within 0.5 ft of the token; `elevations` (one per point) for flying.
  */
+/**
+ * `token.moveMode` (the creature's controller, or the DM): which of its speeds it moves by now (SRD 5.2.1 p. 188,
+ * "Using Different Speeds"; rules audit C1) — what it has moved this turn counts against the new one.
+ */
+export const TokenMoveMode = z.strictObject({ tokenId: Id, mode: z.enum(MOVE_MODES) });
 export const MoveCommit = z.strictObject({
   tokenId: Id,
   points: z.array(Vec2In).min(2).max(256),
-  mode: z.enum(MOVE_MODES).default("walk"),
+  /** How it moves (absent: the way it's moving now — its token's mode). */
+  mode: z.enum(MOVE_MODES).optional(),
   elevations: z.array(z.number().finite().min(-1000).max(10_000)).max(256).optional(),
 });
 /** `move.preview` (msg, ≤ 15/s): the path a controller is dragging, relayed to everyone who can see the token. */

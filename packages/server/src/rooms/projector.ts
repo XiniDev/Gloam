@@ -2,6 +2,7 @@ import type { ArraySchema } from "@colyseus/schema";
 import {
   effectiveSpeed,
   effectiveTokenState,
+  exhaustedHpMax,
   HP_BAND_HIDDEN,
   hpBand,
   speedZeroCondition,
@@ -62,7 +63,14 @@ export interface ProjectionCtx {
 /** The full token view (every tag). The per-client StateView decides which tags each viewer receives. */
 export function tokenView(t: TokenEntity, ctx: ProjectionCtx): TokenView {
   const actor = t.actorId ? ctx.model.get("actor", t.actorId) : undefined;
-  const { stats, status } = effectiveTokenState(t, actor);
+  const raw = effectiveTokenState(t, actor);
+  const status = raw.status;
+  // SRD 5.1's Exhaustion 4 halves its HP maximum: shown so, its HP held to it (rules audit C2).
+  const hpMaxNow = exhaustedHpMax(raw.stats.hpMax, status.exhaustion, ctx.model.campaign.rulesPack);
+  const stats =
+    hpMaxNow === raw.stats.hpMax
+      ? raw.stats
+      : { ...raw.stats, hpMax: hpMaxNow, hp: Math.min(raw.stats.hp, hpMaxNow) };
   const conditions = status.conditions.map((c) => c.id as string);
   // Deafened while entirely inside a Silence (derived from where it stands, never stored).
   // (A DM-only Silence's Deafened is the DM's to say: the token's public conditions don't show it.)
@@ -91,8 +99,11 @@ export function tokenView(t: TokenEntity, ctx: ProjectionCtx): TokenView {
     conditions,
     status.exhaustion,
     t.overrides.ignoreConditionSpeed === true,
+    ctx.model.campaign.rulesPack,
   );
-  const heldBy = t.overrides.ignoreConditionSpeed ? null : speedZeroCondition(conditions);
+  const heldBy = t.overrides.ignoreConditionSpeed
+    ? null
+    : speedZeroCondition(conditions, ctx.model.campaign.rulesPack);
   // Why it can't move at all, for the action bar to say (§8.6, `stuckName`); a DM's move ignores all of it.
   const stuck =
     t.locked || t.overrides.lockMovement

@@ -53,9 +53,11 @@ export function hintFor(
   test: RollTest | null,
   /** Its token's markers and Speed, where it has a token (Dodging: advantage on Dexterity saves). */
   creature?: { markers: readonly string[]; speedFt?: number },
+  pack?: string,
+  exhaustion = 0,
 ): { mode: RollMode; from: string[] } {
   if (!test) return { mode: "normal", from: [] };
-  const h = rollHints(conditions, 0, test.kind, test.ability, creature);
+  const h = rollHints(conditions, exhaustion, test.kind, test.ability, creature, pack);
   const mode = hintedMode(h);
   return {
     mode,

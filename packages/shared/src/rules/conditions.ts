@@ -182,6 +182,26 @@ export function expandConditions(ids: readonly string[]): string[] {
 }
 
 /**
+ * What SRD 5.1 has differently (SPEC §19.3, §34.8; docs/research/rules-5.2.1.md "5.1 differences"; rules audit C2):
+ * Grappled gives no Disadvantage on its attacks, Incapacitated and Invisible nothing on initiative (5.1 has no such
+ * rule), and a Stunned creature can't move.
+ */
+const SRD51: Partial<Record<string, Partial<ConditionInfo>>> = {
+  grappled: { own: {}, note: undefined },
+  incapacitated: { own: {} },
+  invisible: { own: { attack: "adv" } },
+  stunned: { speedZero: true },
+};
+
+/** A condition's rules in the campaign's pack (SRD 5.2.1 unless it plays SRD 5.1). */
+export function conditionInfo(id: string, pack?: string): ConditionInfo | undefined {
+  const base = (CONDITIONS as Record<string, ConditionInfo>)[id];
+  if (!base || pack !== "srd-5.1") return base;
+  const d = SRD51[id];
+  return d ? { ...base, ...d } : base;
+}
+
+/**
  * Why a creature can't have a condition, if it can't: its own immunity (a stat block's Condition Immunities), or one
  * a condition it has grants (Petrified: "Immunity to the Poisoned condition", SRD 5.2.1 p. 186; rules audit A12).
  */
@@ -288,20 +308,23 @@ export function rollHints(
   ability?: string,
   /** Its markers and its Speed now, where they're known (Dodging's advantage on Dexterity saves, rules audit A10). */
   creature?: { markers: readonly string[]; speedFt?: number },
+  /** The campaign's rules pack: SRD 5.1's conditions and Exhaustion table (rules audit C2). */
+  pack?: string,
 ): RollHints {
   const out: RollHints = { adv: [], dis: [], penalty: 0, autoFail: [] };
   // (Each condition with those it includes; Incapacitated's initiative disadvantage counted once, named for what
   // brought it.)
   let incapacitatedDis = false;
+  const srd51 = pack === "srd-5.1";
   for (const id of expandConditions(conditions)) {
-    const info = (CONDITIONS as Record<string, ConditionInfo>)[id];
+    const info = conditionInfo(id, pack);
     if (!info) continue;
     // (Initiative is a Dexterity check: what a condition does to ability checks, it does to initiative — rules audit A7.)
     const own = info.own[kind] ?? (kind === "initiative" ? info.own.check : undefined);
     const hint = { from: info.name, ...(info.note ? { note: info.note } : {}) };
     // Incapacitated — or a condition that includes it (Stunned, Paralyzed, Petrified, Unconscious) — gives initiative
     // disadvantage (SRD 5.2.1): once, named for the first that brings it.
-    if (kind === "initiative" && info.incapacitated) {
+    if (kind === "initiative" && info.incapacitated && !srd51) {
       if (!incapacitatedDis) out.dis.push(hint);
       incapacitatedDis = true;
     } else {
@@ -315,9 +338,14 @@ export function rollHints(
   // Dodge: "you make Dexterity saving throws with Advantage" — while it holds (SRD 5.2.1 p. 181).
   if (kind === "save" && ability === "dex" && creature && dodgeHolds({ conditions, ...creature }))
     out.adv.push({ from: "Dodging" });
-  // Exhaustion: every D20 Test (attacks, ability checks, saves; initiative is a Dex check).
+  // Exhaustion: every D20 Test (attacks, ability checks, saves; initiative is a Dex check) −2 a level — or SRD 5.1's
+  // table: Disadvantage on ability checks from level 1, on attack rolls and saving throws from level 3 (5.1 p. 291).
   const lvl = Math.max(0, Math.min(6, Math.trunc(exhaustion)));
-  if (lvl) out.penalty = -2 * lvl;
+  if (lvl && !srd51) out.penalty = -2 * lvl;
+  if (srd51 && lvl >= 1 && (kind === "check" || kind === "initiative"))
+    out.dis.push({ from: `Exhaustion ${lvl}` });
+  if (srd51 && lvl >= 3 && (kind === "attack" || kind === "save"))
+    out.dis.push({ from: `Exhaustion ${lvl}` });
   return out;
 }
 
@@ -354,7 +382,7 @@ export interface AttackHints extends RollHints {
  * Each hint says why; the roller can take any of them away before rolling.
  */
 export function attackHints(
-  attacker: { conditions: readonly string[]; exhaustion: number },
+  attacker: { conditions: readonly string[]; exhaustion: number; pack?: string | undefined },
   target: {
     conditions: readonly string[];
     markers: readonly string[];
@@ -377,7 +405,7 @@ export function attackHints(
   },
 ): AttackHints {
   const out: AttackHints = {
-    ...rollHints(attacker.conditions, attacker.exhaustion, "attack"),
+    ...rollHints(attacker.conditions, attacker.exhaustion, "attack", undefined, undefined, attacker.pack),
     critOnHit: null,
   };
   const near = at.withinFt <= 5 + 1e-6;
@@ -413,26 +441,29 @@ export function hintedMode(h: Pick<RollHints, "adv" | "dis">): "normal" | "adv" 
 
 /**
  * Speed after conditions (§19.4): 0 with any Speed-0 condition (unless the DM lets it ignore them); otherwise less
- * 5 ft per Exhaustion level, never below 0.
+ * 5 ft per Exhaustion level, never below 0 — or, in SRD 5.1, halved from Exhaustion 2 and 0 from 5 (rules audit C2).
  */
 export function effectiveSpeed(
   speed: number,
   conditions: readonly string[],
   exhaustion: number,
   ignoreConditionSpeed = false,
+  pack?: string,
 ): number {
-  if (
-    !ignoreConditionSpeed &&
-    conditions.some((id) => (CONDITIONS as Record<string, ConditionInfo>)[id]?.speedZero)
-  )
-    return 0;
-  return Math.max(0, speed - 5 * Math.max(0, Math.min(6, Math.trunc(exhaustion))));
+  if (!ignoreConditionSpeed && speedZeroCondition(conditions, pack)) return 0;
+  const lvl = Math.max(0, Math.min(6, Math.trunc(exhaustion)));
+  if (pack === "srd-5.1") return lvl >= 5 ? 0 : lvl >= 2 ? Math.floor(speed / 2) : speed;
+  return Math.max(0, speed - 5 * lvl);
 }
 
 /** The condition holding a creature's Speed at 0 (Grappled, Restrained…), if any (§8.6: "Can't move — Grappled"). */
-export function speedZeroCondition(conditions: readonly string[]): string | null {
-  return conditions.find((id) => (CONDITIONS as Record<string, ConditionInfo>)[id]?.speedZero) ?? null;
+export function speedZeroCondition(conditions: readonly string[], pack?: string): string | null {
+  return conditions.find((id) => conditionInfo(id, pack)?.speedZero) ?? null;
 }
+
+/** SRD 5.1's Exhaustion 4: its hit point maximum halved (5.1 p. 291; rules audit C2). */
+export const exhaustedHpMax = (hpMax: number, exhaustion: number, pack?: string): number =>
+  pack === "srd-5.1" && exhaustion >= 4 ? Math.floor(hpMax / 2) : hpMax;
 
 /**
  * Why a creature can't move at all, as the table says it (§8.6 "Can't move — Grappled"): from the code its view carries

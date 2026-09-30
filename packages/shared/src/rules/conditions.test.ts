@@ -3,9 +3,11 @@ import { CONDITION_IDS, MARKER_IDS } from "../constants.ts";
 import {
   attackHints,
   CONDITIONS,
+  conditionInfo,
   conditionsBearing,
   dodgeHolds,
   effectiveSpeed,
+  exhaustedHpMax,
   expandConditions,
   hintedMode,
   immuneToCondition,
@@ -94,6 +96,36 @@ describe("conditions and markers (SPEC §8.11, §19.3, §34.1)", () => {
     expect(effectiveSpeed(30, [], 2)).toBe(20);
     expect(effectiveSpeed(25, [], 6)).toBe(0);
     expect(effectiveSpeed(30, ["restrained"], 1, true)).toBe(25);
+  });
+});
+
+describe("SRD 5.1's variants (SPEC §19.3, §34.8; rules audit C2)", () => {
+  const P51 = "srd-5.1";
+  it("Stunned can't move; Grappled gives no Disadvantage on attacks; Incapacitated and Invisible nothing on initiative", () => {
+    expect(conditionInfo("stunned", P51)?.speedZero).toBe(true);
+    expect(conditionInfo("stunned")?.speedZero).toBe(false);
+    expect(effectiveSpeed(30, ["stunned"], 0, false, P51)).toBe(0);
+    expect(effectiveSpeed(30, ["stunned"], 0)).toBe(30);
+    expect(rollHints(["grappled"], 0, "attack", undefined, undefined, P51).dis).toEqual([]);
+    expect(rollHints(["grappled"], 0, "attack").dis).toHaveLength(1);
+    expect(rollHints(["incapacitated"], 0, "initiative", undefined, undefined, P51).dis).toEqual([]);
+    expect(rollHints(["invisible"], 0, "initiative", undefined, undefined, P51).adv).toEqual([]);
+    expect(rollHints(["invisible"], 0, "attack", undefined, undefined, P51).adv).toHaveLength(1);
+  });
+  it("Exhaustion by its table: checks at a Disadvantage from 1, attacks and saves from 3; Speed halved from 2, 0 from 5; HP maximum halved from 4 — no −2 a level", () => {
+    expect(rollHints([], 1, "check", "wis", undefined, P51)).toMatchObject({
+      penalty: 0,
+      dis: [{ from: "Exhaustion 1" }],
+    });
+    expect(rollHints([], 2, "save", "con", undefined, P51).dis).toEqual([]);
+    expect(rollHints([], 3, "save", "con", undefined, P51).dis).toEqual([{ from: "Exhaustion 3" }]);
+    expect(rollHints([], 3, "attack", undefined, undefined, P51).dis).toEqual([{ from: "Exhaustion 3" }]);
+    expect(rollHints([], 2, "save", "con").penalty).toBe(-4);
+    expect([1, 2, 4, 5].map((l) => effectiveSpeed(30, [], l, false, P51))).toEqual([30, 15, 15, 0]);
+    expect(effectiveSpeed(30, [], 2)).toBe(20);
+    expect(exhaustedHpMax(40, 4, P51)).toBe(20);
+    expect(exhaustedHpMax(40, 3, P51)).toBe(40);
+    expect(exhaustedHpMax(40, 4)).toBe(40);
   });
 });
 

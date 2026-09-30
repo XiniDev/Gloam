@@ -369,14 +369,16 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
         )
           throw new GloamError("FORBIDDEN", "That isn't your sheet.");
         const sheet = actor && actor.deletedAt === null ? readSheet(actor) : undefined;
-        // A creature's D20 Tests lose 2 × its Exhaustion level (AC-HP-05), whoever rolls them.
+        // A creature's D20 Tests lose 2 × its Exhaustion level (AC-HP-05), whoever rolls them — SRD 5.2.1's; SRD 5.1's
+        // table gives Disadvantage instead, the roller's hint (rules audit C2).
         const live = actor && actor.deletedAt === null ? actor : undefined;
         const status = token
           ? effectiveTokenState(token, token.link === "linked" ? live : undefined).status
           : live
             ? statusFromActor(live.status)
             : null;
-        const formula = status?.exhaustion ? withPenalty(p.formula, -2 * status.exhaustion) : p.formula;
+        const penalize = Boolean(status?.exhaustion) && this.model.campaign.rulesPack !== "srd-5.1";
+        const formula = penalize ? withPenalty(p.formula, -2 * (status?.exhaustion ?? 0)) : p.formula;
         const r = this.dice.roll(this.campaignId, this.projector.activeSceneId || null, roller, {
           formula,
           visibility: p.visibility,
@@ -1072,10 +1074,17 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
       const conds = conditionsBearing(x.status.conditions, {
         sees: (src) => (x.token ? this.tokenSees(x.token.id, src) : null),
       });
-      const h = rollHints(conds, x.status.exhaustion, kind ?? "check", ability, {
-        markers: x.status.markers.map((m) => m.id as string),
-        ...(x.speedFt !== undefined ? { speedFt: x.speedFt } : {}),
-      });
+      const h = rollHints(
+        conds,
+        x.status.exhaustion,
+        kind ?? "check",
+        ability,
+        {
+          markers: x.status.markers.map((m) => m.id as string),
+          ...(x.speedFt !== undefined ? { speedFt: x.speedFt } : {}),
+        },
+        this.model.campaign.rulesPack,
+      );
       if (surprised.has(id)) h.dis.push({ from: "Surprised" });
       // Exhaustion takes 2 × its level off every D20 Test (AC-HP-05), in the formula for everyone to see.
       const formula = withPenalty(targetFormula(base, creatureRefs(x.token, x.sheet), p.adv), h.penalty);
@@ -1181,7 +1190,7 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
         token,
         ...(sheet ? { sheet } : {}),
         status,
-        speedFt: speedNowFt(token, stats, status),
+        speedFt: speedNowFt(token, stats, status, this.model.campaign.rulesPack),
       };
     }
     const actor = this.model.get("actor", id);

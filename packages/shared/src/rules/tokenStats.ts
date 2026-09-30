@@ -182,14 +182,33 @@ export function effectiveTokenState(
  * DM's override where there is one), after its conditions (a Speed-0 condition, unless the DM lets it ignore them) and
  * Exhaustion. 0: it can't move by its own means at all.
  */
-export function speedNowFt(token: TokenEntity, stats: TokenStats, status: TokenStatusT): number {
+export function speedNowFt(
+  token: TokenEntity,
+  stats: TokenStats,
+  status: TokenStatusT,
+  pack?: string,
+): number {
   const s = stats.speeds;
   return effectiveSpeed(
     token.overrides.speedOverride ?? Math.max(s.walk, s.fly, s.swim, s.climb, s.burrow),
     status.conditions.map((c) => c.id as string),
     status.exhaustion,
     token.overrides.ignoreConditionSpeed === true,
+    pack,
   );
+}
+
+/**
+ * The way a creature moves now (rules audit C1): its token's mode while it still has that speed (walking always); one
+ * it has lost (a Fly spell ended) falls back to walking.
+ */
+export function moveModeOf(
+  mode: string,
+  speeds: { walk: number; fly: number; swim: number; climb: number; burrow: number },
+): "walk" | "fly" | "swim" | "climb" | "burrow" {
+  if (mode === "fly" || mode === "swim" || mode === "climb" || mode === "burrow")
+    return speeds[mode] > 0 ? mode : "walk";
+  return "walk";
 }
 
 /** HP band (SPEC §8.5 Descriptor): 4 Healthy 100 %, 3 Hurt 51–99 %, 2 Bloodied 26–50 %, 1 Critical 1–25 %, 0 Down. */

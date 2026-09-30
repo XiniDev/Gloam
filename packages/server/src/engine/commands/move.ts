@@ -1,6 +1,7 @@
 import { SIZES, type Size } from "@gloam/shared";
 import { dist, type P, pathLength } from "@gloam/shared/geometry";
 import {
+  type Budget,
   clampFlight,
   clampToBudget,
   clearanceRadius,
@@ -10,6 +11,7 @@ import {
   maxMoveLength,
   pathCost,
   type SpaceCreature,
+  turnBudget,
   validateMove,
   withCreatureSpaces,
 } from "@gloam/shared/movement";
@@ -20,6 +22,7 @@ import {
   effectiveTokenState,
   incapacitates,
   isDm,
+  moveModeOf,
   speedZeroCondition,
   statusName,
 } from "@gloam/shared/rules";
@@ -56,7 +59,7 @@ export interface MoveResult {
  * order and speed-zero conditions join with combat (Phase 8), creature spaces with it too.
  */
 /** How each way of moving reads in a refusal ("can't fly"). */
-const MODE_VERB: Record<z.infer<typeof MoveCommit>["mode"], string> = {
+const MODE_VERB: Record<NonNullable<z.infer<typeof MoveCommit>["mode"]>, string> = {
   walk: "walk",
   fly: "fly",
   swim: "swim",
@@ -86,18 +89,22 @@ export const moveCommit: CommandDef<z.infer<typeof MoveCommit>, MoveResult> = {
     if (!t.overrides.ignoreConditionSpeed) {
       const actor = t.actorId ? ctx.model.get("actor", t.actorId) : undefined;
       const { status } = effectiveTokenState(t, actor);
-      const zero = speedZeroCondition(status.conditions.map((x) => x.id));
+      const zero = speedZeroCondition(
+        status.conditions.map((x) => x.id),
+        ctx.model.campaign.rulesPack,
+      );
       if (zero) throw new GloamError("SPEED_ZERO", `${t.name} can't move — ${statusName(zero)}.`);
     }
     // A way of moving it has (§16.4, §19.4; rules audit A3): a flight, a swim, a climb or a burrow needs that speed;
     // height changes only in flight; a Prone flier falls rather than flies (unless it hovers).
     const actor = t.actorId ? ctx.model.get("actor", t.actorId) : undefined;
     const { stats, status } = effectiveTokenState(t, actor);
-    if (p.mode !== "walk" && !((stats.speeds[p.mode] ?? 0) > 0))
-      throw new GloamError("INVALID", `${t.name} can't ${MODE_VERB[p.mode]}.`);
-    if (p.elevations && p.mode !== "fly")
+    const mode = p.mode ?? moveModeOf(t.moveMode, stats.speeds);
+    if (mode !== "walk" && !((stats.speeds[mode] ?? 0) > 0))
+      throw new GloamError("INVALID", `${t.name} can't ${MODE_VERB[mode]}.`);
+    if (p.elevations && mode !== "fly")
       throw new GloamError("INVALID", "Only a flight changes height as it goes.");
-    if (p.mode === "fly" && !stats.speeds.hover && status.conditions.some((c) => c.id === "prone"))
+    if (mode === "fly" && !stats.speeds.hover && status.conditions.some((c) => c.id === "prone"))
       throw new GloamError("INVALID", `${t.name} is Prone — stand up before flying.`);
   },
   plan(ctx, p) {
@@ -127,12 +134,16 @@ export const moveCommit: CommandDef<z.infer<typeof MoveCommit>, MoveResult> = {
     // token's "Count as movement" is on (AC-MOV-07).
     const combat = combatOn(ctx.model, t.sceneId);
     const d = combat ? dataOf(combat) : null;
-    const m = movementOf(ctx.model, t);
+    // A move at another of its speeds switches it (SRD 5.2.1 p. 188): its budget is that speed's, less what it's moved.
+    const moveMode = p.mode ?? moveModeOf(t.moveMode, stats.speeds);
+    const m = movementOf(ctx.model, moveMode === t.moveMode ? t : { ...t, moveMode });
     const free = d?.freeMovement === true || t.overrides.freeMovement === true;
     // (A DM acting as this creature's character moves on its player's behalf: that counts too — AC-DMP-03.)
     const actingFor = Boolean(t.actorId) && ctx.actor.actingAs?.actorId === t.actorId;
     const counts = !dm || t.overrides.countAsMovement === true || actingFor;
-    const turnBudget = m?.active && !free && counts ? Math.max(0, m.budget - m.used) : null;
+    // What it may spend this turn — halved ground capped at half the turn's budget, less what it's used (rules audit
+    // Q1: Spirit Guardians halves Speed; it doesn't double each foot's price).
+    const turnAllow = m?.active && !free && counts ? turnBudget(m.budget, m.used) : null;
     // Outside combat, with the house rule Exploration movement "Limited to speed per move" (§19.6): a player's one move
     // goes at most its Speed (conditions, its override and Exhaustion counted) — clamped or refused as Overlong moves
     // says. Free movement and the DM's own drags aren't limited.
@@ -143,9 +154,12 @@ export const moveCommit: CommandDef<z.infer<typeof MoveCommit>, MoveResult> = {
             status.conditions.map((x) => x.id as string),
             status.exhaustion,
             t.overrides.ignoreConditionSpeed === true,
+            ctx.model.campaign.rulesPack,
           )
         : null;
-    const budget = turnBudget ?? explore;
+    const allow: Budget | null = turnAllow ?? (explore !== null ? turnBudget(explore, 0) : null);
+    // (Its feet left on ordinary ground, for what it says.)
+    const budget = allow ? Math.max(0, allow.left) : null;
     // Creature spaces (§16.5 step 6, AC-MOV-16): players' moves, when the house rule enforces them.
     const spaces =
       !dm && (rules.creatureSpaces === "always" || (rules.creatureSpaces === "combat" && Boolean(combat)));
@@ -159,21 +173,26 @@ export const moveCommit: CommandDef<z.infer<typeof MoveCommit>, MoveResult> = {
     // Flying (§16.4): paid by its 3D length — its climbs and dives, and the effects it flies through at their heights
     // — and held to the budget by that, not by the ground route's length (rules audit A3: the cost was the 3D length
     // set after a 2D clamp, and less than was checked).
-    const flying = p.mode === "fly" && p.elevations !== undefined;
+    const flying = moveMode === "fly" && p.elevations !== undefined;
     let elevs: number[] | null = flying ? [t.elevation, ...(p.elevations as number[]).slice(1)] : null;
     const overBudget = (c: number, b: number) =>
       new GloamError(
         "OVER_BUDGET",
-        turnBudget === null && explore !== null
+        turnAllow === null && explore !== null
           ? `That move is ${Math.round(c)} ft; one move goes at most ${Math.floor(explore)} ft (its speed).`
           : `That move is ${Math.round(c)} ft; ${Math.floor(b)} ft of movement left.`,
       );
     const holdFlight = (clampOnly: boolean) => {
       if (!elevs) return;
       cost = flightCost(path, elevs, world);
-      if (budget === null || cost <= budget + 0.05) return;
-      if (!clampOnly && rules.overlongMoves === "reject") throw overBudget(cost, budget);
-      const c = clampFlight(world, path, elevs, budget);
+      if (allow === null) return;
+      const c = clampFlight(world, path, elevs, allow);
+      if (
+        c.points.length === path.length &&
+        dist(c.points[c.points.length - 1] as P, path[path.length - 1] as P) < 1e-6
+      )
+        return;
+      if (!clampOnly && rules.overlongMoves === "reject") throw overBudget(cost, budget ?? 0);
       path = c.points;
       elevs = c.elevations;
       cost = flightCost(path, elevs, world);
@@ -181,18 +200,18 @@ export const moveCommit: CommandDef<z.infer<typeof MoveCommit>, MoveResult> = {
     if (dm) {
       cost = pathCost(world, path, { crawl }).cost;
       if (flying) holdFlight(true);
-      else if (budget !== null && cost > budget + 0.05) {
-        path = clampToBudget(world, path, { crawl }, budget);
+      else if (allow !== null) {
+        path = clampToBudget(world, path, { crawl }, allow);
         cost = pathCost(world, path, { crawl }).cost;
       }
     } else {
       const rc = clearanceRadius(t.sizeFt, rules.squeeze);
       // (A flight's walls checked on the ground route, unclamped: its cost and budget are its own, below.)
-      const v = validateMove(world, points, { rc, crawl }, flying ? null : budget, rules.overlongMoves);
+      const v = validateMove(world, points, { rc, crawl }, flying ? null : allow, rules.overlongMoves);
       if ("error" in v)
         throw new GloamError(
           "OVER_BUDGET",
-          turnBudget === null && explore !== null
+          turnAllow === null && explore !== null
             ? `That move is ${Math.round(v.cost)} ft; one move goes at most ${Math.floor(explore)} ft (its speed).`
             : `That move is ${Math.round(v.cost)} ft; ${Math.floor(budget ?? 0)} ft of movement left.`,
         );
@@ -233,6 +252,7 @@ export const moveCommit: CommandDef<z.infer<typeof MoveCommit>, MoveResult> = {
       }
     }
     if (elevation !== t.elevation) patch.elevation = Math.max(-1000, Math.round(elevation / 5) * 5);
+    if (moveMode !== t.moveMode) patch.moveMode = moveMode;
     const ops: Op[] = setOps("token", t, patch);
     const light = t.lightId ? ctx.model.get("light", t.lightId) : undefined;
     if (light && patch.pos) ops.push(...setOps("light", light, { pos: patch.pos }));

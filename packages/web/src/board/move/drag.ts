@@ -1,5 +1,6 @@
 import { type P, pathLength, simplifyPath } from "@gloam/shared/geometry";
 import {
+  type Budget,
   clearanceRadius,
   type MoveWorld,
   maxReachPoint,
@@ -9,6 +10,7 @@ import {
   route,
   type Side,
   truncateAtCollision,
+  turnBudget,
   withCreatureSpaces,
 } from "@gloam/shared/movement";
 import { incapacitates, PIP, stuckName } from "@gloam/shared/rules";
@@ -233,11 +235,20 @@ const dmOverrides = (t: TokenView): { countAsMovement?: boolean } => {
  * what it used — unless it (or everyone) moves freely; a DM's move only when its "Count as movement" is on. Else none.
  */
 function budgetFor(t: TokenView): number | null {
+  const a = allowanceFor(t);
+  return a ? Math.max(0, a.left) : null;
+}
+
+/**
+ * What its move may spend on its turn (rules audit Q1): the feet left, and on ground that halves its Speed (Spirit
+ * Guardians) half its turn's budget less what it has used — as the server holds it.
+ */
+function allowanceFor(t: TokenView): Budget | null {
   const v = useCombat.getState().view;
   if (!v.active || !v.begun || v.freeMovement || t.own?.freeMovement || !t.own) return null;
   if (v.entries[v.activeIndex]?.tokenId !== t.id) return null;
   if (isDm() && !dmOverrides(t).countAsMovement) return null;
-  return Math.max(0, t.own.budgetFt - t.own.usedFt);
+  return turnBudget(t.own.budgetFt, t.own.usedFt);
 }
 
 /** Whether other creatures' spaces shape a player's move now (house rule "Enforce creature spaces"). */
@@ -289,12 +300,12 @@ function creatureOf(t: TokenView): { swim: boolean; id: string } {
  */
 export function rangeInputs(
   t: TokenView,
-): { world: MoveWorld; rc: number; crawl: boolean; budget: number } | null {
+): { world: MoveWorld; rc: number; crawl: boolean; budget: number; halvedBudget: number } | null {
   const base = clientMoveWorld(creatureOf(t));
   if (!base || !t.own) return null;
   const world = spacesApply() ? withSpaces(base, t) : base;
-  const left = budgetFor(t);
-  return { world, ...optionsFor(t), budget: left ?? t.own.budgetFt };
+  const a = allowanceFor(t) ?? turnBudget(t.own.budgetFt, 0);
+  return { world, ...optionsFor(t), budget: Math.max(0, a.left), halvedBudget: a.halvedLeft };
 }
 
 /** Recomputes the preview for the current goal, waypoints and mode. */
@@ -326,7 +337,7 @@ function compute(): void {
   const budget = budgetFor(t);
   if (budget !== null && preview.ok) {
     preview.budget = budget;
-    const reach = maxReachPoint(world, preview.points, opts, budget);
+    const reach = maxReachPoint(world, preview.points, opts, allowanceFor(t) ?? budget);
     if (reach) preview.reach = reach;
   }
   if (useCombat.getState().view.active && preview.ok) {

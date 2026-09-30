@@ -31,29 +31,98 @@ export interface RouteResult {
 }
 
 /**
- * Cost of a straight segment (§16.4): its length split at every region boundary, each piece × its multiplier —
- * 1, +1 inside difficult terrain (never cumulative), +1 in water without a swimming speed (stacking with difficult
- * terrain), +1 when crawling.
+ * What a move may spend (§16.5 step 5; rules audit Q1): `left` feet — and, on ground that halves its Speed (Spirit
+ * Guardians), at most `halvedLeft`: what the turn has used in all may be no more than half the turn's budget there
+ * ("subtract the distance already moved from the new Speed"), so `halvedLeft` is that half less what the turn had used
+ * before this move — below 0, it can't go in at all. Halving is a cap on the speed, not a price on each foot: 10 ft in
+ * the emanation and out again leaves 20 of a 30-ft Speed, not 10.
  */
-export function segmentCost(world: MoveWorld, a: P, b: P, opts: Partial<MoveOptions>): SegmentCost {
+export interface Budget {
+  left: number;
+  halvedLeft: number;
+}
+/** An allowance with no halving to it: the same everywhere. */
+export const budgetOf = (b: number | Budget): Budget =>
+  typeof b === "number" ? { left: b, halvedLeft: b } : b;
+/** A turn's allowance from its budget and what it has used (the halved cap: half the budget, less the used). */
+export const turnBudget = (budget: number, used: number): Budget => ({
+  left: budget - used,
+  halvedLeft: budget / 2 - used,
+});
+
+/** A stretch of a segment, `t0`–`t1` of it, inside the same ground: what it costs, and whether Speed is halved there. */
+export interface CostPiece {
+  t0: number;
+  t1: number;
+  cost: number;
+  halved: boolean;
+  difficultFt: number;
+}
+
+/**
+ * A straight segment's pieces (§16.4): its length split at every region boundary, each piece × its multiplier — 1, +1
+ * inside difficult terrain (never cumulative), +1 in water without a swimming speed (stacking with difficult terrain),
+ * +1 when crawling. Halved Speed doesn't change the price: it caps what may be spent there (`Budget`).
+ */
+export function segmentPieces(world: MoveWorld, a: P, b: P, opts: Partial<MoveOptions>): CostPiece[] {
   const len = dist(a, b);
   const extra = opts.crawl ? 1 : 0;
-  if (len < 1e-12) return { from: a, to: b, cost: 0, difficultFt: 0 };
-  if (!world.regions.length) return { from: a, to: b, cost: len * (1 + extra), difficultFt: 0 };
+  if (len < 1e-12) return [];
+  if (!world.regions.length)
+    return [{ t0: 0, t1: 1, cost: len * (1 + extra), halved: false, difficultFt: 0 }];
   const ts = [0, ...world.regionCrossings(a, b), 1];
-  let cost = 0;
-  let difficultFt = 0;
+  const out: CostPiece[] = [];
   for (let i = 1; i < ts.length; i++) {
     const t0 = ts[i - 1] as number;
     const t1 = ts[i] as number;
     if (t1 - t0 < 1e-12) continue;
     const piece = len * (t1 - t0);
     const at = world.regionsAt(lerp(a, b, (t0 + t1) / 2));
-    if (at.difficult) difficultFt += piece;
-    // Halved Speed (Spirit Guardians) doubles what each foot costs there, whatever else it costs (§8.13).
-    cost += piece * (1 + (at.difficult ? 1 : 0) + (at.swim ? 1 : 0) + extra) * (at.halved ? 2 : 1);
+    out.push({
+      t0,
+      t1,
+      cost: piece * (1 + (at.difficult ? 1 : 0) + (at.swim ? 1 : 0) + extra),
+      halved: at.halved,
+      difficultFt: at.difficult ? piece : 0,
+    });
+  }
+  return out;
+}
+
+/** Cost of a straight segment (§16.4): the sum of its pieces. */
+export function segmentCost(world: MoveWorld, a: P, b: P, opts: Partial<MoveOptions>): SegmentCost {
+  let cost = 0;
+  let difficultFt = 0;
+  for (const p of segmentPieces(world, a, b, opts)) {
+    cost += p.cost;
+    difficultFt += p.difficultFt;
   }
   return { from: a, to: b, cost, difficultFt };
+}
+
+/**
+ * Where spending along a run of segments first breaks the allowance (§16.5 step 5 "clamp"; rules audit Q1): null
+ * when all of it is within it; else the segment and the fraction along it where it stops — the start of a piece of
+ * halved ground it can't enter, or the point where the spending reaches the cap of the piece it's in.
+ */
+export function stopAlong(
+  n: number,
+  pieces: (i: number) => readonly CostPiece[],
+  budget: Budget,
+  eps = 1e-6,
+): { i: number; t: number } | null {
+  let spent = 0;
+  for (let i = 0; i < n; i++)
+    for (const p of pieces(i)) {
+      const cap = p.halved ? Math.min(budget.left, budget.halvedLeft) : budget.left;
+      if (spent > cap + eps) return { i, t: p.t0 };
+      if (spent + p.cost <= cap + eps) {
+        spent += p.cost;
+        continue;
+      }
+      return { i, t: p.t0 + ((p.t1 - p.t0) * Math.max(0, cap - spent)) / p.cost };
+    }
+  return null;
 }
 
 /**
@@ -76,26 +145,38 @@ export function flightCost(points: P[], elevations: readonly number[], world?: M
 }
 
 function flightSegment(world: MoveWorld | undefined, a: P, b: P, za: number, zb: number): number {
+  return flightPieces(world, a, b, za, zb).reduce((s, p) => s + p.cost, 0);
+}
+
+/** A flight segment's pieces: between every crossing of an outline (across) or of an effect's top or bottom. */
+function flightPieces(world: MoveWorld | undefined, a: P, b: P, za: number, zb: number): CostPiece[] {
   const len = Math.hypot(dist(a, b), zb - za);
-  if (len < 1e-12) return 0;
+  if (len < 1e-12) return [];
   const high = world?.regions.filter((r) => r.z) ?? [];
-  if (!world || !high.length) return len;
+  if (!world || !high.length) return [{ t0: 0, t1: 1, cost: len, halved: false, difficultFt: 0 }];
   // Pieces between every crossing of an outline (across) or of an effect's top or bottom (up or down).
   const ts = [0, ...world.regionCrossings(a, b), 1];
   for (const r of high)
     for (const z of [r.z?.min as number, r.z?.max as number])
       if ((za - z) * (zb - z) < 0) ts.push((z - za) / (zb - za));
   ts.sort((x, y) => x - y);
-  let cost = 0;
+  const out: CostPiece[] = [];
   for (let i = 1; i < ts.length; i++) {
     const t0 = ts[i - 1] as number;
     const t1 = ts[i] as number;
     if (t1 - t0 < 1e-12) continue;
     const mid = (t0 + t1) / 2;
     const at = world.regionsAtHeight(lerp(a, b, mid), za + (zb - za) * mid);
-    cost += len * (t1 - t0) * (1 + (at.difficult ? 1 : 0)) * (at.halved ? 2 : 1);
+    const piece = len * (t1 - t0);
+    out.push({
+      t0,
+      t1,
+      cost: piece * (1 + (at.difficult ? 1 : 0)),
+      halved: at.halved,
+      difficultFt: at.difficult ? piece : 0,
+    });
   }
-  return cost;
+  return out;
 }
 
 /**
@@ -106,35 +187,22 @@ export function clampFlight(
   world: MoveWorld | undefined,
   points: P[],
   elevations: readonly number[],
-  budget: number,
+  budget: number | Budget,
 ): { points: P[]; elevations: number[] } {
-  const outP: P[] = [points[0] as P];
-  const outZ: number[] = [elevations[0] ?? 0];
-  let spent = 0;
-  for (let i = 1; i < points.length; i++) {
-    const a = points[i - 1] as P;
-    const b = points[i] as P;
-    const za = elevations[i - 1] ?? 0;
-    const zb = elevations[i] ?? 0;
-    const c = flightSegment(world, a, b, za, zb);
-    if (spent + c <= budget + 1e-9) {
-      outP.push(b);
-      outZ.push(zb);
-      spent += c;
-      continue;
-    }
-    let lo = 0;
-    let hi = 1;
-    for (let k = 0; k < 40; k++) {
-      const m = (lo + hi) / 2;
-      if (spent + flightSegment(world, a, lerp(a, b, m), za, za + (zb - za) * m) <= budget) lo = m;
-      else hi = m;
-    }
-    if (lo > 1e-6) {
-      outP.push(lerp(a, b, lo));
-      outZ.push(za + (zb - za) * lo);
-    }
-    break;
+  const stop = stopAlong(
+    points.length - 1,
+    (i) =>
+      flightPieces(world, points[i] as P, points[i + 1] as P, elevations[i] ?? 0, elevations[i + 1] ?? 0),
+    budgetOf(budget),
+  );
+  if (!stop) return { points: [...points], elevations: [...elevations] };
+  const outP = points.slice(0, stop.i + 1);
+  const outZ = elevations.slice(0, stop.i + 1);
+  if (stop.t > 1e-6) {
+    const za = elevations[stop.i] ?? 0;
+    const zb = elevations[stop.i + 1] ?? 0;
+    outP.push(lerp(points[stop.i] as P, points[stop.i + 1] as P, stop.t));
+    outZ.push(za + (zb - za) * stop.t);
   }
   return { points: outP, elevations: outZ };
 }

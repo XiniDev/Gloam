@@ -21,6 +21,7 @@ import {
   damageConsequences,
   describeConsequence,
   effectiveTokenState,
+  exhaustedHpMax,
   healingConsequences,
   immuneToCondition,
   incapacitates,
@@ -106,12 +107,14 @@ export function holderOf(
     const a = token.actorId ? ctx.model.get("actor", token.actorId) : undefined;
     const actor = a && a.deletedAt === null && token.link === "linked" ? a : undefined;
     const { stats, status } = effectiveTokenState(token, actor);
+    // SRD 5.1's Exhaustion 4 halves its HP maximum (rules audit C2): HP held to it.
+    const hpMax = exhaustedHpMax(stats.hpMax, status.exhaustion, ctx.model.campaign.rulesPack);
     return {
       token,
       ...(actor ? { actor } : {}),
       name: token.name,
-      hp: stats.hp,
-      hpMax: stats.hpMax,
+      hp: Math.min(stats.hp, hpMax),
+      hpMax,
       hpTemp: stats.hpTemp,
       stats,
       status,
@@ -121,14 +124,16 @@ export function holderOf(
   const actor = mustGet(ctx, "actor", ref.actorId as string);
   if (actor.deletedAt !== null) throw new GloamError("NOT_FOUND", "That character no longer exists.");
   const stats = { ...statsFromSheet(actor.sheet), isPC: actor.kind === "character" };
+  const status = statusFromActor(actor.status);
+  const hpMax = exhaustedHpMax(stats.hpMax, status.exhaustion, ctx.model.campaign.rulesPack);
   return {
     actor,
     name: readSheet(actor).core.name,
-    hp: stats.hp,
-    hpMax: stats.hpMax,
+    hp: Math.min(stats.hp, hpMax),
+    hpMax,
     hpTemp: stats.hpTemp,
     stats,
-    status: statusFromActor(actor.status),
+    status,
     isPC: stats.isPC,
   };
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clampFlight, flightCost } from "./route.ts";
+import { clampFlight, flightCost, turnBudget } from "./route.ts";
 import { MoveWorld } from "./world.ts";
 
 const bounds = { minX: 0, minY: 0, maxX: 100, maxY: 100 };
@@ -16,7 +16,7 @@ describe("flight (§16.4; rules audit A3)", () => {
     ],
   });
 
-  it("pays each foot inside an effect at its height double, and nothing more above it or over the ground's terrain", () => {
+  it("pays each foot at its 3-D length; an effect at its height caps what it may spend there (halved Speed, rules audit Q1), nothing above it", () => {
     const low = flightCost(
       [
         { x: 20, y: 50 },
@@ -25,8 +25,31 @@ describe("flight (§16.4; rules audit A3)", () => {
       [10, 10],
       world,
     );
-    // 60 ft across: 30 of them inside the emanation (x 35–65), at 10 ft up — doubled.
-    expect(low).toBeCloseTo(90, 5);
+    // 60 ft across, 30 of them inside the emanation (x 35–65) at 10 ft up: 60 — halving caps, it doesn't price.
+    expect(low).toBeCloseTo(60, 5);
+    // With a 60-ft fly speed: 30 may be spent inside it — the first 15 ft to its edge, then 15 in.
+    const capped = clampFlight(
+      world,
+      [
+        { x: 20, y: 50 },
+        { x: 80, y: 50 },
+      ],
+      [10, 10],
+      turnBudget(60, 0),
+    );
+    expect(capped.points.at(-1)?.x).toBeCloseTo(50, 3);
+    // Above it (30 ft up): no cap.
+    expect(
+      clampFlight(
+        world,
+        [
+          { x: 20, y: 50 },
+          { x: 80, y: 50 },
+        ],
+        [30, 30],
+        turnBudget(60, 0),
+      ).points.at(-1)?.x,
+    ).toBeCloseTo(80, 3);
     const high = flightCost(
       [
         { x: 20, y: 50 },

@@ -373,6 +373,7 @@ export class CastFlow {
           sees: (id) => (at ? this.host.sees(at.id, id) : null),
         }),
         exhaustion: a?.status.exhaustion ?? 0,
+        pack: m.campaign.rulesPack,
       },
       {
         conditions: b?.status.conditions.map((c) => c.id) ?? [],
@@ -384,7 +385,7 @@ export class CastFlow {
           const marked = Boolean(b?.status.outlined);
           return { outlined: marked || fx.outlined, advantage: marked || fx.advantageAgainst };
         })(),
-        ...(b?.token ? { speedFt: speedNowFt(b.token, b.stats, b.status) } : {}),
+        ...(b?.token ? { speedFt: speedNowFt(b.token, b.stats, b.status, m.campaign.rulesPack) } : {}),
       },
       {
         withinFt: Math.max(0, within),

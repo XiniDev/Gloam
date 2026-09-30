@@ -131,6 +131,26 @@ describe("movement range field (§16.6, AC-MOV-10: the limit within 1 ft of the 
       }
   });
 
+  it("into ground that halves Speed (Spirit Guardians): reached there only while what it has spent is within half its budget (rules audit Q1)", () => {
+    // A ring round (20, 0), 10 ft across its middle from x 10 to 30.
+    const world = new MoveWorld({
+      walls: [],
+      bounds,
+      regions: [{ circle: { c: { x: 20, y: 0 }, r: 10 }, kind: "halved" }],
+    });
+    const f = rangeField(world, o, { rc: RC, budget: 30, halvedBudget: 15 });
+    // Outside the ring, as far as 30 ft; inside, only where it has spent 15 or less (x ≤ 15) — its limit line there.
+    expect(rangeAt(f, { x: 0, y: 25 })).toBeLessThan(30);
+    expect(rangeAt(f, { x: 13, y: 0 })).toBeLessThan(30);
+    expect(rangeAt(f, { x: 18, y: 0 })).toBeGreaterThan(30);
+    // Past the ring, straight on, it's out of reach (it would have to cross where it can't be).
+    expect(rangeAt(f, { x: 32, y: 0 }) > 30 || !Number.isFinite(rangeAt(f, { x: 32, y: 0 }))).toBe(true);
+    // The limit inside the ring falls within a foot of x = 15.
+    const inside = rangeLimit(f).filter((p) => Math.hypot(p.x - 20, p.y) < 9 && Math.abs(p.y) < 3);
+    expect(inside.length).toBeGreaterThan(0);
+    for (const p of inside) expect(Math.abs(p.x - 15)).toBeLessThan(1);
+  });
+
   it("into difficult terrain: twice the cost there, the cheapest path bending where it enters", () => {
     const world = new MoveWorld({
       walls: [],

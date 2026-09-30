@@ -2,6 +2,7 @@ import type { ActorView } from "@gloam/shared/protocol";
 import { Lock, Minus, Pencil, Plus, RotateCcw } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { D20Icon } from "../../icons/dice.tsx";
+import { useTable } from "../../net/table.ts";
 import { useBoard } from "../../state/entities.ts";
 import { DeathPip } from "../../ui/DeathPip.tsx";
 import { hintFor, modeOf, type RollMode, type RollTest, testOf } from "./rollMode.ts";
@@ -50,10 +51,14 @@ export function Rollable({
         return t.own?.stuck === "speed0" ? "speed0" : "dodging";
     return "";
   });
+  // (SRD 5.1's Exhaustion gives Disadvantage — the pack's; 5.2.1's −2 a level the server puts in the formula.)
+  const pack = useTable((s) => s.rulesPack);
   const hint = hintFor(
     actor.sheet.core.conditions,
     test === undefined ? testOf(formula) : test,
     dodge ? { markers: ["dodging"], ...(dodge === "speed0" ? { speedFt: 0 } : {}) } : undefined,
+    pack,
+    actor.sheet.core.exhaustion ?? 0,
   );
   // An attack says so: in combat, on its creature's turn, it marks the Action (AC-CMB-08).
   const kind = test === undefined ? testOf(formula)?.kind : test?.kind;

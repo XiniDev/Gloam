@@ -403,6 +403,38 @@ describe("P8 — combat on the server (§8.12, §16.5)", () => {
     });
   });
 
+  it("rules audit C1: a creature moves by one of its speeds — switching counts what it has moved against the new one; one it hasn't is refused", async () => {
+    await turnOf(hero);
+    await cmd(anna().room, "move.reset", { tokenId: hero });
+    await cmd(anna().room, "actor.change", {
+      actorId: heroActor,
+      changes: [{ path: ["core", "speeds", "fly"], after: 60 }],
+    });
+    await expect(cmd(anna().room, "token.moveMode", { tokenId: hero, mode: "swim" })).rejects.toThrow(
+      /no swimming speed/,
+    );
+    // Flying: its budget is the fly speed's.
+    await cmd(anna().room, "token.moveMode", { tokenId: hero, mode: "fly" });
+    await waitFor(() => own(hero)?.budgetFt === 60 && own(hero)?.mode === "fly");
+    const at = { ...(tokenOf(hero)?.pos as { x: number; y: number }) };
+    const to = { x: at.x + (at.x < 40 ? 1 : -1) * 40, y: at.y };
+    await cmd(anna().room, "move.commit", { tokenId: hero, points: [at, to] });
+    expect(data().turn?.usedFt ?? 0).toBeCloseTo(40, 1);
+    // Back to walking (30): the 40 it has moved already count against it — nothing left.
+    await cmd(anna().room, "token.moveMode", { tokenId: hero, mode: "walk" });
+    await waitFor(() => own(hero)?.budgetFt === 30);
+    expect((own(hero)?.budgetFt ?? 0) - (data().turn?.usedFt ?? 0)).toBeLessThanOrEqual(0);
+    // Its flying speed gone (the spell ended) while it flies: it walks.
+    await cmd(anna().room, "token.moveMode", { tokenId: hero, mode: "fly" });
+    await cmd(anna().room, "actor.change", {
+      actorId: heroActor,
+      changes: [{ path: ["core", "speeds", "fly"], after: 0 }],
+    });
+    await waitFor(() => own(hero)?.budgetFt === 30);
+    await cmd(anna().room, "move.reset", { tokenId: hero });
+    await cmd(anna().room, "token.moveMode", { tokenId: hero, mode: "walk" });
+  });
+
   it("the DM's bonus movement joins the budget (never doubled by Dash) and shows as its own part; free movement lifts turn order (AC-MOV-18, AC-CMB-11)", async () => {
     await turnOf(hero);
     // "+10 ft for this turn": the server fixes its end at this round.

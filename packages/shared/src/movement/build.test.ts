@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { segSegDist2 } from "../geometry/index.ts";
 import { clearanceRadius } from "./blocking.ts";
 import { buildMoveWorld } from "./build.ts";
-import { pathCost, route } from "./route.ts";
+import { pathCost, route, turnBudget } from "./route.ts";
+import { clampToBudget, maxReachPoint } from "./validate.ts";
 
 const bounds = { minX: 0, minY: 0, maxX: 100, maxY: 100 };
 const medium = { rc: 2 };
@@ -34,7 +35,7 @@ describe("a scene's movement world (§16.1)", () => {
     }
   });
 
-  it("effects slow the ground: Web's difficult terrain doubles, Spirit Guardians' halved Speed doubles on top (§8.13)", () => {
+  it("effects slow the ground: Web's difficult terrain doubles; Spirit Guardians' halved Speed caps what may be spent there — it doesn't price each foot (§8.13; rules audit Q1)", () => {
     const web = { x: 0, y: 40 };
     const sq = (o: { x: number; y: number }) => [
       o,
@@ -57,15 +58,39 @@ describe("a scene's movement world (§16.1)", () => {
         { poly: sq({ x: 0, y: 0 }), difficult: false, halved: true },
       ],
     });
-    // Open ground, then web, then guardians, then both: 20, 40, 40, 80.
+    // Open ground, then web, then guardians, then both: 20, 40, 20, 40 — halving is no price on a foot.
     expect(pathCost(world, line(30), medium).cost).toBeCloseTo(20, 5);
     expect(pathCost(world, line(50), medium).cost).toBeCloseTo(40, 5);
-    expect(pathCost(world, line(80), medium).cost).toBeCloseTo(40, 5);
-    expect(pathCost(world, line(10), medium).cost).toBeCloseTo(80, 5);
-    // Straight through the guardians' ring costs 36 + 30 = 66; the pathfinder finds the cheaper way round.
+    expect(pathCost(world, line(80), medium).cost).toBeCloseTo(20, 5);
+    expect(pathCost(world, line(10), medium).cost).toBeCloseTo(40, 5);
+    // It caps the speed there: with a 30-ft Speed, what the turn has spent may be at most 15 ft while inside the ring.
+    const through = [
+      { x: 2, y: 80 },
+      { x: 38, y: 80 },
+    ];
+    // (3 ft of open ground first, counted in the turn's spending: it stops 12 ft in, at x = 17.)
+    const cut = clampToBudget(world, through, medium, turnBudget(30, 0));
+    expect(cut.at(-1)?.x).toBeCloseTo(17, 3);
+    // The audit's two cases (Speed 30). Start inside, 10 ft inside and on out: all 30 ft of it (the model that doubled
+    // each foot inside allowed 20).
+    // (The ring runs from x 5 to 35: 10 ft inside to its edge, 20 ft beyond.)
+    const inOut = [
+      { x: 25, y: 80 },
+      { x: 35, y: 80 },
+      { x: 55, y: 80 },
+    ];
+    expect(maxReachPoint(world, inOut, medium, turnBudget(30, 0))).toBeNull();
+    // Start outside, 20 ft to the ring's edge, then in: past half its Speed already — not a step inside.
+    const outIn = [
+      { x: 20, y: 115 },
+      { x: 20, y: 95 },
+      { x: 20, y: 85 },
+    ];
+    expect(maxReachPoint(world, outIn, medium, turnBudget(30, 0))?.y).toBeCloseTo(95, 3);
+    // The cheapest way across is straight through (36 ft: halving costs nothing more) — where to stop is the cap's.
     const r = route(world, { x: 2, y: 80 }, { x: 38, y: 80 }, [], medium);
-    expect(r?.cost).toBeLessThan(60);
-    expect(r?.points.length).toBeGreaterThan(2);
+    expect(r?.points).toHaveLength(2);
+    expect(r?.cost).toBeCloseTo(36, 3);
   });
 
   it("impassable zones are walls around their outline; difficult terrain doubles; water only for non-swimmers", () => {

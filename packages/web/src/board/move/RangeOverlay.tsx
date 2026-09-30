@@ -143,6 +143,7 @@ export function RangeOverlay() {
       rc: inputs.rc,
       crawl: inputs.crawl,
       budget: Math.max(0, inputs.budget),
+      halvedBudget: inputs.halvedBudget,
     })
       .then((f) => {
         if (!live || !f) return;
