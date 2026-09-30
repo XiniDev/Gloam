@@ -2241,10 +2241,10 @@
       "code": "DEMO",
       "phase": "P12",
       "text": "A scripted E2E test of the first-run flow (setup → demo → open table locally → join as a test player in a second browser context → admit → move a token) completes in under 3 minutes of wall-clock time, and every step shows guidance text a first-time user can follow.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p12-demo.spec.ts (@timing, run alone) › setup link → password → 'Start with the demo' → Local only → Open table → Go to the table; a friend in another browser joins with the code ('Got the code from your DM?'), waits ('Waiting for the DM to let you in…'), is admitted from the DM's knock card, is told 'Make your character' (callout at the Sheet button), quick-creates Brin, whose token joins at the spawn, and drags it 15 ft east — 86.7 s wall-clock (limit 180 s; step timings printed); the view comes back after the sheet closes; artifacts/screens/p12/first-run-console.png, first-steps.png, first-move.png",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-30T09:08:58.163Z"
     },
     {
       "id": "AC-SEC-01",

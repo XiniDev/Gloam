@@ -65,12 +65,10 @@ async function drifts(p: Page, samples: number): Promise<number[]> {
 }
 
 test.describe("P11 — music and ambience (AUD)", () => {
-  test("AC-AUD-02 / AC-AUD-06 / AC-AUD-03: the DM's music plays in step for everyone — a track within 75 ms of the server's timeline on every client (a skewed clock and a late joiner too), pause and resume where it was, crossfades to and from a generative preset whose notes every client schedules alike; the ambience for everyone; each player's own music and ambience faders", async ({
-    admin,
-    browser,
-    gloam,
-    guardLog,
-  }) => {
+  test("AC-AUD-02 / AC-AUD-06 / AC-AUD-03: the DM's music plays in step for everyone — a track within 75 ms of the server's timeline on every client (a skewed clock and a late joiner too), pause and resume where it was, crossfades to and from a generative preset whose notes every client schedules alike; the ambience for everyone; each player's own music and ambience faders", {
+    // Millisecond sync is measured alone (the timing project), not against another test's rendering for the CPU.
+    tag: "@timing",
+  }, async ({ admin, browser, gloam, guardLog }) => {
     test.setTimeout(300_000);
     const code = await adminAtTable(admin);
     await introDone(admin);

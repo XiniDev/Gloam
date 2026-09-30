@@ -9,16 +9,21 @@ type Tok = { id: string; name: string; pos: { x: number; y: number }; ownerIds?:
  * and is let in, makes a character and moves it — in under three minutes, every step saying what to do next.
  */
 test.describe("P12 — the first run with the demo (DEMO)", () => {
-  test("AC-DEMO-03: setup → the demo → open locally → a player joins, is admitted and moves a token, in under 3 minutes with guidance at every step", async ({
-    browser,
-    gloam,
-    guardLog,
-  }) => {
+  // A wall-clock budget: run alone (the timing project), not beside another table's rendering.
+  test("AC-DEMO-03: setup → the demo → open locally → a player joins, is admitted and moves a token, in under 3 minutes with guidance at every step", {
+    tag: "@timing",
+  }, async ({ browser, gloam, guardLog }) => {
     test.setTimeout(240_000);
     const t0 = Date.now();
     // Where the time goes (printed with the result): each step's end, in seconds from the start.
     const marks: string[] = [];
-    const mark = (what: string) => marks.push(`${what} ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+    const mark = (what: string) => {
+      marks.push(`${what} ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+      console.log(`first run · ${marks[marks.length - 1]}`);
+    };
+    // Dave's view: where it looks (the dock's slide when his sheet opens must come back when it closes).
+    const target = async () =>
+      ((await hook<{ target: number[] }>(dave, "camera")) as { target: number[] }).target;
     test.info().annotations.push({ type: "timing", description: "" });
     const shots = "artifacts/screens/p12";
     // ── The Admin's first run ──
@@ -71,12 +76,14 @@ test.describe("P12 — the first run with the demo (DEMO)", () => {
     // (Two software-rendered tables in one machine: the second's first load is slow — not what this measures.)
     await expect.poll(async () => (await intro(dave))?.phase, { timeout: 60_000 }).toBe("done");
     mark("dave at the table");
+    const framed = await target();
     // What to do first, said plainly: make a character.
     const first = dave.getByTestId("first-steps");
     await expect(first).toBeVisible({ timeout: 20_000 });
     await expect(first).toContainText("Make your character");
     await dave.screenshot({ path: `${shots}/first-steps.png` });
     await first.getByRole("button", { name: "Make my character" }).click();
+
     const sheet = dave.getByRole("region", { name: "Character sheet", exact: true });
     await sheet.getByRole("button", { name: "Quick create" }).click();
     const dialog = dave.getByTestId("quick-create");
@@ -86,20 +93,25 @@ test.describe("P12 — the first run with the demo (DEMO)", () => {
     await dialog.getByLabel("AC").fill("16");
     await dave.getByRole("button", { name: "Create character" }).click();
     mark("character made");
+
     // His token joins the board at the party's spawn (the hall's west end).
     const mine = async () => (await hook<Tok[]>(dave, "tokens")).find((x) => x.name === "Brin Ashdown");
     await expect.poll(async () => (await mine())?.pos, { timeout: 20_000 }).toEqual({ x: 12, y: 35 });
     mark("token placed");
     await expect(first).toBeHidden();
+    // (The sheet put away: the dock's Sheet button again.)
     await dave
-      .getByRole("button", { name: "Close panel" })
-      .click()
-      .catch(async () => {
-        await dave.getByRole("button", { name: /^Sheet/ }).click();
-      });
+      .getByRole("navigation", { name: "Panels" })
+      .getByRole("button", { name: "Sheet", exact: true })
+      .click();
     const scene = await hook<{ shown: string | null }>(dave, "boardScene");
     await boardSettled(dave, scene.shown as string);
     mark("board settled");
+    // The sheet put away, the view is where it was framed: the hall in the clear, not under the tool bar.
+    await expect
+      .poll(async () => Math.hypot(...(await target()).map((v, k) => v - (framed[k] ?? 0))))
+      .toBeLessThan(0.5);
+    await dave.screenshot({ path: `${shots}/before-move.png` });
     // …and he moves it: drag it five squares east.
     const tok = (await mine()) as Tok;
     const from = await hook<{ sx: number; sy: number }>(dave, "project", tok.pos.x, tok.pos.y, 0.2);

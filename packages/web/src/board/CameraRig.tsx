@@ -438,11 +438,31 @@ export function CameraRig({ bounds, sceneId }: { bounds: Bounds; sceneId: string
 
   // The dock opening or closing (desktop): the board keeps what was in the middle of its free part there — the view
   // slides by half the panel's width (a panel over the right third hid the token being worked on). Only for a panel
-  // opened or closed, not a resize or the first measurement.
+  // opened or closed, not a resize or the first measurement. Closing undoes exactly the slide opening made (a world
+  // offset kept since), not a fresh one from the insets — waiting for the close's inset change in the right order
+  // sometimes missed it and left the view slid for good (a new player's hall under the tool bar).
   useEffect(() => {
     let expect: number | null = null;
+    let slid: Vector3 | null = null;
+    const move = (d: Vector3) => {
+      const c = ref.current;
+      if (!c) return;
+      const t = c.getTarget(new Vector3());
+      follow.current = null;
+      void c.moveTo(t.x + d.x, t.y, t.z + d.z, true);
+      wake();
+    };
     const offDock = useUi.subscribe((s, prev) => {
-      if ((s.dock === null) !== (prev.dock === null) && !isPhoneNow()) expect = useHudInsets.getState().right;
+      if ((s.dock === null) === (prev.dock === null) || isPhoneNow()) return;
+      if (s.dock !== null) {
+        // Opened: the slide waits for the panel's width (the inset it takes).
+        expect = useHudInsets.getState().right;
+        return;
+      }
+      // Closed: back by exactly what opening moved (nothing, if its width never came).
+      expect = null;
+      if (slid) move(slid.clone().negate());
+      slid = null;
     });
     const offInsets = useHudInsets.subscribe((s, prev) => {
       if (expect === null || s.right === prev.right) return;
@@ -461,10 +481,8 @@ export function CameraRig({ bounds, sceneId }: { bounds: Bounds; sceneId: string
           : (2 * cam.position.distanceTo(t) * Math.tan(MathUtils.degToRad(FOV_DEG) / 2)) / H;
       const right = new Vector3().setFromMatrixColumn(cam.matrixWorld, 0).setY(0);
       if (right.lengthSq() < 1e-9) return;
-      right.normalize().multiplyScalar(shift * perPx);
-      follow.current = null;
-      void c.moveTo(t.x + right.x, t.y, t.z + right.z, true);
-      wake();
+      slid = right.normalize().multiplyScalar(shift * perPx);
+      move(slid);
     });
     return () => {
       offDock();
