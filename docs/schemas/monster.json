@@ -1,0 +1,487 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80,
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "size": {
+      "type": "string",
+      "enum": [
+        "tiny",
+        "small",
+        "medium",
+        "large",
+        "huge",
+        "gargantuan"
+      ]
+    },
+    "type": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "alignment": {
+      "type": "string",
+      "maxLength": 200
+    },
+    "ac": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 99
+    },
+    "acNote": {
+      "type": "string",
+      "maxLength": 200
+    },
+    "hp": {
+      "type": "object",
+      "properties": {
+        "average": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 99999
+        },
+        "formula": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "average"
+      ],
+      "additionalProperties": false
+    },
+    "speeds": {
+      "default": {
+        "walk": 30,
+        "fly": 0,
+        "swim": 0,
+        "climb": 0,
+        "burrow": 0,
+        "hover": false
+      },
+      "type": "object",
+      "properties": {
+        "walk": {
+          "default": 30,
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100000
+        },
+        "fly": {
+          "default": 0,
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100000
+        },
+        "swim": {
+          "default": 0,
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100000
+        },
+        "climb": {
+          "default": 0,
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100000
+        },
+        "burrow": {
+          "default": 0,
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100000
+        },
+        "hover": {
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "senses": {
+      "default": {
+        "darkvision": 0,
+        "blindsight": 0,
+        "tremorsense": 0,
+        "truesight": 0
+      },
+      "type": "object",
+      "properties": {
+        "darkvision": {
+          "default": 0,
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100000
+        },
+        "blindsight": {
+          "default": 0,
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100000
+        },
+        "tremorsense": {
+          "default": 0,
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100000
+        },
+        "truesight": {
+          "default": 0,
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100000
+        }
+      },
+      "additionalProperties": false
+    },
+    "abilities": {
+      "type": "object",
+      "properties": {
+        "str": {
+          "default": 10,
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 30
+        },
+        "dex": {
+          "default": 10,
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 30
+        },
+        "con": {
+          "default": 10,
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 30
+        },
+        "int": {
+          "default": 10,
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 30
+        },
+        "wis": {
+          "default": 10,
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 30
+        },
+        "cha": {
+          "default": 10,
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 30
+        }
+      },
+      "additionalProperties": false
+    },
+    "saves": {
+      "default": {},
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "enum": [
+          "str",
+          "dex",
+          "con",
+          "int",
+          "wis",
+          "cha"
+        ]
+      },
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": -20,
+        "maximum": 30
+      }
+    },
+    "skills": {
+      "default": {},
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "enum": [
+          "acrobatics",
+          "animalHandling",
+          "arcana",
+          "athletics",
+          "deception",
+          "history",
+          "insight",
+          "intimidation",
+          "investigation",
+          "medicine",
+          "nature",
+          "perception",
+          "performance",
+          "persuasion",
+          "religion",
+          "sleightOfHand",
+          "stealth",
+          "survival"
+        ]
+      },
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": -20,
+        "maximum": 30
+      }
+    },
+    "resistances": {
+      "default": [],
+      "maxItems": 13,
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "acid",
+          "bludgeoning",
+          "cold",
+          "fire",
+          "force",
+          "lightning",
+          "necrotic",
+          "piercing",
+          "poison",
+          "psychic",
+          "radiant",
+          "slashing",
+          "thunder"
+        ]
+      }
+    },
+    "immunities": {
+      "default": [],
+      "maxItems": 13,
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "acid",
+          "bludgeoning",
+          "cold",
+          "fire",
+          "force",
+          "lightning",
+          "necrotic",
+          "piercing",
+          "poison",
+          "psychic",
+          "radiant",
+          "slashing",
+          "thunder"
+        ]
+      }
+    },
+    "vulnerabilities": {
+      "default": [],
+      "maxItems": 13,
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "acid",
+          "bludgeoning",
+          "cold",
+          "fire",
+          "force",
+          "lightning",
+          "necrotic",
+          "piercing",
+          "poison",
+          "psychic",
+          "radiant",
+          "slashing",
+          "thunder"
+        ]
+      }
+    },
+    "conditionImmunities": {
+      "default": [],
+      "maxItems": 20,
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "blinded",
+          "charmed",
+          "deafened",
+          "exhaustion",
+          "frightened",
+          "grappled",
+          "incapacitated",
+          "invisible",
+          "paralyzed",
+          "petrified",
+          "poisoned",
+          "prone",
+          "restrained",
+          "stunned",
+          "unconscious"
+        ]
+      }
+    },
+    "languages": {
+      "default": [],
+      "maxItems": 50,
+      "type": "array",
+      "items": {
+        "type": "string",
+        "maxLength": 200
+      }
+    },
+    "cr": {
+      "type": "string",
+      "pattern": "^(0|1\\/8|1\\/4|1\\/2|[1-9]|[12][0-9]|30)$"
+    },
+    "attacks": {
+      "default": [],
+      "maxItems": 30,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "attack": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "damage": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "range": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "properties": {
+            "type": "string",
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "features": {
+      "default": [],
+      "maxItems": 60,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "text": {
+            "default": "",
+            "type": "string",
+            "maxLength": 40000
+          },
+          "uses": {
+            "type": "object",
+            "properties": {
+              "max": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 999
+              },
+              "used": {
+                "default": 0,
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 999
+              },
+              "recharge": {
+                "default": "long",
+                "type": "string",
+                "enum": [
+                  "short",
+                  "long",
+                  "dawn",
+                  "none"
+                ]
+              }
+            },
+            "required": [
+              "max"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "statBlockMarkdown": {
+      "default": "",
+      "type": "string",
+      "maxLength": 40000
+    },
+    "tokenAssetId": {
+      "default": null,
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "source": {
+      "default": {
+        "pack": "homebrew"
+      },
+      "type": "object",
+      "properties": {
+        "pack": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "pack"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "id",
+    "name",
+    "size",
+    "type",
+    "ac",
+    "hp",
+    "abilities",
+    "cr"
+  ],
+  "additionalProperties": false
+}

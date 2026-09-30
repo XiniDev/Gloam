@@ -1,7 +1,6 @@
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { characterJsonSchema } from "@gloam/shared/schemas";
 import express, { type Express, type NextFunction, type Request, type Response } from "express";
 import helmet from "helmet";
 import type { ViteDevServer } from "vite";
@@ -10,6 +9,7 @@ import type { ServerContext } from "../context.ts";
 import { lanAddress } from "../services/table.ts";
 import { csrfGuard, ok, requestContext, route, sendError } from "./helpers.ts";
 import { adminRoutes } from "./routes/admin.ts";
+import { apiRoutes, BIG_BODY_PATHS } from "./routes/api.ts";
 import { assetRoutes } from "./routes/assets.ts";
 import { type AuthRouteHooks, authRoutes } from "./routes/auth.ts";
 import { contentRoutes } from "./routes/content.ts";
@@ -121,14 +121,14 @@ export async function buildHttpApp(
     next();
   });
 
-  // Bodies up to 256 kB — except a spell import's (whole spell texts, up to a thousand): its route reads its own, up
+  // Bodies up to 256 kB — except the local API's imports (whole spell texts, up to a thousand): their routes read their own, up
   // to 4 MB, and only once the rate limit, the CSRF check and who's asking have passed (never an anonymous caller's).
   const json = express.json({
     limit: "256kb",
     type: ["application/json", "application/csp-report", "application/reports+json"],
   });
   app.use("/api", (req: Request, res: Response, next: NextFunction) =>
-    req.path === "/v1/content/spells:import" ? next() : json(req, res, next),
+    BIG_BODY_PATHS.has(req.path) ? next() : json(req, res, next),
   );
   // REST per session (or per IP when anonymous): 60 per 10 s (SPEC §22.5).
   app.use("/api", (req: Request, res: Response, next: NextFunction) => {
@@ -158,20 +158,12 @@ export async function buildHttpApp(
   assetRoutes(app, ctx);
   fontRoutes(app, ctx);
   contentRoutes(app, ctx);
+  apiRoutes(app, ctx);
 
   app.get(
     "/api/health",
     route((_req, res) => ok(res, { ok: true, uptimeMs: Date.now() - ctx.startedAt })),
   );
-  // The character sheet's published JSON Schema (SPEC §8.10 Import / export, Appendix F.3): what imports are checked
-  // against and what the Import-with-AI prompt embeds. A public document: no session needed.
-  const characterSchema = JSON.stringify(characterJsonSchema(), null, 2);
-  app.get("/api/v1/schemas/character.json", (_req: Request, res: Response) => {
-    res
-      .type("application/schema+json")
-      .setHeader("Cache-Control", "public, max-age=3600")
-      .send(characterSchema);
-  });
   let cspReports = 0;
   app.post("/api/csp-report", (req: Request, res: Response) => {
     // Violations are logged locally (never forwarded); a flood is capped.

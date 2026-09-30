@@ -1,26 +1,16 @@
 import { createHash } from "node:crypto";
 import { GloamError } from "@gloam/shared/protocol";
-import { applyPatch } from "@gloam/shared/rules";
-import { SpellSchema } from "@gloam/shared/schemas";
-import express, { type Express, type NextFunction, type Request, type Response } from "express";
-import { z } from "zod";
+import type { Express } from "express";
 import type { ServerContext } from "../../context.ts";
-import { CommandBus } from "../../engine/commandBus.ts";
-import type { ImportReport } from "../../engine/commands/content.ts";
-import { CampaignModel } from "../../engine/model.ts";
-import { registerCommands } from "../../engine/registry.ts";
-import type { Role } from "../../services/campaigns.ts";
-import { ok, requireSession, route } from "../helpers.ts";
+import { requireSession, route } from "../helpers.ts";
 
 /**
  * Spell content over HTTP (SPEC §8.13 Content, Import; §33; AC-SPL-11):
  * - `GET /api/table/content/spells` — the SRD pack for whoever's at the table (it never changes under a running
  *   server: cached by the pack's hash, revalidated with its ETag).
- * - `GET /api/v1/schemas/spell.json` — the published spell schema (what imports are checked against, what "Copy AI
- *   prompt" embeds). Public, as the character schema is.
- * - `POST /api/v1/content/spells:import` — a DM (or the Admin) imports a list of spells: a dry run reports, a real one
- *   imports; clashes by skip / overwrite / rename. Through the campaign's command bus: the open table's, or — the table
- *   closed — the campaign's own, straight to the database (the table loads it when it opens).
+ *
+ * The spell schema and imports are the local API's (routes/api.ts: `/api/v1/schemas/spell.json`,
+ * `POST /api/v1/content/spells:import`).
  */
 export function contentRoutes(app: Express, ctx: ServerContext): void {
   const pack = ctx.content;
@@ -49,83 +39,4 @@ export function contentRoutes(app: Express, ctx: ServerContext): void {
       res.type("application/json").send(packJson);
     }),
   );
-
-  const schema = JSON.stringify(spellJsonSchema(), null, 2);
-  app.get("/api/v1/schemas/spell.json", (_req: Request, res: Response) => {
-    res.type("application/schema+json").setHeader("Cache-Control", "public, max-age=3600").send(schema);
-  });
-
-  const ImportBody = z.strictObject({
-    spells: z.array(z.unknown()).min(1).max(1000),
-    dryRun: z.boolean().default(true),
-    strategy: z.enum(["skip", "overwrite", "rename"]).default("skip"),
-    campaignId: z.string().min(3).max(40).optional(),
-  });
-  /**
-   * Who may import (security review M1): the admin, into any campaign; otherwise the DM of the table that's open, as
-   * admitted to this sitting of it — never a pending, denied or kicked session, nor one from an earlier sitting.
-   * Checked before the body is read (it can be 4 MB), and again with it.
-   */
-  const importer = (req: Request): { a: ReturnType<typeof requireSession>; table: string | null } => {
-    const a = requireSession(req);
-    if (a.session.kind === "admin") return { a, table: null };
-    const t = ctx.table;
-    if (
-      !t.isOpen ||
-      !t.campaignId ||
-      a.session.status !== "admitted" ||
-      a.session.tableSessionNo !== t.sessionNo
-    )
-      throw new GloamError("TABLE_CLOSED");
-    if (ctx.campaigns.membership(t.campaignId, a.user.id) !== "dm")
-      throw new GloamError("FORBIDDEN", "Only the DM imports spells.");
-    return { a, table: t.campaignId };
-  };
-  // Express reads ":import" as a parameter; the literal colon is escaped.
-  app.post(
-    "/api/v1/content/spells\\:import",
-    (req: Request, res: Response, next: NextFunction) =>
-      route(() => {
-        importer(req);
-        next();
-      })(req, res, next),
-    express.json({ limit: "4mb" }),
-    route((req, res) => {
-      const { a, table } = importer(req);
-      const b = ImportBody.parse(req.body ?? {});
-      if (table && b.campaignId && b.campaignId !== table)
-        throw new GloamError("FORBIDDEN", "Import into the campaign at the table.");
-      const campaignId =
-        table ?? b.campaignId ?? ctx.table.campaignId ?? ctx.settings.get().selectedCampaignId;
-      if (!campaignId || !ctx.campaigns.get(campaignId))
-        throw new GloamError("NOT_FOUND", "Choose a campaign first.");
-      const role: Role = a.session.kind === "admin" ? "admin" : "dm";
-      const actor = { userId: a.user.id, role, name: a.user.displayName, actingAs: null };
-      const room = ctx.rooms.table(campaignId);
-      const bus = room?.bus ?? offlineBus(ctx, campaignId);
-      const report = bus.execute<ImportReport>(
-        "content.spell.import",
-        { spells: b.spells, dryRun: b.dryRun, strategy: b.strategy },
-        actor,
-      );
-      ok(res, report);
-    }),
-  );
-}
-
-/** The published spell schema (JSON Schema of the import shape: defaults may be left out). */
-export function spellJsonSchema(): Record<string, unknown> {
-  return z.toJSONSchema(SpellSchema, { io: "input", unrepresentable: "any" }) as Record<string, unknown>;
-}
-
-/** A campaign's command bus with no table open: commits go to the database with their history, nothing is sent. */
-function offlineBus(ctx: ServerContext, campaignId: string): CommandBus {
-  const model = CampaignModel.load(ctx.db, campaignId);
-  if (!model) throw new GloamError("NOT_FOUND", "That campaign no longer exists.");
-  const bus = new CommandBus(ctx, model, {
-    onCommitted: () => {},
-    sheet: { apply: (sheet, patch) => applyPatch(sheet, patch) },
-  });
-  registerCommands(bus);
-  return bus;
 }

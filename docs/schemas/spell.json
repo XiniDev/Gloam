@@ -1,0 +1,1965 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80,
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80
+    },
+    "level": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9
+    },
+    "school": {
+      "type": "string",
+      "enum": [
+        "abjuration",
+        "conjuration",
+        "divination",
+        "enchantment",
+        "evocation",
+        "illusion",
+        "necromancy",
+        "transmutation"
+      ]
+    },
+    "classes": {
+      "default": [],
+      "maxItems": 20,
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 40
+      }
+    },
+    "castingTime": {
+      "type": "object",
+      "properties": {
+        "amount": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000
+        },
+        "unit": {
+          "type": "string",
+          "enum": [
+            "action",
+            "bonus",
+            "reaction",
+            "minute",
+            "hour"
+          ]
+        },
+        "reactionTrigger": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "text": {
+          "description": "Printed casting time, only when amount/unit can't express it (Plant Growth: 'Action (Overgrowth) or 8 hours (Enrichment)')",
+          "type": "string",
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "amount",
+        "unit"
+      ],
+      "additionalProperties": false
+    },
+    "ritual": {
+      "default": false,
+      "type": "boolean"
+    },
+    "range": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "self",
+            "touch",
+            "ranged",
+            "sight",
+            "unlimited",
+            "special"
+          ]
+        },
+        "ft": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100000
+        },
+        "text": {
+          "description": "Printed range, only when `ft` can't express it (Project Image: '500 miles', beyond the Ft bound)",
+          "type": "string",
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "additionalProperties": false
+    },
+    "components": {
+      "type": "object",
+      "properties": {
+        "v": {
+          "type": "boolean"
+        },
+        "s": {
+          "type": "boolean"
+        },
+        "m": {
+          "type": "boolean"
+        },
+        "material": {
+          "type": "string",
+          "maxLength": 400
+        },
+        "costGp": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "consumed": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "v",
+        "s",
+        "m"
+      ],
+      "additionalProperties": false
+    },
+    "duration": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "instantaneous",
+            "timed",
+            "until-dispelled",
+            "special"
+          ]
+        },
+        "amount": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000
+        },
+        "unit": {
+          "type": "string",
+          "enum": [
+            "round",
+            "minute",
+            "hour",
+            "day"
+          ]
+        },
+        "concentration": {
+          "default": false,
+          "type": "boolean"
+        },
+        "text": {
+          "description": "Printed duration, only when kind/amount/unit can't express it ('Until dispelled or triggered', 'Up to 8 hours')",
+          "type": "string",
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "additionalProperties": false
+    },
+    "text": {
+      "type": "string",
+      "maxLength": 40000
+    },
+    "higherLevels": {
+      "type": "string",
+      "maxLength": 40000
+    },
+    "cantripUpgrade": {
+      "type": "string",
+      "maxLength": 40000
+    },
+    "targeting": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "area",
+            "creatures",
+            "self",
+            "point",
+            "object"
+          ]
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "countPerSlot": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "countAtLevels": {
+          "description": "A cantrip's count at character levels 5, 11 and 17 (Eldritch Blast's beams)",
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "enum": [
+              "5",
+              "11",
+              "17"
+            ]
+          },
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "required": [
+            "5",
+            "11",
+            "17"
+          ]
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "additionalProperties": false
+    },
+    "area": {
+      "anyOf": [
+        {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "shape": {
+                  "type": "string",
+                  "const": "sphere"
+                },
+                "radius": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 100000
+                },
+                "scaling": {
+                  "type": "object",
+                  "properties": {
+                    "perSlot": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 100000,
+                      "description": "Feet added to the primary dimension (radius, length, size, distance) per slot level above the spell's level"
+                    }
+                  },
+                  "required": [
+                    "perSlot"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "shape",
+                "radius"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "shape": {
+                  "type": "string",
+                  "const": "cylinder"
+                },
+                "radius": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 100000
+                },
+                "height": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 100000
+                },
+                "scaling": {
+                  "type": "object",
+                  "properties": {
+                    "perSlot": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 100000,
+                      "description": "Feet added to the primary dimension (radius, length, size, distance) per slot level above the spell's level"
+                    }
+                  },
+                  "required": [
+                    "perSlot"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "shape",
+                "radius",
+                "height"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "shape": {
+                  "type": "string",
+                  "const": "cone"
+                },
+                "length": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 100000
+                },
+                "scaling": {
+                  "type": "object",
+                  "properties": {
+                    "perSlot": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 100000,
+                      "description": "Feet added to the primary dimension (radius, length, size, distance) per slot level above the spell's level"
+                    }
+                  },
+                  "required": [
+                    "perSlot"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "shape",
+                "length"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "shape": {
+                  "type": "string",
+                  "const": "cube"
+                },
+                "size": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 100000
+                },
+                "scaling": {
+                  "type": "object",
+                  "properties": {
+                    "perSlot": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 100000,
+                      "description": "Feet added to the primary dimension (radius, length, size, distance) per slot level above the spell's level"
+                    }
+                  },
+                  "required": [
+                    "perSlot"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "shape",
+                "size"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "shape": {
+                  "type": "string",
+                  "const": "line"
+                },
+                "length": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 100000
+                },
+                "width": {
+                  "default": 5,
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 100000
+                },
+                "scaling": {
+                  "type": "object",
+                  "properties": {
+                    "perSlot": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 100000,
+                      "description": "Feet added to the primary dimension (radius, length, size, distance) per slot level above the spell's level"
+                    }
+                  },
+                  "required": [
+                    "perSlot"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "shape",
+                "length"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "shape": {
+                  "type": "string",
+                  "const": "emanation"
+                },
+                "distance": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 100000
+                },
+                "scaling": {
+                  "type": "object",
+                  "properties": {
+                    "perSlot": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 100000,
+                      "description": "Feet added to the primary dimension (radius, length, size, distance) per slot level above the spell's level"
+                    }
+                  },
+                  "required": [
+                    "perSlot"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "shape",
+                "distance"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "shape": {
+                  "type": "string",
+                  "const": "wall"
+                },
+                "length": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 100000
+                },
+                "height": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 100000
+                },
+                "thickness": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 100000
+                },
+                "ring": {
+                  "description": "Diameter in feet when the wall can be shaped as a ring",
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 100000
+                },
+                "ringHeight": {
+                  "description": "Height in feet of the ring form when it differs from `height` (Wall of Thorns: 10 ft straight, 20 ft ring)",
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 100000
+                },
+                "opaque": {
+                  "default": false,
+                  "type": "boolean"
+                },
+                "blocksMove": {
+                  "default": false,
+                  "type": "boolean"
+                },
+                "damagingSide": {
+                  "type": "string",
+                  "enum": [
+                    "left",
+                    "right",
+                    "both"
+                  ]
+                },
+                "scaling": {
+                  "type": "object",
+                  "properties": {
+                    "perSlot": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 100000,
+                      "description": "Feet added to the primary dimension (radius, length, size, distance) per slot level above the spell's level"
+                    }
+                  },
+                  "required": [
+                    "perSlot"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "shape",
+                "length",
+                "height",
+                "thickness"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "areaAlternatives": {
+      "maxItems": 4,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "area": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "shape": {
+                    "type": "string",
+                    "const": "sphere"
+                  },
+                  "radius": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 100000
+                  },
+                  "scaling": {
+                    "type": "object",
+                    "properties": {
+                      "perSlot": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 100000,
+                        "description": "Feet added to the primary dimension (radius, length, size, distance) per slot level above the spell's level"
+                      }
+                    },
+                    "required": [
+                      "perSlot"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "shape",
+                  "radius"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "shape": {
+                    "type": "string",
+                    "const": "cylinder"
+                  },
+                  "radius": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 100000
+                  },
+                  "height": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 100000
+                  },
+                  "scaling": {
+                    "type": "object",
+                    "properties": {
+                      "perSlot": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 100000,
+                        "description": "Feet added to the primary dimension (radius, length, size, distance) per slot level above the spell's level"
+                      }
+                    },
+                    "required": [
+                      "perSlot"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "shape",
+                  "radius",
+                  "height"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "shape": {
+                    "type": "string",
+                    "const": "cone"
+                  },
+                  "length": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 100000
+                  },
+                  "scaling": {
+                    "type": "object",
+                    "properties": {
+                      "perSlot": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 100000,
+                        "description": "Feet added to the primary dimension (radius, length, size, distance) per slot level above the spell's level"
+                      }
+                    },
+                    "required": [
+                      "perSlot"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "shape",
+                  "length"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "shape": {
+                    "type": "string",
+                    "const": "cube"
+                  },
+                  "size": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 100000
+                  },
+                  "scaling": {
+                    "type": "object",
+                    "properties": {
+                      "perSlot": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 100000,
+                        "description": "Feet added to the primary dimension (radius, length, size, distance) per slot level above the spell's level"
+                      }
+                    },
+                    "required": [
+                      "perSlot"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "shape",
+                  "size"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "shape": {
+                    "type": "string",
+                    "const": "line"
+                  },
+                  "length": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 100000
+                  },
+                  "width": {
+                    "default": 5,
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 100000
+                  },
+                  "scaling": {
+                    "type": "object",
+                    "properties": {
+                      "perSlot": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 100000,
+                        "description": "Feet added to the primary dimension (radius, length, size, distance) per slot level above the spell's level"
+                      }
+                    },
+                    "required": [
+                      "perSlot"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "shape",
+                  "length"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "shape": {
+                    "type": "string",
+                    "const": "emanation"
+                  },
+                  "distance": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 100000
+                  },
+                  "scaling": {
+                    "type": "object",
+                    "properties": {
+                      "perSlot": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 100000,
+                        "description": "Feet added to the primary dimension (radius, length, size, distance) per slot level above the spell's level"
+                      }
+                    },
+                    "required": [
+                      "perSlot"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "shape",
+                  "distance"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "shape": {
+                    "type": "string",
+                    "const": "wall"
+                  },
+                  "length": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 100000
+                  },
+                  "height": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 100000
+                  },
+                  "thickness": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 100000
+                  },
+                  "ring": {
+                    "description": "Diameter in feet when the wall can be shaped as a ring",
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 100000
+                  },
+                  "ringHeight": {
+                    "description": "Height in feet of the ring form when it differs from `height` (Wall of Thorns: 10 ft straight, 20 ft ring)",
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 100000
+                  },
+                  "opaque": {
+                    "default": false,
+                    "type": "boolean"
+                  },
+                  "blocksMove": {
+                    "default": false,
+                    "type": "boolean"
+                  },
+                  "damagingSide": {
+                    "type": "string",
+                    "enum": [
+                      "left",
+                      "right",
+                      "both"
+                    ]
+                  },
+                  "scaling": {
+                    "type": "object",
+                    "properties": {
+                      "perSlot": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 100000,
+                        "description": "Feet added to the primary dimension (radius, length, size, distance) per slot level above the spell's level"
+                      }
+                    },
+                    "required": [
+                      "perSlot"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "shape",
+                  "length",
+                  "height",
+                  "thickness"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "attach": {
+            "type": "string",
+            "enum": [
+              "caster",
+              "object",
+              "point",
+              "target"
+            ]
+          }
+        },
+        "required": [
+          "label",
+          "area"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "attack": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "melee",
+                "ranged"
+              ]
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "splash": {
+      "description": "After its attack, hit or miss, the target and each creature within this many feet of it make the save (Ice Knife: 5): a card of its own",
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100000
+    },
+    "save": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "ability": {
+              "type": "string",
+              "enum": [
+                "str",
+                "dex",
+                "con",
+                "int",
+                "wis",
+                "cha"
+              ]
+            },
+            "onSuccess": {
+              "type": "string",
+              "enum": [
+                "half",
+                "none",
+                "special"
+              ]
+            }
+          },
+          "required": [
+            "ability",
+            "onSuccess"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "damage": {
+      "maxItems": 8,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "formula": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "acid",
+              "bludgeoning",
+              "cold",
+              "fire",
+              "force",
+              "lightning",
+              "necrotic",
+              "piercing",
+              "poison",
+              "psychic",
+              "radiant",
+              "slashing",
+              "thunder"
+            ]
+          },
+          "typeOptions": {
+            "description": "The damage is one of these types, chosen when casting or determined as the text says (Chromatic Orb, Dragon's Breath, Prismatic Spray's ray roll); `type` is the default",
+            "minItems": 2,
+            "maxItems": 13,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "acid",
+                "bludgeoning",
+                "cold",
+                "fire",
+                "force",
+                "lightning",
+                "necrotic",
+                "piercing",
+                "poison",
+                "psychic",
+                "radiant",
+                "slashing",
+                "thunder"
+              ]
+            }
+          },
+          "scaling": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "const": "slot"
+                  },
+                  "perLevel": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  }
+                },
+                "required": [
+                  "mode",
+                  "perLevel"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "const": "cantrip"
+                  },
+                  "atLevels": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string",
+                      "enum": [
+                        "5",
+                        "11",
+                        "17"
+                      ]
+                    },
+                    "additionalProperties": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "required": [
+                      "5",
+                      "11",
+                      "17"
+                    ]
+                  }
+                },
+                "required": [
+                  "mode",
+                  "atLevels"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "on": {
+            "description": "In a spell with both an attack and a save (Ice Knife), what this damage rides on: the attack's hit, or the save (with `splash`)",
+            "type": "string",
+            "enum": [
+              "hit",
+              "save"
+            ]
+          }
+        },
+        "required": [
+          "formula",
+          "type"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "healing": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "formula": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            },
+            "scaling": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "mode": {
+                      "type": "string",
+                      "const": "slot"
+                    },
+                    "perLevel": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    }
+                  },
+                  "required": [
+                    "mode",
+                    "perLevel"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "mode": {
+                      "type": "string",
+                      "const": "cantrip"
+                    },
+                    "atLevels": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string",
+                        "enum": [
+                          "5",
+                          "11",
+                          "17"
+                        ]
+                      },
+                      "additionalProperties": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200
+                      },
+                      "required": [
+                        "5",
+                        "11",
+                        "17"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "mode",
+                    "atLevels"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            }
+          },
+          "required": [
+            "formula"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "conditions": {
+      "maxItems": 8,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "enum": [
+              "blinded",
+              "charmed",
+              "deafened",
+              "exhaustion",
+              "frightened",
+              "grappled",
+              "incapacitated",
+              "invisible",
+              "paralyzed",
+              "petrified",
+              "poisoned",
+              "prone",
+              "restrained",
+              "stunned",
+              "unconscious"
+            ]
+          },
+          "onFailedSave": {
+            "default": true,
+            "type": "boolean"
+          },
+          "choice": {
+            "description": "A group of alternatives: the spell imposes one of them (Blindness/Deafness: \"your choice\"). The card ticks the group's first; the DM picks another",
+            "type": "string",
+            "maxLength": 20
+          },
+          "stage": {
+            "description": "A later stage, not landed on the first failed save (Sleep's Unconscious on a second failure, Flesh to Stone's Petrified after the third): the DM ticks it when it comes",
+            "type": "integer",
+            "minimum": 2,
+            "maximum": 9
+          },
+          "pick": {
+            "description": "The DM judges whether it applies (Divine Word by the creature's Hit Points, a Prismatic Spray's ray): unticked on the card",
+            "type": "boolean"
+          },
+          "duration": {
+            "type": "object",
+            "properties": {
+              "rounds": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100000
+              },
+              "untilSaveEnds": {
+                "type": "boolean"
+              },
+              "until": {
+                "description": "It lasts until the end of the caster's next turn (Color Spray), the start of the caster's next turn (Sunbeam), or the end of the creature's own next turn (Sleep, Holy Aura)",
+                "type": "string",
+                "enum": [
+                  "casterTurnEnd",
+                  "casterTurnStart",
+                  "ownTurnEnd"
+                ]
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "effect": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "props": {
+              "default": {},
+              "type": "object",
+              "properties": {
+                "difficult": {
+                  "type": "boolean"
+                },
+                "obscurement": {
+                  "type": "string",
+                  "enum": [
+                    "light",
+                    "heavy"
+                  ]
+                },
+                "magicalDarkness": {
+                  "type": "boolean"
+                },
+                "opaque": {
+                  "type": "boolean"
+                },
+                "light": {
+                  "type": "object",
+                  "properties": {
+                    "bright": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 100000
+                    },
+                    "dim": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 100000
+                    },
+                    "color": {
+                      "type": "string",
+                      "pattern": "^#[0-9a-fA-F]{6}$"
+                    },
+                    "magical": {
+                      "default": true,
+                      "type": "boolean"
+                    },
+                    "pierceDarkness": {
+                      "default": false,
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "bright",
+                    "dim"
+                  ],
+                  "additionalProperties": false
+                },
+                "silence": {
+                  "type": "boolean"
+                },
+                "outline": {
+                  "description": "Creatures inside are outlined (Faerie Fire): can't benefit from Invisible",
+                  "type": "boolean"
+                },
+                "speedHalved": {
+                  "description": "A creature's Speed is halved while it is inside (Spirit Guardians); distinct from Difficult Terrain",
+                  "type": "boolean"
+                },
+                "senses": {
+                  "description": "Senses the creature it's on gains, in feet (Darkvision 150, True Seeing's Truesight 120)",
+                  "type": "object",
+                  "properties": {
+                    "darkvision": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 100000
+                    },
+                    "blindsight": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 100000
+                    },
+                    "tremorsense": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 100000
+                    },
+                    "truesight": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 100000
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "seeInvisible": {
+                  "description": "The creature it's on sees Invisible creatures (See Invisibility)",
+                  "type": "boolean"
+                }
+              },
+              "additionalProperties": false
+            },
+            "triggers": {
+              "default": [],
+              "maxItems": 8,
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "when": {
+                    "type": "string",
+                    "enum": [
+                      "enter",
+                      "startTurn",
+                      "endTurn",
+                      "per5ft",
+                      "moveInto",
+                      "action"
+                    ],
+                    "description": "enter: a creature enters (or the area moves into its space); startTurn/endTurn: its own turn inside; per5ft: each 5 ft it moves inside; moveInto: the effect's object is moved into its space (Flaming Sphere); action: its caster's action repeats it at a point in the area (Call Lightning)"
+                  },
+                  "save": {
+                    "type": "object",
+                    "properties": {
+                      "ability": {
+                        "type": "string",
+                        "enum": [
+                          "str",
+                          "dex",
+                          "con",
+                          "int",
+                          "wis",
+                          "cha"
+                        ]
+                      },
+                      "dc": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 40
+                      },
+                      "onSuccess": {
+                        "type": "string",
+                        "enum": [
+                          "half",
+                          "none",
+                          "special"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "ability",
+                      "onSuccess"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "damage": {
+                    "type": "object",
+                    "properties": {
+                      "formula": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200
+                      },
+                      "type": {
+                        "type": "string",
+                        "enum": [
+                          "acid",
+                          "bludgeoning",
+                          "cold",
+                          "fire",
+                          "force",
+                          "lightning",
+                          "necrotic",
+                          "piercing",
+                          "poison",
+                          "psychic",
+                          "radiant",
+                          "slashing",
+                          "thunder"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "formula",
+                      "type"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "condition": {
+                    "type": "string",
+                    "enum": [
+                      "blinded",
+                      "charmed",
+                      "deafened",
+                      "exhaustion",
+                      "frightened",
+                      "grappled",
+                      "incapacitated",
+                      "invisible",
+                      "paralyzed",
+                      "petrified",
+                      "poisoned",
+                      "prone",
+                      "restrained",
+                      "stunned",
+                      "unconscious"
+                    ]
+                  },
+                  "conditionEnds": {
+                    "description": "The condition lasts until the end of the creature's current turn (Stinking Cloud)",
+                    "type": "string",
+                    "enum": [
+                      "turnEnd"
+                    ]
+                  },
+                  "breaksConcentration": {
+                    "description": "A failed save also ends the creature's Concentration (Sleet Storm)",
+                    "type": "boolean"
+                  },
+                  "side": {
+                    "description": "A wall's trigger reaches this far out of its damaging side as well as inside it (Wall of Fire: 10 ft)",
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 100000
+                  },
+                  "note": {
+                    "type": "string",
+                    "maxLength": 200
+                  }
+                },
+                "required": [
+                  "when"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "attach": {
+              "default": "point",
+              "type": "string",
+              "enum": [
+                "caster",
+                "object",
+                "point",
+                "target"
+              ]
+            },
+            "onAppear": {
+              "description": "Creatures in the area when it appears make the spell's save (Moonbeam, Cloudkill, Wall of Fire); otherwise only its triggers act",
+              "type": "boolean"
+            },
+            "oncePerTurn": {
+              "description": "A creature makes its save only once per turn, whichever trigger (Spirit Guardians, Moonbeam)",
+              "type": "boolean"
+            },
+            "recastEnds": {
+              "description": "Casting it again ends the caster's earlier one (Light: \"the spell ends if you cast it again\")",
+              "type": "boolean"
+            },
+            "bodyFt": {
+              "description": "An object's diameter at the effect's centre (Flaming Sphere: 5): its area reaches round the object, and it's what moves into a creature's space",
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100000
+            },
+            "strike": {
+              "description": "Where each strike lands, when that isn't the spell's area (Call Lightning's bolt, a 5-ft radius under the cloud): the cast's targets and each action's; the spell's area is then the effect itself",
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "shape": {
+                      "type": "string",
+                      "const": "sphere"
+                    },
+                    "radius": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 100000
+                    },
+                    "scaling": {
+                      "type": "object",
+                      "properties": {
+                        "perSlot": {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 100000,
+                          "description": "Feet added to the primary dimension (radius, length, size, distance) per slot level above the spell's level"
+                        }
+                      },
+                      "required": [
+                        "perSlot"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "shape",
+                    "radius"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "shape": {
+                      "type": "string",
+                      "const": "cylinder"
+                    },
+                    "radius": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 100000
+                    },
+                    "height": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 100000
+                    },
+                    "scaling": {
+                      "type": "object",
+                      "properties": {
+                        "perSlot": {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 100000,
+                          "description": "Feet added to the primary dimension (radius, length, size, distance) per slot level above the spell's level"
+                        }
+                      },
+                      "required": [
+                        "perSlot"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "shape",
+                    "radius",
+                    "height"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "shape": {
+                      "type": "string",
+                      "const": "cone"
+                    },
+                    "length": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 100000
+                    },
+                    "scaling": {
+                      "type": "object",
+                      "properties": {
+                        "perSlot": {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 100000,
+                          "description": "Feet added to the primary dimension (radius, length, size, distance) per slot level above the spell's level"
+                        }
+                      },
+                      "required": [
+                        "perSlot"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "shape",
+                    "length"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "shape": {
+                      "type": "string",
+                      "const": "cube"
+                    },
+                    "size": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 100000
+                    },
+                    "scaling": {
+                      "type": "object",
+                      "properties": {
+                        "perSlot": {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 100000,
+                          "description": "Feet added to the primary dimension (radius, length, size, distance) per slot level above the spell's level"
+                        }
+                      },
+                      "required": [
+                        "perSlot"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "shape",
+                    "size"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "shape": {
+                      "type": "string",
+                      "const": "line"
+                    },
+                    "length": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 100000
+                    },
+                    "width": {
+                      "default": 5,
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 100000
+                    },
+                    "scaling": {
+                      "type": "object",
+                      "properties": {
+                        "perSlot": {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 100000,
+                          "description": "Feet added to the primary dimension (radius, length, size, distance) per slot level above the spell's level"
+                        }
+                      },
+                      "required": [
+                        "perSlot"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "shape",
+                    "length"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "shape": {
+                      "type": "string",
+                      "const": "emanation"
+                    },
+                    "distance": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 100000
+                    },
+                    "scaling": {
+                      "type": "object",
+                      "properties": {
+                        "perSlot": {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 100000,
+                          "description": "Feet added to the primary dimension (radius, length, size, distance) per slot level above the spell's level"
+                        }
+                      },
+                      "required": [
+                        "perSlot"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "shape",
+                    "distance"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "shape": {
+                      "type": "string",
+                      "const": "wall"
+                    },
+                    "length": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 100000
+                    },
+                    "height": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 100000
+                    },
+                    "thickness": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 100000
+                    },
+                    "ring": {
+                      "description": "Diameter in feet when the wall can be shaped as a ring",
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 100000
+                    },
+                    "ringHeight": {
+                      "description": "Height in feet of the ring form when it differs from `height` (Wall of Thorns: 10 ft straight, 20 ft ring)",
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 100000
+                    },
+                    "opaque": {
+                      "default": false,
+                      "type": "boolean"
+                    },
+                    "blocksMove": {
+                      "default": false,
+                      "type": "boolean"
+                    },
+                    "damagingSide": {
+                      "type": "string",
+                      "enum": [
+                        "left",
+                        "right",
+                        "both"
+                      ]
+                    },
+                    "scaling": {
+                      "type": "object",
+                      "properties": {
+                        "perSlot": {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 100000,
+                          "description": "Feet added to the primary dimension (radius, length, size, distance) per slot level above the spell's level"
+                        }
+                      },
+                      "required": [
+                        "perSlot"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "shape",
+                    "length",
+                    "height",
+                    "thickness"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            },
+            "centre": {
+              "description": "Where the effect's area is centred: the cast's point (default) or over its caster (Call Lightning)",
+              "type": "string",
+              "enum": [
+                "cast",
+                "caster"
+              ]
+            },
+            "movement": {
+              "type": "object",
+              "properties": {
+                "by": {
+                  "type": "string",
+                  "enum": [
+                    "caster",
+                    "dm"
+                  ]
+                },
+                "maxFt": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 100000
+                },
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "action",
+                    "bonus",
+                    "free",
+                    "move"
+                  ]
+                },
+                "drift": {
+                  "type": "object",
+                  "properties": {
+                    "ft": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 100000
+                    },
+                    "direction": {
+                      "type": "string",
+                      "enum": [
+                        "awayFromCaster",
+                        "chosen"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "ft",
+                    "direction"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "by"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "light": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "bright": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100000
+            },
+            "dim": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100000
+            },
+            "color": {
+              "type": "string",
+              "pattern": "^#[0-9a-fA-F]{6}$"
+            },
+            "magical": {
+              "default": true,
+              "type": "boolean"
+            },
+            "pierceDarkness": {
+              "default": false,
+              "type": "boolean"
+            },
+            "cone": {
+              "description": "Cone angle in degrees for directional light",
+              "type": "number",
+              "minimum": 1,
+              "maximum": 360
+            }
+          },
+          "required": [
+            "bright",
+            "dim"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "obscurement": {
+      "anyOf": [
+        {
+          "type": "string",
+          "enum": [
+            "light",
+            "heavy",
+            "magicalDarkness"
+          ]
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "vfx": {
+      "type": "string",
+      "enum": [
+        "fire",
+        "cold",
+        "lightning",
+        "thunder",
+        "acid",
+        "poison",
+        "necrotic",
+        "radiant",
+        "force",
+        "psychic",
+        "healing",
+        "arcane"
+      ]
+    },
+    "source": {
+      "type": "object",
+      "properties": {
+        "pack": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "page": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        }
+      },
+      "required": [
+        "pack"
+      ],
+      "additionalProperties": false
+    },
+    "provenance": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "maxLength": 60
+      },
+      "additionalProperties": {
+        "type": "string",
+        "maxLength": 200
+      }
+    }
+  },
+  "required": [
+    "id",
+    "name",
+    "level",
+    "school",
+    "castingTime",
+    "range",
+    "components",
+    "duration",
+    "text",
+    "vfx",
+    "source"
+  ],
+  "additionalProperties": false
+}

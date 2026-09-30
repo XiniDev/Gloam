@@ -91,7 +91,7 @@ function live(ctx: CommandCtx, actorId: string): ActorEntity {
 }
 
 /** Every image a sheet points at is a usable library asset (the ones it already had stay as they are). */
-function assertSheetAssets(ctx: CommandCtx, before: Sheet | null, after: Sheet): void {
+export function assertSheetAssets(ctx: CommandCtx, before: Sheet | null, after: Sheet): void {
   const ids = (s: Sheet | null) =>
     new Set(
       [
@@ -163,7 +163,7 @@ function ownerFor(ctx: CommandCtx, requested: string | null | undefined): string
   return requested;
 }
 
-function newActor(
+export function newActor(
   ctx: CommandCtx,
   kind: ActorEntity["kind"],
   owner: string | null,

@@ -68,7 +68,7 @@ export const SheetFeature = z
   .strict();
 
 const Bonus = Int(-99, 99);
-const AbilityScores = z
+export const AbilityScores = z
   .object({
     str: Int(1, 30).default(10),
     dex: Int(1, 30).default(10),
@@ -272,5 +272,8 @@ export type Sheet = z.infer<typeof Sheet>;
 
 /** The published JSON Schema of the sheet document (`/api/v1/schemas/character.json`; embedded in the AI prompt). */
 export function characterJsonSchema(): Record<string, unknown> {
-  return z.toJSONSchema(Sheet, { io: "input", unrepresentable: "any" }) as Record<string, unknown>;
+  return z.toJSONSchema(Sheet, { target: "draft-2020-12", io: "input", unrepresentable: "any" }) as Record<
+    string,
+    unknown
+  >;
 }

@@ -14,6 +14,7 @@ import type { Logger } from "./logger.ts";
 import type { BackupService } from "./persistence/backups.ts";
 import type { SnapshotService } from "./persistence/snapshots.ts";
 import type { RoomRegistry } from "./rooms/registry.ts";
+import type { ApiTokenService } from "./services/apiTokens.ts";
 import type { CampaignService } from "./services/campaigns.ts";
 import type { PeopleService } from "./services/people.ts";
 import type { SecurityLog } from "./services/securityLog.ts";
@@ -54,6 +55,8 @@ export interface ServerContext {
   tunnel: TunnelManager;
   table: TableService;
   people: PeopleService;
+  /** API tokens for the local REST API and the MCP server (SPEC §8.23). */
+  apiTokens: ApiTokenService;
   /** Uploads, the processor child process, serving and purges (SPEC §21). */
   assets: AssetService;
   rooms: RoomRegistry;

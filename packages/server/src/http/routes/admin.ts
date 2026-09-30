@@ -9,6 +9,7 @@ import { sanitizeDisplayName, validDisplayName, validPin } from "../../auth/prof
 import type { ServerContext } from "../../context.ts";
 import { dirSize } from "../../dataDir.ts";
 import { createLanternCrypt } from "../../demo/lanternCrypt.ts";
+import { API_SCOPES, ApiScope } from "../../services/apiTokens.ts";
 import { LOCAL_ONLY_SETTINGS, type SettingKey, type Settings } from "../../services/settings.ts";
 import { body, ok, requireAdmin, requireLocal, route } from "../helpers.ts";
 
@@ -521,6 +522,48 @@ export function adminRoutes(app: Express, ctx: ServerContext): void {
           settingsJson: JSON.stringify({ ...parseCampaignSettings(String(c.settingsJson)), packs }),
         });
       ok(res);
+    }),
+  );
+
+  // ── API & MCP (SPEC §8.20, §8.23; AC-API-01/05): tokens, Allow remote API, the Connect Claude setup ──────────
+  app.get(
+    "/api/admin/api",
+    route((req, res) => {
+      requireAdmin(req);
+      // Forward slashes: node takes them on every system, and they need no escaping in the JSON config.
+      const repo = ctx.config.repoRoot.split("\\").join("/");
+      ok(res, {
+        tokens: ctx.apiTokens.list(),
+        scopes: API_SCOPES,
+        allowRemoteApi: ctx.settings.get().allowRemoteApi,
+        url: `http://127.0.0.1:${ctx.http.address().port}`,
+        repoPath: repo,
+        mcpEntry: `${repo}/packages/mcp/src/index.ts`,
+        local: req.gloam.local,
+      });
+    }),
+  );
+  app.post(
+    "/api/admin/api/tokens",
+    route((req, res) => {
+      const a = actor(req);
+      const b = body(
+        req,
+        z.strictObject({
+          name: z.string().trim().min(1).max(60),
+          scopes: z.array(ApiScope).min(1).max(API_SCOPES.length),
+        }),
+      );
+      // The secret goes back this once; only its hash is kept.
+      ok(res, ctx.apiTokens.create(b.name, b.scopes, { userId: a.userId, ip: a.ip }));
+    }),
+  );
+  app.post(
+    "/api/admin/api/tokens/:id/revoke",
+    route((req, res) => {
+      const a = actor(req);
+      ctx.apiTokens.revoke(String(req.params.id), { userId: a.userId, ip: a.ip });
+      ok(res, { tokens: ctx.apiTokens.list() });
     }),
   );
 

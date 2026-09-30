@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80,
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "kind": {
+      "default": "gear",
+      "type": "string",
+      "enum": [
+        "weapon",
+        "armor",
+        "gear",
+        "consumable",
+        "magic",
+        "treasure"
+      ]
+    },
+    "rarity": {
+      "type": "string",
+      "enum": [
+        "common",
+        "uncommon",
+        "rare",
+        "very rare",
+        "legendary",
+        "artifact"
+      ]
+    },
+    "weight": {
+      "default": 0,
+      "type": "number",
+      "minimum": 0,
+      "maximum": 10000
+    },
+    "cost": {
+      "type": "string",
+      "maxLength": 200
+    },
+    "attunement": {
+      "default": false,
+      "type": "boolean"
+    },
+    "description": {
+      "default": "",
+      "type": "string",
+      "maxLength": 40000
+    },
+    "attack": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "attack": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "damage": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "range": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "properties": {
+          "type": "string",
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    "light": {
+      "type": "string",
+      "maxLength": 200
+    },
+    "source": {
+      "default": {
+        "pack": "homebrew"
+      },
+      "type": "object",
+      "properties": {
+        "pack": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "pack"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "id",
+    "name"
+  ],
+  "additionalProperties": false
+}

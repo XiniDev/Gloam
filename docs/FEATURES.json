@@ -2164,10 +2164,10 @@
       "code": "API",
       "phase": "P13",
       "text": "REST v1 endpoints accept session cookies or bearer tokens and enforce scopes; tokens are shown once and stored hashed.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/api.test.ts: token shown once (gloam_…), row holds only its SHA-256, listed without it; scopes enforced (403 naming the missing scope); no/unknown/revoked token 401; Admin session and the table's DM session accepted, a player's refused, a pending session TABLE_CLOSED (homebrew.test.ts M1); 10 wrong tokens lock the IP out (429); create/use/revoke/refused in the Security log without the secret",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-30T10:25:42.650Z"
     },
     {
       "id": "AC-API-02",
@@ -2175,10 +2175,10 @@
       "code": "API",
       "phase": "P13",
       "text": "API tokens are refused on requests carrying Cloudflare headers unless Allow remote API is enabled.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/server/src/test/api.test.ts: a valid token with cf-ray or cf-connecting-ip is refused 403 ('this computer only') and logged api.token.refused reason remote; with Allow remote API on (a host-only setting) it answers 200; off again, refused",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-30T10:25:42.723Z"
     },
     {
       "id": "AC-API-03",
@@ -2186,10 +2186,10 @@
       "code": "API",
       "phase": "P13",
       "text": "JSON Schemas are served for every import format and match the zod schemas (a test regenerates and diffs them).",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "api.test.ts: GET /api/v1/schemas/{spell,character,monster,item,handout,campaign-log-entry}.json each equals importJsonSchema(name) regenerated from zod (draft-2020-12, strict) and the committed docs/schemas/<name>.json (tools/gen-schemas.mjs); shared imports.test.ts: F.4's monster valid, unknown fields refused",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-30T10:25:42.796Z"
     },
     {
       "id": "AC-API-04",
@@ -2197,10 +2197,10 @@
       "code": "API",
       "phase": "P13",
       "text": "The MCP server passes a round-trip test with an MCP client: list tools, import 3 spells (dry run, then real), import 1 character, read the log.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/mcp/src/roundtrip.test.ts: @modelcontextprotocol/client over stdio spawns node packages/mcp/src/index.ts against a live Gloam — listTools gives the 8 §26.2 tools; import_spells dry run reports 3 and makes none, real run makes 3 (search_spells finds them); import_character makes Mira Holloway; add_log_entry then get_campaign_log reads it back (author 'Claude Code (API)'); a bad campaign id answers isError in words",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-30T10:25:42.871Z"
     },
     {
       "id": "AC-API-05",

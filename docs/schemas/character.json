@@ -1,0 +1,1220 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "schemaVersion": {
+      "default": 1,
+      "type": "number",
+      "const": 1
+    },
+    "core": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "portraitAssetId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "tokenAssetId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "species": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "background": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "alignment": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "classes": {
+          "default": [],
+          "maxItems": 12,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "level": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              },
+              "subclass": {
+                "type": "string",
+                "maxLength": 200
+              }
+            },
+            "required": [
+              "name",
+              "level"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "xp": {
+          "default": 0,
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000000
+        },
+        "abilities": {
+          "default": {
+            "str": 10,
+            "dex": 10,
+            "con": 10,
+            "int": 10,
+            "wis": 10,
+            "cha": 10
+          },
+          "type": "object",
+          "properties": {
+            "str": {
+              "default": 10,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 30
+            },
+            "dex": {
+              "default": 10,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 30
+            },
+            "con": {
+              "default": 10,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 30
+            },
+            "int": {
+              "default": 10,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 30
+            },
+            "wis": {
+              "default": 10,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 30
+            },
+            "cha": {
+              "default": 10,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 30
+            }
+          },
+          "additionalProperties": false
+        },
+        "saves": {
+          "default": {},
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "enum": [
+              "str",
+              "dex",
+              "con",
+              "int",
+              "wis",
+              "cha"
+            ]
+          },
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "proficient": {
+                "default": false,
+                "type": "boolean"
+              },
+              "bonus": {
+                "type": "integer",
+                "minimum": -99,
+                "maximum": 99
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "skills": {
+          "default": {},
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "enum": [
+              "acrobatics",
+              "animalHandling",
+              "arcana",
+              "athletics",
+              "deception",
+              "history",
+              "insight",
+              "intimidation",
+              "investigation",
+              "medicine",
+              "nature",
+              "perception",
+              "performance",
+              "persuasion",
+              "religion",
+              "sleightOfHand",
+              "stealth",
+              "survival"
+            ]
+          },
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "prof": {
+                "default": "none",
+                "type": "string",
+                "enum": [
+                  "none",
+                  "half",
+                  "proficient",
+                  "expertise"
+                ]
+              },
+              "bonus": {
+                "type": "integer",
+                "minimum": -99,
+                "maximum": 99
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "ac": {
+          "default": {
+            "value": 10
+          },
+          "type": "object",
+          "properties": {
+            "value": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 99
+            },
+            "note": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          "required": [
+            "value"
+          ],
+          "additionalProperties": false
+        },
+        "initiativeBonus": {
+          "default": 0,
+          "type": "integer",
+          "minimum": -99,
+          "maximum": 99
+        },
+        "speeds": {
+          "default": {
+            "walk": 30,
+            "fly": 0,
+            "swim": 0,
+            "climb": 0,
+            "burrow": 0,
+            "hover": false
+          },
+          "type": "object",
+          "properties": {
+            "walk": {
+              "default": 30,
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100000
+            },
+            "fly": {
+              "default": 0,
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100000
+            },
+            "swim": {
+              "default": 0,
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100000
+            },
+            "climb": {
+              "default": 0,
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100000
+            },
+            "burrow": {
+              "default": 0,
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100000
+            },
+            "hover": {
+              "default": false,
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        },
+        "size": {
+          "default": "medium",
+          "type": "string",
+          "enum": [
+            "tiny",
+            "small",
+            "medium",
+            "large",
+            "huge",
+            "gargantuan"
+          ]
+        },
+        "hp": {
+          "default": {
+            "max": 10,
+            "current": 10,
+            "temp": 0
+          },
+          "type": "object",
+          "properties": {
+            "max": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 99999
+            },
+            "current": {
+              "type": "integer",
+              "minimum": -99999,
+              "maximum": 99999
+            },
+            "temp": {
+              "default": 0,
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 99999
+            }
+          },
+          "required": [
+            "max",
+            "current"
+          ],
+          "additionalProperties": false
+        },
+        "hitDice": {
+          "default": [],
+          "maxItems": 8,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "die": {
+                "type": "string",
+                "enum": [
+                  "d6",
+                  "d8",
+                  "d10",
+                  "d12"
+                ]
+              },
+              "total": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 99
+              },
+              "used": {
+                "default": 0,
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 99
+              }
+            },
+            "required": [
+              "die",
+              "total"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "deathSaves": {
+          "default": {
+            "successes": 0,
+            "failures": 0
+          },
+          "type": "object",
+          "properties": {
+            "successes": {
+              "default": 0,
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 3
+            },
+            "failures": {
+              "default": 0,
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 3
+            }
+          },
+          "additionalProperties": false
+        },
+        "senses": {
+          "default": {
+            "darkvision": 0,
+            "blindsight": 0,
+            "tremorsense": 0,
+            "truesight": 0
+          },
+          "type": "object",
+          "properties": {
+            "darkvision": {
+              "default": 0,
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100000
+            },
+            "blindsight": {
+              "default": 0,
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100000
+            },
+            "tremorsense": {
+              "default": 0,
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100000
+            },
+            "truesight": {
+              "default": 0,
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100000
+            }
+          },
+          "additionalProperties": false
+        },
+        "resistances": {
+          "default": [],
+          "maxItems": 13,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "acid",
+              "bludgeoning",
+              "cold",
+              "fire",
+              "force",
+              "lightning",
+              "necrotic",
+              "piercing",
+              "poison",
+              "psychic",
+              "radiant",
+              "slashing",
+              "thunder"
+            ]
+          }
+        },
+        "immunities": {
+          "default": [],
+          "maxItems": 13,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "acid",
+              "bludgeoning",
+              "cold",
+              "fire",
+              "force",
+              "lightning",
+              "necrotic",
+              "piercing",
+              "poison",
+              "psychic",
+              "radiant",
+              "slashing",
+              "thunder"
+            ]
+          }
+        },
+        "vulnerabilities": {
+          "default": [],
+          "maxItems": 13,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "acid",
+              "bludgeoning",
+              "cold",
+              "fire",
+              "force",
+              "lightning",
+              "necrotic",
+              "piercing",
+              "poison",
+              "psychic",
+              "radiant",
+              "slashing",
+              "thunder"
+            ]
+          }
+        },
+        "conditionImmunities": {
+          "default": [],
+          "maxItems": 20,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "blinded",
+              "charmed",
+              "deafened",
+              "exhaustion",
+              "frightened",
+              "grappled",
+              "incapacitated",
+              "invisible",
+              "paralyzed",
+              "petrified",
+              "poisoned",
+              "prone",
+              "restrained",
+              "stunned",
+              "unconscious"
+            ]
+          }
+        },
+        "conditions": {
+          "default": [],
+          "maxItems": 20,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "blinded",
+              "charmed",
+              "deafened",
+              "exhaustion",
+              "frightened",
+              "grappled",
+              "incapacitated",
+              "invisible",
+              "paralyzed",
+              "petrified",
+              "poisoned",
+              "prone",
+              "restrained",
+              "stunned",
+              "unconscious"
+            ]
+          }
+        },
+        "exhaustion": {
+          "default": 0,
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 6
+        },
+        "inspiration": {
+          "default": false,
+          "type": "boolean"
+        },
+        "concentration": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "spellcasting": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "ability": {
+                  "type": "string",
+                  "enum": [
+                    "str",
+                    "dex",
+                    "con",
+                    "int",
+                    "wis",
+                    "cha"
+                  ]
+                },
+                "slots": {
+                  "default": [],
+                  "maxItems": 9,
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "level": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 9
+                      },
+                      "max": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9
+                      },
+                      "used": {
+                        "default": 0,
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9
+                      }
+                    },
+                    "required": [
+                      "level",
+                      "max"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "pact": {
+                  "type": "object",
+                  "properties": {
+                    "level": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 9
+                    },
+                    "max": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9
+                    },
+                    "used": {
+                      "default": 0,
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9
+                    }
+                  },
+                  "required": [
+                    "level",
+                    "max"
+                  ],
+                  "additionalProperties": false
+                },
+                "spells": {
+                  "default": [],
+                  "maxItems": 500,
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200
+                      },
+                      "level": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9
+                      },
+                      "prepared": {
+                        "default": false,
+                        "type": "boolean"
+                      },
+                      "contentId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 40
+                      }
+                    },
+                    "required": [
+                      "name",
+                      "level"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "ability"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "attacks": {
+          "default": [],
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "attack": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "damage": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "range": {
+                "type": "string",
+                "maxLength": 200
+              },
+              "properties": {
+                "type": "string",
+                "maxLength": 200
+              }
+            },
+            "required": [
+              "name"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "light": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "currency": {
+          "default": {
+            "cp": 0,
+            "sp": 0,
+            "ep": 0,
+            "gp": 0,
+            "pp": 0
+          },
+          "type": "object",
+          "properties": {
+            "cp": {
+              "default": 0,
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 99999999
+            },
+            "sp": {
+              "default": 0,
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 99999999
+            },
+            "ep": {
+              "default": 0,
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 99999999
+            },
+            "gp": {
+              "default": 0,
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 99999999
+            },
+            "pp": {
+              "default": 0,
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 99999999
+            }
+          },
+          "additionalProperties": false
+        },
+        "inventory": {
+          "default": [],
+          "maxItems": 500,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "qty": {
+                "default": 1,
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 99999
+              },
+              "weight": {
+                "default": 0,
+                "type": "number",
+                "minimum": 0,
+                "maximum": 10000
+              },
+              "equipped": {
+                "default": false,
+                "type": "boolean"
+              },
+              "attuned": {
+                "default": false,
+                "type": "boolean"
+              },
+              "notes": {
+                "type": "string",
+                "maxLength": 200
+              },
+              "light": {
+                "type": "string",
+                "maxLength": 200
+              }
+            },
+            "required": [
+              "name"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "features": {
+          "default": [],
+          "maxItems": 200,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "text": {
+                "default": "",
+                "type": "string",
+                "maxLength": 40000
+              },
+              "uses": {
+                "type": "object",
+                "properties": {
+                  "max": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 999
+                  },
+                  "used": {
+                    "default": 0,
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 999
+                  },
+                  "recharge": {
+                    "default": "long",
+                    "type": "string",
+                    "enum": [
+                      "short",
+                      "long",
+                      "dawn",
+                      "none"
+                    ]
+                  }
+                },
+                "required": [
+                  "max"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "name"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "languages": {
+          "default": [],
+          "maxItems": 50,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 200
+          }
+        },
+        "proficiencies": {
+          "default": [],
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 200
+          }
+        },
+        "notes": {
+          "default": "",
+          "type": "string",
+          "maxLength": 40000
+        },
+        "overrides": {
+          "default": {},
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "enum": [
+              "level",
+              "proficiencyBonus",
+              "initiative",
+              "passive.perception",
+              "passive.investigation",
+              "passive.insight",
+              "spell.dc",
+              "spell.attack",
+              "carry.capacity",
+              "mod.str",
+              "mod.dex",
+              "mod.con",
+              "mod.int",
+              "mod.wis",
+              "mod.cha",
+              "save.str",
+              "save.dex",
+              "save.con",
+              "save.int",
+              "save.wis",
+              "save.cha",
+              "skill.acrobatics",
+              "skill.animalHandling",
+              "skill.arcana",
+              "skill.athletics",
+              "skill.deception",
+              "skill.history",
+              "skill.insight",
+              "skill.intimidation",
+              "skill.investigation",
+              "skill.medicine",
+              "skill.nature",
+              "skill.perception",
+              "skill.performance",
+              "skill.persuasion",
+              "skill.religion",
+              "skill.sleightOfHand",
+              "skill.stealth",
+              "skill.survival"
+            ]
+          },
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": -999,
+            "maximum": 9999
+          }
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    "custom": {
+      "default": [],
+      "maxItems": 100,
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 40
+              },
+              "title": {
+                "default": "",
+                "type": "string",
+                "maxLength": 200
+              },
+              "type": {
+                "type": "string",
+                "const": "text"
+              },
+              "markdown": {
+                "default": "",
+                "type": "string",
+                "maxLength": 40000
+              }
+            },
+            "required": [
+              "id",
+              "type"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 40
+              },
+              "title": {
+                "default": "",
+                "type": "string",
+                "maxLength": 200
+              },
+              "type": {
+                "type": "string",
+                "const": "number"
+              },
+              "value": {
+                "default": 0,
+                "type": "number"
+              }
+            },
+            "required": [
+              "id",
+              "type"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 40
+              },
+              "title": {
+                "default": "",
+                "type": "string",
+                "maxLength": 200
+              },
+              "type": {
+                "type": "string",
+                "const": "counter"
+              },
+              "value": {
+                "default": 0,
+                "type": "integer",
+                "minimum": -99999,
+                "maximum": 99999
+              },
+              "max": {
+                "default": 0,
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 99999
+              },
+              "pinToToken": {
+                "default": false,
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "id",
+              "type"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 40
+              },
+              "title": {
+                "default": "",
+                "type": "string",
+                "maxLength": 200
+              },
+              "type": {
+                "type": "string",
+                "const": "checklist"
+              },
+              "items": {
+                "default": [],
+                "maxItems": 200,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "label": {
+                      "type": "string",
+                      "maxLength": 200
+                    },
+                    "done": {
+                      "default": false,
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "label"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "id",
+              "type"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 40
+              },
+              "title": {
+                "default": "",
+                "type": "string",
+                "maxLength": 200
+              },
+              "type": {
+                "type": "string",
+                "const": "table"
+              },
+              "columns": {
+                "default": [],
+                "maxItems": 12,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 200
+                }
+              },
+              "rows": {
+                "default": [],
+                "maxItems": 200,
+                "type": "array",
+                "items": {
+                  "maxItems": 12,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "maxLength": 200
+                  }
+                }
+              }
+            },
+            "required": [
+              "id",
+              "type"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 40
+              },
+              "title": {
+                "default": "",
+                "type": "string",
+                "maxLength": 200
+              },
+              "type": {
+                "type": "string",
+                "const": "keyValue"
+              },
+              "entries": {
+                "default": [],
+                "maxItems": 200,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "key": {
+                      "type": "string",
+                      "maxLength": 200
+                    },
+                    "value": {
+                      "type": "string",
+                      "maxLength": 200
+                    }
+                  },
+                  "required": [
+                    "key",
+                    "value"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "id",
+              "type"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 40
+              },
+              "title": {
+                "default": "",
+                "type": "string",
+                "maxLength": 200
+              },
+              "type": {
+                "type": "string",
+                "const": "image"
+              },
+              "assetId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 40
+              }
+            },
+            "required": [
+              "id",
+              "type"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      }
+    },
+    "importNotes": {
+      "maxItems": 50,
+      "type": "array",
+      "items": {
+        "type": "string",
+        "maxLength": 200
+      }
+    }
+  },
+  "required": [
+    "core"
+  ],
+  "additionalProperties": false
+}

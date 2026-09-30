@@ -35,6 +35,8 @@ export interface TableRoomApi {
   audioChanged(): void;
   /** Someone's profile changed (renamed): their presence follows. */
   profileChanged(userId: string): void;
+  /** An entry for the campaign log from outside the room (the local API), sent to its readers. */
+  appendLog(kind: string, text: string, data: Record<string, unknown>): void;
   /** Hands a person's characters and token ownership to someone else, or no one, through the bus. */
   reassignOwner(fromUserId: string, toUserId: string | null, adminUserId: string): void;
 }

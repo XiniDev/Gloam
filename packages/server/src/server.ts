@@ -26,6 +26,7 @@ import { ensureLobbyRoom, ensureTableRoom } from "./rooms/lifecycle.ts";
 import { RoomRegistry } from "./rooms/registry.ts";
 import { setRoomContext } from "./rooms/roomContext.ts";
 import { TableRoom } from "./rooms/TableRoom.ts";
+import { ApiTokenService } from "./services/apiTokens.ts";
 import { CampaignService } from "./services/campaigns.ts";
 import { PeopleService } from "./services/people.ts";
 import { SecurityLog } from "./services/securityLog.ts";
@@ -157,6 +158,7 @@ export async function startServer(opts: StartOptions = {}): Promise<GloamServer>
   });
   ctx.table = new TableService(ctx);
   ctx.people = new PeopleService(ctx);
+  ctx.apiTokens = new ApiTokenService(ctx);
   ctx.assets = new AssetService(ctx);
   setRoomContext(ctx);
 

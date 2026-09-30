@@ -45,6 +45,8 @@ export const LOCAL_ONLY_SETTINGS: ReadonlySet<SettingKey> = new Set([
   "publicHostname",
   "cloudflaredPath",
   "lanConfirmed",
+  // API tokens answering from anywhere but this computer: widened only from this computer (SPEC §8.23).
+  "allowRemoteApi",
 ]);
 
 export class SettingsService {

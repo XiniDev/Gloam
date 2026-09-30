@@ -38,6 +38,8 @@ export interface Config {
   nodeEnv: NodeEnv;
   /** Seeded dice only when NODE_ENV=test (SPEC §18.2, AC-DICE-10); production ignores the variable. */
   testSeed: number | undefined;
+  /** The repository Gloam runs from (the Connect Claude page's setup lines point into it). */
+  repoRoot: string;
   /** Serve the built SPA from here in production; dev mode uses Vite middleware instead. */
   webRoot: string;
   webDist: string;
@@ -84,6 +86,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, overrides: Part
     logLevel: e.LOG_LEVEL,
     nodeEnv: e.NODE_ENV,
     testSeed: e.NODE_ENV === "test" ? e.GLOAM_TEST_SEED : undefined,
+    repoRoot,
     webRoot: resolve(repoRoot, "packages", "web"),
     webDist:
       e.NODE_ENV === "test" && e.GLOAM_TEST_WEB_DIST

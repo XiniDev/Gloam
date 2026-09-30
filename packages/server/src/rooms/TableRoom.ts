@@ -2185,6 +2185,11 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
     return { admitted, spectators };
   }
 
+  /** An entry for the campaign log from outside the room (the local API): logged, and to its readers at once. */
+  appendLog(kind: string, text: string, data: Record<string, unknown>): void {
+    this.fun.append(kind, text, { data });
+  }
+
   /** Someone's profile changed (the Admin renamed them): their presence follows at once. */
   profileChanged(userId: string): void {
     const p = this.state.presence.get(userId);

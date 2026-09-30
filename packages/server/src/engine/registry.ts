@@ -8,6 +8,7 @@ import { CONTENT_COMMANDS } from "./commands/content.ts";
 import { FOG_COMMANDS } from "./commands/fog.ts";
 import { HANDOUT_COMMANDS } from "./commands/handout.ts";
 import { HEALTH_COMMANDS } from "./commands/health.ts";
+import { IMPORT_COMMANDS } from "./commands/imports.ts";
 import { LIGHT_COMMANDS } from "./commands/light.ts";
 import { MOVE_COMMANDS } from "./commands/move.ts";
 import { PARTY_COMMANDS } from "./commands/party.ts";
@@ -36,6 +37,7 @@ export const ALL_COMMANDS: CommandDef<never, unknown>[] = [
   ...COMBAT_COMMANDS,
   ...SPELL_COMMANDS,
   ...CONTENT_COMMANDS,
+  ...IMPORT_COMMANDS,
   ...AUDIO_COMMANDS,
   ...HANDOUT_COMMANDS,
 ];
@@ -73,6 +75,8 @@ export const COMMAND_RATES: Record<string, { capacity: number; perSecond: number
   "attack.start": { capacity: 5, perSecond: 2 },
   ...Object.fromEntries(CONTENT_COMMANDS.map((d) => [d.type, { capacity: 5, perSecond: 2 }])),
   "content.spell.import": { capacity: 2, perSecond: 0.5 },
+  // (Imports come over the local API, not the room; were one sent there, it's as slow as a spell import.)
+  ...Object.fromEntries(IMPORT_COMMANDS.map((d) => [d.type, { capacity: 2, perSecond: 0.5 }])),
   // Audio (§13.5: 5/s): the player's buttons, the mixer's sliders (sent as they move, a few a second).
   ...Object.fromEntries(AUDIO_COMMANDS.map((d) => [d.type, { capacity: 8, perSecond: 5 }])),
   // Handouts and secret notes (§13.5: 2/s).
