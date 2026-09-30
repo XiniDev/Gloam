@@ -208,16 +208,20 @@ export function effectsOn(
   senses: Partial<Record<"darkvision" | "blindsight" | "tremorsense" | "truesight", number>>;
   seeInvisible: boolean;
   outlined: boolean;
+  /** Attacks against it have Advantage (Faerie Fire, Shining Smite; not Starry Wisp's outline). */
+  advantageAgainst: boolean;
 } {
   const out = {
     senses: {} as Partial<Record<"darkvision" | "blindsight" | "tremorsense" | "truesight", number>>,
     seeInvisible: false,
     outlined: false,
+    advantageAgainst: false,
   };
   for (const e of model.inScene("effect", t.sceneId)) {
     if (e.attachedTokenId !== t.id) continue;
     if (e.props.seeInvisible) out.seeInvisible = true;
     if (e.props.outline) out.outlined = true;
+    if (e.props.advantageAgainst) out.advantageAgainst = true;
     for (const [k, v] of Object.entries(e.props.senses ?? {}))
       if (typeof v === "number") {
         const key = k as keyof typeof out.senses;

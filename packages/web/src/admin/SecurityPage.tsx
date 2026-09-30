@@ -118,23 +118,30 @@ export function SecurityPage() {
             !rows?.length ? (
               <EmptyState art="door" title="Nothing logged of this kind yet." />
             ) : (
-              <ol className="flex flex-col divide-y divide-line/60" aria-label="Security events">
+              // By the list's own width: when, what and where in three columns where there's room; else when and where on
+              // a line, what under them the whole width (critic RSP-01 r1: at 768 px the event had 70 px, a word a line).
+              <ol className="@container flex flex-col divide-y divide-line/60" aria-label="Security events">
                 {(rows ?? []).map((r) => (
                   <li
                     key={r.id}
-                    className="grid gap-x-4 gap-y-0.5 py-2.5 text-14 sm:grid-cols-[176px_minmax(0,1fr)_132px]"
+                    className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-0.5 py-2.5 text-14 [grid-template-areas:'when_ip'_'what_what'] @[600px]:grid-cols-[176px_minmax(0,1fr)_132px] @[600px]:[grid-template-areas:'when_what_ip']"
                     data-testid="security-row"
                     data-event={r.event}
                   >
-                    <span className="tabular whitespace-nowrap text-13 text-muted">{when(r.createdAt)}</span>
-                    <span className="min-w-0">
+                    <span className="tabular whitespace-nowrap text-13 text-muted [grid-area:when]">
+                      {when(r.createdAt)}
+                    </span>
+                    <span className="min-w-0 [grid-area:what]">
                       <span className="text-bone">{EVENT[r.event] ?? r.event}</span>
                       {r.userName ? <span className="text-muted"> · {r.userName}</span> : null}
                       {detailText(r.detail) ? (
                         <span className="block truncate text-12 text-faint">{detailText(r.detail)}</span>
                       ) : null}
                     </span>
-                    <span className="tabular truncate text-13 text-muted sm:text-right" title="Client IP">
+                    <span
+                      className="tabular truncate text-right text-13 text-muted [grid-area:ip]"
+                      title="Client IP"
+                    >
                       {r.ip ?? "—"}
                     </span>
                   </li>

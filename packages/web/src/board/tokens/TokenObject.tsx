@@ -1602,11 +1602,13 @@ function Overlay({
       <Billboard>
         <group ref={group} userData={{ part: "overlay" }}>
           <primitive object={leader.group} />
+          {/* The plate's chip and bar under its text (30), over every marker on the board — a door's handle (25), an
+              effect's (21): a handle drawn between a plate's chip and its letters read "CRYPT ⊙ARDEN" (critic RSP-01 r1). */}
           <mesh
             ref={chipMesh}
             material={chip}
             geometry={CHIP_GEOMETRY}
-            renderOrder={19}
+            renderOrder={28}
             raycast={() => null}
             dispose={null}
             userData={{ part: "plateChip" }}
@@ -1617,7 +1619,7 @@ function Overlay({
               material={bar as ShaderMaterial}
               geometry={CHIP_GEOMETRY}
               scale={[BAR_W, BAR_H, 1]}
-              renderOrder={20}
+              renderOrder={29}
               userData={{ part: "hpBar" }}
               raycast={() => null}
               dispose={null}

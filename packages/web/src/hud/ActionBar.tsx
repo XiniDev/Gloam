@@ -6,7 +6,7 @@ import { useTable } from "../net/table.ts";
 import { boardData, useEntities } from "../state/entities.ts";
 import { useUi } from "../state/ui.ts";
 import { Tooltip } from "../ui/Tooltip.tsx";
-import { type Density, TurnControls } from "./combat/TurnControls.tsx";
+import { type Density, type TurnAction, TurnControls } from "./combat/TurnControls.tsx";
 import { ElevationControl } from "./ElevationControl.tsx";
 import { insetMeasures, useCover, useHudInsets, useIsPhone, useMeasuredInset } from "./insets.ts";
 import { TAB_BAR_H } from "./PhoneTabBar.tsx";
@@ -73,7 +73,7 @@ function Bar({ tray }: { tray: boolean }) {
   const inFeed = feed > toolbarLeft && centred - barW / 2 < feed + 8;
   const hudLeft =
     !phone && inFeed && vw - hudRight - feed >= Math.max(BESIDE_FEED, barW) ? feed : toolbarLeft;
-  const [asking, setAsking] = useState<"dash" | null>(null);
+  const [asking, setAsking] = useState<TurnAction | null>(null);
   const [density, setDensity] = useState<Density>(phone ? 3 : 0);
   // What sets the bar's natural width: the room, whose turn and what it shows, the selection (the height stepper).
   const view = useCombat((s) => s.view);

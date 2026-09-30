@@ -8,7 +8,7 @@ import {
   introDone,
   openPanel,
 } from "../fixtures/board.ts";
-import { expect, test } from "../fixtures/test.ts";
+import { adminSection, expect, test } from "../fixtures/test.ts";
 
 /** A request to `path` exactly (not its sub-paths), held until released or failed as a dropped connection. */
 async function intercept(p: Page, path: string, how: "hold" | "fail") {
@@ -31,10 +31,7 @@ async function intercept(p: Page, path: string, how: "hold" | "fail") {
   };
 }
 
-async function nav(p: Page, name: string) {
-  const link = p.getByRole("navigation", { name: "Admin sections" }).getByRole("link", { name, exact: true });
-  await link.click();
-}
+const nav = (p: Page, name: string) => adminSection(p, name);
 
 /** The loading line for `what`, and the failed card for it (its words and its Try again). */
 const loading = (p: Page, what: string) =>

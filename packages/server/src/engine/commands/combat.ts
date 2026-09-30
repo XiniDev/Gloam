@@ -880,6 +880,44 @@ export const moveDash: CommandDef<z.infer<typeof MoveTurn>, { dashes: number }> 
   },
 };
 
+/**
+ * `move.disengage` / `move.dodge` (SRD 5.2.1 pp. 9–10, the Actions table; rules audit C3): its action, and the marker
+ * that says so for as long as the rules have it — Disengaged: its movement provokes no opportunity attacks for the rest
+ * of this turn (gone as the turn ends); Dodging: attacks against it at a disadvantage and its Dexterity saves at an
+ * advantage until the start of its next turn (and lapsing sooner while it can't act or at Speed 0, `dodgeHolds`).
+ */
+function actionMarker(
+  type: "move.disengage" | "move.dodge",
+  marker: "disengaged" | "dodging",
+  what: string,
+  until: "turnEnd" | "nextTurnStart",
+): CommandDef<z.infer<typeof MoveTurn>, { ok: true }> {
+  return {
+    type,
+    schema: MoveTurn,
+    undoable: true,
+    authorize(ctx, p) {
+      const { t } = ownTurn(ctx, p.tokenId);
+      mustBeAbleToAct(ctx, holderOf(ctx, { tokenId: t.id }), what);
+    },
+    plan(ctx, p) {
+      const { t, c, d } = ownTurn(ctx, p.tokenId);
+      const h = holderOf(ctx, { tokenId: t.id });
+      const markers = [
+        ...h.status.markers.filter((m) => m.id !== marker),
+        { id: marker, ...(until === "turnEnd" ? { endsWithTurnOf: t.id } : { endsAtStartOf: t.id }) },
+      ];
+      const ops = [
+        setPathOp("combat", c, ["data", "pips", t.id], (d.pips[t.id] ?? 0) | PIP.action),
+        ...holderOps(ctx, h, { hp: h.hp, hpTemp: h.hpTemp, status: { ...h.status, markers } }),
+      ].filter((o): o is Op => o !== null);
+      return { ops, summary: `${t.name}: ${what}`, sceneId: t.sceneId, result: { ok: true } };
+    },
+  };
+}
+export const moveDisengage = actionMarker("move.disengage", "disengaged", "Disengage", "turnEnd");
+export const moveDodge = actionMarker("move.dodge", "dodging", "Dodge", "nextTurnStart");
+
 /** `move.stand` (§19.4; AC-MOV-09): up from Prone for half its speed — refused when that much isn't left. */
 export const moveStand: CommandDef<z.infer<typeof MoveTurn>, { cost: number }> = {
   type: "move.stand",
@@ -942,5 +980,7 @@ export const COMBAT_COMMANDS = [
   combatPip,
   moveReset,
   moveDash,
+  moveDisengage,
+  moveDodge,
   moveStand,
 ] as unknown as CommandDef<never, unknown>[];

@@ -3,7 +3,7 @@ import { join } from "node:path";
 import type { Page } from "@playwright/test";
 import { admitPlayer, dmSection, hook, intro, req } from "../fixtures/board.ts";
 import { freshShotsDir } from "../fixtures/shotsDir.ts";
-import { expect, knockAsNew, newPlayerContext, test } from "../fixtures/test.ts";
+import { adminSection, expect, knockAsNew, newPlayerContext, test } from "../fixtures/test.ts";
 
 type Tok = { id: string; name: string; pos: { x: number; y: number } };
 
@@ -49,14 +49,8 @@ test("P12 key screens", async ({ admin, browser, gloam, guardLog }, info) => {
       await page.screenshot({ path: join(dir, `_failed-${name}.png`) }).catch(() => {});
     }
   };
-  const nav = async (p: Page, name: string) => {
-    // A phone's console nav is a row that scrolls: the link brought into view first.
-    const link = p
-      .getByRole("navigation", { name: "Admin sections" })
-      .getByRole("link", { name, exact: true });
-    await link.scrollIntoViewIfNeeded();
-    await link.click();
-  };
+  // (A phone's console: the section picker opened first.)
+  const nav = (p: Page, name: string) => adminSection(p, name);
   const closeDock = async (p: Page) => {
     const close = p.getByRole("button", { name: "Close panel" });
     if (await close.isVisible().catch(() => false)) await close.click();

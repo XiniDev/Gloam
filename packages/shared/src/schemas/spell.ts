@@ -224,7 +224,13 @@ export const EffectPropsTemplate = z
     outline: z
       .boolean()
       .optional()
-      .describe("Creatures inside are outlined (Faerie Fire): can't benefit from Invisible"),
+      .describe("Creatures inside are outlined (Faerie Fire, Starry Wisp): can't benefit from Invisible"),
+    advantageAgainst: z
+      .boolean()
+      .optional()
+      .describe(
+        "Attack rolls against a creature it's on have Advantage (Faerie Fire: if the attacker can see it; Shining Smite)",
+      ),
     speedHalved: z
       .boolean()
       .optional()
@@ -264,6 +270,12 @@ export const EffectTemplate = z
       .optional()
       .describe(
         "A creature makes its save only once per turn, whichever trigger (Spirit Guardians, Moonbeam)",
+      ),
+    lasts: z
+      .enum(["casterTurnEnd"])
+      .optional()
+      .describe(
+        "How long it lasts, where that isn't the spell's duration: until the end of its caster's next turn (Starry Wisp's glow on the creature it hit — the spell itself is instantaneous)",
       ),
     recastEnds: z
       .boolean()

@@ -11,7 +11,7 @@ import {
   truncateAtCollision,
   withCreatureSpaces,
 } from "@gloam/shared/movement";
-import { incapacitates, stuckName } from "@gloam/shared/rules";
+import { incapacitates, PIP, stuckName } from "@gloam/shared/rules";
 import type { TokenView } from "@gloam/shared/state";
 import { create } from "zustand";
 import { useCombat } from "../../net/combat.ts";
@@ -341,6 +341,10 @@ function compute(): void {
         reachFt: o.reachFt || 5,
         disposition: side(o),
         incapacitated: incapacitates(o.conditions),
+        // Its Reaction spent (known only where its pips are: the DM, its own players), and whether it can see the
+        // mover — not Blinded, the mover not Invisible (a hint: what it senses beyond sight isn't this screen's).
+        canReact: o.own ? (o.own.pips & PIP.reaction) === 0 : true,
+        seesMover: !o.conditions.includes("blinded") && !t.conditions.includes("invisible"),
       })),
     );
     if (marks.length) preview.oa = marks;

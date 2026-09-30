@@ -247,6 +247,40 @@ export class VisionService implements Perception, FogApplier {
   }
 
   /**
+   * Whether one creature sees another now — its sight and senses, the lights, the walls (rules audit C7: the source of
+   * a Frightened creature's fear in its sight or not). Null where there's no world for them (a scene not in play).
+   */
+  tokenSees(a: TokenEntity, b: TokenEntity): boolean | null {
+    if (a.sceneId !== this.sceneId || b.sceneId !== this.sceneId) return null;
+    const world = this.world ?? this.rulesWorld();
+    if (!world) return null;
+    const viewer = prepareViewer(world, tokenViewer(this.model, a));
+    return perceiveCreature(world, [viewer], tokenCreature(this.model, b), this.ownLight(b)) === "seen";
+  }
+
+  /**
+   * The scene's sight for the rules when fog is off (no world is kept for the players then): its walls, lights and
+   * effects — built when asked, kept until the campaign next changes.
+   */
+  private rulesWorld(): VisionWorld | null {
+    const scene = this.scene;
+    if (!scene) return null;
+    if (this.rulesCache && this.rulesCache.version === this.model.version) return this.rulesCache.world;
+    const fx = sceneEffects(this.model, this.sceneId);
+    const geo = VisionGeometry.after(null, sceneWalls(this.model, this.sceneId), fx.opaque, fx.solid);
+    const world = new VisionWorld(
+      geo,
+      [...sceneLights(this.model, this.sceneId), ...fx.lights],
+      scene.ambient.level,
+      scene.bounds,
+      fx.obscurers,
+    );
+    this.rulesCache = { version: this.model.version, world };
+    return world;
+  }
+  private rulesCache: { version: number; world: VisionWorld } | null = null;
+
+  /**
    * Whether a player gets a carried light whose carrier they don't perceive: its light reaches their sight (they see
    * the glow round the corner, not who holds it). Free-standing lights are public.
    */

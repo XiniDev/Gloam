@@ -9,6 +9,7 @@ import {
   describeConsequence,
   healingConsequences,
   isBloodied,
+  makesDeathSaves,
   sortConsequences,
 } from "./consequences.ts";
 import { applyDamage, applyHealing, type DamageTarget } from "./damage.ts";
@@ -60,9 +61,18 @@ describe("what damage brings (SPEC §8.11; AC-HP-06/07/09/10)", () => {
     const dead = applyToStatus(status(), { kind: "npcAtZero", choice: "dead" });
     expect(dead.markers.map((m) => m.id)).toContain("dead");
     expect(applyToStatus(status(), { kind: "npcAtZero", choice: "dead" }, "keep")).toEqual(status());
-    // Left unconscious, it is Prone too (SRD 5.2.1), as a character going down is.
+    // Left unconscious, it is Prone too (SRD 5.2.1), as a character going down is: knocked out, it is Stable; left
+    // dying, its death saves begin (SRD 5.2.1 p. 17; rules audit Q4).
     const out = applyToStatus(status(), { kind: "npcAtZero", choice: "unconscious" });
     expect(out.conditions.map((c) => c.id)).toEqual(["unconscious", "prone"]);
+    expect(out.markers.map((m) => m.id)).toEqual(["stable"]);
+    expect(makesDeathSaves(false, out)).toBe(false);
+    const dying = applyToStatus(status(), { kind: "npcAtZero", choice: "dying" });
+    expect(dying.conditions.map((c) => c.id)).toEqual(["unconscious", "prone"]);
+    expect(dying.markers.map((m) => m.id)).toEqual(["deathsaves"]);
+    expect(dying.deathSaves).toMatchObject({ successes: 0, failures: 0, stable: false, dead: false });
+    expect(makesDeathSaves(false, dying)).toBe(true);
+    expect(makesDeathSaves(true, status())).toBe(true);
   });
 
   it("massive damage asks the DM: instant death?", () => {
@@ -84,6 +94,16 @@ describe("what damage brings (SPEC §8.11; AC-HP-06/07/09/10)", () => {
     expect(dead.markers.map((m) => m.id)).toEqual(["dead"]);
   });
 
+  it("hurt while Stable, it's dying again: the Death saves marker back in the Stable one's place (rules audit)", () => {
+    const stable = status({
+      markers: [{ id: "stable" }],
+      deathSaves: { successes: 0, failures: 0, stable: true, dead: false },
+    });
+    const s = applyToStatus(stable, { kind: "deathSaveFailures", n: 1, failures: 1 });
+    expect(s.markers.map((m) => m.id)).toEqual(["deathsaves"]);
+    expect(s.deathSaves).toMatchObject({ failures: 1, stable: false });
+  });
+
   it("a concentrating creature hit (and still up) makes a save: DC max(10, half), 30 at most", () => {
     const s = status({ concentration: { spellName: "Bless" } });
     expect(hit(pc({ hp: 40 }), 12, s)).toContainEqual({ kind: "concentrationSave", dc: 10 });
@@ -91,10 +111,11 @@ describe("what damage brings (SPEC §8.11; AC-HP-06/07/09/10)", () => {
     expect(hit(pc({ hp: 40 }), 12).some((c) => c.kind === "concentrationSave")).toBe(false);
   });
 
-  it("Bloodied: on at half its HP or fewer, off above it or at 0 (AC-HP-06)", () => {
+  it("Bloodied: on at half its HP or fewer — at 0 as well — off above it (AC-HP-06)", () => {
     expect(isBloodied(20, 40)).toBe(true);
     expect(isBloodied(21, 40)).toBe(false);
-    expect(isBloodied(0, 40)).toBe(false);
+    // At 0 as well: half its HP or fewer (SRD 5.2.1 p. 177; rules audit Q2).
+    expect(isBloodied(0, 40)).toBe(true);
     expect(hit(pc({ hp: 30 }), 10)).toContainEqual({ kind: "bloodied", on: true });
     expect(hit(pc({ hp: 30 }), 5).some((c) => c.kind === "bloodied")).toBe(false);
     expect(
@@ -179,7 +200,7 @@ describe("what's applied at once and what's asked (§19.1; AC-HP-12)", () => {
       "Unconscious and Prone; death saves start",
     );
     const npc = describeConsequence({ kind: "npcAtZero", choice: "unconscious" });
-    expect(npc.choices?.map((c) => c.label)).toEqual(["Dead", "Unconscious", "Keep at 0"]);
+    expect(npc.choices?.map((c) => c.label)).toEqual(["Dead", "Unconscious", "Dying", "Keep at 0"]);
     expect(npc.choice).toBe("unconscious");
     expect(describeConsequence({ kind: "dying", reason: "failures" }).choices?.[1]?.label).toBe("Keep dying");
   });

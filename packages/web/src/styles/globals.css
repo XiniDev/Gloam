@@ -1,6 +1,11 @@
 @import "tailwindcss";
 @import "./tokens.css";
 
+/* A short screen on its side (a phone in landscape): pages that stack a picture over text set them side by side. */
+@custom-variant short (@media (max-height: 560px) and (orientation: landscape));
+/* Wide and tall enough for a sidebar that holds its whole list (the Admin console): a tablet or a desktop. */
+@custom-variant side (@media (min-width: 48rem) and (min-height: 561px));
+
 /* Digits set in the caps face come from the UI face: Cinzel's 1 reads as an I ("LEVEL I", "SESSION I"). Only the ten
    digits (unicode-range), from the bundled file (no network at runtime). */
 @font-face {

@@ -199,7 +199,8 @@ describe("P7 — HP, conditions and death on the server (§8.11)", () => {
       before: { hp: 30, hpMax: 30, hpTemp: 0 },
       after: { hp: 0, hpTemp: 0 },
       damage: { total: 35, overflow: 5 },
-      now: [],
+      // Bloodied at 0 as well: half its HP or fewer (SRD 5.2.1 p. 177; rules audit Q2).
+      now: ["bloodied"],
       asked: ["npcAtZero"],
     });
     expect(rows[0]?.damage?.parts[0]).toMatchObject({
@@ -250,7 +251,7 @@ describe("P7 — HP, conditions and death on the server (§8.11)", () => {
     expect(state(ilse).stats).toMatchObject({ hpTemp: 0, hp: 18 });
   });
 
-  it("an NPC at 0 HP: the DM is asked Dead / Unconscious / Keep at 0, Dead preselected; nothing dies meanwhile (AC-HP-10, AC-HP-12)", async () => {
+  it("an NPC at 0 HP: the DM is asked Dead / Unconscious / Dying / Keep at 0, Dead preselected; nothing dies meanwhile (AC-HP-10, AC-HP-12)", async () => {
     const goblin = await npc("Goblin", 7);
     await hpApply(dm, { targets: [goblin], kind: "damage", amount: 9 });
     expect(state(goblin).stats.hp).toBe(0);
@@ -259,7 +260,7 @@ describe("P7 — HP, conditions and death on the server (§8.11)", () => {
     expect(p.title).toBe("Goblin dropped to 0 HP");
     const item = p.items.find((i) => i.key === "npcAtZero");
     expect(item?.choice).toBe("dead");
-    expect(item?.choices?.map((c) => c.label)).toEqual(["Dead", "Unconscious", "Keep at 0"]);
+    expect(item?.choices?.map((c) => c.label)).toEqual(["Dead", "Unconscious", "Dying", "Keep at 0"]);
     // The DM makes it Unconscious instead.
     await rq(dm, "prompt.resolve", { promptId: p.id, apply: true, choices: { npcAtZero: "unconscious" } });
     expect(conditions(goblin)).toContain("unconscious");
@@ -276,12 +277,12 @@ describe("P7 — HP, conditions and death on the server (§8.11)", () => {
     await hpApply(dm, { targets: [orc], kind: "heal", amount: 10 });
     expect(state(orc).stats.hp).toBe(0);
     expect(markers(orc)).toContain("dead");
-    // A third: skipped — kept at 0, nothing added.
+    // A third: skipped — kept at 0, nothing added but Bloodied (half its HP or fewer, 0 included — rules audit Q2).
     const rat = await npc("Rat", 2);
     await hpApply(dm, { targets: [rat], kind: "damage", amount: 5 });
     const r = (await openPromptFor(rat)) as DmPromptView;
     await rq(dm, "prompt.resolve", { promptId: r.id, apply: false });
-    expect(markers(rat)).toEqual([]);
+    expect(markers(rat)).toEqual(["bloodied"]);
     expect(prompts().find((x) => x.id === r.id)?.status).toBe("skipped");
   });
 
@@ -495,6 +496,26 @@ describe("P7 — HP, conditions and death on the server (§8.11)", () => {
     await sleep(100);
     expect(prompts().filter((p) => p.tokenId === bandit)).toHaveLength(0);
     expect(prompts().length).toBe(n);
+    // Left dying (rules audit Q4, SRD 5.2.1 p. 17): it makes death saves as a character does — a hit at 0 HP is a
+    // failure; left Unconscious (the bandit: knocked out), it's Stable.
+    expect(markers(bandit)).toContain("stable");
+    const cultist = await npc("Cultist", 9);
+    await hpApply(dm, {
+      targets: [cultist],
+      kind: "damage",
+      amount: 12,
+      decide: { [cultist]: { keep: ["npcAtZero"], choices: { npcAtZero: "dying" } } },
+    });
+    expect(markers(cultist)).toContain("deathsaves");
+    // (Under Assist a failure is the DM's to confirm: decided here in the preview.)
+    await hpApply(dm, {
+      targets: [cultist],
+      kind: "damage",
+      amount: 2,
+      decide: { [cultist]: { keep: ["deathSaveFailures"] } },
+    });
+    await waitFor(() => state(cultist).status.deathSaves?.failures === 1);
+    expect(state(cultist).status.deathSaves?.failures).toBe(1);
   });
 
   it("Auto: what follows applies at once (a death is still the DM's call); Manual: none of it", async () => {

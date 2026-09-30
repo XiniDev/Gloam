@@ -2,6 +2,7 @@ import { type ReactNode, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { create } from "zustand";
 import { insetMeasures, useBoardCovers, useHudInsets, useMeasuredInset } from "../hud/insets.ts";
+import { ScrollFade } from "./ScrollFade.tsx";
 
 /** How many bottom sheets are open: a phone's tab bar steps aside for them (they rise over the bottom edge it holds). */
 export const useOpenSheets = create<{ n: number }>(() => ({ n: 0 }));
@@ -128,7 +129,8 @@ export function BottomSheet({
       {bare ? (
         <div className="flex min-h-0 flex-1 flex-col">{children}</div>
       ) : (
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-3">{children}</div>
+        // Its edges fade where there's more (a control half under the footer read as cut — critic RSP-01 r1).
+        <ScrollFade className="overscroll-contain px-3 pb-3">{children}</ScrollFade>
       )}
       {footer ? <div className="shrink-0 border-t border-line px-3 py-2">{footer}</div> : null}
     </section>,

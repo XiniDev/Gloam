@@ -50,6 +50,7 @@ import {
   immuneToCondition,
   incapacitates,
   isDm,
+  normalRangeFt,
   PIP,
   roundsFrom,
   SPELL_LEVEL_NAMES,
@@ -74,7 +75,7 @@ import type {
 import { z } from "zod";
 import { newId } from "../../ids.ts";
 import { inSilence } from "../../vision/sources.ts";
-import type { ActorEntity, CastEntity } from "../codecs.ts";
+import type { ActorEntity, CastEntity, CombatEntity } from "../codecs.ts";
 import type { CommandCtx, CommandDef, RoomEvent } from "../commandBus.ts";
 import type { CampaignModel } from "../model.ts";
 import type { Op } from "../ops.ts";
@@ -405,6 +406,17 @@ function roomForACard(ctx: CommandCtx, t: TokenEntity): void {
 }
 
 /** A condition's end by a creature's next turn (`until`), as the condition's fields. */
+/**
+ * The end of a combatant's next turn (SRD "until the end of your next turn"): on its own turn, the one a round on;
+ * before its turn this round, this round's; after it, next round's.
+ */
+function casterNextTurnEnd(c: CombatEntity, tokenId: string): { round: number; turnOf: string; when: "end" } {
+  const order = dataOf(c).combatants.map((x) => x.tokenId);
+  const mine = order.indexOf(tokenId);
+  const later = mine > c.turnIndex;
+  return { round: later ? c.round : c.round + 1, turnOf: tokenId, when: "end" };
+}
+
 function turnBound(
   until: CastData["conditions"][number]["until"],
   casterId: string | null,
@@ -698,7 +710,8 @@ function makeEffect(
   const tpl = spell.effect;
   if (!tpl) return null;
   const rounds = durationRounds(spell.duration);
-  if (rounds === 0) return null;
+  // (An instantaneous spell leaves nothing — unless its effect has a time of its own: Starry Wisp's glow.)
+  if (rounds === 0 && !tpl.lasts) return null;
   const vfx = vfxFor(spell);
   let sh = shape;
   // A spell that strikes within its lasting area (Call Lightning): the cast was a strike; the effect is the spell's
@@ -724,6 +737,7 @@ function makeEffect(
   if (tp.opaque) props.opaque = true;
   if (tp.silence) props.silence = true;
   if (tp.outline) props.outline = true;
+  if (tp.advantageAgainst) props.advantageAgainst = true;
   if (tp.speedHalved) {
     props.speedHalved = true;
     // Spirit Guardians: its caster, and the creatures it designated, are left alone (the DM can change who).
@@ -782,10 +796,15 @@ function makeEffect(
       ...(t.note ? { note: t.note } : {}),
     })),
     concentrationTokenId: spell.duration.concentration ? caster.token.id : null,
-    // Rounds count in a running combat from the caster's turn; outside one the DM ends it (or a rest does).
+    // Rounds count in a running combat from the caster's turn; outside one the DM ends it (or a rest does). Until the end
+    // of its caster's next turn (Starry Wisp): that turn's end — the one after this if it's the caster's own now.
     expires:
-      rounds !== null && c && dataOf(c).begun
-        ? roundsFrom(c.round, caster.token.id, rounds)
+      c && dataOf(c).begun
+        ? tpl.lasts === "casterTurnEnd"
+          ? casterNextTurnEnd(c, caster.token.id)
+          : rounds !== null
+            ? roundsFrom(c.round, caster.token.id, rounds)
+            : { never: true }
         : { never: true },
     visibility: "everyone",
     vfx,
@@ -1547,7 +1566,11 @@ export const attackStart: CommandDef<z.infer<typeof AttackStart>, { castId: stri
       dc: null,
       dcRevealed: false,
       attack: a.attack
-        ? { formula: resolveRefs(a.attack, caster.refs), kind: melee ? "melee" : "ranged" }
+        ? {
+            formula: resolveRefs(a.attack, caster.refs),
+            kind: melee ? "melee" : "ranged",
+            ...(normalRangeFt(a.range) !== undefined ? { normalFt: normalRangeFt(a.range) as number } : {}),
+          }
         : null,
       damage: parts.length ? { parts, healing: false, per: "target", roll: null } : null,
       conditions: [],
@@ -2646,8 +2669,11 @@ function triggerCard(
   const all = ctx.model.inScene("token", e.sceneId);
   // (A wall's trigger has no point to measure cover from.)
   const from = e.shape.kind === "wall" && !from0 ? null : (origin ?? (casterTok ? casterTok.pos : null));
+  // Each 5 ft moved is damage of its own (Spike Growth's 2d4 "for every 5 feet it travels"; rules audit Q5), as a
+  // dart or a ray is: the one roll shared among them, each its own instance — a Concentration save each, a death-save
+  // failure each at 0 HP.
   const targets = tokens.map((t) => {
-    const row = targetRow(ctx, t, from, barriers, all, "in");
+    const row = targetRow(ctx, t, from, barriers, all, "in", when === "per5ft" && times > 1 ? { times } : {});
     return trig.save
       ? { ...row, save: playersRoll(ctx, row) ? { pending: true, by: "player" as const } : {} }
       : row;

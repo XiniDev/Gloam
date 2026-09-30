@@ -69,6 +69,15 @@ function Swords() {
   );
 }
 
+/** Combat (§8.12): the crossed swords, hilts and all (the DM panel's section). */
+export function CombatIcon(p: P) {
+  return (
+    <Svg {...p}>
+      <Swords />
+    </Svg>
+  );
+}
+
 /** Stop combat (§8.12, AC-CMB-11): the crossed swords, a bar struck across their blades. */
 export function StopCombatIcon(p: P) {
   return (

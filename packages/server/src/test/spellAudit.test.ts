@@ -609,6 +609,102 @@ describe("P9 — the rules audit's fixes on the card", () => {
     await cmd(dm, "hp.apply", { targets: [ogre], kind: "heal", amount: 40 });
   });
 
+  it("C7: Frightened of the Mage — a check at a disadvantage while the Mage is in Sera's sight; none with a wall between (SRD 5.2.1 p. 182)", async () => {
+    await fresh();
+    await place(sera, { x: 10, y: 20 });
+    await place(ogre, { x: 30, y: 34 });
+    const eb = await cmd<{ castId: string }>(dm, "spell.cast", {
+      casterTokenId: mage,
+      spellId: "eyebite",
+      mode: "free",
+      level: 6,
+      targets: [sera],
+      endConcentration: true,
+    });
+    await cmd(dm, "cast.set", {
+      castId: eb.castId,
+      targetId: sera,
+      saveSuccess: false,
+      conditions: ["frightened"],
+    });
+    await cmd(dm, "cast.apply", { castId: eb.castId, targets: [sera] });
+    await closeAll();
+    const fear = statusOf(sera).status.conditions.find((c) => c.id === "frightened");
+    expect(fear?.sourceTokenId).toBe(mage);
+    /** Anna's card for a Wisdom (Perception) check on Sera: its hint. */
+    const checkHint = async () => {
+      await sleep(250);
+      const mark = anna.msgs.length;
+      const { requestId } = await cmd<{ requestId: string }>(dm, "request.create", {
+        targets: [sera],
+        type: "check",
+        skill: "perception",
+      });
+      const card = await waitFor(() =>
+        anna.msgs
+          .slice(mark)
+          .filter((m) => m.type === "request.card")
+          .map((m) => m.payload as { requestId: string; hint?: { mode: string; from: string[] } })
+          .find((c) => c.requestId === requestId),
+      );
+      return card.hint;
+    };
+    expect(await checkHint()).toEqual({ mode: "dis", from: ["Frightened"] });
+    // A wall between them, floor to ceiling: the Mage out of her sight — no Disadvantage.
+    const { wallIds } = await cmd<{ wallIds: string[] }>(dm, "wall.create", {
+      sceneId,
+      walls: [{ a: { x: 25, y: 0 }, b: { x: 25, y: 40 } }],
+    });
+    expect(await checkHint()).toBeUndefined();
+    await cmd(dm, "wall.delete", { wallIds });
+    await cmd(dm, "status.change", { tokenId: sera, remove: ["frightened"] });
+    await cmd(dm, "status.change", { tokenId: mage, concentration: null });
+  });
+
+  it("C6: a ranged spell attack with a hostile creature within 5 ft who sees the attacker is at a Disadvantage (SRD 5.2.1 p. 15)", async () => {
+    await fresh();
+    const dmMsgs: Msg[] = [];
+    const off = dm.onMessage("*", (type, payload) => dmMsgs.push({ type: String(type), payload }));
+    type Row = { id: string; attackHints?: { dis: string[] } };
+    type View = { id: string; targets: Row[] };
+    const viewsOf = (m: Msg): View[] =>
+      m.type === "cast.view" ? [m.payload as View] : m.type === "cast.views" ? (m.payload as View[]) : [];
+    const hintsOn = (castId: string, id: string) =>
+      dmMsgs
+        .flatMap(viewsOf)
+        .filter((v) => v.id === castId)
+        .flatMap((v) => v.targets)
+        .reverse()
+        .find((r) => r.id === id && r.attackHints)?.attackHints;
+    const bolt = async () =>
+      (
+        await cmd<{ castId: string }>(dm, "spell.cast", {
+          casterTokenId: mage,
+          spellId: "fire-bolt",
+          mode: "slot",
+          targets: [ogre],
+        })
+      ).castId;
+    await place(ogre, { x: 30, y: 30 });
+    // Sera (the party: hostile to the Mage) right beside it: Disadvantage, named.
+    await place(sera, { x: 45, y: 20 });
+    const near = await bolt();
+    expect((await waitFor(() => hintsOn(near, ogre)))?.dis).toContain("Sera within 5 ft");
+    await closeAll();
+    // Knocked out beside it, she can't act: none.
+    await cmd(dm, "status.change", { tokenId: sera, add: [{ id: "unconscious" }] });
+    const out = await bolt();
+    expect((await waitFor(() => hintsOn(out, ogre)))?.dis).not.toContain("Sera within 5 ft");
+    await closeAll();
+    await cmd(dm, "status.change", { tokenId: sera, remove: ["unconscious", "prone"] });
+    // Away from it: none.
+    await place(sera, { x: 10, y: 20 });
+    const far = await bolt();
+    expect((await waitFor(() => hintsOn(far, ogre)))?.dis ?? []).not.toContain("Sera within 5 ft");
+    await closeAll();
+    off();
+  });
+
   it("I11: a choice lands one of its group (Blindness/Deafness: Blinded); a later stage waits (Sleep: Incapacitated, not yet Unconscious); what the DM judges waits for them (Divine Word)", async () => {
     await fresh();
     await place(ogre, { x: 30, y: 30 });
@@ -686,6 +782,53 @@ describe("P9 — the rules audit's fixes on the card", () => {
     expect(blinded()).toBe(true);
     await cmd(dm, "combat.next", {});
     await waitFor(() => !blinded());
+    await cmd(dm, "combat.stop", {});
+  });
+
+  it("rules audit 12: Starry Wisp's hit leaves its glow on the target — outlined, no Advantage against it — until the end of the caster's next turn", async () => {
+    await fresh();
+    await place(ogre, { x: 30, y: 30 });
+    const combat = () =>
+      room()
+        .model.inScene("combat", sceneId)
+        .find((c) => c.active);
+    const turnOf = () => {
+      const c = combat();
+      return c ? dataOf(c).combatants[c.turnIndex]?.tokenId : undefined;
+    };
+    const toTurnOf = async (id: string) => {
+      for (let i = 0; i < 8 && turnOf() !== id; i++) await cmd(dm, "combat.next", {});
+      expect(turnOf()).toBe(id);
+    };
+    await cmd(dm, "combat.start", { participants: [mage, sera, ogre], method: "skip" });
+    await cmd(dm, "combat.begin", {});
+    await waitFor(() => combat() && dataOf(combat() as NonNullable<ReturnType<typeof combat>>).begun);
+    await toTurnOf(mage);
+    const sw = await cmd<{ castId: string }>(dm, "spell.cast", {
+      casterTokenId: mage,
+      spellId: "starry-wisp",
+      mode: "slot",
+      targets: [ogre],
+    });
+    await cmd(dm, "cast.roll", { castId: sw.castId, what: "attack", targetId: ogre, entered: 30 });
+    await cmd(dm, "cast.set", { castId: sw.castId, targetId: ogre, final: 3 });
+    await cmd(dm, "cast.apply", { castId: sw.castId });
+    await closeAll();
+    const glow = () =>
+      room()
+        .model.inScene("effect", sceneId)
+        .find((e) => e.attachedTokenId === ogre && e.name === "Starry Wisp");
+    expect(glow()?.props).toMatchObject({ outline: true });
+    expect(glow()?.props.advantageAgainst).toBeUndefined();
+    expect(glow()?.props.light?.dim).toBe(10);
+    // Its own turn ends (the one it was cast on): still glowing; round again to the Mage's next and past it: gone.
+    await cmd(dm, "combat.next", {});
+    await sleep(200);
+    expect(glow()).toBeDefined();
+    await toTurnOf(mage);
+    expect(glow()).toBeDefined();
+    await cmd(dm, "combat.next", {});
+    await waitFor(() => !glow());
     await cmd(dm, "combat.stop", {});
   });
 

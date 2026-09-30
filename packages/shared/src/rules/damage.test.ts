@@ -221,8 +221,9 @@ describe("the damage pipeline (SPEC §19.2, SRD 5.2.1; AC-HP-01)", () => {
     expect(applyDamage(creature({ hp: 0 }), [p(3)], { crit: true }).deathSaveFailures).toBe(2);
     expect(applyDamage(creature({ hp: 0 }), [p(3)]).down).toBe(false);
     expect(applyDamage(creature({ hp: 0, hpMax: 20 }), [p(20)]).massiveDeath).toBe(true);
-    // Soaked entirely by temporary HP, or immune: no failure.
-    expect(applyDamage(creature({ hp: 0, hpTemp: 5 }), [p(3)]).deathSaveFailures).toBe(0);
+    // Soaked entirely by temporary HP is still damage taken — "any damage" (SRD 5.2.1 p. 18; rules audit Q3), as it is
+    // for Concentration; none at all (immune), no failure.
+    expect(applyDamage(creature({ hp: 0, hpTemp: 5 }), [p(3)]).deathSaveFailures).toBe(1);
     expect(applyDamage(creature({ hp: 0, immunities: ["fire"] }), [p(9, "fire")]).deathSaveFailures).toBe(0);
     expect(applyDamage(creature({ hp: 0, isPC: false }), [p(3)]).deathSaveFailures).toBe(0);
   });

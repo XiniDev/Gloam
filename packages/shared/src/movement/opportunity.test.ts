@@ -55,6 +55,10 @@ describe("opportunity attacks (AC-MOV-15)", () => {
     expect(opportunityMarks(leave, hero, [goblin({ disposition: "friendly" })])).toEqual([]);
     expect(opportunityMarks(leave, hero, [goblin({ incapacitated: true })])).toEqual([]);
     expect(opportunityMarks(leave, { ...hero, disengaged: true }, [goblin()])).toEqual([]);
+    // Its Reaction spent, or it can't see the mover (Blinded, the mover Invisible): no mark (rules audit C3).
+    expect(opportunityMarks(leave, hero, [goblin({ canReact: false })])).toEqual([]);
+    expect(opportunityMarks(leave, hero, [goblin({ seesMover: false })])).toEqual([]);
+    expect(opportunityMarks(leave, hero, [goblin({ canReact: true, seesMover: true })])).toHaveLength(1);
   });
 
   it("a reach of 10 ft (a polearm, a large claw) moves the exit out", () => {

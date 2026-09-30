@@ -32,6 +32,7 @@ const BOG = {
   speeds: { walk: 20, swim: 40 },
   senses: { darkvision: 60, tremorsense: 30 },
   abilities: { str: 18, dex: 12, con: 16, int: 3, wis: 12, cha: 5 },
+  initiative: 3,
   saves: { con: 5 },
   resistances: ["cold"],
   immunities: [],
@@ -272,6 +273,7 @@ describe("P13 — the local API (API)", () => {
           speeds: { swim: number };
           saves: { con?: { bonus: number } };
           hitDice: unknown[];
+          initiativeBonus: number;
         };
       };
     };
@@ -280,6 +282,8 @@ describe("P13 — the local API (API)", () => {
     // Con +5 in the stat block: +3 from Constitution 16, +2 on top.
     expect(sheet.sheet.core.saves.con?.bonus).toBe(2);
     expect(sheet.sheet.core.hitDice).toEqual([{ die: "d10", total: 7, used: 0 }]);
+    // Initiative +3 in the stat block: +1 from Dexterity 12, +2 on top (rules audit C5).
+    expect(sheet.sheet.core.initiativeBonus).toBe(2);
     // Overwritten: the same sheet, updated; renamed: a second one.
     const over = await api.post(
       `/api/v1/content/monsters:import?campaignId=${campaignId}&dryRun=false&onConflict=overwrite`,

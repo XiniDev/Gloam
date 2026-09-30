@@ -75,8 +75,12 @@ export function EmptyState({
   action?: ReactNode;
 }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-3 px-6 py-10 text-center">
-      <Illustration art={art} />
+    // A short screen on its side keeps the words and the action, not the picture (critic RSP-01 r1: at 844 × 390 the
+    // sheet's Quick create was cut off below a candle).
+    <div className="flex flex-col items-center justify-center gap-3 px-6 py-10 text-center short:gap-2 short:py-3">
+      <span className="contents short:hidden">
+        <Illustration art={art} />
+      </span>
       <p className="max-w-[34ch] text-14 text-muted">{title}</p>
       {action}
     </div>

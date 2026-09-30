@@ -5,6 +5,7 @@ import type { EffectEntity } from "@gloam/shared/schemas";
 import { Table, type TableState } from "@gloam/shared/state";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { dataOf } from "../engine/commands/combat.ts";
+import { rowInstances } from "../engine/commands/spells.ts";
 import type { TableRoom } from "../rooms/TableRoom.ts";
 import {
   type Agent,
@@ -285,6 +286,16 @@ describe("P9 — the named persistent effects (§8.13, AC-SPL-08)", () => {
     const card = await waitFor(() => triggerCards(e.id).find((c) => whoIn(c.id).includes(g1)));
     expect(card.data.damage?.parts[0]?.formula).toMatch(/^4d4/);
     expect(card.data.save).toBeNull();
+    // Each 5 ft its own instance (rules audit Q5): the one roll shared between the two — a Concentration save each.
+    const row = card.data.targets.find((t) => t.id === g1);
+    expect(row?.times).toBe(2);
+    await cmd(dm, "cast.roll", { castId: card.id, what: "damage", entered: 6 });
+    const rolled = room().model.get("cast", card.id)?.data;
+    const r2 = rolled?.targets.find((t) => t.id === g1);
+    expect(rolled && r2 ? rowInstances(rolled, r2).map((i) => i.map((x) => x.amount)) : []).toEqual([
+      [3],
+      [3],
+    ]);
     await clearCards();
     await clearEffects();
     await place(g1, { x: 60, y: 60 });

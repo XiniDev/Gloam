@@ -10,6 +10,8 @@ import {
   DoubleSide,
   Float32BufferAttribute,
   type Group,
+  type Material,
+  type Mesh,
   ShaderMaterial,
   Shape,
   ShapeGeometry,
@@ -365,6 +367,15 @@ function ClampedLabel({
     const px = size * ppf;
     const k = px > 0 ? Math.min(LABEL_PX.max, Math.max(LABEL_PX.min, px)) / px : 1;
     if (Math.abs(g.scale.x - k) > 1e-3) g.scale.setScalar(k);
+    // Grown past its zone to stay readable (a small board on a phone), it reaches over the walls round it: drawn over
+    // them then, not cut by them ("LACK WATEI", critic RSP-01 r1). At its own size it stays depth-tested — tokens
+    // standing on it in front. (troika re-derives its materials: set each frame.)
+    const over = k > 1.02;
+    g.traverse((o) => {
+      const m = (o as Mesh).material as Material | Material[] | undefined;
+      if (!m) return;
+      for (const x of Array.isArray(m) ? m : [m]) if (x.depthTest === over) x.depthTest = !over;
+    });
   });
   const first = spots[0]?.at ?? { x: 0, y: 0 };
   return (

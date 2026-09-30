@@ -19,26 +19,43 @@ export type Consequence =
   /** Three failures: the DM is asked "Mark dead?". */
   | { kind: "dying"; reason: "failures" | "massive" | "exhaustion" }
   /** An NPC or unit at 0 HP: the DM's choice, the campaign's default preselected. */
-  | { kind: "npcAtZero"; choice: "dead" | "unconscious" | "keep" }
+  | { kind: "npcAtZero"; choice: NpcAtZero }
   /** A concentration save (DC) for its owner. */
   | { kind: "concentrationSave"; dc: number }
   /** Concentration ends outright (knocked out: Incapacitated). */
   | { kind: "concentrationEnds"; reason: string }
   /** Healed from 0 HP: conscious again, death saves cleared. */
   | { kind: "revive" }
-  /** The Bloodied marker on or off (at half its HP or fewer, not at 0). */
+  /** The Bloodied marker on or off (at half its HP or fewer, 0 included). */
   | { kind: "bloodied"; on: boolean };
 
-/** Whether a creature is Bloodied (SRD 5.2.1: half its HP or fewer; at 0 it's down instead). */
-export const isBloodied = (hp: number, hpMax: number) => hpMax > 0 && hp > 0 && hp <= hpMax / 2;
+/**
+ * Whether a creature is Bloodied: "while it has half its Hit Points or fewer remaining" (SRD 5.2.1 p. 177) — at 0 as
+ * well (rules audit Q2: it was left off there).
+ */
+export const isBloodied = (hp: number, hpMax: number) => hpMax > 0 && hp <= hpMax / 2;
 
 /** Dead: three failed death saves, or marked so (a monster the DM had die at 0 HP). */
 export const isDead = (s: TokenStatusT) =>
   s.deathSaves?.dead === true || s.markers.some((m) => m.id === "dead");
 
+/**
+ * What an NPC at 0 HP becomes (SRD 5.2.1 p. 17, "Monsters and Death": most die at once; one may instead fall
+ * Unconscious and make death saves as a character does — rules audit Q4): dead; unconscious — knocked out:
+ * Unconscious, Prone and Stable; dying — Unconscious, Prone, its death saves begun; or kept at 0.
+ */
+export type NpcAtZero = "dead" | "dying" | "unconscious" | "keep";
+
+/**
+ * Whether a creature makes death saving throws (a character at 0; a monster the DM left dying): damage at 0 HP is a
+ * failure for it, massive damage can kill it, and its turn in combat asks for its save.
+ */
+export const makesDeathSaves = (isPC: boolean, s: TokenStatusT): boolean =>
+  isPC || Boolean(s.deathSaves && !s.deathSaves.stable && !s.deathSaves.dead);
+
 export interface ConsequenceRules {
   bloodied: boolean;
-  npcAtZero: "dead" | "unconscious" | "keep";
+  npcAtZero: NpcAtZero;
   /** The rules pack played ("srd-5.1": the Concentration DC has no cap). */
   rulesPack?: string;
 }
@@ -121,8 +138,9 @@ export function applyToStatus(s: TokenStatusT, c: Consequence, decision?: string
       );
     case "deathSaveFailures": {
       const d = s.deathSaves ?? { successes: 0, failures: 0, stable: false, dead: false };
+      // Hurt while Stable, it's dying again: the Death saves marker back in the Stable one's place (rules audit).
       return {
-        ...withMarker(s, "stable", false),
+        ...withMarker(withMarker(s, "stable", false), "deathsaves", true),
         deathSaves: { ...d, failures: Math.min(3, c.failures) as 0 | 1 | 2 | 3, stable: false },
       };
     }
@@ -144,14 +162,25 @@ export function applyToStatus(s: TokenStatusT, c: Consequence, decision?: string
     case "npcAtZero": {
       const choice = decision ?? c.choice;
       if (choice === "keep") return s;
-      // Unconscious is Prone too (SRD 5.2.1), as for a character going down.
-      if (choice === "unconscious") {
+      // Unconscious is Prone too (SRD 5.2.1), as for a character going down: dying (its death saves begun) or knocked
+      // out — Stable ("Knocking Out a Creature", p. 19).
+      if (choice === "unconscious" || choice === "dying") {
         const add = (["unconscious", "prone"] as const).filter(
           (id) => !s.conditions.some((x) => x.id === id),
         );
-        return add.length
+        const down = add.length
           ? { ...s, conditions: [...s.conditions, ...add.map((id) => ({ id, source: AT_ZERO_SOURCE }))] }
           : s;
+        const dying = choice === "dying";
+        return withMarker(
+          withMarker(
+            { ...down, deathSaves: { successes: 0, failures: 0, stable: !dying, dead: false } },
+            "deathsaves",
+            dying,
+          ),
+          "stable",
+          !dying,
+        );
       }
       return withMarker(
         {
@@ -249,6 +278,7 @@ export function describeConsequence(c: Consequence): {
         choices: [
           { id: "dead", label: "Dead" },
           { id: "unconscious", label: "Unconscious" },
+          { id: "dying", label: "Dying" },
           { id: "keep", label: "Keep at 0" },
         ],
         choice: c.choice,

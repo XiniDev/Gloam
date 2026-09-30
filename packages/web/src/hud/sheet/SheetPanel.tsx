@@ -117,7 +117,7 @@ export function SheetPanel() {
           {() => null}
         </LoadGate>
       ) : (
-        <div className="p-4">
+        <div className="min-h-0 flex-1 overflow-y-auto p-4">
           <EmptyState title="No character yet. Make one in a minute — a name, a class, HP, AC and speed are enough to play — or bring one from another sheet." />
           <div className="mt-3 flex flex-wrap gap-2">
             <Button variant="primary" icon={<Plus size={16} />} onClick={() => setCreating(true)}>

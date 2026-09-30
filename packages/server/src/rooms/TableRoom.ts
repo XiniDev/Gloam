@@ -46,6 +46,7 @@ import {
   applyChanges,
   applyPatch,
   can,
+  conditionsBearing,
   controlsToken,
   diffSheet,
   effectiveTokenState,
@@ -937,6 +938,7 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
     this.casts = new CastFlow({
       campaignId: this.campaignId,
       model: () => this.model,
+      sees: (a, b) => this.tokenSees(a, b),
       bus: () => this.bus,
       viewers: () => this.castViewers(),
       actorOf: (userId) => this.actorOfUser(userId),
@@ -1066,7 +1068,10 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
     const ability = p.type === "check" && p.skill ? SKILLS[p.skill as SkillId] : p.ability;
     const targets: RequestTarget[] = [...new Set(p.targets)].map((id) => {
       const x = this.requestTarget(id);
-      const conds = x.status.conditions.map((c) => c.id as string);
+      // Its Frightened with the fear out of its sight: nothing (rules audit C7).
+      const conds = conditionsBearing(x.status.conditions, {
+        sees: (src) => (x.token ? this.tokenSees(x.token.id, src) : null),
+      });
       const h = rollHints(conds, x.status.exhaustion, kind ?? "check", ability, {
         markers: x.status.markers.map((m) => m.id as string),
         ...(x.speedFt !== undefined ? { speedFt: x.speedFt } : {}),
@@ -1146,6 +1151,13 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
       r.status = "closed";
       r.closedAt = Date.now();
     }
+  }
+
+  /** Whether one creature sees another now (the vision service's answer; null where it can't say). */
+  private tokenSees(fromId: string, toId: string): boolean | null {
+    const a = this.model.get("token", fromId);
+    const b = this.model.get("token", toId);
+    return a && b && this.vision ? this.vision.tokenSees(a, b) : null;
   }
 
   /** A request's target: a token on the board or a character — its name, who answers for it, its sheet. */

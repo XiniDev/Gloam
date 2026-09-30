@@ -1,29 +1,30 @@
 import {
-  BrickWall,
   Eye,
-  HeartPulse,
   History,
   Inbox,
   Library,
-  Lightbulb,
   ListChecks,
-  type LucideIcon,
   Map as MapIcon,
   Music,
   Scale,
   ScrollText,
-  Sparkles,
-  Swords,
   Users,
   UsersRound,
-  WandSparkles,
 } from "lucide-react";
+import type { ComponentType } from "react";
+import { CombatIcon } from "../../icons/combat.tsx";
+import { HoodedLanternIcon } from "../../icons/lights.tsx";
+import { EffectIcon, HealthIcon, SpellbookIcon, WallsIcon } from "../../icons/table.tsx";
 import type { DmSection } from "../../state/ui.ts";
 
 export interface SectionDef {
   id: DmSection;
   label: string;
-  icon: LucideIcon;
+  /**
+   * Its glyph: the table's own for a game concept (combat, health, effects, spells, lights, walls — SPEC §27.6, critic
+   * RSP-01 r1 DS-02), a plain interface one for the table's records (scenes, history, the rules).
+   */
+  icon: ComponentType<{ size?: number; "aria-hidden"?: boolean }>;
   /** What it holds, in a line (the Jump to palette's hint). */
   holds: string;
   /** Other words it answers to in Jump to. */
@@ -60,28 +61,28 @@ export const SECTIONS: readonly SectionDef[] = [
   {
     id: "walls",
     label: "Walls & Zones",
-    icon: BrickWall,
+    icon: WallsIcon,
     holds: "Wall and zone tools, 3D walls, the zones on the scene",
     keywords: "doors windows terrain water difficult hazard",
   },
   {
     id: "lights",
     label: "Lights",
-    icon: Lightbulb,
+    icon: HoodedLanternIcon,
     holds: "The lights on the scene, presets, ambient light",
     keywords: "torch lantern sconce ambient darkness",
   },
   {
     id: "combat",
     label: "Combat",
-    icon: Swords,
+    icon: CombatIcon,
     holds: "Start and stop, the turn order, initiative",
     keywords: "initiative tracker round turn fight encounter",
   },
   {
     id: "health",
     label: "Health",
-    icon: HeartPulse,
+    icon: HealthIcon,
     holds: "Every creature's HP and conditions, the DM's prompts",
     keywords: "hp damage heal conditions dying death saves",
   },
@@ -95,14 +96,14 @@ export const SECTIONS: readonly SectionDef[] = [
   {
     id: "effects",
     label: "Effects",
-    icon: Sparkles,
+    icon: EffectIcon,
     holds: "Lasting spell effects on the scene",
     keywords: "spells areas concentration",
   },
   {
     id: "spells",
     label: "Spells",
-    icon: WandSparkles,
+    icon: SpellbookIcon,
     holds: "The spell browser, homebrew, imports",
     keywords: "homebrew import spell list",
   },

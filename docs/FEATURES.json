@@ -1252,9 +1252,9 @@
       "phase": "P7",
       "text": "Bloodied is applied and removed automatically at the half-HP threshold when enabled.",
       "passes": true,
-      "evidence": "packages/server/src/test/health.test.ts › 'Bloodied comes and goes at half HP by itself, when the campaign has it on' (marker on at ≤ half, off above it, not applied with the house rule off); consequences.test.ts › Bloodied (0 < hp ≤ max/2)",
+      "evidence": "packages/server/src/test/health.test.ts › 'Bloodied comes and goes at half HP by itself, when the campaign has it on' (marker on at ≤ half, off above it, not applied with the house rule off); consequences.test.ts › 'Bloodied: on at half its HP or fewer — at 0 as well — off above it' (0 ≤ hp ≤ max/2, SRD 5.2.1 p. 177; rules audit Q2)",
       "disputed": null,
-      "updatedAt": "2026-09-28T21:29:53.552Z"
+      "updatedAt": "2026-09-30T21:12:52.989Z"
     },
     {
       "id": "AC-HP-07",
@@ -1296,9 +1296,9 @@
       "phase": "P7",
       "text": "An NPC reaching 0 HP prompts the DM with Dead / Unconscious / Keep at 0, defaulting to Dead.",
       "passes": true,
-      "evidence": "e2e/journeys/p7-health.spec.ts › DM's tools (goblin to 0: 'At 0 HP' with Dead / Unconscious / Keep at 0, Dead preselected; the DM picks Unconscious in the preview); packages/server/src/test/health.test.ts › 'an NPC at 0 HP: the DM is asked Dead / Unconscious / Keep at 0, Dead preselected; nothing dies meanwhile' (unconscious, dead, skipped)",
+      "evidence": "e2e/journeys/p7-health.spec.ts › DM's tools (goblin to 0: 'At 0 HP' offering Dead / Unconscious / … / Keep at 0, Dead preselected; the DM picks Unconscious in the preview); packages/server/src/test/health.test.ts › 'an NPC at 0 HP: the DM is asked Dead / Unconscious / Dying / Keep at 0, Dead preselected; nothing dies meanwhile' (unconscious — Stable; dead; skipped; and Dying — death saves like a character, rules audit Q4)",
       "disputed": null,
-      "updatedAt": "2026-09-28T23:28:32.113Z"
+      "updatedAt": "2026-09-30T21:12:52.909Z"
     },
     {
       "id": "AC-HP-11",

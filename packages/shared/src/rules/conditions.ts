@@ -355,8 +355,26 @@ export interface AttackHints extends RollHints {
  */
 export function attackHints(
   attacker: { conditions: readonly string[]; exhaustion: number },
-  target: { conditions: readonly string[]; markers: readonly string[]; outlined: boolean; speedFt?: number },
-  at: { withinFt: number; melee: boolean },
+  target: {
+    conditions: readonly string[];
+    markers: readonly string[];
+    /** It can't benefit from Invisible (outlined). */
+    outlined: boolean;
+    /** Attacks against it have Advantage — an outline's usual gift (Faerie Fire), not every outline's (Starry Wisp). */
+    advantage?: boolean;
+    speedFt?: number;
+  },
+  at: {
+    withinFt: number;
+    melee: boolean;
+    /**
+     * A ranged attack's circumstances (SRD 5.2.1 pp. 15–16; rules audit C6): the hostile creatures within 5 ft of the
+     * attacker that can see it and can act ("Ranged Attacks in Close Combat"), and a target past the weapon's normal
+     * range ("Long Range") — each Disadvantage.
+     */
+    closeHostiles?: readonly string[];
+    beyondNormalRange?: boolean;
+  },
 ): AttackHints {
   const out: AttackHints = {
     ...rollHints(attacker.conditions, attacker.exhaustion, "attack"),
@@ -377,7 +395,11 @@ export function attackHints(
     if (info.critWithin5 && near && !out.critOnHit) out.critOnHit = info.name;
   }
   if (dodgeHolds(target)) out.dis.push({ from: "target Dodging" });
-  if (target.outlined) out.adv.push({ from: "target outlined" });
+  if (!at.melee) {
+    if (at.closeHostiles?.length) out.dis.push({ from: `${at.closeHostiles[0]} within 5 ft` });
+    if (at.beyondNormalRange) out.dis.push({ from: "long range" });
+  }
+  if (target.outlined && (target.advantage ?? true)) out.adv.push({ from: "target outlined" });
   return out;
 }
 
@@ -434,6 +456,25 @@ export function cantActBecause(conditions: readonly string[]): string | null {
       return (CONDITIONS as Record<string, ConditionInfo>)[id]?.name ?? null;
   }
   return null;
+}
+
+/**
+ * A creature's conditions as they bear on what it does now (rules audit C7), where a condition knows its source:
+ * Grappled gives no Disadvantage against its grappler ("attack rolls against any target other than the grappler", SRD
+ * 5.2.1 p. 182), Frightened none while the source of the fear is out of its sight ("while the source of fear is within
+ * line of sight", p. 182). A condition with no source known stands as it is (the hint's note says what it depends on).
+ */
+export function conditionsBearing(
+  conditions: readonly { id: string; sourceTokenId?: string | undefined }[],
+  at: { targetId?: string | undefined; sees?: ((tokenId: string) => boolean | null) | undefined },
+): string[] {
+  const out = new Set<string>();
+  for (const c of conditions) {
+    if (c.id === "grappled" && at.targetId && c.sourceTokenId === at.targetId) continue;
+    if (c.id === "frightened" && c.sourceTokenId && at.sees?.(c.sourceTokenId) === false) continue;
+    out.add(c.id);
+  }
+  return [...out];
 }
 
 /** Whether any condition incapacitates (it breaks concentration, §8.11). */

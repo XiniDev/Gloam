@@ -1,17 +1,19 @@
 import { Settings, Volume2, VolumeX, X } from "lucide-react";
-import { type ReactNode, useEffect, useId, useRef, useState } from "react";
+import { type ReactNode, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router";
 import type { Channel } from "../audio/engine.ts";
 import { TIERS, type TierName, useTier } from "../board/tiers.ts";
 import { useTable } from "../net/table.ts";
 import { type DeviceSettings, useSettings } from "../state/settings.ts";
+import { useUi } from "../state/ui.ts";
 import { BottomSheet } from "../ui/BottomSheet.tsx";
 import { Button, IconButton } from "../ui/Button.tsx";
 import { Segmented, Slider, Toggle } from "../ui/controls.tsx";
 import { ScrollFade } from "../ui/ScrollFade.tsx";
 import { DiceSkinPicker } from "./DiceSkinPicker.tsx";
-import { useHudInsets, useIsPhone, useObstacle } from "./insets.ts";
+import { useBoardCovers, useHudInsets, useIsPhone, useObstacle } from "./insets.ts";
+import { COLUMN, EDGE, placeSettings, TOP } from "./settingsPlace.ts";
 
 export const CHANNEL_LABEL: Record<Channel, string> = {
   master: "Master",
@@ -103,8 +105,118 @@ export function SettingsPopover() {
   }, [open, phone]);
   useObstacle("settings", panel, open && !phone);
 
-  const dockEdge = useHudInsets((h) => h.right);
-  const place = { right: Math.max(12, dockEdge), top: 64 };
+  const rail = useBoardCovers((c) => c.rects["dock-rail"]);
+  const panelBox = useBoardCovers((c) => c.rects["dock-panel"]);
+  const tools = useHudInsets((h) => h.left);
+  const [place, setPlace] = useState<ReturnType<typeof placeSettings> | null>(null);
+  useLayoutEffect(() => {
+    if (!open || phone) return;
+    const update = () => {
+      const g = button.current?.getBoundingClientRect();
+      // (The covers are measured with a 4-px margin: the panel's own box for standing exactly in its place.)
+      const panel = panelBox && {
+        left: panelBox.left + 4,
+        top: panelBox.top + 4,
+        right: panelBox.right - 4,
+        bottom: panelBox.bottom - 4,
+      };
+      if (g)
+        setPlace(placeSettings(g, { rail, panel, tools }, { w: window.innerWidth, h: window.innerHeight }));
+    };
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, [open, phone, rail, panelBox, tools]);
+  const inPanel = Boolean(open && !phone && place?.inPanel);
+  useEffect(() => {
+    useUi.getState().set({ settingsInPanel: inPanel });
+    return () => useUi.getState().set({ settingsInPanel: false });
+  }, [inPanel]);
+
+  const camera = !dm ? (
+    <Section title="Camera">
+      <Toggle
+        label="Let the DM move my camera"
+        description="The DM's Spotlight can pull your view to a spot on the map."
+        checked={s.dmCanMoveCamera}
+        onChange={(dmCanMoveCamera) => s.update({ dmCanMoveCamera })}
+      />
+      <Toggle
+        label="Focus camera on my turn"
+        description="In combat, the view glides to your creature as its turn begins."
+        checked={s.focusOnMyTurn}
+        onChange={(focusOnMyTurn) => s.update({ focusOnMyTurn })}
+      />
+    </Section>
+  ) : null;
+  const dice =
+    role !== "spectator" ? (
+      <Section title="Your dice">
+        <DiceSkinPicker />
+      </Section>
+    ) : null;
+  const sound = (
+    <Section title="Sound">
+      {(["master", "dice", "effects", "ui", "music", "ambience"] as const).map((c) => (
+        <Volume key={c} c={c} />
+      ))}
+    </Section>
+  );
+  const graphics = (
+    <Section title="Graphics">
+      <Segmented<DeviceSettings["tier"]>
+        label="Graphics quality"
+        size="S"
+        value={s.tier}
+        onChange={(t) => s.update({ tier: t })}
+        options={[
+          { value: "auto", label: "Auto" },
+          ...(Object.keys(TIERS) as TierName[]).map((t) => ({ value: t, label: TIER_LABEL[t] })),
+        ]}
+      />
+      <p className="text-12 text-faint" data-testid="tier-readout">
+        {s.tier === "auto"
+          ? `Auto picks for this device — now ${TIER_LABEL[tier]}.`
+          : `Pinned to ${TIER_LABEL[tier]}. Low turns off shadows, bloom and ambient occlusion.`}
+      </p>
+    </Section>
+  );
+  const iface = (
+    <Section title="Interface">
+      <div className="grid grid-cols-[76px_1fr_40px] items-center gap-2">
+        <span className="text-13 text-muted">Size</span>
+        <Slider
+          label="Interface size"
+          min={0.9}
+          max={1.3}
+          step={0.05}
+          value={s.uiScale}
+          onChange={(uiScale) => s.update({ uiScale })}
+        />
+        <span className="tabular text-right text-13 text-muted">{Math.round(s.uiScale * 100)}%</span>
+      </div>
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-13 text-muted">Motion</span>
+        <Segmented<DeviceSettings["motion"]>
+          label="Motion"
+          size="S"
+          value={s.motion}
+          onChange={(motion) => s.update({ motion })}
+          options={[
+            { value: "system", label: "System" },
+            { value: "full", label: "Full" },
+            { value: "reduced", label: "Reduced" },
+          ]}
+        />
+      </div>
+      <Toggle
+        label="Colour-blind palette"
+        description="Okabe–Ito colours for HP and dispositions, with stripes for low HP."
+        checked={s.colorBlind}
+        onChange={(colorBlind) => s.update({ colorBlind })}
+      />
+    </Section>
+  );
   const content = (
     <>
       {phone && role === "admin" ? (
@@ -117,84 +229,27 @@ export function SettingsPopover() {
       ) : null}
       {/* The camera first: two short switches, the one a turn in combat is about in view on a phone without a scroll
           (critic P8 r2 I7) — the dice's materials below them. */}
-      {!dm ? (
-        <Section title="Camera">
-          <Toggle
-            label="Let the DM move my camera"
-            description="The DM's Spotlight can pull your view to a spot on the map."
-            checked={s.dmCanMoveCamera}
-            onChange={(dmCanMoveCamera) => s.update({ dmCanMoveCamera })}
-          />
-          <Toggle
-            label="Focus camera on my turn"
-            description="In combat, the view glides to your creature as its turn begins."
-            checked={s.focusOnMyTurn}
-            onChange={(focusOnMyTurn) => s.update({ focusOnMyTurn })}
-          />
-        </Section>
-      ) : null}
-      {role !== "spectator" ? (
-        <Section title="Your dice">
-          <DiceSkinPicker />
-        </Section>
-      ) : null}
-      <Section title="Sound">
-        {(["master", "dice", "effects", "ui", "music", "ambience"] as const).map((c) => (
-          <Volume key={c} c={c} />
-        ))}
-      </Section>
-      <Section title="Graphics">
-        <Segmented<DeviceSettings["tier"]>
-          label="Graphics quality"
-          size="S"
-          value={s.tier}
-          onChange={(t) => s.update({ tier: t })}
-          options={[
-            { value: "auto", label: "Auto" },
-            ...(Object.keys(TIERS) as TierName[]).map((t) => ({ value: t, label: TIER_LABEL[t] })),
-          ]}
-        />
-        <p className="text-12 text-faint" data-testid="tier-readout">
-          {s.tier === "auto"
-            ? `Auto picks for this device — now ${TIER_LABEL[tier]}.`
-            : `Pinned to ${TIER_LABEL[tier]}. Low turns off shadows, bloom and ambient occlusion.`}
-        </p>
-      </Section>
-      <Section title="Interface">
-        <div className="grid grid-cols-[76px_1fr_40px] items-center gap-2">
-          <span className="text-13 text-muted">Size</span>
-          <Slider
-            label="Interface size"
-            min={0.9}
-            max={1.3}
-            step={0.05}
-            value={s.uiScale}
-            onChange={(uiScale) => s.update({ uiScale })}
-          />
-          <span className="tabular text-right text-13 text-muted">{Math.round(s.uiScale * 100)}%</span>
-        </div>
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-13 text-muted">Motion</span>
-          <Segmented<DeviceSettings["motion"]>
-            label="Motion"
-            size="S"
-            value={s.motion}
-            onChange={(motion) => s.update({ motion })}
-            options={[
-              { value: "system", label: "System" },
-              { value: "full", label: "Full" },
-              { value: "reduced", label: "Reduced" },
-            ]}
-          />
-        </div>
-        <Toggle
-          label="Colour-blind palette"
-          description="Okabe–Ito colours for HP and dispositions, with stripes for low HP."
-          checked={s.colorBlind}
-          onChange={(colorBlind) => s.update({ colorBlind })}
-        />
-      </Section>
+      {camera}
+      {dice}
+      {sound}
+      {graphics}
+      {iface}
     </>
+  );
+  // A wide screen's two columns — the camera, the dice and the graphics; the sound and the interface — each read top
+  // to bottom: all of it in view, nothing to scroll (critic RSP-01 r1: the last rows sat below the fold at 1440 × 900).
+  const twoColumns = (
+    <div className="grid grid-cols-2 divide-x divide-[var(--line-soft)]">
+      <div className="flex min-w-0 flex-col">
+        {camera}
+        {dice}
+        {graphics}
+      </div>
+      <div className="flex min-w-0 flex-col">
+        {sound}
+        {iface}
+      </div>
+    </div>
   );
   return (
     <div className="relative">
@@ -234,14 +289,21 @@ export function SettingsPopover() {
             role="dialog"
             aria-label="Settings"
             tabIndex={-1}
-            // Beside the dock's rail: over nothing it would half-hide (a rail button showing at its rounded corner read
-            // as a glitch). The dice come to rest clear of it. On the page itself: the top bar's backdrop filter would
-            // otherwise be its frame.
-            className="panel fixed z-50 flex w-[min(340px,calc(100vw-24px))] flex-col overflow-hidden outline-none"
-            style={{ right: place.right, top: place.top, maxHeight: `calc(100dvh - ${place.top + 16}px)` }}
+            data-testid="settings-popover"
+            data-columns={place?.columns ?? 1}
+            // Under its gear (placeSettings); hidden for the one frame before it's measured. The dice come to rest
+            // clear of it. On the page itself: the top bar's backdrop filter would otherwise be its frame.
+            className={`panel fixed z-50 flex flex-col overflow-hidden outline-none ${place ? "" : "invisible"}`}
+            style={
+              place
+                ? { left: place.left, top: place.top, width: place.width, maxHeight: place.maxHeight }
+                : { left: EDGE, top: TOP, width: COLUMN }
+            }
           >
             {/* Taller than the screen: its edges fade where there's more (never a toggle sliced in half). */}
-            <ScrollFade testId="settings-more-below">{content}</ScrollFade>
+            <ScrollFade testId="settings-more-below">
+              {place?.columns === 2 ? twoColumns : content}
+            </ScrollFade>
           </div>,
           document.body,
         )

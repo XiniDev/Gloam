@@ -73,6 +73,8 @@ export function monsterSheet(m: Monster): Sheet {
       ...(dice ? { hitDice: [{ die: `d${dice[2]}`, total: Math.min(99, Number(dice[1])) }] } : {}),
       speeds: m.speeds,
       senses: m.senses,
+      // The stat block's Initiative, as what's on top of its Dexterity modifier (rules audit C5: it was dropped).
+      ...(m.initiative !== undefined ? { initiativeBonus: m.initiative - mod(m.abilities.dex) } : {}),
       // The stat block's whole bonuses, as what's on top of the ability modifier.
       saves: Object.fromEntries(
         Object.entries(m.saves).map(([a, total]) => [

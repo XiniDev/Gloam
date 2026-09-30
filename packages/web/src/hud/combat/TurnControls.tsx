@@ -3,7 +3,7 @@ import type { TokenView } from "@gloam/shared/state";
 import { ringColorOf } from "../../board/colors.ts";
 import { HeldIcon } from "../../icons/combat.tsx";
 import { StatusIcon } from "../../icons/status.tsx";
-import { dash, endTurn, resetMove, setPip, standUp, useCombat } from "../../net/combat.ts";
+import { dash, disengage, dodge, endTurn, resetMove, setPip, standUp, useCombat } from "../../net/combat.ts";
 import { useTable } from "../../net/table.ts";
 import { boardData, useEntities } from "../../state/entities.ts";
 import { useSettings } from "../../state/settings.ts";
@@ -31,6 +31,17 @@ const act = (p: Promise<unknown>, what: string) => void p.catch((e: Error) => to
  */
 export type Density = 0 | 1 | 2 | 3;
 
+/** The actions the bar takes for a turn (each its Action): Dash, Disengage, Dodge (SRD 5.2.1 pp. 9–10). */
+export type TurnAction = "dash" | "disengage" | "dodge";
+const TURN_ACTION: Record<
+  TurnAction,
+  { label: string; run: (id: string) => Promise<unknown>; failed: string }
+> = {
+  dash: { label: "Dash", run: dash, failed: "Couldn't dash" },
+  disengage: { label: "Disengage", run: disengage, failed: "Couldn't disengage" },
+  dodge: { label: "Dodge", run: dodge, failed: "Couldn't dodge" },
+};
+
 /**
  * The turn on the action bar (SPEC §8.12, §8.6, §29.3; AC-CMB-08, AC-MOV-05/09/18): whose it is first — the creature's
  * portrait in its ring, its name, its HP — then its action pips (Action ●, Bonus Action ▲, Reaction ◆, Object
@@ -45,8 +56,8 @@ export function TurnControls({
   setAsking,
 }: {
   density: Density;
-  asking: "dash" | null;
-  setAsking: (a: "dash" | null) => void;
+  asking: TurnAction | null;
+  setAsking: (a: TurnAction | null) => void;
 }) {
   const view = useCombat((s) => s.view);
   const me = useTable((s) => s.me);
@@ -82,9 +93,9 @@ export function TurnControls({
   // Why it can't move at all (§8.6) — a DM moves it anyway, so their bar still counts.
   const stuck = dm ? "" : own.stuck;
   const why = stuck ? `Can't move — ${stuckName(stuck)}` : undefined;
-  const doDash = () => {
+  const take = (a: TurnAction) => {
     setAsking(null);
-    act(dash(mine.id), "Couldn't dash");
+    act(TURN_ACTION[a].run(mine.id), TURN_ACTION[a].failed);
   };
   const stand = prone
     ? {
@@ -94,13 +105,18 @@ export function TurnControls({
         onSelect: () => act(standUp(mine.id), "Couldn't stand up"),
       }
     : null;
-  const rest = [
+  const rest: { label: string; disabled?: boolean; hint?: string | undefined; onSelect: () => void }[] = [
     {
       label: "Dash",
       disabled: stuck !== "",
       hint: why,
-      onSelect: () => (actionUsed ? setAsking("dash") : doDash()),
+      onSelect: () => (actionUsed ? setAsking("dash") : take("dash")),
     },
+    // (Disengaged: no opportunity attacks this turn; Dodging: till the start of its next — rules audit C3.)
+    ...(["disengage", "dodge"] as const).map((a) => ({
+      label: TURN_ACTION[a].label,
+      onSelect: () => (actionUsed ? setAsking(a) : take(a)),
+    })),
     {
       label: "Reset move",
       disabled: own.usedFt <= 0 && own.segments === 0,
@@ -167,24 +183,23 @@ export function TurnControls({
   ) : null;
   // A spent Action: the question in the bar itself, where the buttons were (never over the roll feed); it wraps
   // within the bar rather than widening it (critic P8 r2 I10).
-  const question =
-    asking === "dash" ? (
-      <span
-        role="alertdialog"
-        aria-label="Action already used"
-        className="flex min-w-0 flex-wrap items-center justify-end gap-2 text-13 text-bone"
-      >
-        <span className="min-w-0">Action already used — Dash anyway?</span>
-        <span className="flex shrink-0 gap-2">
-          <Button size="S" variant="primary" onClick={doDash}>
-            Dash
-          </Button>
-          <Button size="S" variant="ghost" onClick={() => setAsking(null)}>
-            Cancel
-          </Button>
-        </span>
+  const question = asking ? (
+    <span
+      role="alertdialog"
+      aria-label="Action already used"
+      className="flex min-w-0 flex-wrap items-center justify-end gap-2 text-13 text-bone"
+    >
+      <span className="min-w-0">Action already used — {TURN_ACTION[asking].label} anyway?</span>
+      <span className="flex shrink-0 gap-2">
+        <Button size="S" variant="primary" onClick={() => take(asking)}>
+          {TURN_ACTION[asking].label}
+        </Button>
+        <Button size="S" variant="ghost" onClick={() => setAsking(null)}>
+          Cancel
+        </Button>
       </span>
-    ) : null;
+    </span>
+  ) : null;
   const menu = <Menu label="Turn actions" items={rest} up />;
   return (
     <div

@@ -168,6 +168,7 @@ export function ShaderCanvas({
       role={label ? "img" : undefined}
       aria-label={label}
       aria-hidden={label ? undefined : true}
+      data-lit={lit ? "true" : undefined}
     />
   );
 }

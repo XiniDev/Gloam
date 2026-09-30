@@ -74,6 +74,10 @@ export interface UiStore {
   lineWidthFt: number;
   /** The dice tray is open (SPEC §8.9, hotkey D). */
   diceTray: boolean;
+  /** The open tray stands in the dock panel's place (a tablet's narrow board): the panel steps out of sight. */
+  trayInPanel: boolean;
+  /** The settings popover stands in the dock panel's place (no room beside it): its rail button lets go. */
+  settingsInPanel: boolean;
   /** A phone's rolls sheet is open (its tab bar's Log, §29.4). */
   rollsOpen: boolean;
   /** The movement range overlay for the selected creature (SPEC §8.6, hotkey G). */
@@ -153,6 +157,8 @@ export const useUi = create<UiStore>((set, get) => ({
   measureShape: "ruler",
   lineWidthFt: 5,
   diceTray: false,
+  trayInPanel: false,
+  settingsInPanel: false,
   rollsOpen: false,
   rangeOverlay: false,
   sheetActor: null,

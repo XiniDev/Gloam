@@ -161,6 +161,19 @@ export class EffectFlow {
     if (e.from) {
       const t = model.get("token", e.from);
       if (t) for (const fx of model.inScene("effect", t.sceneId)) this.inside(fx, t, "endTurn");
+      // What lasts until the end of that creature's turn ends with it (Starry Wisp's glow): the round it ended in —
+      // the one before, when the next turn opened a round.
+      const cb = combatOn(model, e.sceneId);
+      const ended = {
+        round: cb && cb.turnIndex === 0 && e.round > 1 ? e.round - 1 : e.round,
+        turnOf: e.from,
+        when: "end" as const,
+      };
+      for (const fx of [...model.inScene("effect", e.sceneId)]) {
+        const ex = fx.expires;
+        if (!("never" in ex) && ex.when === "end" && durationExpired(ex, ended))
+          this.end(fx, "its time is up");
+      }
     }
     this.firedThisTurn.clear();
     this.movedInside.clear();

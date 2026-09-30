@@ -196,7 +196,8 @@ export function HouseRulesPanel() {
           what="What an NPC at 0 HP becomes (the choice made for you under Auto)."
           options={[
             { value: "dead", label: "Dead" },
-            { value: "unconscious", label: "Unconscious" },
+            { value: "unconscious", label: "Unconscious (stable)" },
+            { value: "dying", label: "Dying (death saves)" },
             { value: "keep", label: "Keep at 0" },
           ]}
         />

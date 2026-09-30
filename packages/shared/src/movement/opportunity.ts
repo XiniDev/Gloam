@@ -4,8 +4,9 @@ import type { Side } from "./creatures.ts";
 /**
  * Opportunity-attack warnings (SPEC §8.6, §34.6; AC-MOV-15): a hint on a planned path wherever it leaves the reach of
  * a hostile creature the mover can see — "within reach" measured from the edge of one base to the edge of the other
- * (reach 5 ft by default, or the creature's own). A creature that can't take reactions (Incapacitated) threatens no
- * one; a mover that has taken the Disengage action provokes none.
+ * (reach 5 ft by default, or the creature's own). A creature that can't take reactions (Incapacitated, or its Reaction
+ * spent this round) threatens no one, nor one that can't see the mover (Blinded, the mover Invisible to it — "a creature
+ * that you can see", SRD 5.2.1 p. 15; rules audit C3); a mover that has taken the Disengage action provokes none.
  */
 
 export interface Threat {
@@ -16,7 +17,14 @@ export interface Threat {
   reachFt: number;
   disposition: Side;
   incapacitated: boolean;
+  /** Its Reaction is still to use (unknown: as if it is). */
+  canReact?: boolean;
+  /** It can see the mover (unknown: as if it can). */
+  seesMover?: boolean;
 }
+
+/** A token's side, from its disposition (none set: neutral). */
+export const sideOf = (t: { disposition?: string | undefined }): Side => (t.disposition || "neutral") as Side;
 
 /** Whether `other` is hostile to a mover on side `mover` (the party and its friends against the hostiles). */
 export function hostileTo(mover: Side, other: Side): boolean {
@@ -44,7 +52,8 @@ export function opportunityMarks(
   const r = mover.sizeFt / 2;
   const out: OpportunityMark[] = [];
   for (const t of threats) {
-    if (t.incapacitated || !hostileTo(mover.disposition, t.disposition)) continue;
+    if (t.incapacitated || t.canReact === false || t.seesMover === false) continue;
+    if (!hostileTo(mover.disposition, t.disposition)) continue;
     let inside = within(path[0] as P, r, t);
     for (let i = 1; i < path.length; i++) {
       const a = path[i - 1] as P;

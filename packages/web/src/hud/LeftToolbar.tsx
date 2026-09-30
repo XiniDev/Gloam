@@ -1,8 +1,10 @@
-import { BrickWall, CloudFog, Hand, Lamp, LandPlot, MousePointer2, Radar, Ruler, X } from "lucide-react";
+import { CloudFog, Hand, LandPlot, MousePointer2, Radar, Ruler, X } from "lucide-react";
 import { type ReactElement, useEffect, useRef, useState } from "react";
 import { boardApi } from "../board/boardApi.ts";
 import { setFogShape } from "../board/tools/fog.ts";
 import { setWallMode, useWallTool } from "../board/tools/walls.ts";
+import { HoodedLanternIcon } from "../icons/lights.tsx";
+import { WallsIcon } from "../icons/table.tsx";
 import { request, useTable } from "../net/table.ts";
 import { type Tool, useUi } from "../state/ui.ts";
 import { IconButton } from "../ui/Button.tsx";
@@ -45,9 +47,9 @@ const TOOLS: { id: Tool; label: string; key?: string; icon: ReactElement; dm?: b
   { id: "pan", label: "Pan (or Space+drag)", icon: <Hand size={19} /> },
   { id: "measure", label: "Measure", key: "M", icon: <Ruler size={19} /> },
   { id: "ping", label: "Ping (or Alt+click)", icon: <Radar size={19} /> },
-  { id: "walls", label: "Walls", key: "W", icon: <BrickWall size={19} />, dm: true },
+  { id: "walls", label: "Walls", key: "W", icon: <WallsIcon size={19} />, dm: true },
   { id: "zones", label: "Zones", key: "Z", icon: <LandPlot size={19} />, dm: true },
-  { id: "lights", label: "Lights", key: "I", icon: <Lamp size={19} />, dm: true },
+  { id: "lights", label: "Lights", key: "I", icon: <HoodedLanternIcon size={19} />, dm: true },
   { id: "fog", label: "Fog", key: "B", icon: <CloudFog size={19} />, dm: true },
 ];
 
@@ -160,12 +162,21 @@ function PhoneTools({ tool, dm }: { tool: Tool; dm: boolean }) {
   const navRef = useRef<HTMLElement>(null);
   const buttonRef = useRef<HTMLDivElement>(null);
   const shown = !aligning && !SHEET_TOOLS.includes(tool);
+  // A bottom sheet raised past the corner (a panel at 95 %) would leave the button's top peeking over its edge
+  // (critic RSP-01 r1): the button steps out of sight under it — its corner kept, so nothing moves — and back as the
+  // sheet comes down. (The bottom band is the sheet's top edge's distance from the bottom, plus the gap.)
+  const band = useHudInsets((s) => s.bottom);
+  const corner = useHudInsets((s) => s.cornerLeft);
+  const underSheet = band > 0 && corner > 0 && window.innerHeight - band < corner;
   // No side column on a phone: the corner is the HUD's instead.
   useEffect(() => {
     useHudInsets.getState().set({ left: 0 });
   }, []);
   useMeasuredInset("cornerLeft", buttonRef, insetMeasures.corner, shown);
-  useCover("toolbar", navRef, shown);
+  useCover("toolbar", navRef, shown && !underSheet);
+  useEffect(() => {
+    if (underSheet) setOpen(false);
+  }, [underSheet]);
   useEffect(() => {
     if (!open) return;
     const away = (e: PointerEvent) => {
@@ -190,7 +201,8 @@ function PhoneTools({ tool, dm }: { tool: Tool; dm: boolean }) {
       {...order}
       aria-label="Board tools"
       data-hud="toolbar"
-      className="panel pointer-events-auto absolute left-3 z-30 flex flex-col items-center gap-1 p-1.5"
+      data-under-sheet={underSheet ? "true" : undefined}
+      className={`panel pointer-events-auto absolute left-3 z-30 flex flex-col items-center gap-1 p-1.5 ${underSheet ? "invisible" : ""}`}
       // 12 px under the top bar (3.5 rem: it grows with the UI scale), and under a banner or the tracker.
       style={{ ...order.style, top: underTopBar(banner + tracker) }}
     >

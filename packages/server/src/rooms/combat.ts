@@ -10,7 +10,7 @@
 import { withPenalty } from "@gloam/shared/dice";
 import { hazardPrompts } from "@gloam/shared/movement";
 import type { CombatView, CombatViewEntry } from "@gloam/shared/protocol";
-import { type CombatantEntry, durationExpired, statusName } from "@gloam/shared/rules";
+import { type CombatantEntry, durationExpired, makesDeathSaves, statusName } from "@gloam/shared/rules";
 import type { TokenView } from "@gloam/shared/state";
 import type { RequestResponse, RequestTarget, RollRequest } from "../dice/requests.ts";
 import type { CommandActor, CommandBus, CommandCtx } from "../engine/commandBus.ts";
@@ -309,11 +309,11 @@ export class CombatFlow {
       return;
     }
     this.announce(e);
-    // A dying character's death saving throw (AC-HP-08).
+    // A dying character's death saving throw (AC-HP-08) — or a monster's the DM left dying (rules audit Q4).
     try {
       const h = holderOf(this.ctx(), { tokenId: e.to });
-      const ds = h.status.deathSaves;
-      if (h.isPC && h.hp <= 0 && ds && !ds.stable && !ds.dead) this.host.requestDeathSaves([e.to]);
+      if (h.hp <= 0 && makesDeathSaves(h.isPC, h.status) && h.status.deathSaves)
+        this.host.requestDeathSaves([e.to]);
       // Ongoing damage: burning (a marker) — the DM decides it, as for a hazard.
       if (h.status.markers.some((m) => m.id === "burning"))
         this.host.toDms("hazard.prompt", {
@@ -380,9 +380,9 @@ export class CombatFlow {
       } catch {
         continue;
       }
-      const tied = h.status.conditions.some((x) =>
-        when === "end" ? x.endsWithTurnOf === tokenId : x.endsAtStartOf === tokenId,
-      );
+      const ends = (x: { endsWithTurnOf?: string; endsAtStartOf?: string }) =>
+        when === "end" ? x.endsWithTurnOf === tokenId : x.endsAtStartOf === tokenId;
+      const tied = h.status.conditions.some(ends) || h.status.markers.some(ends);
       if (!tied) continue;
       const dm = [...this.host.viewers()].find((v) => v.dm);
       const r = this.host

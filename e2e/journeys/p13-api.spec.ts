@@ -1,18 +1,14 @@
 import { spawn } from "node:child_process";
 import { resolve } from "node:path";
 import type { Page } from "@playwright/test";
-import { expect, test } from "../fixtures/test.ts";
+import { adminSection, expect, test } from "../fixtures/test.ts";
 
 const SHOTS = "artifacts/screens/p13";
 const REPO = resolve(import.meta.dirname, "..", "..")
   .split("\\")
   .join("/");
 
-const nav = async (p: Page, name: string) => {
-  const link = p.getByRole("navigation", { name: "Admin sections" }).getByRole("link", { name, exact: true });
-  await link.scrollIntoViewIfNeeded();
-  await link.click();
-};
+const nav = (p: Page, name: string) => adminSection(p, name);
 
 /**
  * Speaks MCP over stdio to a server started exactly as a setup says (its command, args and env), the way Claude

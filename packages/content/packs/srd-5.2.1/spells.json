@@ -1567,6 +1567,20 @@
         }
       }
     ],
+    "effect": {
+      "props": {
+        "light": {
+          "bright": 0,
+          "dim": 10,
+          "magical": true,
+          "pierceDarkness": false
+        },
+        "outline": true
+      },
+      "triggers": [],
+      "attach": "target",
+      "lasts": "casterTurnEnd"
+    },
     "light": {
       "bright": 0,
       "dim": 10,
@@ -1587,6 +1601,7 @@
       "damage": "foundry",
       "damage.scaling": "prose:levels 5 (NdM), 11 (NdM), and 17 (NdM)",
       "duration": "pdf",
+      "effect": "overlay:spell-effects.json",
       "id": "pdf",
       "level": "pdf",
       "light": "overlay:spell-light.json",
@@ -3288,7 +3303,8 @@
           "magical": true,
           "pierceDarkness": false
         },
-        "outline": true
+        "outline": true,
+        "advantageAgainst": true
       },
       "triggers": [],
       "attach": "target"
@@ -8729,7 +8745,8 @@
           "magical": true,
           "pierceDarkness": false
         },
-        "outline": true
+        "outline": true,
+        "advantageAgainst": true
       },
       "triggers": [],
       "attach": "target"

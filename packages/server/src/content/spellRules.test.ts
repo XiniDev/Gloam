@@ -10,6 +10,7 @@ import {
   durationRounds,
   durationText,
   levelSchool,
+  normalRangeFt,
   rangeText,
   repeatTargets,
   saveOutcome,
@@ -142,6 +143,10 @@ describe("sheet attacks and strikes", () => {
   it("an attack's reach from its range as written: normal/long takes the long, a number its feet, nothing 5 ft", () => {
     expect(attackRangeFt("20/60")).toBe(60);
     expect(attackRangeFt("80/320 ft")).toBe(320);
+    // Its normal range where it has a long one: past it, Disadvantage (rules audit C6); none written, none.
+    expect(normalRangeFt("80/320 ft")).toBe(80);
+    expect(normalRangeFt("120 ft")).toBeUndefined();
+    expect(normalRangeFt(undefined)).toBeUndefined();
     expect(attackRangeFt("120 ft")).toBe(120);
     expect(attackRangeFt("reach 10 ft")).toBe(10);
     expect(attackRangeFt("30")).toBe(30);

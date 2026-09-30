@@ -26,6 +26,7 @@ import {
   incapacitates,
   isDead,
   isDm,
+  makesDeathSaves,
   type PartOutcome,
   projectSheet,
   sortConsequences,
@@ -260,7 +261,7 @@ export function outcomeFor(
         vulnerabilities: h.stats.vuln,
         conditions: h.status.conditions.map((c) => c.id),
         concentrating: Boolean(h.status.concentration),
-        isPC: h.isPC,
+        isPC: makesDeathSaves(h.isPC, h.status),
       },
       parts,
       total !== undefined
@@ -755,9 +756,20 @@ export const statusTurn: CommandDef<z.infer<typeof StatusTurn>, { removed: strin
       }
       return [c];
     });
+    // Markers tied to a turn likewise (Disengaged at its end, Dodging at the start of the next; rules audit C3).
+    const markers = h.status.markers.filter((m) => {
+      const ends =
+        (p.when === "end" && m.endsWithTurnOf === p.turnOf) ||
+        (p.when === "start" && m.endsAtStartOf === p.turnOf);
+      if (ends) {
+        changed = true;
+        removed.push(m.id);
+      }
+      return !ends;
+    });
     if (!changed) return { ops: [], summary: "", result: { removed }, undoable: false };
     return {
-      ops: holderOps(ctx, h, { hp: h.hp, hpTemp: h.hpTemp, status: { ...h.status, conditions } }),
+      ops: holderOps(ctx, h, { hp: h.hp, hpTemp: h.hpTemp, status: { ...h.status, conditions, markers } }),
       summary: removed.length ? `${h.name}: ${removed.map((id) => statusName(id)).join(", ")} ended` : "",
       result: { removed },
     };

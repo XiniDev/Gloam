@@ -118,4 +118,6 @@ export const setPip = (tokenId: string, pip: "action" | "bonus" | "reaction" | "
   request<{ pips: number }>("combat.pip", { tokenId, pip, used });
 export const resetMove = (tokenId: string) => request("move.reset", { tokenId });
 export const dash = (tokenId: string) => request("move.dash", { tokenId });
+export const disengage = (tokenId: string) => request("move.disengage", { tokenId });
+export const dodge = (tokenId: string) => request("move.dodge", { tokenId });
 export const standUp = (tokenId: string) => request("move.stand", { tokenId });

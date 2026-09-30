@@ -76,9 +76,10 @@ function Row({
         </span>
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="truncate text-14 text-bone">{t.name}</span>
-          <span className="flex min-w-0 items-center gap-1.5 whitespace-nowrap text-12 text-muted">
-            <span className="capitalize">{t.disposition}</span>
-            {hp ? <span className="tabular">· {hp}</span> : null}
+          {/* Clipped at its own edge: never under the buttons beside it (critic RSP-01 r1: "45/45" under the eye). */}
+          <span className="flex min-w-0 items-center gap-1.5 overflow-hidden whitespace-nowrap text-12 text-muted">
+            <span className="truncate capitalize">{t.disposition}</span>
+            {hp ? <span className="tabular shrink-0">· {hp}</span> : null}
             {badges.length ? (
               <span className="ml-1 flex min-w-0 items-center gap-1 overflow-hidden text-brass">
                 {badges.slice(0, 5).map((b) => (
@@ -94,8 +95,9 @@ function Row({
           </span>
         </span>
       </button>
-      {/* Wide: its three actions at hand. A phone: one menu of them — three buttons left the name "Gobli…". */}
-      <span className="contents max-sm:hidden">
+      {/* A mouse and room for them: its three actions at hand. A touch screen (each button a finger wide) or a narrow
+          list: one menu of them — three buttons left the name "Cry…" (critic RSP-01 r1, a 768-px tablet). */}
+      <span className="contents pointer-coarse:hidden @max-[280px]:hidden">
         <IconButton label={t.dm?.dmHidden ? `Reveal ${t.name}` : `Hide ${t.name}`} onClick={hide}>
           {t.dm?.dmHidden ? <Eye size={15} /> : <EyeOff size={15} />}
         </IconButton>
@@ -104,7 +106,7 @@ function Row({
           <SlidersHorizontal size={15} />
         </IconButton>
       </span>
-      <span className="sm:hidden">
+      <span className="hidden pointer-coarse:inline-flex @max-[280px]:inline-flex">
         <Menu
           label={`${t.name}: actions`}
           items={[
@@ -292,7 +294,7 @@ export function TokensSection() {
         />
       </label>
       {list.length ? (
-        <ul className="flex flex-col divide-y divide-line/60 rounded-[var(--radius-control)] border border-line">
+        <ul className="@container flex flex-col divide-y divide-line/60 rounded-[var(--radius-control)] border border-line">
           {list.map((t) => (
             <Row
               key={t.id}

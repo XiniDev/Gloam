@@ -129,7 +129,8 @@ export function applyDamage(
     hp,
     overflow,
     down: !atZero && hp === 0 && rest > 0,
-    deathSaveFailures: t.isPC && atZero && rest > 0 ? (o.crit ? 2 : 1) : 0,
+    // "Any damage" at 0 HP (SRD 5.2.1 p. 18) — damage the temporary HP took is damage taken (rules audit Q3).
+    deathSaveFailures: t.isPC && atZero && total > 0 ? (o.crit ? 2 : 1) : 0,
     massiveDeath: t.isPC && hp === 0 && rest > 0 && overflow >= t.hpMax,
     concentrationDc: total > 0 && t.concentrating ? concentrationDc(total, o.rulesPack) : null,
   };

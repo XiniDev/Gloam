@@ -171,6 +171,14 @@ function DesktopTray({
   // open (the panel is as it was when it closes) rather than squeezing into the gap or lying across the panel's buttons.
   const panel = useBoardCovers((s) => s.rects["dock-panel"]);
   const inPanel = panel && width - left - right < TRAY_MIN_PX;
+  // In the panel's place, the panel steps out of sight and its rail button lets go (Dock): the tray takes only the
+  // height it needs, over nothing it half-hides (critic RSP-01 r1: 450 px of empty ink, the rail still on "DM").
+  useEffect(() => {
+    useUi.getState().set({ trayInPanel: Boolean(inPanel) });
+    return () => useUi.getState().set({ trayInPanel: false });
+  }, [inPanel]);
+  // Roll stays in view under the scrolling body, at any height (critic RSP-01 r1: off the screen at 844 × 390).
+  const [actions, setActions] = useState<HTMLDivElement | null>(null);
   const box = inPanel
     ? {
         left: panel.left + COVER_GAP_PX,
@@ -181,14 +189,15 @@ function DesktopTray({
     : { left, right, top: underTopBar(top), bottom: 76 };
   return (
     <div
-      className={`pointer-events-none absolute z-40 flex items-end ${keep ? "justify-end" : "justify-center"}`}
+      className={`pointer-events-none absolute z-40 flex ${inPanel ? "items-start" : "items-end"} ${keep ? "justify-end" : "justify-center"}`}
       style={box}
     >
       <section
         ref={ref}
         aria-label="Dice tray"
         data-testid="dice-tray"
-        className={`panel pointer-events-auto flex max-h-full min-h-0 w-full flex-col gap-3 p-3 ${inPanel ? "h-full" : "max-w-[520px]"}`}
+        data-in-panel={inPanel ? "true" : undefined}
+        className={`panel pointer-events-auto flex max-h-full min-h-0 w-full flex-col gap-3 p-3 ${inPanel ? "" : "max-w-[520px]"}`}
       >
         <header className="flex items-center gap-2">
           <D20Icon size={18} className="text-brass" />
@@ -200,8 +209,9 @@ function DesktopTray({
           </IconButton>
         </header>
         <ScrollFade outerClassName="min-h-0" className="flex flex-col [scrollbar-width:thin]">
-          <TrayBody userId={userId} dm={dm} onRolled={onRolled} />
+          <TrayBody userId={userId} dm={dm} onRolled={onRolled} actionsIn={actions} />
         </ScrollFade>
+        <div ref={setActions} className="shrink-0" />
       </section>
     </div>
   );
@@ -246,7 +256,8 @@ function TrayBody({
   const tokenId = token && (dm || token.ownerIds.includes(userId)) ? token.id : undefined;
 
   useEffect(() => {
-    input.current?.focus();
+    // (Without scrolling to it: a short tray opens at its top, the dice first — it opened half-way down.)
+    input.current?.focus({ preventScroll: true });
   }, []);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

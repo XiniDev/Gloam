@@ -1279,7 +1279,11 @@
                   "type": "boolean"
                 },
                 "outline": {
-                  "description": "Creatures inside are outlined (Faerie Fire): can't benefit from Invisible",
+                  "description": "Creatures inside are outlined (Faerie Fire, Starry Wisp): can't benefit from Invisible",
+                  "type": "boolean"
+                },
+                "advantageAgainst": {
+                  "description": "Attack rolls against a creature it's on have Advantage (Faerie Fire: if the attacker can see it; Shining Smite)",
                   "type": "boolean"
                 },
                 "speedHalved": {
@@ -1471,6 +1475,13 @@
             "oncePerTurn": {
               "description": "A creature makes its save only once per turn, whichever trigger (Spirit Guardians, Moonbeam)",
               "type": "boolean"
+            },
+            "lasts": {
+              "description": "How long it lasts, where that isn't the spell's duration: until the end of its caster's next turn (Starry Wisp's glow on the creature it hit — the spell itself is instantaneous)",
+              "type": "string",
+              "enum": [
+                "casterTurnEnd"
+              ]
             },
             "recastEnds": {
               "description": "Casting it again ends the caster's earlier one (Light: \"the spell ends if you cast it again\")",

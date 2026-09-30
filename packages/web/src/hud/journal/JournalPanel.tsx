@@ -166,8 +166,10 @@ function Log() {
         )}
       </div>
       {canWrite ? (
+        // A short screen on its side: the pen on one line beside its button, the log the height (critic RSP-01 r1: at
+        // 844 × 390 the log was a 12-px sliver over a two-line composer).
         <form
-          className="flex flex-col gap-2 border-t border-line px-4 py-3"
+          className="flex flex-col gap-2 border-t border-line px-4 py-3 short:flex-row short:items-center short:py-2"
           onSubmit={(e) => {
             e.preventDefault();
             void add();
@@ -183,13 +185,13 @@ function Log() {
             onKeyDown={(e) => {
               if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) void add();
             }}
-            className="min-h-[60px] resize-y rounded-[var(--radius-control)] border border-line bg-ink-950 px-3 py-2 text-14 text-bone placeholder:text-fog focus:border-brass focus:outline-none"
+            className="min-h-[60px] resize-y rounded-[var(--radius-control)] border border-line bg-ink-950 px-3 py-2 text-14 text-bone placeholder:text-fog focus:border-brass focus:outline-none short:h-11 short:min-h-0 short:min-w-0 short:flex-1 short:resize-none"
           />
           <Button
             type="submit"
             variant="secondary"
             size="S"
-            className="self-end"
+            className="self-end short:self-auto"
             loading={busy}
             disabled={!text.trim()}
           >

@@ -3,7 +3,7 @@ import type { Browser, BrowserContext, Page } from "@playwright/test";
 import { dmSection, introDone, openPanel } from "../fixtures/board.ts";
 import { layoutAudit } from "../fixtures/layout.ts";
 import { freshShotsDir } from "../fixtures/shotsDir.ts";
-import { expect, type Guard, guard, knockAsNew, openTableAs, test } from "../fixtures/test.ts";
+import { adminSection, expect, type Guard, guard, knockAsNew, openTableAs, test } from "../fixtures/test.ts";
 
 /** SPEC §28's seven layouts: phones upright and on their side, a tablet both ways, laptops and a large screen. */
 const VIEWPORTS = [
@@ -83,12 +83,8 @@ test.describe("P14 — the seven layouts (RSP)", () => {
       await console_.goto(`${gloam.url}/admin`);
       for (const name of ADMIN_PAGES)
         await step(console_, `admin ${name}`, async () => {
-          // (On a phone the sections are a strip that scrolls sideways.)
-          const nav = console_.getByRole("navigation", { name: "Admin sections" });
-          await expect(nav).toBeVisible();
-          const link = nav.getByRole("link", { name, exact: true });
-          await link.scrollIntoViewIfNeeded();
-          await link.click();
+          // (On a phone, or a short screen on its side, the sections are behind the section picker.)
+          await adminSection(console_, name);
           await expect(console_.getByRole("heading", { level: 1 }).first()).toBeVisible();
           await console_.waitForLoadState("networkidle");
         });
@@ -125,9 +121,17 @@ test.describe("P14 — the seven layouts (RSP)", () => {
       await step(player, "join", async () => {
         await player.goto(`${gloam.url}/join`);
         await expect(player.getByLabel("Invite code character 1 of 10")).toBeVisible();
+        // (Its blurred table behind: the backdrop fades in once its first frame is drawn.)
+        await expect(player.locator('main canvas[data-lit="true"]')).toBeAttached({ timeout: 15_000 });
       });
       await knockAsNew(player, gloam.url, code, "Wren");
-      await check(player, "waiting room");
+      await step(player, "waiting room", async () => {
+        await expect(player.getByRole("button", { name: "Leave the lobby" })).toBeInViewport();
+        // (Its candle lit: the flame fades in once its first frame is drawn.)
+        await expect(player.locator('canvas[aria-label="A candle flame"][data-lit="true"]')).toBeAttached({
+          timeout: 15_000,
+        });
+      });
       await dm
         .getByRole("alert")
         .filter({ hasText: "Wren is knocking" })

@@ -2,7 +2,7 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
 import { freshShotsDir } from "../fixtures/shotsDir.ts";
-import { expect, test } from "../fixtures/test.ts";
+import { adminSection, expect, test } from "../fixtures/test.ts";
 
 /**
  * The key screens of phase 13 (SPEC §4 Screenshots): Admin → API & MCP with no token yet, making one, the token shown
@@ -39,13 +39,7 @@ test("P13 key screens", async ({ admin }, info) => {
       await admin.screenshot({ path: join(dir, `_failed-${name}.png`) }).catch(() => {});
     }
   };
-  const nav = async (name: string) => {
-    const link = admin
-      .getByRole("navigation", { name: "Admin sections" })
-      .getByRole("link", { name, exact: true });
-    await link.scrollIntoViewIfNeeded();
-    await link.click();
-  };
+  const nav = (name: string) => adminSection(admin, name);
 
   await admin.getByRole("button", { name: "Start with the demo" }).click();
   await expect(admin.getByText("The Lantern Crypt is ready")).toBeVisible({ timeout: 30_000 });

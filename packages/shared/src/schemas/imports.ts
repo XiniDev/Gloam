@@ -40,6 +40,8 @@ export const MonsterSchema = z
     /** What its AC is from ("natural armor"). */
     acNote: ShortText.optional(),
     hp: z.object({ average: Int(1, 99_999), formula: Formula.optional() }).strict(),
+    /** Its initiative modifier as a 2024 stat block gives it ("Initiative +7 (17)": 7), the whole bonus. */
+    initiative: Int(-20, 30).optional(),
     speeds: z
       .object({
         walk: Ft.default(30),

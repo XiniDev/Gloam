@@ -3,6 +3,7 @@ import { CONDITION_IDS, MARKER_IDS } from "../constants.ts";
 import {
   attackHints,
   CONDITIONS,
+  conditionsBearing,
   dodgeHolds,
   effectiveSpeed,
   expandConditions,
@@ -96,6 +97,24 @@ describe("conditions and markers (SPEC §8.11, §19.3, §34.1)", () => {
   });
 });
 
+describe("conditions as they bear on the moment (rules audit C7)", () => {
+  it("Grappled: nothing against its grappler; Frightened: nothing with the fear out of sight; no source known — as it is", () => {
+    const grappled = [{ id: "grappled", sourceTokenId: "ogre" }];
+    expect(conditionsBearing(grappled, { targetId: "ogre" })).toEqual([]);
+    expect(conditionsBearing(grappled, { targetId: "goblin" })).toEqual(["grappled"]);
+    // Held by two: the other's grip still counts against the first.
+    expect(
+      conditionsBearing([...grappled, { id: "grappled", sourceTokenId: "wolf" }], { targetId: "ogre" }),
+    ).toEqual(["grappled"]);
+    const afraid = [{ id: "frightened", sourceTokenId: "dragon" }, { id: "poisoned" }];
+    expect(conditionsBearing(afraid, { sees: () => false })).toEqual(["poisoned"]);
+    expect(conditionsBearing(afraid, { sees: () => true })).toEqual(["frightened", "poisoned"]);
+    // Not known (a scene not in play), or no source recorded: it stands.
+    expect(conditionsBearing(afraid, { sees: () => null })).toEqual(["frightened", "poisoned"]);
+    expect(conditionsBearing([{ id: "frightened" }], { sees: () => false })).toEqual(["frightened"]);
+  });
+});
+
 describe("immunities conditions grant (rules audit A12)", () => {
   it("Petrified: immune to Poisoned — a Poisoned it had does nothing, one more can't be given; a stat block's own immunity", () => {
     expect(expandConditions(["poisoned", "petrified"]).sort()).toEqual(["incapacitated", "petrified"]);
@@ -127,6 +146,24 @@ describe("attackHints (the card's attack rolls, SRD 5.2.1 §19.3)", () => {
       "adv",
     );
     expect(hintedMode(attackHints(me, them([], ["dodging"]), { withinFt: 10, melee: false }))).toBe("dis");
+  });
+  it("a ranged attack: Disadvantage with a hostile within 5 ft who sees it, and past the weapon's normal range (rules audit C6)", () => {
+    const shot = (at: { closeHostiles?: string[]; beyondNormalRange?: boolean }, melee = false) =>
+      attackHints(me, them([]), { withinFt: 30, melee, ...at }).dis.map((x) => x.from);
+    expect(shot({ closeHostiles: ["Goblin"] })).toEqual(["Goblin within 5 ft"]);
+    expect(shot({ beyondNormalRange: true })).toEqual(["long range"]);
+    expect(shot({})).toEqual([]);
+    // A melee attack: neither applies.
+    expect(shot({ closeHostiles: ["Goblin"], beyondNormalRange: true }, true)).toEqual([]);
+  });
+
+  it("an outline that gives no Advantage (Starry Wisp): Invisible's Disadvantage gone, nothing added (rules audit 12)", () => {
+    const wisp = { ...them(["invisible"], [], true), advantage: false };
+    expect(attackHints(me, wisp, { withinFt: 10, melee: false })).toMatchObject({ adv: [], dis: [] });
+    // Faerie Fire's (or the DM's mark): Advantage as well.
+    expect(
+      hintedMode(attackHints(me, { ...them([], [], true), advantage: true }, { withinFt: 10, melee: false })),
+    ).toBe("adv");
   });
   it("the attacker's own: Poisoned — disadvantage; with the target Restrained, they cancel; Exhaustion 2 — −4", () => {
     const h = attackHints({ conditions: ["poisoned"], exhaustion: 2 }, them(["restrained"]), {

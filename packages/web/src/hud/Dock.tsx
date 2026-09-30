@@ -105,6 +105,10 @@ export function Dock() {
       ? Math.round(window.innerHeight - toasts.top) + 4
       : 0;
   const needsCharacter = useNeedsCharacter();
+  // The dice tray standing in the panel's place (DiceTray): the panel out of sight, no rail button lit for it; the
+  // settings popover there (placeSettings) likewise lets the rail go.
+  const trayOver = useUi((s) => s.trayInPanel && s.diceTray) && !phone;
+  const settingsOver = useUi((s) => s.settingsInPanel) && !phone;
   const railButtons = tabs.map((t) => (
     <div key={t.id} className="relative">
       {t.id === "sheet" && needsCharacter && tab === null && !phone ? <FirstSteps /> : null}
@@ -112,7 +116,7 @@ export function Dock() {
         label={
           t.badge ? `${t.label} (${t.badge} ${t.id === "journal" ? "new" : "waiting for approval"})` : t.label
         }
-        active={tab === t.id}
+        active={tab === t.id && !trayOver && !settingsOver}
         onClick={() => toggle(t.id)}
       >
         {t.icon}
@@ -198,7 +202,7 @@ export function Dock() {
       {tab ? (
         <section
           ref={panelRef}
-          className="panel pointer-events-auto relative flex min-w-0 flex-col overflow-hidden overflow-x-clip"
+          className={`panel pointer-events-auto relative flex min-w-0 flex-col overflow-hidden overflow-x-clip ${trayOver ? "invisible" : ""}`}
           // Never wider than the screen leaves beside the rail; on a phone, all of it.
           style={{ width: page ? "100%" : `min(${width}px, calc(100vw - ${RAIL_ROOM}px))` }}
           aria-label={label}

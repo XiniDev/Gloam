@@ -2,6 +2,7 @@ import type { Room } from "@colyseus/sdk";
 import {
   Archive,
   BookOpen,
+  ChevronDown,
   FolderOpen,
   Images,
   Info,
@@ -13,7 +14,7 @@ import {
   Table2,
   Users,
 } from "lucide-react";
-import { type FormEvent, type ReactNode, useEffect, useRef, useState } from "react";
+import { type FormEvent, type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { NavLink, Route, Routes, useLocation, useNavigate, useSearchParams } from "react-router";
 import { leaveRoom } from "../net/colyseus.ts";
 import { ApiError, post } from "../net/http.ts";
@@ -110,11 +111,22 @@ function AdminLogin({ local, onDone }: { local: boolean; onDone: () => void }) {
   );
 }
 
-function NavItem({ to, icon, children }: { to: string; icon: ReactNode; children: ReactNode }) {
+function NavItem({
+  to,
+  icon,
+  children,
+  onClick,
+}: {
+  to: string;
+  icon: ReactNode;
+  children: ReactNode;
+  onClick?: () => void;
+}) {
   return (
     <NavLink
       to={to}
       end
+      onClick={onClick}
       className={({ isActive }) =>
         `flex h-10 shrink-0 items-center gap-3 whitespace-nowrap rounded-[var(--radius-control)] px-3 text-14 font-bold transition-colors ${
           isActive
@@ -129,18 +141,92 @@ function NavItem({ to, icon, children }: { to: string; icon: ReactNode; children
   );
 }
 
+/** The console's pages, in the order the sidebar lists them. */
+const SECTIONS: { to: string; label: string; Icon: typeof Table2 }[] = [
+  { to: "/admin", label: "Table", Icon: Table2 },
+  { to: "/admin/people", label: "People", Icon: Users },
+  { to: "/admin/campaigns", label: "Campaigns", Icon: FolderOpen },
+  { to: "/admin/saves", label: "Saves", Icon: Archive },
+  { to: "/admin/assets", label: "Assets", Icon: Images },
+  { to: "/admin/content", label: "Content", Icon: BookOpen },
+  { to: "/admin/api", label: "API & MCP", Icon: Plug },
+  { to: "/admin/settings", label: "Settings", Icon: SettingsIcon },
+  { to: "/admin/security", label: "Security log", Icon: ShieldCheck },
+  { to: "/admin/about", label: "About", Icon: Info },
+];
+
+/**
+ * A phone's (or a short landscape screen's) way round the console: the page you're on as a button that opens every
+ * page in a grid under it; choosing one, pressing elsewhere or Escape closes it.
+ */
+function SectionPicker() {
+  const location = useLocation();
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLElement>(null);
+  const button = useRef<HTMLButtonElement>(null);
+  const listId = useId();
+  const current =
+    SECTIONS.find((x) => x.to === location.pathname) ??
+    SECTIONS.find((x) => x.to !== "/admin" && location.pathname.startsWith(`${x.to}/`)) ??
+    (SECTIONS[0] as (typeof SECTIONS)[number]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the page changing is the cue
+  useEffect(() => setOpen(false), [location.pathname]);
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: PointerEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const esc = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      setOpen(false);
+      button.current?.focus();
+    };
+    document.addEventListener("pointerdown", away);
+    window.addEventListener("keydown", esc);
+    return () => {
+      document.removeEventListener("pointerdown", away);
+      window.removeEventListener("keydown", esc);
+    };
+  }, [open]);
+  return (
+    <nav ref={ref} aria-label="Admin sections" className="relative side:hidden">
+      <button
+        ref={button}
+        type="button"
+        aria-expanded={open}
+        aria-controls={open ? listId : undefined}
+        onClick={() => setOpen((o) => !o)}
+        className="flex h-11 w-full items-center gap-3 rounded-[var(--radius-control)] border border-line bg-raised px-3 text-14 font-bold text-brass-bright hover:border-line-strong"
+      >
+        <current.Icon size={17} aria-hidden />
+        <span className="min-w-0 truncate">{current.label}</span>
+        <span className="ml-auto text-12 font-normal text-muted">All sections</span>
+        <ChevronDown
+          size={16}
+          aria-hidden
+          className={`shrink-0 text-muted transition-transform duration-[var(--dur-fast)] ${open ? "rotate-180" : ""}`}
+        />
+      </button>
+      {open ? (
+        <div
+          id={listId}
+          className="panel absolute inset-x-0 top-full z-40 mt-1 grid grid-cols-2 gap-1 p-1.5 short:grid-cols-3"
+        >
+          {/* (Chosen — the page you're on too — it closes.) */}
+          {SECTIONS.map((x) => (
+            <NavItem key={x.to} to={x.to} icon={<x.Icon size={17} />} onClick={() => setOpen(false)}>
+              {x.label}
+            </NavItem>
+          ))}
+        </div>
+      ) : null}
+    </nav>
+  );
+}
+
 function Console() {
   const navigate = useNavigate();
   const connected = useAdminLive((s) => s.connected);
-  const location = useLocation();
-  const navStrip = useRef<HTMLElement>(null);
-  // The page you're on, in a phone's scrolled strip.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: the page changing is the cue
-  useEffect(() => {
-    const active = navStrip.current?.querySelector<HTMLElement>('[aria-current="page"]');
-    if (active && navStrip.current && navStrip.current.scrollWidth > navStrip.current.clientWidth)
-      active.scrollIntoView({ inline: "center", block: "nearest" });
-  }, [location.pathname]);
   useEffect(() => {
     let room: Room | null = null;
     let cancelled = false;
@@ -161,15 +247,15 @@ function Console() {
     window.location.reload();
   }
   return (
-    <div className="flex min-h-[100dvh] flex-col bg-bg md:flex-row">
+    <div className="flex min-h-[100dvh] flex-col bg-bg side:flex-row">
       {/* On wide screens the sidebar is exactly the screen's height and stays put while the page scrolls, so its
           bottom actions are always reachable; on phones it's a header row. */}
-      <aside className="flex shrink-0 flex-col gap-1 border-b border-line bg-surface p-3 md:sticky md:top-0 md:h-[100dvh] md:w-[232px] md:overflow-y-auto md:border-b-0 md:border-r">
+      <aside className="flex shrink-0 flex-col gap-1 border-b border-line bg-surface p-3 side:sticky side:top-0 side:h-[100dvh] side:w-[232px] side:overflow-y-auto side:border-b-0 side:border-r">
         <div className="mb-3 flex items-center gap-2 px-2 pt-1">
           <Sparkle size={18} />
           <span className="display text-18 font-semibold tracking-[0.04em] text-bone">GLOAM</span>
           <span className="caps text-12 text-brass">Admin</span>
-          <span className="ml-auto flex items-center gap-1 md:hidden">
+          <span className="ml-auto flex items-center gap-1 side:hidden">
             <IconButton label="Go to the table" onClick={() => navigate("/table")}>
               <Swords size={17} />
             </IconButton>
@@ -179,44 +265,17 @@ function Console() {
             <SoundChip />
           </span>
         </div>
-        {/* A phone's strip scrolls: its ends fade (more that way), and the page you're on is brought into it. */}
-        <nav
-          aria-label="Admin sections"
-          ref={navStrip}
-          className="flex gap-1 overflow-x-auto max-md:[mask-image:linear-gradient(90deg,transparent,#000_20px,#000_calc(100%-20px),transparent)] max-md:px-4 md:flex-col"
-        >
-          <NavItem to="/admin" icon={<Table2 size={17} />}>
-            Table
-          </NavItem>
-          <NavItem to="/admin/people" icon={<Users size={17} />}>
-            People
-          </NavItem>
-          <NavItem to="/admin/campaigns" icon={<FolderOpen size={17} />}>
-            Campaigns
-          </NavItem>
-          <NavItem to="/admin/saves" icon={<Archive size={17} />}>
-            Saves
-          </NavItem>
-          <NavItem to="/admin/assets" icon={<Images size={17} />}>
-            Assets
-          </NavItem>
-          <NavItem to="/admin/content" icon={<BookOpen size={17} />}>
-            Content
-          </NavItem>
-          <NavItem to="/admin/api" icon={<Plug size={17} />}>
-            API &amp; MCP
-          </NavItem>
-          <NavItem to="/admin/settings" icon={<SettingsIcon size={17} />}>
-            Settings
-          </NavItem>
-          <NavItem to="/admin/security" icon={<ShieldCheck size={17} />}>
-            Security log
-          </NavItem>
-          <NavItem to="/admin/about" icon={<Info size={17} />}>
-            About
-          </NavItem>
+        {/* A phone, or a short screen on its side: the page you're on, which opens the whole list (a strip scrolling
+            sideways cut its labels at both edges — critic RSP-01 r1). Wide and tall enough: the sidebar's column. */}
+        <SectionPicker />
+        <nav aria-label="Admin sections" className="hidden flex-col gap-1 side:flex">
+          {SECTIONS.map((x) => (
+            <NavItem key={x.to} to={x.to} icon={<x.Icon size={17} />}>
+              {x.label}
+            </NavItem>
+          ))}
         </nav>
-        <div className="mt-auto hidden flex-col gap-1 pt-4 md:flex">
+        <div className="mt-auto hidden flex-col gap-1 pt-4 side:flex">
           <Button variant="secondary" icon={<Swords size={16} />} onClick={() => navigate("/table")}>
             Go to the table
           </Button>
@@ -236,7 +295,9 @@ function Console() {
           </div>
         </div>
       </aside>
-      <main className="min-w-0 flex-1 px-4 py-6 md:px-10 md:py-8">
+      {/* A very wide screen: the page's column in the middle of what's left (it sat at the left with ~770 px of empty
+          ink beside it at 1920 — critic RSP-01 r1). */}
+      <main className="min-w-0 flex-1 px-4 py-6 side:px-10 side:py-8 min-[1600px]:[&>*]:mx-auto">
         <Routes>
           <Route index element={<TablePage />} />
           <Route path="people" element={<PeoplePage />} />

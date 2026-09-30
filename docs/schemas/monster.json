@@ -61,6 +61,11 @@
       ],
       "additionalProperties": false
     },
+    "initiative": {
+      "type": "integer",
+      "minimum": -20,
+      "maximum": 30
+    },
     "speeds": {
       "default": {
         "walk": 30,

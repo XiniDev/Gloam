@@ -8,18 +8,23 @@
 import type { Ability, DamageType } from "@gloam/shared";
 import { COVER_BONUS, coverHint, saveCoverBonus } from "@gloam/shared/aoe";
 import { withPenalty } from "@gloam/shared/dice";
+import { hostileTo, sideOf } from "@gloam/shared/movement";
 import { type CastTargetView, type CastView, GloamError } from "@gloam/shared/protocol";
 import {
   applyDamage,
   applyHealing,
   attackHints,
+  cantActBecause,
+  conditionsBearing,
   critFormula,
   critMaxFormula,
   hintedMode,
   isDead,
   isDm,
+  makesDeathSaves,
   speedNowFt,
 } from "@gloam/shared/rules";
+import type { TokenEntity } from "@gloam/shared/schemas";
 import type { RequestResponse, RequestTarget, RollRequest } from "../dice/requests.ts";
 import type { RollRecord } from "../dice/service.ts";
 import type { CastEntity } from "../engine/codecs.ts";
@@ -59,6 +64,8 @@ export interface CastViewer {
 export interface CastHost {
   readonly campaignId: string;
   model(): CampaignModel;
+  /** Whether one creature sees another now (null: not known — a scene not in play). */
+  sees(fromTokenId: string, toTokenId: string): boolean | null;
   bus(): CommandBus;
   viewers(): Iterable<CastViewer>;
   actorOf(userId: string): CommandActor;
@@ -282,7 +289,7 @@ export class CastFlow {
             vulnerabilities: a.stats.vuln,
             conditions: a.status.conditions.map((x) => x.id),
             concentrating: Boolean(h.status.concentration),
-            isPC: h.isPC,
+            isPC: makesDeathSaves(h.isPC, h.status),
           },
           inst,
           // (The DM's edited number is final, as Apply takes it.)
@@ -300,6 +307,38 @@ export class CastFlow {
     }
     if (t.final !== undefined && t.final !== null) row.final = t.final;
     return row;
+  }
+
+  /**
+   * A ranged attack's circumstances (SRD 5.2.1 pp. 15–16; rules audit C6): the hostiles within 5 ft of the attacker that
+   * can see it and aren't Incapacitated (edge to edge, as reach is), and whether the target is past the weapon's normal
+   * range. Each a Disadvantage on the card, the roller's to set aside.
+   */
+  private rangedCircumstances(
+    ctx: CommandCtx,
+    d: CastData,
+    at: TokenEntity,
+    toTarget: number,
+  ): { closeHostiles: string[]; beyondNormalRange: boolean } {
+    const m = this.host.model();
+    const close = m
+      .inScene("token", at.sceneId)
+      .filter((o) => {
+        if (o.id === at.id || !hostileTo(sideOf(at), sideOf(o))) return false;
+        const gap = Math.hypot(o.pos.x - at.pos.x, o.pos.y - at.pos.y) - o.sizeFt / 2 - at.sizeFt / 2;
+        if (gap > 5 + 1e-6) return false;
+        let h: ReturnType<typeof holderOf>;
+        try {
+          h = holderOf(ctx, { tokenId: o.id });
+        } catch {
+          return false;
+        }
+        if (cantActBecause(h.status.conditions.map((c) => c.id as string))) return false;
+        return this.host.sees(o.id, at.id) !== false;
+      })
+      .map((o) => o.name);
+    const normal = d.attack?.normalFt;
+    return { closeHostiles: close, beyondNormalRange: normal !== undefined && toTarget > normal + 1e-6 };
   }
 
   /**
@@ -328,17 +367,30 @@ export class CastFlow {
       at && to ? Math.hypot(to.pos.x - at.pos.x, to.pos.y - at.pos.y) - at.sizeFt / 2 - to.sizeFt / 2 : 999;
     const h = attackHints(
       {
-        conditions: a?.status.conditions.map((c) => c.id) ?? [],
+        // Its Grappled against its grappler, its Frightened with the fear out of sight: nothing (rules audit C7).
+        conditions: conditionsBearing(a?.status.conditions ?? [], {
+          targetId: to?.id,
+          sees: (id) => (at ? this.host.sees(at.id, id) : null),
+        }),
         exhaustion: a?.status.exhaustion ?? 0,
       },
       {
         conditions: b?.status.conditions.map((c) => c.id) ?? [],
         markers: b?.status.markers.map((x) => x.id) ?? [],
-        // Outlined by the DM's mark or by an effect on it (Faerie Fire's glow, Shining Smite's light).
-        outlined: Boolean(b?.status.outlined) || Boolean(to && effectsOn(m, to).outlined),
+        // Outlined by the DM's mark or by an effect on it (Faerie Fire's glow, Shining Smite's light, Starry Wisp's) —
+        // and whether that gives attackers Advantage (the DM's mark and Faerie Fire's do; Starry Wisp's doesn't).
+        ...(() => {
+          const fx = to ? effectsOn(m, to) : { outlined: false, advantageAgainst: false };
+          const marked = Boolean(b?.status.outlined);
+          return { outlined: marked || fx.outlined, advantage: marked || fx.advantageAgainst };
+        })(),
         ...(b?.token ? { speedFt: speedNowFt(b.token, b.stats, b.status) } : {}),
       },
-      { withinFt: Math.max(0, within), melee: d.attack?.kind === "melee" },
+      {
+        withinFt: Math.max(0, within),
+        melee: d.attack?.kind === "melee",
+        ...(d.attack?.kind === "ranged" && at ? this.rangedCircumstances(ctx, d, at, within) : {}),
+      },
     );
     const mode = hintedMode(h);
     return {

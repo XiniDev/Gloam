@@ -184,6 +184,10 @@ export interface TokenStatusT {
     glyph?: string;
     /** A custom marker's one line: what it means (its summary). */
     description?: string;
+    /** It ends when this creature's turn ends (Disengaged: "for the rest of the current turn"). */
+    endsWithTurnOf?: string;
+    /** It ends when this creature's turn starts (Dodging: "until the start of your next turn"). */
+    endsAtStartOf?: string;
   }[];
   exhaustion: 0 | 1 | 2 | 3 | 4 | 5 | 6;
   /** What it's concentrating on: the spell, and the cast (its effects and conditions end with it). */
@@ -297,7 +301,10 @@ export interface EffectProps {
   opaque?: boolean;
   light?: { bright: Ft; dim: Ft; color: string; magical: boolean; pierceDarkness: boolean };
   silence?: boolean;
+  /** Outlined: a creature it's on can't benefit from the Invisible condition (Faerie Fire, Starry Wisp). */
   outline?: boolean;
+  /** Attack rolls against a creature it's on have Advantage (Faerie Fire, Shining Smite — not Starry Wisp). */
+  advantageAgainst?: boolean;
   /** A creature's Speed is halved while inside (Spirit Guardians). */
   speedHalved?: boolean;
   /** Senses the creature it's on gains (Darkvision, True Seeing), and seeing the Invisible (See Invisibility). */

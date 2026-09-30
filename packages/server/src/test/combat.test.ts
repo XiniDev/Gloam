@@ -309,6 +309,26 @@ describe("P8 — combat on the server (§8.12, §16.5)", () => {
     await cmd(dm, "status.change", { tokenId: hero, remove: ["incapacitated"] });
   });
 
+  it("Disengage and Dodge (rules audit C3): each takes the Action; Disengaged goes as the turn ends, Dodging at the start of the next", async () => {
+    const markers = () => statusOf(hero).markers.map((m) => m.id as string);
+    await turnOf(hero);
+    await cmd(anna().room, "move.disengage", { tokenId: hero });
+    expect(data().pips[hero] ?? 0).toBe(1);
+    expect(markers()).toContain("disengaged");
+    await cmd(anna().room, "move.dodge", { tokenId: hero });
+    expect(markers()).toEqual(expect.arrayContaining(["disengaged", "dodging"]));
+    // Its turn ends: Disengaged gone, Dodging still on (until the start of its next turn).
+    await cmd(anna().room, "combat.endTurn", { tokenId: hero });
+    await waitFor(() => !markers().includes("disengaged"));
+    expect(markers()).toContain("dodging");
+    // Round to its turn again: Dodging gone as it starts.
+    await turnOf(hero);
+    await waitFor(() => !markers().includes("dodging"));
+    // Not its turn: refused (its own turn's action).
+    await cmd(anna().room, "combat.endTurn", { tokenId: hero });
+    await expect(cmd(anna().room, "move.dodge", { tokenId: hero })).rejects.toThrow(/NOT_YOUR_TURN|turn/);
+  });
+
   it("rules audit A3: a flight needs a fly speed and pays its 3D length, held to the budget; height in a fight is movement", async () => {
     await turnOf(hero);
     await cmd(anna().room, "move.reset", { tokenId: hero });

@@ -1,5 +1,6 @@
 import type { Room } from "@colyseus/sdk";
 import { PLAYER_COLORS } from "@gloam/shared";
+import { Volume2 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
@@ -135,7 +136,7 @@ export default function Wait() {
   const color = me.user?.color ?? knock?.color ?? "";
 
   return (
-    <main className="relative flex min-h-[100dvh] flex-col items-center justify-center overflow-hidden bg-bg px-4 py-10">
+    <main className="relative flex min-h-[100dvh] flex-col items-center justify-center overflow-hidden bg-bg px-4 py-10 short:py-4">
       <div className="absolute right-3 top-3">
         <SoundChip />
       </div>
@@ -155,10 +156,11 @@ export default function Wait() {
         ) : null}
       </AnimatePresence>
 
-      <div className="relative flex w-full max-w-[560px] flex-col items-center">
+      {/* A short screen on its side: the door beside the words (critic RSP-01 r1: at 844 × 390 only the door showed). */}
+      <div className="relative flex w-full max-w-[560px] flex-col items-center short:max-w-[760px] short:flex-row short:justify-center short:gap-8">
         <DoorScene />
         {outcome ? (
-          <div className="mt-6 text-center">
+          <div className="mt-6 text-center short:mt-0 short:max-w-[360px]">
             <h1 className="text-28 text-bone">{outcome.message}</h1>
             <p className="mt-2 text-14 text-muted">
               {outcome.kind === "denied"
@@ -176,7 +178,7 @@ export default function Wait() {
             ) : null}
           </div>
         ) : (
-          <div className="mt-6 text-center">
+          <div className="mt-6 text-center short:mt-0 short:max-w-[360px]">
             <h1 className="text-28 text-bone" aria-live="polite">
               {entering ? "The door opens…" : "Waiting for the DM to let you in…"}
             </h1>
@@ -188,22 +190,23 @@ export default function Wait() {
             {connection === "dropped" ? (
               <p className="mt-3 text-14 text-[var(--ember-400)]">Connection lost — reconnecting…</p>
             ) : null}
-            <div className="mt-8 flex flex-wrap justify-center gap-2">
+            <div className="mt-8 flex flex-wrap justify-center gap-2 short:mt-5">
               <Button
                 variant="secondary"
+                icon={<Volume2 size={16} />}
                 onClick={async () => {
                   await audio.resume();
                   audio.play("chime");
                   toast.info("Sound check", "If you heard a soft chime, you're all set.");
                 }}
               >
-                ♪ Test sound
+                Test sound
               </Button>
             </div>
             <button
               type="button"
               onClick={() => void leave()}
-              className="mt-8 text-14 text-muted underline-offset-4 hover:text-bone hover:underline"
+              className="mt-8 text-14 text-muted underline-offset-4 hover:text-bone hover:underline short:mt-4"
             >
               Leave the lobby
             </button>
@@ -217,7 +220,10 @@ export default function Wait() {
 /** A heavy wooden door lit by a single animated candle (shader flame). */
 function DoorScene() {
   return (
-    <div className="relative h-[300px] w-[260px] sm:h-[340px] sm:w-[300px]" aria-hidden>
+    <div
+      className="relative h-[300px] w-[260px] shrink-0 sm:h-[340px] sm:w-[300px] short:h-[min(300px,calc(100dvh-32px))]! short:w-auto! short:aspect-[300/340]"
+      aria-hidden
+    >
       <svg viewBox="0 0 300 340" className="absolute inset-0 h-full w-full" aria-hidden="true">
         <defs>
           <radialGradient id="doorlight" cx="0.28" cy="0.92" r="0.95">

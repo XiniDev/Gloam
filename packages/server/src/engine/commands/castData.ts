@@ -34,7 +34,8 @@ export interface CastData {
   dc: number | null;
   dcRevealed: boolean;
   /** An attack roll's formula ("1d20 + 7"), per target. */
-  attack: { formula: string; kind: "melee" | "ranged" } | null;
+  /** `normalFt`: a weapon's normal range, where it has a long one ("80/320"): past it, Disadvantage. */
+  attack: { formula: string; kind: "melee" | "ranged"; normalFt?: number } | null;
   damage: {
     parts: { formula: string; type: DamageType }[];
     healing: boolean;

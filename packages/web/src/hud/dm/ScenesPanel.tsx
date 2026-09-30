@@ -183,7 +183,7 @@ export function ScenesPanel() {
                     </button>
                   )}
                   {/* The state badge sits under the title with the details, so a narrow panel keeps the name. */}
-                  <p className="flex min-w-0 items-center gap-1.5 text-12 text-fog">
+                  <p className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-12 text-fog">
                     {s.active ? (
                       <span className="caps shrink-0 rounded-chip bg-accent px-1.5 py-px text-12 text-ink-950">
                         Live
@@ -193,8 +193,10 @@ export function ScenesPanel() {
                         Prep
                       </span>
                     ) : null}
-                    <span className="truncate">
-                      {KIND_LABEL[s.mapKind]} · {s.tokenCount} token{s.tokenCount === 1 ? "" : "s"}
+                    {/* Wrapped at its middot rather than cut ("Procedural floor · 5 t…", critic RSP-01 r1). */}
+                    <span className="whitespace-nowrap">{KIND_LABEL[s.mapKind]} ·</span>
+                    <span className="whitespace-nowrap">
+                      {s.tokenCount} token{s.tokenCount === 1 ? "" : "s"}
                     </span>
                   </p>
                 </div>

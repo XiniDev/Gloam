@@ -66,7 +66,7 @@ export default function Join() {
   }
 
   return (
-    <main className="relative grid min-h-[100dvh] place-items-center overflow-hidden bg-bg px-4 py-10">
+    <main className="relative grid min-h-[100dvh] place-items-center overflow-hidden bg-bg px-4 py-10 short:py-3">
       <ShaderCanvas
         frag={TABLE_BACKDROP}
         uniforms={BACKDROP_UNIFORMS}
@@ -74,7 +74,8 @@ export default function Join() {
         className="pointer-events-none absolute inset-[-4%] h-[108%] w-[108%] scale-105 blur-[7px]"
       />
       <div className="vignette pointer-events-none absolute inset-0" aria-hidden />
-      <div className="panel relative w-full max-w-[440px] px-6 pb-7 pt-8 sm:px-8">
+      {/* (A short screen on its side: tighter, so the card sits in the middle, not on the bottom edge.) */}
+      <div className="panel relative w-full max-w-[440px] px-6 pb-7 pt-8 sm:px-8 short:pb-5 short:pt-5">
         <Filigree />
         <div className="flex items-center gap-2.5">
           <Sparkle size={24} />
@@ -123,7 +124,8 @@ export default function Join() {
                 Knock on the door
               </Button>
               <p className="mt-3 text-center text-13 text-faint">
-                Got the code from your DM? It looks like 7K2QH-9XM4D.
+                Got the code from your DM? It looks like{" "}
+                <span className="whitespace-nowrap">7K2QH-9XM4D</span>.
               </p>
             </motion.form>
           ) : info ? (

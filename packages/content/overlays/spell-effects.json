@@ -368,6 +368,7 @@
         "effect": {
           "props": {
             "outline": true,
+            "advantageAgainst": true,
             "light": {
               "bright": 0,
               "dim": 10,
@@ -387,6 +388,7 @@
         "effect": {
           "props": {
             "outline": true,
+            "advantageAgainst": true,
             "light": {
               "bright": 5,
               "dim": 0,
@@ -396,6 +398,26 @@
           },
           "triggers": [],
           "attach": "target"
+        }
+      }
+    },
+    "starry-wisp": {
+      "page": 165,
+      "source": "\"On a hit, the target takes 1d8 Radiant damage, and until the end of your next turn, it emits Dim Light in a 10-foot radius and can't benefit from the Invisible condition.\" Outlined on the creature it hit — no Advantage against it (the text gives none) — until the end of its caster's next turn (rules audit 12).",
+      "set": {
+        "effect": {
+          "props": {
+            "outline": true,
+            "light": {
+              "bright": 0,
+              "dim": 10,
+              "magical": true,
+              "pierceDarkness": false
+            }
+          },
+          "triggers": [],
+          "attach": "target",
+          "lasts": "casterTurnEnd"
         }
       }
     },

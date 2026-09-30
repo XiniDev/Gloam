@@ -1,12 +1,11 @@
 import type { Page } from "@playwright/test";
-import { expect, knockAsNew, newPlayerContext, test } from "../fixtures/test.ts";
+import { adminSection, expect, knockAsNew, newPlayerContext, test } from "../fixtures/test.ts";
 
 const SHOTS = "artifacts/screens/p12";
 const SRD =
   'This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0 International License, available at https://creativecommons.org/licenses/by/4.0/legalcode.';
 
-const nav = (p: Page, name: string) =>
-  p.getByRole("navigation", { name: "Admin sections" }).getByRole("link", { name, exact: true }).click();
+const nav = (p: Page, name: string) => adminSection(p, name);
 
 /**
  * The Admin console (SPEC §8.20): the first-run checklist ticking off and going (AC-ADM-06); every section there and
@@ -152,11 +151,7 @@ for (const width of [360, 390])
         "Security log",
         "About",
       ]) {
-        const link = admin
-          .getByRole("navigation", { name: "Admin sections" })
-          .getByRole("link", { name, exact: true });
-        await link.scrollIntoViewIfNeeded();
-        await link.click();
+        await adminSection(admin, name);
         await expect(admin.getByRole("heading", { level: 1 }).first()).toBeVisible();
         // (Content loaded: the page's own data, then the measure.)
         await admin.waitForLoadState("networkidle");

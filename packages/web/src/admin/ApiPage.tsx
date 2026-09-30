@@ -1,6 +1,7 @@
 import { Copy, KeyRound, Plug, Terminal } from "lucide-react";
 import { useState } from "react";
 import { get, patch, post } from "../net/http.ts";
+import { Breakable } from "../ui/Breakable.tsx";
 import { Button } from "../ui/Button.tsx";
 import { copyText } from "../ui/clipboard.ts";
 import { Toggle } from "../ui/controls.tsx";
@@ -206,8 +207,14 @@ export function ApiPage() {
         </h2>
         <p className="text-14 text-muted">
           Gloam's MCP server is in this copy of Gloam, at{" "}
-          <code className="mono break-all text-bone">{info.mcpEntry}</code>. Claude starts it and it talks to
-          Gloam at <code className="mono text-bone">{info.url}</code> with your token.
+          <code className="mono text-bone [overflow-wrap:anywhere]">
+            <Breakable text={info.mcpEntry} />
+          </code>
+          . Claude starts it and it talks to Gloam at{" "}
+          <code className="mono text-bone [overflow-wrap:anywhere]">
+            <Breakable text={info.url} />
+          </code>{" "}
+          with your token.
           {fresh ? null : " Make a token above and it's filled in here."}
         </p>
         <SetupBlock
@@ -303,14 +310,14 @@ function SetupBlock({
       <p className="text-13 text-muted">{hint}</p>
       {/* It scrolls when long: focusable, so the keyboard can scroll it too (and a screen reader names it). */}
       <pre
-        className="mono max-h-[260px] overflow-auto whitespace-pre-wrap break-all rounded-[var(--radius-control)] border border-line bg-ink-950 px-3 py-2.5 text-13 text-bone"
+        className="mono max-h-[260px] overflow-auto whitespace-pre-wrap rounded-[var(--radius-control)] border border-line bg-ink-950 px-3 py-2.5 text-13 text-bone [overflow-wrap:anywhere]"
         data-testid={testId}
         // biome-ignore lint/a11y/noNoninteractiveTabindex: a scrolling region must be reachable by keyboard (WCAG 2.1.1)
         tabIndex={0}
         role="region"
         aria-label={`${title} setup`}
       >
-        {text}
+        <Breakable text={text} />
       </pre>
     </div>
   );

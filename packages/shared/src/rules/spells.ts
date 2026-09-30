@@ -430,6 +430,12 @@ export function castAttach(spell: Spell, alt?: number): "caster" | "object" | "p
   );
 }
 
+/** A weapon's normal range where its text gives two ("80/320": 80 — past it, the attack is at Disadvantage). */
+export function normalRangeFt(text: string | undefined): number | undefined {
+  const pair = /(\d+)\s*\/\s*(\d+)/.exec(text ?? "");
+  return pair ? Number(pair[1]) : undefined;
+}
+
 /**
  * How far a sheet attack reaches, from its range as written: "20/60" (normal/long: the long range — past the normal
  * one it's at Disadvantage, the DM's call), "120 ft", "reach 10 ft", a bare "30"; nothing written, 5 ft.

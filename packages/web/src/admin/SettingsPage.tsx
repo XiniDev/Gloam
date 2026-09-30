@@ -102,70 +102,70 @@ export function SettingsPage() {
             These settings can only be changed on the host PC.
           </p>
         ) : null}
-        <div className="grid gap-4 sm:grid-cols-[1fr_13rem] sm:items-end">
-          <TextInput
-            label="Tunnel token"
-            type="password"
-            autoComplete="off"
-            placeholder={s.tunnelToken ? `Saved: ${s.tunnelToken}` : "Paste the token from Cloudflare"}
-            value={token}
-            onChange={(e) => setToken(e.target.value)}
-            disabled={hostOnly}
-            help="Stored encrypted on this PC; never shown in full again."
-          />
-          <div className="flex gap-2 sm:pb-6">
+        <TextInput
+          label="Tunnel token"
+          type="password"
+          autoComplete="off"
+          placeholder={s.tunnelToken ? `Saved: ${s.tunnelToken}` : "Paste the token from Cloudflare"}
+          value={token}
+          onChange={(e) => setToken(e.target.value)}
+          disabled={hostOnly}
+          help="Stored encrypted on this PC; never shown in full again."
+          action={
+            <>
+              <Button
+                className="flex-1"
+                variant="primary"
+                disabled={hostOnly || token.length < 20}
+                onClick={async () => (await save({ tunnelToken: token }, "Token saved")) && setToken("")}
+              >
+                Save token
+              </Button>
+              {s.tunnelToken ? (
+                <Button
+                  variant="ghost"
+                  disabled={hostOnly}
+                  onClick={() => void save({ tunnelToken: null }, "Token removed")}
+                >
+                  Remove
+                </Button>
+              ) : null}
+            </>
+          }
+        />
+        <TextInput
+          label="Public hostname"
+          placeholder="e.g. table.example.com"
+          value={host}
+          onChange={(e) => setHost(e.target.value.trim())}
+          disabled={hostOnly}
+          action={
             <Button
               className="flex-1"
-              variant="primary"
-              disabled={hostOnly || token.length < 20}
-              onClick={async () => (await save({ tunnelToken: token }, "Token saved")) && setToken("")}
+              disabled={hostOnly || host === (s.publicHostname ?? "")}
+              onClick={() => void save({ publicHostname: host || null })}
             >
-              Save token
+              Save hostname
             </Button>
-            {s.tunnelToken ? (
-              <Button
-                variant="ghost"
-                disabled={hostOnly}
-                onClick={() => void save({ tunnelToken: null }, "Token removed")}
-              >
-                Remove
-              </Button>
-            ) : null}
-          </div>
-        </div>
-        <div className="grid gap-4 sm:grid-cols-[1fr_13rem] sm:items-end">
-          <TextInput
-            label="Public hostname"
-            placeholder="e.g. table.example.com"
-            value={host}
-            onChange={(e) => setHost(e.target.value.trim())}
-            disabled={hostOnly}
-          />
-          <Button
-            className="w-full sm:mb-0.5"
-            disabled={hostOnly || host === (s.publicHostname ?? "")}
-            onClick={() => void save({ publicHostname: host || null })}
-          >
-            Save hostname
-          </Button>
-        </div>
-        <div className="grid gap-4 sm:grid-cols-[1fr_13rem] sm:items-end">
-          <TextInput
-            label="cloudflared path"
-            placeholder="cloudflared (found on PATH)"
-            value={cfPath}
-            onChange={(e) => setCfPath(e.target.value)}
-            disabled={hostOnly}
-            help="Only needed if cloudflared isn't on your PATH. Takes effect after a restart."
-          />
-          <Button
-            className="w-full sm:mb-6"
-            disabled={hostOnly || cfPath === (s.cloudflaredPath ?? "")}
-            onClick={() => void save({ cloudflaredPath: cfPath || null })}
-          >
-            Save path
-          </Button>
-        </div>
+          }
+        />
+        <TextInput
+          label="cloudflared path"
+          placeholder="cloudflared (found on PATH)"
+          value={cfPath}
+          onChange={(e) => setCfPath(e.target.value)}
+          disabled={hostOnly}
+          help="Only needed if cloudflared isn't on your PATH. Takes effect after a restart."
+          action={
+            <Button
+              className="flex-1"
+              disabled={hostOnly || cfPath === (s.cloudflaredPath ?? "")}
+              onClick={() => void save({ cloudflaredPath: cfPath || null })}
+            >
+              Save path
+            </Button>
+          }
+        />
       </Section>
 
       <Section
@@ -175,30 +175,30 @@ export function SettingsPage() {
         {hostOnly ? (
           <p className="text-14 text-[var(--ember-400)]">This can only be changed on the host PC.</p>
         ) : null}
-        <div className="grid gap-4 sm:grid-cols-[1fr_13rem] sm:items-end">
-          <TextInput
-            label="Port"
-            inputMode="numeric"
-            placeholder="4747 (the default)"
-            value={port}
-            onChange={(e) => setPort(e.target.value.replace(/\D/g, "").slice(0, 5))}
-            disabled={hostOnly}
-            help="1024–65535. Takes effect when Gloam restarts."
-          />
-          <Button
-            className="w-full sm:mb-6"
-            disabled={
-              hostOnly ||
-              port === (s.port ? String(s.port) : "") ||
-              (port !== "" && (Number(port) < 1024 || Number(port) > 65535))
-            }
-            onClick={() =>
-              void save({ port: port ? Number(port) : null }, "Port saved — restart Gloam to use it")
-            }
-          >
-            Save port
-          </Button>
-        </div>
+        <TextInput
+          label="Port"
+          inputMode="numeric"
+          placeholder="4747 (the default)"
+          value={port}
+          onChange={(e) => setPort(e.target.value.replace(/\D/g, "").slice(0, 5))}
+          disabled={hostOnly}
+          help="1024–65535. Takes effect when Gloam restarts."
+          action={
+            <Button
+              className="flex-1"
+              disabled={
+                hostOnly ||
+                port === (s.port ? String(s.port) : "") ||
+                (port !== "" && (Number(port) < 1024 || Number(port) > 65535))
+              }
+              onClick={() =>
+                void save({ port: port ? Number(port) : null }, "Port saved — restart Gloam to use it")
+              }
+            >
+              Save port
+            </Button>
+          }
+        />
       </Section>
 
       <Section

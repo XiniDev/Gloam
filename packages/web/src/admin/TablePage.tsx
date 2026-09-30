@@ -341,45 +341,49 @@ export function TablePage() {
                   </div>
                 )}
               </div>
-              <div className="grid gap-4 sm:grid-cols-3">
-                <Select
-                  label="Code expires"
-                  value={expiryValue(s)}
-                  onChange={(v) => void update("/api/admin/table/invite/policy", { expiry: v })}
-                  options={[
-                    { value: "close", label: "When the table closes" },
-                    { value: "2h", label: "In 2 hours" },
-                    { value: "4h", label: "In 4 hours" },
-                    { value: "8h", label: "In 8 hours" },
-                  ]}
-                />
-                <Select
-                  label="Max uses"
-                  value={s.invite?.maxUses ? String(s.invite.maxUses) : "unlimited"}
-                  onChange={(v) =>
-                    void update("/api/admin/table/invite/policy", {
-                      maxUses: v === "unlimited" ? null : Number(v),
-                    })
-                  }
-                  options={[
-                    { value: "unlimited", label: "Unlimited" },
-                    ...[1, 2, 3, 4, 5, 6, 8, 10].map((n) => ({
-                      value: String(n),
-                      label: `${n} use${n === 1 ? "" : "s"}`,
-                    })),
-                  ]}
-                />
-                <div className="pt-5">
-                  <Toggle
-                    checked={s.locked}
-                    onChange={(v) => void update("/api/admin/table/lock", { locked: v })}
-                    label={
-                      <span className="inline-flex items-center gap-1.5">
-                        <Lock size={14} aria-hidden /> Lock the door
-                      </span>
-                    }
-                    description="Valid codes can't knock while locked."
+              {/* By the card's own width: the two selects side by side, the lock on a row of its own — the three in
+                  one row only where there's room (critic RSP-01 r1: at 768 px "Lock the door" broke a word a line). */}
+              <div className="@container">
+                <div className="grid gap-4 @[440px]:grid-cols-2 @[720px]:grid-cols-3">
+                  <Select
+                    label="Code expires"
+                    value={expiryValue(s)}
+                    onChange={(v) => void update("/api/admin/table/invite/policy", { expiry: v })}
+                    options={[
+                      { value: "close", label: "When the table closes" },
+                      { value: "2h", label: "In 2 hours" },
+                      { value: "4h", label: "In 4 hours" },
+                      { value: "8h", label: "In 8 hours" },
+                    ]}
                   />
+                  <Select
+                    label="Max uses"
+                    value={s.invite?.maxUses ? String(s.invite.maxUses) : "unlimited"}
+                    onChange={(v) =>
+                      void update("/api/admin/table/invite/policy", {
+                        maxUses: v === "unlimited" ? null : Number(v),
+                      })
+                    }
+                    options={[
+                      { value: "unlimited", label: "Unlimited" },
+                      ...[1, 2, 3, 4, 5, 6, 8, 10].map((n) => ({
+                        value: String(n),
+                        label: `${n} use${n === 1 ? "" : "s"}`,
+                      })),
+                    ]}
+                  />
+                  <div className="@[440px]:col-span-2 @[720px]:col-span-1 @[720px]:pt-5">
+                    <Toggle
+                      checked={s.locked}
+                      onChange={(v) => void update("/api/admin/table/lock", { locked: v })}
+                      label={
+                        <span className="inline-flex items-center gap-1.5">
+                          <Lock size={14} aria-hidden /> Lock the door
+                        </span>
+                      }
+                      description="Valid codes can't knock while locked."
+                    />
+                  </div>
                 </div>
               </div>
               <Divider />

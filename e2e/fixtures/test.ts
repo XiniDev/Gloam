@@ -118,6 +118,20 @@ export const test = base.extend<Fixtures>({
 
 export { expect };
 
+/**
+ * A page of the Admin console by its name in "Admin sections": the sidebar's link where it shows, else (a phone, a
+ * short screen on its side) the section picker opened first.
+ */
+export async function adminSection(p: Page, name: string): Promise<void> {
+  const nav = p.getByRole("navigation", { name: "Admin sections" });
+  const link = nav.getByRole("link", { name, exact: true });
+  const picker = nav.getByRole("button", { name: /All sections/ });
+  // (One or the other once the page is up: `isVisible` doesn't wait.)
+  await expect(link.or(picker).first()).toBeVisible();
+  if (!(await link.isVisible())) await picker.click();
+  await link.click();
+}
+
 /** Admin console: create the first campaign and open the table in a mode; returns the invite code text. */
 export async function openTableAs(
   admin: Page,

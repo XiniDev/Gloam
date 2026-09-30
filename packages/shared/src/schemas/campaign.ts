@@ -11,7 +11,7 @@ export const HouseRules = z
     areaCoverage: z.enum(["touches", "centre"]).default("touches"),
     criticalDamage: z.enum(["doubleDice", "maxPlusRoll"]).default("doubleDice"),
     initiativeTies: z.enum(["dexThenPcs", "dmDecides"]).default("dexThenPcs"),
-    npcAtZero: z.enum(["dead", "unconscious", "keep"]).default("dead"),
+    npcAtZero: z.enum(["dead", "dying", "unconscious", "keep"]).default("dead"),
     defaultInitiative: z.enum(["playersRoll", "rollAll", "fixed", "skip"]).default("playersRoll"),
     deathSavesVisibleTo: z.enum(["everyone", "ownerAndDm"]).default("everyone"),
     bloodied: z.boolean().default(true),
