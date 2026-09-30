@@ -28,17 +28,26 @@ export interface ToastItem {
 
 interface ToastStore {
   items: ToastItem[];
+  /** The stack waits (a dialog leaves it nowhere to stand): only errors show; the others' clocks stop. */
+  held: boolean;
   push(t: Omit<ToastItem, "id"> & { id?: string }): string;
   dismiss(id: string): void;
   dismissKey(key: string): void;
+  hold(on: boolean): void;
 }
 
 let seq = 0;
 const timers = new Map<string, number>();
+const deadlines = new Map<string, number>();
+/** Held: each waiting toast's time left (it starts again from there when the stack shows). */
+const paused = new Map<string, number>();
+/** What still shows while the stack waits: an error from the dialog's own work must be seen. */
+const showsWhileHeld = (t: Pick<ToastItem, "kind">) => t.kind === "danger";
 
 /** SPEC §28 Toast: top-right stack (max 4), typed, action buttons, auto-dismiss 5 s. */
 export const useToasts = create<ToastStore>((set, get) => ({
   items: [],
+  held: false,
   push(t) {
     const id = t.id ?? `t${++seq}`;
     // The same message again (a second "Spotlight", a second "Saved") replaces the one showing and starts its time
@@ -62,15 +71,15 @@ export const useToasts = create<ToastStore>((set, get) => ({
         const old = timers.get(r.id);
         if (old) window.clearTimeout(old);
         timers.delete(r.id);
+        deadlines.delete(r.id);
+        paused.delete(r.id);
       }
       const withoutKey = item.key ? s.items.filter((x) => x.key !== item.key) : s.items;
       return { items: [...withoutKey, item].slice(-4) };
     });
     if (item.duration && item.duration > 0) {
-      timers.set(
-        id,
-        window.setTimeout(() => get().dismiss(id), item.duration),
-      );
+      if (get().held && !showsWhileHeld(item)) paused.set(id, item.duration);
+      else startClock(id, item.duration, get().dismiss);
     }
     return id;
   },
@@ -78,12 +87,41 @@ export const useToasts = create<ToastStore>((set, get) => ({
     const t = timers.get(id);
     if (t) window.clearTimeout(t);
     timers.delete(id);
+    deadlines.delete(id);
+    paused.delete(id);
     set((s) => ({ items: s.items.filter((x) => x.id !== id) }));
   },
   dismissKey(key) {
     for (const i of get().items.filter((x) => x.key === key)) get().dismiss(i.id);
   },
+  hold(on) {
+    if (get().held === on) return;
+    set({ held: on });
+    if (on) {
+      const now = Date.now();
+      for (const t of get().items) {
+        const timer = timers.get(t.id);
+        if (timer === undefined || showsWhileHeld(t)) continue;
+        window.clearTimeout(timer);
+        timers.delete(t.id);
+        // (Never less than a moment to be read once it shows.)
+        paused.set(t.id, Math.max(1500, (deadlines.get(t.id) ?? now) - now));
+        deadlines.delete(t.id);
+      }
+    } else {
+      for (const [id, ms] of paused) startClock(id, ms, get().dismiss);
+      paused.clear();
+    }
+  },
 }));
+
+function startClock(id: string, ms: number, dismiss: (id: string) => void): void {
+  deadlines.set(id, Date.now() + ms);
+  timers.set(
+    id,
+    window.setTimeout(() => dismiss(id), ms),
+  );
+}
 
 export const toast = {
   info: (title: ReactNode, body?: ReactNode) => useToasts.getState().push({ kind: "info", title, body }),
@@ -93,6 +131,11 @@ export const toast = {
     useToasts.getState().push({ kind: "warning", title, body }),
   danger: (title: ReactNode, body?: ReactNode) => useToasts.getState().push({ kind: "danger", title, body }),
 };
+
+/** Room one toast takes in the stack, at most (a knock card with its buttons, and the gap) — for judging a slot. */
+const TOAST_ROOM = 128;
+/** The narrowest column a toast stands in beside a dialog (its buttons wrap to two rows). */
+const BESIDE_MIN = 232;
 
 /** HUD that isn't in the toasts' way wherever it is (the stack itself; the bottom band's pieces; the emote feed, which
  * keeps out of theirs). */
@@ -130,6 +173,7 @@ const ACCENT: Record<ToastKind, string> = {
 export function Toaster() {
   const items = useToasts((s) => s.items);
   const dismiss = useToasts((s) => s.dismiss);
+  const wasHeld = useToasts((s) => s.held);
   // At the table the stack stands beside the dock's rail, never over it (a sticky hazard prompt would otherwise
   // take the DM's panels away until dismissed).
   const table = useHudInsets((s) => s.active);
@@ -158,29 +202,70 @@ export function Toaster() {
   const dockPage = phoneTable && covers["dock-panel"] !== undefined;
   // The stack is HUD over the board while it holds a toast: plates keep out from under it (critic P7 r2 #2).
   const ref = useRef<HTMLDivElement>(null);
-  useCover("toasts", ref, table && items.length > 0);
+  // (Its held toasts don't count: they aren't there.)
+  useCover("toasts", ref, table && (wasHeld ? items.some(showsWhileHeld) : items.length > 0));
   // Never over other HUD (critic P7 r2 #2, P8 r2 I3): the stack starts below whatever stands in its column where it
   // would reach — the turn tracker, the "your turn" banner, the cards, a phone's tools button.
   const under = table
     ? stackTop(phoneTable ? cornerLeft : 72, x0, x1, covers, ref.current?.offsetHeight ?? 0)
     : null;
-  const reach = Math.max(96, ref.current?.offsetHeight ?? 0);
+  // With a dialog open, room is judged for the whole stack as it stands shown — never its measured height: held, it
+  // measures nothing, and the choice would flip back and forth.
+  const need = Math.max(96, items.length * TOAST_ROOM);
   const overDialog =
     modal &&
     (!dialog ||
       (under !== null &&
         dialog.left < x1 &&
         dialog.right > (phoneTable ? 12 : x0) &&
-        dialog.top < under + reach &&
+        dialog.top < under + need &&
         dialog.bottom > under));
   // Never in the middle of the board (§27.6): below cards that reach past a third of the screen, the stack stands at
   // the foot of the column instead, above the bottom band; over a dialog or a phone's page, at the screen's foot (the
   // bottom band is under the scrim or the page then — never counted, or the stack stood mid-board: critic P11 r1 B6).
   const cardsLow = !modal && under !== null && under > window.innerHeight * 0.35;
-  const atFoot = table && (overDialog || dockPage || cardsLow);
-  const top = atFoot ? null : under;
   const band = useHudInsets((s) => s.bottom);
   const bottomBand = cardsLow ? band : dockPage ? 0 : phoneTable ? PHONE_BOTTOM_BAND : 96;
+  // Never over a dialog: its top slot taken, the foot; that taken too (a tall dialog), beside it where a column fits
+  // (the card's buttons wrap; the scrim covers the board there anyway); nowhere at all — a phone's, or a narrow
+  // screen's — the stack waits for it to close, its clocks stopped, errors from the dialog's own work still shown (a
+  // knock card over a tall dialog hid its fields).
+  const footFree =
+    !dialog ||
+    dialog.bottom <= window.innerHeight - bottomBand - 12 - need ||
+    dialog.left >= x1 ||
+    dialog.right <= (phoneTable ? 12 : x0);
+  const blocked = table && overDialog && !footFree;
+  const beside =
+    blocked && !phoneTable && dialog
+      ? window.innerWidth - 12 - (dialog.right + 12) >= BESIDE_MIN
+        ? { left: dialog.right + 12, right: 12 }
+        : dialog.left - 24 >= BESIDE_MIN
+          ? { left: 12, right: window.innerWidth - dialog.left + 12 }
+          : null
+      : null;
+  // Off the table: the stack's own corner (the top right; a phone's foot) under a dialog.
+  const pageSlot = window.matchMedia("(min-width: 768px)").matches
+    ? { left: window.innerWidth - 16 - 380, right: window.innerWidth - 16, top: 16, bottom: 16 + need }
+    : {
+        left: 12,
+        right: window.innerWidth - 12,
+        top: window.innerHeight - 16 - need,
+        bottom: window.innerHeight - 16,
+      };
+  const pageBlocked =
+    !table &&
+    modal &&
+    dialog !== null &&
+    dialog.left < pageSlot.right &&
+    dialog.right > pageSlot.left &&
+    dialog.top < pageSlot.bottom &&
+    dialog.bottom > pageSlot.top;
+  const held = (blocked && !beside) || pageBlocked;
+  const atFoot = table && !beside && (overDialog || dockPage || cardsLow);
+  const top = atFoot ? null : under;
+  useEffect(() => useToasts.getState().hold(held), [held]);
+  const shown = held ? items.filter(showsWhileHeld) : items;
   // Tests: a toast on demand (where it stands beside the HUD).
   useEffect(() => provideTestHook("toast", (title: unknown) => toast.info(String(title))), []);
   return (
@@ -201,17 +286,28 @@ export function Toaster() {
               right: right < window.innerWidth / 2 ? right : 12,
               width: "auto",
             }
-          : table
+          : beside
             ? {
-                right: window.innerWidth - x1,
-                width: x1 - x0,
-                ...(atFoot ? { top: "auto", bottom: bottomBand + 12 } : { top: top ?? 72, bottom: "auto" }),
+                left: beside.left,
+                right: beside.right,
+                width: "auto",
+                maxWidth: 380,
+                top: 72,
+                bottom: "auto",
+                // (Against the screen's edge, as ever.)
+                ...(beside.right === 12 ? { marginLeft: "auto" } : {}),
               }
-            : undefined
+            : table
+              ? {
+                  right: window.innerWidth - x1,
+                  width: x1 - x0,
+                  ...(atFoot ? { top: "auto", bottom: bottomBand + 12 } : { top: top ?? 72, bottom: "auto" }),
+                }
+              : undefined
       }
     >
       <AnimatePresence initial={false}>
-        {items.map((t) => (
+        {shown.map((t) => (
           <motion.div
             key={t.id}
             layout

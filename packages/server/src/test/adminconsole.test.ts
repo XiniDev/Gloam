@@ -3,6 +3,7 @@ import { type Capability, can } from "@gloam/shared/rules";
 import { Table, type TableState } from "@gloam/shared/state";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { SRD_ATTRIBUTION } from "../about/about.ts";
+import { noisePng } from "./assetFixtures.ts";
 import {
   Agent,
   createCampaign,
@@ -76,10 +77,12 @@ describe("P12 — the Admin console on the server (ADM)", () => {
         steps: Record<string, boolean>;
         done: boolean;
       };
+    // (cloudflared is installed here — the harness's stand-in — and the very first read says so: never checked since the
+    // server started, the list checks rather than reading "undone".)
     let s = await steps();
     expect(s.steps).toEqual({
       password: true,
-      cloudflared: expect.any(Boolean),
+      cloudflared: true,
       campaign: false,
       map: false,
       tableOpened: false,
@@ -101,10 +104,8 @@ describe("P12 — the Admin console on the server (ADM)", () => {
     code = (await openTable(admin, "local")).code;
     s = await steps();
     expect(s.steps.tableOpened).toBe(true);
-    // cloudflared: the one step a machine may not have — marked done when it's seen, as the doorway card does.
-    t.server.ctx.settings.update({
-      checklist: { ...t.server.ctx.settings.get().checklist, cloudflaredSeen: true },
-    });
+    // cloudflared, once seen, stays done (the one step a machine may not have).
+    expect(t.server.ctx.settings.get().checklist.cloudflaredSeen).toBe(true);
     s = await steps();
     expect(s.done).toBe(true);
   });
@@ -351,9 +352,32 @@ describe("P12 — the Admin console on the server (ADM)", () => {
     expect((await admin.post(`/api/admin/campaigns/${campaignId}/delete`, { confirm: name })).status).toBe(
       409,
     );
-    // Assets and content.
-    const assets = (await admin.get("/api/admin/assets")).json.data as { files: number; diskBytes: number };
-    expect(typeof assets.files).toBe("number");
+    // Assets and content. A map uploaded (re-encoded as it's stored): the campaign's share of the disk is what its files
+    // take there — never more than the disk holds (the original upload's size read 76 KB beside 22 KB on disk).
+    const form = new FormData();
+    form.append("file", new Blob([new Uint8Array(await noisePng(96, 96))]), "cellar.png");
+    const up = await fetch(`${admin.base}/api/assets?purpose=map`, {
+      method: "POST",
+      headers: {
+        cookie: admin.cookieHeader(),
+        origin: admin.base,
+        "x-gloam-csrf": admin.cookies.get("gloam_csrf") ?? "",
+      },
+      body: form,
+    });
+    expect(up.status).toBe(200);
+    const assets = (await admin.get("/api/admin/assets")).json.data as {
+      files: number;
+      fileBytes: number;
+      diskBytes: number;
+      campaigns: { campaignId: string; assets: number; bytes: number }[];
+    };
+    expect(assets.files).toBeGreaterThan(0);
+    const mine = assets.campaigns.find((c) => c.campaignId === campaignId);
+    expect(mine?.assets).toBe(1);
+    expect(mine?.bytes).toBeGreaterThan(0);
+    expect(mine?.bytes).toBeLessThanOrEqual(assets.fileBytes);
+    expect(assets.fileBytes).toBe(assets.diskBytes);
     expect((await admin.post("/api/admin/assets/cleanup")).status).toBe(200);
     const content = (await admin.get("/api/admin/content")).json.data as {
       packs: { id: string; spells: number }[];

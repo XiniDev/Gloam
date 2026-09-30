@@ -5,6 +5,7 @@ import { Button } from "../ui/Button.tsx";
 import { Select } from "../ui/controls.tsx";
 import { EmptyState } from "../ui/EmptyState.tsx";
 import { toast } from "../ui/Toast.tsx";
+import { detailText } from "./securityDetail.ts";
 
 interface Entry {
   id: number;
@@ -58,14 +59,6 @@ export const EVENT: Record<string, string> = {
 
 const when = (at: number) =>
   new Date(at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "medium" });
-
-/** A detail object as short words (no secrets are ever stored in it — the server refuses such keys). */
-function detailText(d: Record<string, unknown>): string {
-  return Object.entries(d)
-    .filter(([k]) => k !== "by")
-    .map(([k, v]) => `${k}: ${typeof v === "object" ? JSON.stringify(v) : String(v)}`)
-    .join(" · ");
-}
 
 /**
  * Admin → Security log (SPEC §8.20; AC-ADM-04): sign-ins and failed ones, knocks, who was let in or turned away,
@@ -128,7 +121,7 @@ export function SecurityPage() {
                 <span className="min-w-0">
                   <span className="text-bone">{EVENT[r.event] ?? r.event}</span>
                   {r.userName ? <span className="text-muted"> · {r.userName}</span> : null}
-                  {Object.keys(r.detail).length ? (
+                  {detailText(r.detail) ? (
                     <span className="block truncate text-12 text-faint">{detailText(r.detail)}</span>
                   ) : null}
                 </span>

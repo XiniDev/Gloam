@@ -238,7 +238,7 @@ function Body({ t }: { t: TokenView }) {
             options={[
               { value: "vision", label: "By sight" },
               { value: "all", label: "Always, to all" },
-              { value: "chosen", label: "Always, to…" },
+              { value: "chosen", label: "Always, to some" },
             ]}
           />
           {Array.isArray(reveal) ? (

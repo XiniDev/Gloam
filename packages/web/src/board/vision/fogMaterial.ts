@@ -103,9 +103,17 @@ function fogNoise(): DataTexture {
   return t;
 }
 
-export type FogKind = "floor" | "wall" | "object";
+/**
+ * `token`: a creature the viewer holds in their state — perceived, or shown to them outright (revealTo, §15.4 rule 1).
+ * Out of their sight it's still drawn, dark and greyed, never painted over as war fog (an "Always, to all" goblin in
+ * the unknown drew as an empty ring).
+ */
+export type FogKind = "floor" | "wall" | "object" | "token";
 
-const patched = new WeakSet<Material>();
+/** Each patched material and the kind it was patched as. */
+const patched = new WeakMap<Material, FogKind>();
+/** A material asked for as a second kind (one GLB both a map piece and a mini): its copy for that kind. */
+const asKind = new WeakMap<Material, Map<FogKind, Material>>();
 
 const COMMON = /* glsl */ `
 uniform float gMode; uniform float gDm; uniform float gAmbient; uniform vec4 gRect; uniform vec2 gTexel;
@@ -172,6 +180,11 @@ vec4 gVisFeathered(vec2 uv) {
 // facing: a wall's upright face, the way it faces (else zero) — the face is graded from just in front of it, in the
 // room it faces: sampled on the wall's line, where the vision polygon's edge runs, it picked up the target's texel
 // steps as blocks along the face.
+// A creature shown to the viewer but out of their sight: greyed and dark, still itself.
+vec3 gKnown(vec3 col) {
+  float lum = dot(col, vec3(0.2126, 0.7152, 0.0722));
+  return mix(vec3(lum), col, 0.45) * 0.62 + G_TINT * 0.04;
+}
 vec3 gloamFog(vec3 col, vec2 xz, float feather, vec2 across, vec2 facing) {
   if (gMode < 0.5) return col;
   vec2 uv = (xz - gRect.xy) / gRect.zw;
@@ -185,7 +198,11 @@ vec3 gloamFog(vec3 col, vec2 xz, float feather, vec2 across, vec2 facing) {
   if (gMode < 1.5) {
     // Painted: what's revealed is plain; the rest is fog.
     if (gDm > 0.5) return gHatch(col, xz, 1.0 - mem);
+#ifdef GLOAM_FOG_TOKEN
+    return mix(gKnown(col), col, mem);
+#else
     return mix(gCalmFog(xz, mem), col, mem);
+#endif
   }
   vec4 v;
   if (face) v = gVisFeathered(uv);
@@ -222,8 +239,12 @@ vec3 gloamFog(vec3 col, vec2 xz, float feather, vec2 across, vec2 facing) {
   float ripple = 0.08 * sin(length(xz) * 2.2 - gTime * 1.6);
   vec3 cBlind = vec3(lum * (0.7 + ripple));
   vec3 visible = (lit * wBright + cDim * wDim + cDark * wDark + cBlind * wBlind) / max(seen, 0.001);
+#ifdef GLOAM_FOG_TOKEN
+  vec3 unseen = gKnown(col);
+#else
   vec3 remembered = mix(vec3(lum), col, 0.3) * 0.35 + G_TINT * 0.05;
   vec3 unseen = mix(gCalmFog(xz, max(mem, seen)), remembered, mem);
+#endif
   return mix(unseen, visible, seen);
 }
 `;
@@ -295,9 +316,20 @@ export function withFog<M extends Material>(
   kind: FogKind,
   opts: { at?: Vector2; around?: { c: Vector2; r: Vector2 } } = {},
 ): M {
-  // (A set, not a userData flag: a material's clone copies userData but not its shader hook.)
-  if (patched.has(m)) return m;
-  patched.add(m);
+  // (A weak map, not a userData flag: a material's clone copies userData but not its shader hook.)
+  const was = patched.get(m);
+  if (was === kind) return m;
+  if (was !== undefined) {
+    // Already another kind's: a copy for this one (the caller puts it on the mesh), made once.
+    const byKind = asKind.get(m) ?? new Map<FogKind, Material>();
+    asKind.set(m, byKind);
+    const have = byKind.get(kind);
+    if (have) return have as M;
+    const copy = withFog(m.clone() as M, kind, opts);
+    byKind.set(kind, copy);
+    return copy;
+  }
+  patched.set(m, kind);
   const prev = m.onBeforeCompile.bind(m);
   const prevKey = m.customProgramCacheKey.bind(m);
   const at = opts.at;
@@ -350,6 +382,7 @@ vFogTop = fogNW.y > 0.5 ? 1.0 : 0.0;`
         "#include <common>",
         `#include <common>
 ${COMMON}
+${kind === "token" ? "#define GLOAM_FOG_TOKEN" : ""}
 ${wallVaryings}
 ${at ? "uniform vec2 gAt;" : ""}${around ? "uniform vec2 gAroundC; uniform vec2 gAroundR;" : ""}
 ${GLSL}${around ? AROUND_IMPL : ""}`,

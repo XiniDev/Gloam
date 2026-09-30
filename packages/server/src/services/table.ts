@@ -99,7 +99,17 @@ export class TableService extends EventEmitter {
     this.emit("status", this.dto());
   }
 
-  async checkCloudflared(): Promise<CloudflaredInfo> {
+  /** A check under way: callers at once share it (one `cloudflared --version`, not one each). */
+  private checking: Promise<CloudflaredInfo> | null = null;
+
+  checkCloudflared(): Promise<CloudflaredInfo> {
+    this.checking ??= this.runCheck().finally(() => {
+      this.checking = null;
+    });
+    return this.checking;
+  }
+
+  private async runCheck(): Promise<CloudflaredInfo> {
     const r = await this.ctx.tunnel.checkInstalled();
     this.cloudflared = {
       installed: r.installed,

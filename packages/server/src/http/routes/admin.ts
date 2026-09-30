@@ -527,8 +527,12 @@ export function adminRoutes(app: Express, ctx: ServerContext): void {
   // ── the first-run checklist (SPEC §8.20; AC-ADM-06): five steps, on top of the console until done ──────────
   app.get(
     "/api/admin/checklist",
-    route((req, res) => {
+    route(async (req, res) => {
       requireAdmin(req);
+      // Never checked since the server started: checked now — a fresh install's list read "Install cloudflared" undone
+      // while it was installed, until something else looked.
+      if (!ctx.settings.get().checklist.cloudflaredSeen && ctx.table.cloudflared === null)
+        await ctx.table.checkCloudflared();
       const s = ctx.settings.get();
       const steps = {
         password: ctx.admin.hasPassword(),

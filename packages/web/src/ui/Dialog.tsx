@@ -273,6 +273,10 @@ function DialogCard({
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 px-6 pb-6 pt-4 max-sm:[&>div]:w-full max-sm:[&>div]:flex-col-reverse max-sm:[&_button]:w-full">
           {footer}
         </div>
+      ) : children ? (
+        // No buttons: the body's scroll still ends above the corners' filigree (a field scrolled under it read as
+        // cut off by the frame).
+        <div className="h-7 shrink-0" aria-hidden />
       ) : null}
     </motion.div>
   );

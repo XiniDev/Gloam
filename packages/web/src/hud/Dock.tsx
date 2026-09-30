@@ -11,7 +11,14 @@ import { useApprovalsCount } from "./dm/approvalsCount.ts";
 import { FirstSteps, useNeedsCharacter } from "./FirstSteps.tsx";
 import { PromptCards } from "./health/PromptCards.tsx";
 import { hudOrder } from "./Intro.tsx";
-import { insetMeasures, useCover, useHudInsets, useIsPhone, useMeasuredInset } from "./insets.ts";
+import {
+  insetMeasures,
+  useBoardCovers,
+  useCover,
+  useHudInsets,
+  useIsPhone,
+  useMeasuredInset,
+} from "./insets.ts";
 import { JournalPanel } from "./journal/JournalPanel.tsx";
 import { PartyPanel } from "./PartyPanel.tsx";
 import { RequestCards } from "./RequestCards.tsx";
@@ -84,6 +91,13 @@ export function Dock() {
   // A phone's panel is a page (§8.10: "a full-screen page on phones"): the whole width, the rail folded into a bar
   // across its top with the close button.
   const page = phone && tab !== null;
+  // A phone's page ends above the toasts at its foot (a knock card stays until it's decided: under it, the rail's last
+  // sections couldn't be reached).
+  const toasts = useBoardCovers((s) => s.rects.toasts);
+  const toastFoot =
+    page && toasts && toasts.top > window.innerHeight / 2
+      ? Math.round(window.innerHeight - toasts.top) + 4
+      : 0;
   const needsCharacter = useNeedsCharacter();
   const railButtons = tabs.map((t) => (
     <div key={t.id} className="relative">
@@ -120,7 +134,7 @@ export function Dock() {
         ...order.style,
         // (A phone's rail steps down below the combat tracker, which spans the width under the top bar.)
         top: 68 + (phone ? banner + (page ? 0 : tracker) : 0),
-        bottom: phone ? Math.max(12, actionBand) : 12,
+        bottom: phone ? Math.max(12, actionBand, toastFoot) : 12,
       }}
       data-hud="dock"
     >

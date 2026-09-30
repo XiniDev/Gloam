@@ -113,7 +113,9 @@ function GlbMap({ assetId, calib }: { assetId: string; calib: Calibration }) {
           if (m.isMesh) {
             m.castShadow = true;
             m.receiveShadow = true;
-            for (const mat of Array.isArray(m.material) ? m.material : [m.material]) withFog(mat, "object");
+            m.material = Array.isArray(m.material)
+              ? m.material.map((mat) => withFog(mat, "object"))
+              : withFog(m.material, "object");
           }
         });
         copy.name = "glb-map";

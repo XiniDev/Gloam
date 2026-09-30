@@ -113,7 +113,7 @@ function HandoutRow({ h, players }: { h: HandoutView; players: PresenceView[] })
           <p className={`text-14 text-bone ${note ? "line-clamp-2" : "truncate"}`}>
             {note ? `“${h.bodyMd}”` : h.title}
           </p>
-          <p className="truncate text-12 text-muted">{heldBy(h, players)}</p>
+          <p className="line-clamp-2 text-12 text-muted">{heldBy(h, players)}</p>
         </div>
         {note ? null : (
           <>
@@ -219,7 +219,9 @@ export function HandoutsPanel() {
   const list = handouts.filter((h) => h.kind === "handout");
   const notes = handouts.filter((h) => h.kind === "note");
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-4" data-testid="handouts-panel">
+    // (No scroller of its own: the section's one scroll holds it and the notes below — a scroller inside it cut the
+    // secret note's Send button off under the notes.)
+    <div className="flex shrink-0 flex-col gap-5 p-4" data-testid="handouts-panel">
       <section className="flex flex-col gap-2" aria-label="Handouts">
         <div className="flex items-center justify-between">
           <h3 className="caps text-12 text-brass">Handouts</h3>

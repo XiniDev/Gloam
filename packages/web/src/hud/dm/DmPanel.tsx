@@ -97,8 +97,10 @@ export default function DmPanel() {
     <div className="flex min-h-0 flex-1 flex-col">
       <header className="flex items-center gap-2 border-b border-line py-2 pl-4 pr-2">
         <WaxSeal size={20} />
+        {/* The section's name (the seal and the dock's label say whose panel it is). */}
         <h2 className="min-w-0 truncate text-18 text-bone">
-          DM panel <span className="text-muted">·</span> <span className="text-bone">{def.label}</span>
+          <span className="sr-only">DM panel: </span>
+          {def.label}
         </h2>
         <button
           type="button"

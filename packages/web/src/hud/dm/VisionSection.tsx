@@ -71,7 +71,7 @@ export function VisionSection() {
         />
       </section>
       {scene.fogMode !== "off" ? (
-        <section className="flex flex-col gap-2" aria-label="Fog tools">
+        <section className="flex flex-col gap-3" aria-label="Fog tools">
           <h3 className={H}>Reveal and hide</h3>
           <div className="flex flex-wrap gap-2">
             <Button
@@ -173,7 +173,7 @@ export function VisionSection() {
         <div className="flex flex-wrap items-end gap-2">
           <div className="min-w-[180px] flex-1">
             <Select
-              label="View as"
+              label="Through whose eyes"
               value={viewAs ?? "dm"}
               onChange={(v) => {
                 const p = players.find((x) => x.userId === v);

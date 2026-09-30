@@ -159,7 +159,7 @@ export function JumpTo() {
         id: `token:${t.id}`,
         label: t.name,
         kind: "Token",
-        hint: t.dm?.dmHidden ? "hidden" : t.disposition,
+        hint: `${t.disposition.charAt(0).toUpperCase()}${t.disposition.slice(1)}${t.dm?.dmHidden ? " · hidden" : ""}`,
         words: `${t.name} token creature ${t.disposition}`,
         run: () => {
           useUi.getState().set({ jumpTo: false });
@@ -247,7 +247,6 @@ export function JumpTo() {
         >
           {shown.length ? (
             shown.map((e, i) => (
-              // biome-ignore lint/a11y/useKeyWithClickEvents: the combobox's input drives the keys
               <div
                 key={e.id}
                 tabIndex={-1}

@@ -95,7 +95,9 @@ export function useMini(meta: AssetRender | null, size: Size): MiniInstance | nu
             m.castShadow = true;
             m.receiveShadow = true;
             // Lit and fogged like the rest of the board (a mini in dim light looks dim, §15.7 step 4).
-            for (const mat of Array.isArray(m.material) ? m.material : [m.material]) withFog(mat, "object");
+            m.material = Array.isArray(m.material)
+              ? m.material.map((mat) => withFog(mat, "token"))
+              : withFog(m.material, "token");
           }
         });
         const b = boundsKey

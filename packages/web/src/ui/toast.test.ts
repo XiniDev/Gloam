@@ -5,6 +5,7 @@ vi.stubGlobal("window", { setTimeout, clearTimeout });
 const { toast, useToasts } = await import("./Toast.tsx");
 
 afterEach(() => {
+  useToasts.getState().hold(false);
   for (const t of useToasts.getState().items) useToasts.getState().dismiss(t.id);
 });
 
@@ -37,6 +38,31 @@ describe("toasts don't stack copies of themselves", () => {
     expect(useToasts.getState().items.map((t) => t.title)).toEqual(["Saved"]);
     vi.advanceTimersByTime(3500);
     expect(useToasts.getState().items).toHaveLength(0);
+    vi.useRealTimers();
+  });
+});
+
+describe("a stack with nowhere to stand waits (a tall dialog on a narrow screen)", () => {
+  it("its clocks stop and go on from where they were; an error from the dialog's own work still shows and counts down", () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("window", { setTimeout, clearTimeout });
+    const titles = () => useToasts.getState().items.map((t) => t.title);
+    toast.info("Erin was let in");
+    vi.advanceTimersByTime(2000);
+    useToasts.getState().hold(true);
+    toast.danger("Couldn't save the note");
+    toast.success("Saved elsewhere");
+    vi.advanceTimersByTime(10_000);
+    // The error ran its 5 s; the others waited, unseen and unexpired.
+    expect(titles()).toEqual(["Erin was let in", "Saved elsewhere"]);
+    useToasts.getState().hold(false);
+    // The first had 3 s left; the one that came while held gets all of its 5.
+    vi.advanceTimersByTime(2900);
+    expect(titles()).toEqual(["Erin was let in", "Saved elsewhere"]);
+    vi.advanceTimersByTime(200);
+    expect(titles()).toEqual(["Saved elsewhere"]);
+    vi.advanceTimersByTime(2000);
+    expect(titles()).toHaveLength(0);
     vi.useRealTimers();
   });
 });

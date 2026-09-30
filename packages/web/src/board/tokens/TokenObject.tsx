@@ -265,7 +265,7 @@ function useTransparentMaterial(
 ) {
   const m = useMemo(
     () => {
-      const made = at ? withFog(make(), "object", { at }) : make();
+      const made = at ? withFog(make(), "token", { at }) : make();
       return grey ? withDesat(made, grey) : made;
     },
     // biome-ignore lint/correctness/useExhaustiveDependencies: deps are the material's inputs
@@ -960,7 +960,7 @@ function useMiniMaterials(mini: MiniInstance | null, opacity: number, dead: bool
       if (!m.isMesh) return;
       originals.set(m, m.material);
       const copy = (Array.isArray(m.material) ? m.material : [m.material]).map((mat) => {
-        const c = withFog(mat.clone(), "object");
+        const c = withFog(mat.clone(), "token");
         c.transparent = opacity < 1;
         c.opacity = opacity;
         c.depthWrite = opacity >= 1;

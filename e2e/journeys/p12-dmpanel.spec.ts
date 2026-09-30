@@ -2,6 +2,7 @@ import type { Page } from "@playwright/test";
 import {
   adminAtTable,
   admitPlayer,
+  boardColour,
   boardSettled,
   checkerPng,
   createScene,
@@ -83,6 +84,8 @@ test.describe("P12 — the DM control panel (DMP)", () => {
       stats: { hp: 7, hpMax: 7, ac: 15 },
     });
     for (const p of [admin, dave]) await boardSettled(p, sceneId);
+    // (Its id once it's on the DM's board: read before it arrived, it was undefined.)
+    await expect.poll(() => tokenId(admin, "Goblin")).toBeTruthy();
     const gob = await tokenId(admin, "Goblin");
 
     // ── AC-DMP-01: every listed section two clicks away (the rail's DM button, then the section) ──
@@ -181,6 +184,32 @@ test.describe("P12 — the DM control panel (DMP)", () => {
     await expect.poll(async () => (await tokens(dave)).some((t) => t.id === gob)).toBe(true);
     const seen = (await tokens(dave)).find((t) => t.id === gob) as Tok & { dm?: unknown };
     expect(seen.dm).toBeUndefined();
+    // Shown to all while it stands in the unknown: Dave's board draws it — dark and greyed, still itself — never
+    // painted over as the war fog (it drew as an empty ring on the fog).
+    // (Its sight no longer Dave's: he has no eyes on the board at all.)
+    await req(admin, "token.update", { tokenId: gob, shareVisionWith: [] });
+    await req(admin, "scene.update", { sceneId, fogMode: "dynamic" });
+    await expect.poll(async () => (await hook<{ mode: string }>(dave, "fog"))?.mode).toBe("dynamic");
+    await dave.bringToFront();
+    // The fog is down where the goblin isn't (the floor beside it is the war fog's deep blue-black)…
+    await expect
+      .poll(async () => {
+        const b = await hook<{ sx: number; sy: number }>(dave, "project", 22.5, 17.5, 0);
+        return (await boardColour(dave, b.sx, b.sy)).lum;
+      })
+      .toBeLessThan(0.12);
+    const coin = await screenOf(dave, gob);
+    const beside = await hook<{ sx: number; sy: number }>(dave, "project", 22.5, 17.5, 0);
+    // …and the goblin stands out of it.
+    const contrast = async () =>
+      (await boardColour(dave, coin.x, coin.y)).lum - (await boardColour(dave, beside.sx, beside.sy)).lum;
+    await expect
+      .poll(contrast, { timeout: 15_000, message: "the revealed goblin stands out of the fog" })
+      .toBeGreaterThan(0.06);
+    console.log(`revealed goblin vs fog: ${(await contrast()).toFixed(3)}`);
+    await dave.screenshot({ path: `${SHOTS}/revealed-in-the-dark.png` });
+    await req(admin, "scene.update", { sceneId, fogMode: "off" });
+    await admin.bringToFront();
     await admin.mouse.move(5, 450);
 
     // ── AC-DMP-03: Act as Dave's character ──

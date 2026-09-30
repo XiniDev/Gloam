@@ -150,7 +150,9 @@ export function TablePage() {
         </div>
       </header>
 
-      <FirstRunChecklist refresh={`${s.status}|${campaigns.length}|${selected?.id ?? ""}`} />
+      <FirstRunChecklist
+        refresh={`${s.status}|${s.cloudflared?.installed ?? ""}|${campaigns.length}|${selected?.id ?? ""}`}
+      />
       {!selected ? <FirstCampaign onCreated={() => void loadCampaigns()} /> : null}
 
       <section className="panel mt-6 p-5 sm:p-6" aria-labelledby="table-status">

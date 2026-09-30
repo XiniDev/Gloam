@@ -502,12 +502,17 @@ export class AssetService {
       })
       .from(assets)
       .all();
+    // What each file takes on disk: its stored variants (the upload itself is re-encoded — its original size would say
+    // a campaign's files outweigh the disk they're on).
     const files = new Map(
       this.ctx.db
         .select()
         .from(assetFiles)
         .all()
-        .map((f) => [f.id, f]),
+        .map((f) => [
+          f.id,
+          (JSON.parse(String(f.variantsJson)) as StoredVariant[]).reduce((n, v) => n + (v.bytes ?? 0), 0),
+        ]),
     );
     const byCampaign = new Map<string, { assets: number; files: Set<string>; pending: number }>();
     for (const r of rows) {
@@ -523,11 +528,11 @@ export class AssetService {
     let orphanFiles = 0;
     let orphanBytes = 0;
     let fileBytes = 0;
-    for (const f of files.values()) {
-      fileBytes += f.bytes;
-      if (!used.has(f.id)) {
+    for (const [id, bytes] of files) {
+      fileBytes += bytes;
+      if (!used.has(id)) {
         orphanFiles++;
-        orphanBytes += f.bytes;
+        orphanBytes += bytes;
       }
     }
     return {
@@ -535,7 +540,7 @@ export class AssetService {
         campaignId,
         name: names.get(campaignId) ?? "A deleted campaign",
         assets: c.assets,
-        bytes: [...c.files].reduce((n, id) => n + (files.get(id)?.bytes ?? 0), 0),
+        bytes: [...c.files].reduce((n, id) => n + (files.get(id) ?? 0), 0),
         pending: c.pending,
       })),
       files: files.size,

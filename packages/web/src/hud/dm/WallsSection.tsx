@@ -1,5 +1,6 @@
 import { DoorClosed, PenLine, Shapes, Square, Trash2 } from "lucide-react";
 import { cameraRig } from "../../board/CameraRig.tsx";
+import { setWallMode, type WallMode } from "../../board/tools/walls.ts";
 import { useZoneTool } from "../../board/tools/zones.ts";
 import { request } from "../../net/table.ts";
 import { useBoard } from "../../state/entities.ts";
@@ -34,6 +35,11 @@ export function WallsSection() {
   const secret = all.filter((w) => w.dmKind === "secret").length;
   const tool = (t: "walls" | "zones", extra: Record<string, unknown> = {}) =>
     useUi.getState().set({ tool: t, dock: null, ...extra });
+  // Each button opens the wall tool in its own mode (Rooms opened it in whatever mode it was last left in).
+  const wallTool = (mode: WallMode, wallKind: "wall" | "door") => {
+    setWallMode(mode);
+    tool("walls", { wallKind });
+  };
   const list = [...zones.values()].sort((a, b) => (a.label || a.kind).localeCompare(b.label || b.kind));
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-4" data-testid="walls-section">
@@ -48,7 +54,7 @@ export function WallsSection() {
             size="S"
             variant="secondary"
             icon={<PenLine size={15} />}
-            onClick={() => tool("walls", { wallKind: "wall" })}
+            onClick={() => wallTool("draw", "wall")}
           >
             Draw walls (W)
           </Button>
@@ -56,11 +62,16 @@ export function WallsSection() {
             size="S"
             variant="ghost"
             icon={<DoorClosed size={15} />}
-            onClick={() => tool("walls", { wallKind: "door" })}
+            onClick={() => wallTool("draw", "door")}
           >
             Doors
           </Button>
-          <Button size="S" variant="ghost" icon={<Square size={15} />} onClick={() => tool("walls")}>
+          <Button
+            size="S"
+            variant="ghost"
+            icon={<Square size={15} />}
+            onClick={() => wallTool("room", "wall")}
+          >
             Rooms
           </Button>
         </div>

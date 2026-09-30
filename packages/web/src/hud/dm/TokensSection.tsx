@@ -46,6 +46,12 @@ function Row({
   const colorBlind = useSettings((s) => s.colorBlind);
   const badges = overrideBadges(t, names, npcHp);
   const hp = t.hp ? `${t.hp.hp}/${t.hp.hpMax}` : t.hpBand <= 4 ? BAND[t.hpBand] : "";
+  const hide = () => updateToken(t.id, { hidden: !t.dm?.dmHidden });
+  const settings = () => useUi.getState().set({ tokenSettings: t.id });
+  const dispositions = DISPOSITIONS.map((d) => ({
+    label: `${d.label}${t.disposition === d.value ? " ✓" : ""}`,
+    onSelect: () => updateToken(t.id, { disposition: d.value }),
+  }));
   return (
     <li className="flex items-center gap-2 px-2 py-1.5" data-testid="token-row" data-token={t.id}>
       <input
@@ -65,12 +71,11 @@ function Row({
         </span>
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="truncate text-14 text-bone">{t.name}</span>
-          <span className="flex min-w-0 items-center gap-1.5 text-12 text-muted">
+          <span className="flex min-w-0 items-center gap-1.5 whitespace-nowrap text-12 text-muted">
             <span className="capitalize">{t.disposition}</span>
             {hp ? <span className="tabular">· {hp}</span> : null}
             {badges.length ? (
-              <span className="flex min-w-0 items-center gap-1 text-fog">
-                ·
+              <span className="ml-1 flex min-w-0 items-center gap-1 overflow-hidden text-brass">
                 {badges.slice(0, 5).map((b) => (
                   <Tooltip key={b.key} label={b.title}>
                     <span className="inline-flex" role="img" aria-label={b.title}>
@@ -84,25 +89,30 @@ function Row({
           </span>
         </span>
       </button>
-      <IconButton
-        label={t.dm?.dmHidden ? `Reveal ${t.name}` : `Hide ${t.name}`}
-        onClick={() => updateToken(t.id, { hidden: !t.dm?.dmHidden })}
-      >
-        {t.dm?.dmHidden ? <Eye size={15} /> : <EyeOff size={15} />}
-      </IconButton>
-      <Menu
-        label={`${t.name}: disposition`}
-        items={DISPOSITIONS.map((d) => ({
-          label: `${d.label}${t.disposition === d.value ? " ✓" : ""}`,
-          onSelect: () => updateToken(t.id, { disposition: d.value }),
-        }))}
-      />
-      <IconButton
-        label={`${t.name}: DM settings`}
-        onClick={() => useUi.getState().set({ tokenSettings: t.id })}
-      >
-        <SlidersHorizontal size={15} />
-      </IconButton>
+      {/* Wide: its three actions at hand. A phone: one menu of them — three buttons left the name "Gobli…". */}
+      <span className="contents max-sm:hidden">
+        <IconButton label={t.dm?.dmHidden ? `Reveal ${t.name}` : `Hide ${t.name}`} onClick={hide}>
+          {t.dm?.dmHidden ? <Eye size={15} /> : <EyeOff size={15} />}
+        </IconButton>
+        <Menu label={`${t.name}: disposition`} items={dispositions} />
+        <IconButton label={`${t.name}: DM settings`} onClick={settings}>
+          <SlidersHorizontal size={15} />
+        </IconButton>
+      </span>
+      <span className="sm:hidden">
+        <Menu
+          label={`${t.name}: actions`}
+          items={[
+            { label: "DM settings", icon: <SlidersHorizontal size={15} />, onSelect: settings },
+            {
+              label: t.dm?.dmHidden ? "Reveal" : "Hide",
+              icon: t.dm?.dmHidden ? <Eye size={15} /> : <EyeOff size={15} />,
+              onSelect: hide,
+            },
+            ...dispositions,
+          ]}
+        />
+      </span>
     </li>
   );
 }
