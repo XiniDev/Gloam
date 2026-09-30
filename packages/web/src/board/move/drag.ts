@@ -13,7 +13,7 @@ import {
   turnBudget,
   withCreatureSpaces,
 } from "@gloam/shared/movement";
-import { incapacitates, PIP, stuckName } from "@gloam/shared/rules";
+import { incapacitates, PIP, reactionsBarredBy, stuckName } from "@gloam/shared/rules";
 import type { TokenView } from "@gloam/shared/state";
 import { create } from "zustand";
 import { useCombat } from "../../net/combat.ts";
@@ -354,7 +354,8 @@ function compute(): void {
         incapacitated: incapacitates(o.conditions),
         // Its Reaction spent (known only where its pips are: the DM, its own players), and whether it can see the
         // mover — not Blinded, the mover not Invisible (a hint: what it senses beyond sight isn't this screen's).
-        canReact: o.own ? (o.own.pips & PIP.reaction) === 0 : true,
+        // (Slowed: "it can't take Reactions" — rules audit Q6.)
+        canReact: (o.own ? (o.own.pips & PIP.reaction) === 0 : true) && !reactionsBarredBy(o.markers),
         seesMover: !o.conditions.includes("blinded") && !t.conditions.includes("invisible"),
       })),
     );

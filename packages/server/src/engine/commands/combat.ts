@@ -26,6 +26,7 @@ import {
   emptyTally,
   fixedInitiative,
   groupIdentical,
+  heldAtZero,
   type InitiativeMethod,
   initiativeHints,
   isDm,
@@ -769,18 +770,20 @@ export function movementOf(
   const mode = moveModeOf(t.moveMode, stats.speeds);
   const speed = effectiveSpeed(
     t.overrides.speedOverride ?? stats.speeds[mode],
-    status.conditions.map((x) => x.id as string),
+    status.conditions,
     status.exhaustion,
     t.overrides.ignoreConditionSpeed === true,
     model.campaign.rulesPack,
+    status.markers.map((x) => x.id as string),
   );
   // A Speed of 0 can't be increased (SPEC R1 §19.4): a Speed-0 condition zeroes the bonus with the rest.
   const zeroed =
     t.overrides.ignoreConditionSpeed !== true &&
-    speedZeroCondition(
+    (speedZeroCondition(
       status.conditions.map((x) => x.id as string),
       model.campaign.rulesPack,
-    ) !== null;
+    ) !== null ||
+      heldAtZero(status.conditions));
   const bonus =
     !zeroed && bonusMoveActive(t.overrides.bonusMove, c.round) ? (t.overrides.bonusMove?.ft ?? 0) : 0;
   const active = d.begun && d.combatants[c.turnIndex]?.tokenId === t.id;
@@ -948,10 +951,11 @@ export const moveStand: CommandDef<z.infer<typeof MoveTurn>, { cost: number }> =
       const { stats, status } = effectiveTokenState(t, a && a.deletedAt === null ? a : undefined);
       return effectiveSpeed(
         t.overrides.speedOverride ?? stats.speeds.walk,
-        status.conditions.map((x) => x.id as string),
+        status.conditions,
         status.exhaustion,
         t.overrides.ignoreConditionSpeed === true,
         ctx.model.campaign.rulesPack,
+        status.markers.map((x) => x.id as string),
       );
     })();
     const cost = standUpCost(walk);

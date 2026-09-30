@@ -191,10 +191,11 @@ export function speedNowFt(
   const s = stats.speeds;
   return effectiveSpeed(
     token.overrides.speedOverride ?? Math.max(s.walk, s.fly, s.swim, s.climb, s.burrow),
-    status.conditions.map((c) => c.id as string),
+    status.conditions,
     status.exhaustion,
     token.overrides.ignoreConditionSpeed === true,
     pack,
+    status.markers.map((m) => m.id as string),
   );
 }
 

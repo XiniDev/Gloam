@@ -175,6 +175,8 @@ export interface TokenStatusT {
     turnsLeft?: number;
     /** It ends when this creature's turn starts ("until the start of your next turn": Sunbeam's Blinded). */
     endsAtStartOf?: string;
+    /** While it lasts, its Speed is 0 too (Haste's lethargy: "Incapacitated and has a Speed of 0"; rules audit Q6). */
+    speed0?: boolean;
   }[];
   markers: {
     id: MarkerId | `custom:${string}`;
@@ -188,6 +190,8 @@ export interface TokenStatusT {
     endsWithTurnOf?: string;
     /** It ends when this creature's turn starts (Dodging: "until the start of your next turn"). */
     endsAtStartOf?: string;
+    /** The cast that put it on (Bless's Blessed…): a concentration spell's markers end with its concentration. */
+    castId?: string;
   }[];
   exhaustion: 0 | 1 | 2 | 3 | 4 | 5 | 6;
   /** What it's concentrating on: the spell, and the cast (its effects and conditions end with it). */

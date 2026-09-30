@@ -521,7 +521,7 @@ function TargetRow({
         // on its own line, as on a request card (a bare glyph beside the result said nothing of what it would do).
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 pl-0.5" data-testid="attack-inspiration">
           <span className="text-12 text-muted">Heroic Inspiration:</span>
-          {atk.dice.slice(0, 2).map((die, i) => (
+          {atk.dice.slice(0, 4).map((die, i) => (
             <Button
               // (Its dice in the order they fell: their places are their keys.)
               key={i}
@@ -576,6 +576,7 @@ function AttackHintLine({
     ...hints.adv.map((x) => `Advantage — ${hintWords(x, target, attacker)}`),
     ...hints.dis.map((x) => `Disadvantage — ${hintWords(x, target, attacker)}`),
     ...(hints.penalty ? [`${hints.penalty} from Exhaustion`] : []),
+    ...(hints.extra ?? []).map((x) => `${x.term.replace(/^-/, "−")} from ${x.from}`),
     ...(hints.critOnHit ? [`a hit is a critical hit (${target} is ${hints.critOnHit})`] : []),
   ];
   return (
@@ -609,12 +610,22 @@ function AttackRoll({ c, t, mode }: { c: CastView; t: CastTargetView; mode: "non
   const [entering, setEntering] = useState(false);
   const [dice, setDice] = useState<string[]>([]);
   const first = useRef<HTMLInputElement>(null);
-  const count = mode === "none" ? 1 : 2;
+  // The d20s, then the dice its markers add (Bless's d4 — rules audit Q6), in the order the formula rolls them.
+  const sides = [
+    ...(mode === "none" ? [20] : [20, 20]),
+    ...(t.attackHints?.extra ?? []).flatMap((x) => {
+      const m = x.term.match(/^[+-]\s*(\d*)d(\d+)$/);
+      return m ? Array.from({ length: Number(m[1] || 1) }, () => Number(m[2])) : [];
+    }),
+  ];
+  const extraFrom = (t.attackHints?.extra ?? []).filter((x) => /d\d/.test(x.term)).map((x) => x.from);
+  const count = sides.length;
   useEffect(() => {
     if (entering) first.current?.focus();
   }, [entering]);
   const faces = dice.slice(0, count).map(Number);
-  const ready = faces.length === count && faces.every((n) => Number.isInteger(n) && n >= 1 && n <= 20);
+  const ready =
+    faces.length === count && faces.every((n, i) => Number.isInteger(n) && n >= 1 && n <= (sides[i] ?? 20));
   const send = () => {
     if (!ready) return;
     act(castRoll(c.id, "attack", { targetId: t.key, dice: faces, adv: mode }), "Couldn't enter it");
@@ -624,12 +635,19 @@ function AttackRoll({ c, t, mode }: { c: CastView; t: CastTargetView; mode: "non
   if (entering)
     return (
       <span className="flex items-center gap-1">
-        {Array.from({ length: count }, (_, i) => (
+        {sides.map((n, i) => (
           <input
+            // (Its dice in the formula's order: their places are their keys.)
             key={i}
             ref={i === 0 ? first : undefined}
-            aria-label={i === 0 ? "d20 rolled" : "Second d20"}
-            placeholder="d20"
+            aria-label={
+              n !== 20
+                ? `d${n} rolled (${extraFrom[i - (mode === "none" ? 1 : 2)] ?? "bonus"})`
+                : i === 0
+                  ? "d20 rolled"
+                  : "Second d20"
+            }
+            placeholder={`d${n}`}
             inputMode="numeric"
             value={dice[i] ?? ""}
             onChange={(e) => {
@@ -764,16 +782,20 @@ function Details({ c, t }: { c: CastView; t: CastTargetView }) {
                 type="checkbox"
                 checked={x.on}
                 onChange={(e) =>
-                  set({
+                  set(
+                    // A spell's marker (Bane's Baned — rules audit Q6) with the others of its kind; a condition with its.
                     // One of a choice's group: ticking it unticks the rest of its group.
-                    conditions: t.conditions
-                      .filter((y) =>
-                        y.id === x.id
-                          ? e.target.checked
-                          : y.on && !(e.target.checked && x.group && y.group === x.group),
-                      )
-                      .map((y) => y.id),
-                  })
+                    {
+                      [x.marker ? "markers" : "conditions"]: t.conditions
+                        .filter((y) => Boolean(y.marker) === Boolean(x.marker))
+                        .filter((y) =>
+                          y.id === x.id
+                            ? e.target.checked
+                            : y.on && !(e.target.checked && x.group && y.group === x.group),
+                        )
+                        .map((y) => y.id),
+                    },
+                  )
                 }
                 className="h-4 w-4 accent-[var(--brass-400)]"
               />

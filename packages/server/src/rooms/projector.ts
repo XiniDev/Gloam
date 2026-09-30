@@ -94,12 +94,14 @@ export function tokenView(t: TokenEntity, ctx: ProjectionCtx): TokenView {
   const mv = ctx.movementOf?.(t.id) ?? {};
   const speeds = stats.speeds;
   // Its speed after conditions (Speed 0) and Exhaustion (−5 ft a level; §19.4, AC-HP-05).
+  // (Haste's lethargy holds it at 0; Hasted doubles it, Slowed halves it — rules audit Q6.)
   const walk = effectiveSpeed(
     t.overrides.speedOverride ?? speeds.walk,
-    conditions,
+    status.conditions,
     status.exhaustion,
     t.overrides.ignoreConditionSpeed === true,
     ctx.model.campaign.rulesPack,
+    status.markers.map((x) => x.id as string),
   );
   const heldBy = t.overrides.ignoreConditionSpeed
     ? null

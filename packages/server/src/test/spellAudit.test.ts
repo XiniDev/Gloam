@@ -705,6 +705,184 @@ describe("P9 — the rules audit's fixes on the card", () => {
     off();
   });
 
+  it("Q6: Bless, Bane, Haste and Slow put their markers on — with their rules on rolls, AC and Speed — and take them off with their concentration; Haste's end leaves its target lethargic (SRD 5.2.1 pp. 112, 113, 139, 163)", async () => {
+    await fresh();
+    await place(sera, { x: 10, y: 20 });
+    await place(ogre, { x: 15, y: 20 });
+    const actorId = room().model.get("token", sera)?.actorId as string;
+    await cmd(dm, "actor.change", {
+      actorId,
+      changes: [
+        {
+          path: ["core", "attacks"],
+          after: [{ name: "Mace", attack: "1d20 + 2", damage: "1d6 [bludgeoning]", range: "5 ft" }],
+        },
+      ],
+    });
+    const marks = (id: string) => statusOf(id).status.markers.map((m) => m.id as string);
+    const own = (id: string) => room().state.tokens.get(id)?.own;
+    const endConcentration = async () => {
+      await cmd(dm, "status.change", { tokenId: mage, remove: ["concentrating"] });
+      await sleep(120);
+    };
+    const saveFormula = async (tokenId: string, ability: string) => {
+      const { requestId } = await cmd<{ requestId: string }>(dm, "request.create", {
+        targets: [tokenId],
+        type: "save",
+        ability,
+      });
+      const r = room().requests.get(requestId);
+      await cmd(dm, "request.close", { requestId });
+      return r?.targets[0]?.formula ?? "";
+    };
+    const attackAtOgre = async (dice?: number[]) => {
+      const { castId } = await cmd<{ castId: string }>(anna.room, "attack.start", {
+        tokenId: sera,
+        attack: 0,
+        targets: [ogre],
+      });
+      await cmd(anna.room, "cast.roll", {
+        castId,
+        what: "attack",
+        targetId: ogre,
+        ...(dice ? { dice } : {}),
+      });
+      const a = room().model.get("cast", castId)?.data.targets[0]?.attack;
+      await cmd(dm, "cast.close", { castId });
+      return a;
+    };
+
+    // Bless: Blessed on both at once (no save, no card) — +1d4 on their saves and attack rolls, not their checks.
+    await cmd(dm, "spell.cast", {
+      casterTokenId: mage,
+      spellId: "bless",
+      mode: "free",
+      level: 1,
+      targets: [sera, ogre],
+    });
+    expect(marks(sera)).toContain("blessed");
+    expect(marks(ogre)).toContain("blessed");
+    expect(await saveFormula(sera, "wis")).toMatch(/\+ 1d4$/);
+    const blessedHit = await attackAtOgre();
+    expect(blessedHit?.dice?.map((d) => d.sides)).toEqual([20, 4]);
+    // Its concentration ends: Blessed off both.
+    await endConcentration();
+    await waitFor(() => !marks(sera).includes("blessed") && !marks(ogre).includes("blessed"));
+    expect(await saveFormula(sera, "wis")).not.toMatch(/1d4/);
+
+    // Bane: Baned on a failed Charisma save, when the card is applied — not on the one who saved.
+    const bane = await cmd<{ castId: string }>(dm, "spell.cast", {
+      casterTokenId: mage,
+      spellId: "bane",
+      mode: "free",
+      level: 1,
+      targets: [sera, ogre],
+    });
+    expect(marks(ogre)).not.toContain("baned");
+    await cmd(dm, "cast.set", { castId: bane.castId, targetId: sera, saveSuccess: true });
+    await cmd(dm, "cast.set", { castId: bane.castId, targetId: ogre, saveSuccess: false });
+    await cmd(dm, "cast.apply", { castId: bane.castId });
+    expect(marks(ogre)).toContain("baned");
+    expect(marks(sera)).not.toContain("baned");
+    expect(await saveFormula(ogre, "con")).toMatch(/- 1d4$/);
+    await closeAll();
+    await endConcentration();
+    await waitFor(() => !marks(ogre).includes("baned"));
+
+    // Haste on the ogre: Speed doubled, AC +2 — a 13 that hit its 12 now misses its 14; Dex saves with Advantage.
+    const before = own(ogre)?.budgetFt ?? 0;
+    expect(before).toBeGreaterThan(0);
+    expect((await attackAtOgre([11]))?.hit).toBe(true);
+    await cmd(dm, "spell.cast", {
+      casterTokenId: mage,
+      spellId: "haste",
+      mode: "free",
+      level: 3,
+      targets: [ogre],
+    });
+    expect(marks(ogre)).toContain("hasted");
+    await waitFor(() => own(ogre)?.budgetFt === before * 2);
+    expect((await attackAtOgre([11]))?.hit).toBe(false);
+    const dexReq = await cmd<{ requestId: string }>(dm, "request.create", {
+      targets: [ogre],
+      type: "save",
+      ability: "dex",
+    });
+    expect(room().requests.get(dexReq.requestId)?.targets[0]?.hint?.from).toContain("Hasted");
+    await cmd(dm, "request.close", { requestId: dexReq.requestId });
+    // Ended outside a fight: Hasted off, no lethargy (no turns to count).
+    await endConcentration();
+    await waitFor(() => !marks(ogre).includes("hasted"));
+    expect(statusOf(ogre).status.conditions.map((c) => c.id)).not.toContain("incapacitated");
+    await waitFor(() => own(ogre)?.budgetFt === before);
+
+    // In a fight: Haste ends on the Mage's turn — the ogre Incapacitated at Speed 0 until the end of its next turn.
+    const combat = () =>
+      room()
+        .model.inScene("combat", sceneId)
+        .find((c) => c.active);
+    const turnOf = () => {
+      const c = combat();
+      return c ? dataOf(c).combatants[c.turnIndex]?.tokenId : undefined;
+    };
+    const toTurnOf = async (id: string) => {
+      for (let i = 0; i < 8 && turnOf() !== id; i++) await cmd(dm, "combat.next", {});
+      expect(turnOf()).toBe(id);
+    };
+    await cmd(dm, "combat.start", { participants: [mage, sera, ogre], method: "skip" });
+    await cmd(dm, "combat.begin", {});
+    await waitFor(() => combat() && dataOf(combat() as NonNullable<ReturnType<typeof combat>>).begun);
+    await toTurnOf(mage);
+    await cmd(dm, "spell.cast", {
+      casterTokenId: mage,
+      spellId: "haste",
+      mode: "free",
+      level: 3,
+      targets: [ogre],
+    });
+    expect(marks(ogre)).toContain("hasted");
+    await endConcentration();
+    const lethargic = () => statusOf(ogre).status.conditions.find((c) => c.id === "incapacitated");
+    await waitFor(() => lethargic());
+    expect(lethargic()).toMatchObject({ speed0: true, endsWithTurnOf: ogre, source: "Haste's lethargy" });
+    expect(marks(ogre)).not.toContain("hasted");
+    await waitFor(() => own(ogre)?.stuck === "speed0");
+    await toTurnOf(ogre);
+    expect(lethargic()).toBeDefined();
+    await cmd(dm, "combat.next", {});
+    await waitFor(() => !lethargic());
+    await waitFor(() => own(ogre)?.stuck === "");
+    await cmd(dm, "combat.stop", {});
+
+    // Slow: Slowed on a failed Wisdom save — Speed halved, AC −2 (an 11 that missed its 12 now hits its 10), Dex
+    // saves −2.
+    await place(ogre, { x: 30, y: 30 });
+    const slow = await cmd<{ castId: string }>(dm, "spell.cast", {
+      casterTokenId: mage,
+      spellId: "slow",
+      mode: "free",
+      level: 3,
+      placement: { origin: { x: 30, y: 30, z: 0 }, dirDeg: 0 },
+    });
+    expect(
+      room()
+        .model.get("cast", slow.castId)
+        ?.data.targets.some((x) => x.id === ogre),
+    ).toBe(true);
+    await cmd(dm, "cast.set", { castId: slow.castId, targetId: ogre, saveSuccess: false });
+    await cmd(dm, "cast.apply", { castId: slow.castId, targets: [ogre] });
+    await closeAll();
+    expect(marks(ogre)).toContain("slowed");
+    await waitFor(() => own(ogre)?.budgetFt === Math.floor(before / 2));
+    await place(ogre, { x: 15, y: 20 });
+    expect((await attackAtOgre([9]))?.hit).toBe(true);
+    expect(await saveFormula(ogre, "dex")).toMatch(/- 2$/);
+    await endConcentration();
+    await waitFor(() => !marks(ogre).includes("slowed"));
+    expect((await attackAtOgre([9]))?.hit).toBe(false);
+    await place(ogre, { x: 30, y: 30 });
+  });
+
   it("C4: Heroic Inspiration on an attack — the player rolls one of its dice again before the card is applied; the new roll counts, judged anew; spent", async () => {
     await fresh();
     await place(sera, { x: 10, y: 20 });

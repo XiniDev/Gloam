@@ -591,6 +591,95 @@ test.describe("P9 — spells (SPL)", () => {
     );
   });
 
+  test("rules audit Q6: Haste, Bless and Bane on the table — Mira's sheet gives her AC and Speed under Haste; her dagger entered by hand asks for Bless's d4 too; the DM's card ticks Baned on a failed save, and unticked it doesn't land", async ({
+    admin,
+    browser,
+    gloam,
+    guardLog,
+  }) => {
+    const { dave, goblin, mira } = await wizardScene(admin, browser, gloam, guardLog);
+    const g1 = await goblin("Goblin", { x: 30, y: 30 });
+    const priest = await goblin("Priest", { x: 20, y: 50 });
+    const shaman = await goblin("Shaman", { x: 30, y: 50 });
+    const hexer = await goblin("Hexer", { x: 40, y: 50 });
+    await camera(dave, { pitchDeg: 70, frame: { minX: 5, minY: 10, maxX: 60, maxY: 55 } });
+    await dave.waitForTimeout(300);
+
+    // Haste on Mira: her sheet says AC now 14 (her own 12 stays editable) and Speed 60 ft (base 30).
+    await req(admin, "spell.cast", {
+      casterTokenId: shaman,
+      spellId: "haste",
+      mode: "free",
+      level: 3,
+      targets: [mira],
+    });
+    await openDock(dave, "Sheet");
+    await expect(dave.getByTestId("sheet-ac-now")).toHaveText("now 14");
+    await expect(dave.getByTestId("sheet-speed")).toHaveText("60 ft");
+    await expect(dave.getByTestId("sheet-speed-base")).toHaveText("base 30");
+
+    // Bless on Mira: her dagger's hints say +1d4; entered by hand, it asks for the d20 and Bless's d4.
+    await req(admin, "spell.cast", {
+      casterTokenId: priest,
+      spellId: "bless",
+      mode: "free",
+      level: 1,
+      targets: [mira],
+    });
+    const actions = await sheetTab(dave, "Actions");
+    await actions.getByTestId("attack-at").first().click();
+    const q = await screen(dave, 30, 30, 0.3);
+    await dave.mouse.click(q.x, q.y);
+    const his = dave.getByTestId("resolution-card").filter({ hasText: "Dagger" });
+    const hisRow = his.locator(`[data-testid="cast-target"][data-token="${g1}"]`);
+    await expect(hisRow.getByTestId("attack-hints")).toContainText("+1d4 from Blessed");
+    await hisRow.getByRole("button", { name: "Enter…" }).click();
+    await hisRow.getByLabel("d20 rolled").fill("11");
+    await hisRow.getByLabel("d4 rolled (Blessed)").fill("3");
+    await dave.screenshot({ path: `${SHOTS}/q6-bless-entry.png` });
+    await hisRow.getByRole("button", { name: "Enter", exact: true }).click();
+    // 11 + 5 (Dex and proficiency) + 3.
+    await expect(hisRow.getByTestId("attack-result")).toContainText(/^19/);
+    await req(admin, "cast.close", {
+      castId: (await hook<{ id: string; name: string }[]>(admin, "casts")).find((c) => c.name === "Dagger")
+        ?.id,
+    });
+
+    // Bane at two goblins: the DM's card has Baned beside each save; failed, it's ticked; the one unticked gets nothing.
+    await req(admin, "spell.cast", {
+      casterTokenId: hexer,
+      spellId: "bane",
+      mode: "free",
+      level: 1,
+      targets: [g1, priest],
+    });
+    const card = admin.getByTestId("resolution-card").filter({ hasText: "Bane" });
+    const rowOf = (id: string) => card.locator(`[data-testid="cast-target"][data-token="${id}"]`);
+    for (const [id, name] of [
+      [g1, "Goblin"],
+      [priest, "Priest"],
+    ] as const) {
+      await rowOf(id)
+        .getByRole("button", { name: `More on ${name}` })
+        .click();
+      await rowOf(id).getByRole("button", { name: "Failed" }).click();
+      await expect(rowOf(id).getByRole("checkbox", { name: "Baned" })).toBeChecked();
+    }
+    await admin.screenshot({ path: `${SHOTS}/q6-bane-card.png` });
+    // (One row's details open at a time: the goblin's again.)
+    await rowOf(g1).getByRole("button", { name: "More on Goblin" }).click();
+    await rowOf(g1).getByRole("checkbox", { name: "Baned" }).uncheck();
+    await expect(rowOf(g1).getByRole("checkbox", { name: "Baned" })).not.toBeChecked();
+    await card
+      .getByRole("button", { name: /^Apply/ })
+      .last()
+      .click();
+    await expect
+      .poll(async () => (await hook<{ markers: string[] }>(admin, "token", priest))?.markers)
+      .toContain("baned");
+    expect((await hook<{ markers: string[] }>(admin, "token", g1))?.markers ?? []).not.toContain("baned");
+  });
+
   test("AC-SPL-05/08/13: a cultist's Fireball catches Mira — Dave's own save card, his roll on the DM's card; a Cure Wounds heals her through a card; the dagger at a goblin half behind a wall shows the cover hint on the attack card; Mira's Moonbeam dragged by its handle (no further than 60 ft); Call Lightning struck again at a point under its cloud", async ({
     admin,
     browser,

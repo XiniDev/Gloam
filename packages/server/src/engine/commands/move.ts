@@ -151,10 +151,11 @@ export const moveCommit: CommandDef<z.infer<typeof MoveCommit>, MoveResult> = {
       !combat && !dm && rules.explorationMovement === "limited" && t.overrides.freeMovement !== true
         ? effectiveSpeed(
             t.overrides.speedOverride ?? stats.speeds.walk,
-            status.conditions.map((x) => x.id as string),
+            status.conditions,
             status.exhaustion,
             t.overrides.ignoreConditionSpeed === true,
             ctx.model.campaign.rulesPack,
+            status.markers.map((x) => x.id as string),
           )
         : null;
     const allow: Budget | null = turnAllow ?? (explore !== null ? turnBudget(explore, 0) : null);

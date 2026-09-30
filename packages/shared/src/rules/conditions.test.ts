@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { CONDITION_IDS, MARKER_IDS } from "../constants.ts";
 import {
+  acWithMarkers,
   attackHints,
   CONDITIONS,
   conditionInfo,
@@ -9,10 +10,12 @@ import {
   effectiveSpeed,
   exhaustedHpMax,
   expandConditions,
+  heldAtZero,
   hintedMode,
   immuneToCondition,
   incapacitates,
   MARKERS,
+  reactionsBarredBy,
   rollHints,
   statusName,
   statusSummary,
@@ -251,5 +254,67 @@ describe("attackHints (the card's attack rolls, SRD 5.2.1 §19.3)", () => {
     expect(rollHints([], 0, "save", "dex", { markers: [] }).adv).toEqual([]);
     expect(dodgeHolds({ conditions: ["unconscious"], markers: ["dodging"] })).toBe(false);
     expect(dodgeHolds({ conditions: ["poisoned"], markers: ["dodging"], speedFt: 5 })).toBe(true);
+  });
+});
+
+describe("spell markers (rules audit Q6; SRD 5.2.1 pp. 112, 113, 139, 163)", () => {
+  it("Blessed adds 1d4 to attack rolls and saving throws, Baned takes 1d4 off them — never checks or initiative", () => {
+    const b = (kind: "attack" | "save" | "check" | "initiative", markers: string[]) =>
+      rollHints([], 0, kind, kind === "save" ? "wis" : "str", { markers }).extra;
+    expect(b("attack", ["blessed"])).toEqual([{ term: "+1d4", from: "Blessed" }]);
+    expect(b("save", ["blessed"])).toEqual([{ term: "+1d4", from: "Blessed" }]);
+    expect(b("save", ["baned"])).toEqual([{ term: "-1d4", from: "Baned" }]);
+    expect(b("attack", ["blessed", "baned"]).map((x) => x.term)).toEqual(["+1d4", "-1d4"]);
+    expect(b("check", ["blessed", "baned"])).toEqual([]);
+    expect(b("initiative", ["blessed"])).toEqual([]);
+    // No creature known: nothing added.
+    expect(rollHints([], 0, "attack").extra).toEqual([]);
+  });
+  it("Hasted: Advantage on Dexterity saves; Slowed: −2 on them — other saves untouched", () => {
+    const dex = rollHints([], 0, "save", "dex", { markers: ["hasted"] });
+    expect(dex.adv).toEqual([{ from: "Hasted" }]);
+    expect(dex.extra).toEqual([]);
+    expect(rollHints([], 0, "save", "wis", { markers: ["hasted"] }).adv).toEqual([]);
+    expect(rollHints([], 0, "save", "dex", { markers: ["slowed"] }).extra).toEqual([
+      { term: "-2", from: "Slowed" },
+    ]);
+    expect(rollHints([], 0, "save", "con", { markers: ["slowed"] }).extra).toEqual([]);
+    // Both: Advantage and −2, as each says.
+    const both = rollHints([], 0, "save", "dex", { markers: ["hasted", "slowed"] });
+    expect(hintedMode(both)).toBe("adv");
+    expect(both.extra.map((x) => x.term)).toEqual(["-2"]);
+  });
+  it("an attacker's markers ride on its attack hints", () => {
+    const h = attackHints(
+      { conditions: [], exhaustion: 0, markers: ["blessed"] },
+      { conditions: [], markers: [], outlined: false },
+      { withinFt: 5, melee: true },
+    );
+    expect(h.extra).toEqual([{ term: "+1d4", from: "Blessed" }]);
+  });
+  it("AC: Hasted +2, Slowed −2 (both: as it was); reactions: none while Slowed", () => {
+    expect(acWithMarkers(15, ["hasted"])).toBe(17);
+    expect(acWithMarkers(15, ["slowed"])).toBe(13);
+    expect(acWithMarkers(15, ["hasted", "slowed"])).toBe(15);
+    expect(acWithMarkers(15, ["blessed"])).toBe(15);
+    expect(reactionsBarredBy(["slowed"])).toBe("Slowed");
+    expect(reactionsBarredBy(["hasted"])).toBeNull();
+  });
+  it("Speed: Hasted doubles it, Slowed halves it (rounded down), after Exhaustion; Haste's lethargy holds it at 0", () => {
+    expect(effectiveSpeed(30, [], 0, false, undefined, ["hasted"])).toBe(60);
+    expect(effectiveSpeed(30, [], 0, false, undefined, ["slowed"])).toBe(15);
+    expect(effectiveSpeed(25, [], 0, false, undefined, ["slowed"])).toBe(12);
+    expect(effectiveSpeed(30, [], 0, false, undefined, ["hasted", "slowed"])).toBe(30);
+    // Exhaustion 2 (−10 ft) first, then doubled.
+    expect(effectiveSpeed(30, [], 2, false, undefined, ["hasted"])).toBe(40);
+    // A Speed-0 condition: still 0.
+    expect(effectiveSpeed(30, ["grappled"], 0, false, undefined, ["hasted"])).toBe(0);
+    // Haste's lethargy: Incapacitated (which alone leaves Speed) held at 0 while it lasts.
+    const lethargy = [{ id: "incapacitated", speed0: true }];
+    expect(heldAtZero(lethargy)).toBe(true);
+    expect(effectiveSpeed(30, lethargy, 0)).toBe(0);
+    expect(effectiveSpeed(30, ["incapacitated"], 0)).toBe(30);
+    // The DM's "ignore condition speed" lets it move.
+    expect(effectiveSpeed(30, lethargy, 0, true)).toBe(30);
   });
 });

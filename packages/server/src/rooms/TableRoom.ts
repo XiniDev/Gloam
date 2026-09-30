@@ -1,7 +1,15 @@
 import { type AuthContext, type Client, Room, ServerError } from "@colyseus/core";
 import { StateView } from "@colyseus/schema";
 import { BOARD_COLORS, SKILLS, type SkillId } from "@gloam/shared";
-import { DiceError, isD20Test, parseFormula, withHint, withPenalty } from "@gloam/shared/dice";
+import {
+  DiceError,
+  isD20Test,
+  parseFormula,
+  sheetTestOf,
+  withHint,
+  withPenalty,
+  withTerms,
+} from "@gloam/shared/dice";
 import type { P } from "@gloam/shared/geometry";
 import {
   ActAs,
@@ -382,7 +390,20 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
             ? statusFromActor(live.status)
             : null;
         const penalize = Boolean(status?.exhaustion) && this.model.campaign.rulesPack !== "srd-5.1";
-        const formula = penalize ? withPenalty(p.formula, -2 * (status?.exhaustion ?? 0)) : p.formula;
+        // Its markers' terms on an attack roll or a saving throw (Bless +1d4, Bane −1d4, Slow −2 on Dex saves; rules
+        // audit Q6) — the rules', not the roller's to set aside.
+        const test: { kind: RollKind; ability?: string } | null =
+          p.purpose === "attack" ? { kind: "attack" } : sheetTestOf(p.formula);
+        const terms =
+          status && test
+            ? rollHints([], 0, test.kind, test.ability, {
+                markers: status.markers.map((m) => m.id as string),
+              }).extra.map((e) => e.term)
+            : [];
+        const formula = withTerms(
+          penalize ? withPenalty(p.formula, -2 * (status?.exhaustion ?? 0)) : p.formula,
+          terms,
+        );
         const r = this.dice.roll(this.campaignId, this.projector.activeSceneId || null, roller, {
           formula,
           visibility: p.visibility,
@@ -1190,8 +1211,12 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
         this.model.campaign.rulesPack,
       );
       if (surprised.has(id)) h.dis.push({ from: "Surprised" });
-      // Exhaustion takes 2 × its level off every D20 Test (AC-HP-05), in the formula for everyone to see.
-      const formula = withPenalty(targetFormula(base, creatureRefs(x.token, x.sheet), p.adv), h.penalty);
+      // Exhaustion takes 2 × its level off every D20 Test (AC-HP-05), in the formula for everyone to see; its markers
+      // add theirs (Bless +1d4, Bane −1d4, Slow −2 on Dex saves — rules audit Q6).
+      const formula = withTerms(
+        withPenalty(targetFormula(base, creatureRefs(x.token, x.sheet), p.adv), h.penalty),
+        h.extra.map((e) => e.term),
+      );
       try {
         parseFormula(formula);
       } catch (e) {

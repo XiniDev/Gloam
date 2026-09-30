@@ -293,6 +293,11 @@ export interface RollHints {
   dis: { from: string; note?: string }[];
   /** Exhaustion: −2 × level on every D20 Test (5.2.1). */
   penalty: number;
+  /**
+   * What a marker adds to the roll, a term each (rules audit Q6): Bless "+1d4" and Bane "-1d4" on attack rolls and
+   * saving throws, Slow "-2" on Dexterity saves — joined to the formula (`withTerms`), not the roller's to set aside.
+   */
+  extra: { term: string; from: string }[];
   /** Strength and Dexterity saves fail outright (the DM can still let it roll). */
   autoFail: string[];
 }
@@ -311,7 +316,7 @@ export function rollHints(
   /** The campaign's rules pack: SRD 5.1's conditions and Exhaustion table (rules audit C2). */
   pack?: string,
 ): RollHints {
-  const out: RollHints = { adv: [], dis: [], penalty: 0, autoFail: [] };
+  const out: RollHints = { adv: [], dis: [], penalty: 0, extra: [], autoFail: [] };
   // (Each condition with those it includes; Incapacitated's initiative disadvantage counted once, named for what
   // brought it.)
   let incapacitatedDis = false;
@@ -338,6 +343,7 @@ export function rollHints(
   // Dodge: "you make Dexterity saving throws with Advantage" — while it holds (SRD 5.2.1 p. 181).
   if (kind === "save" && ability === "dex" && creature && dodgeHolds({ conditions, ...creature }))
     out.adv.push({ from: "Dodging" });
+  if (creature) out.extra.push(...markerRollTerms(creature.markers, kind, ability, out));
   // Exhaustion: every D20 Test (attacks, ability checks, saves; initiative is a Dex check) −2 a level — or SRD 5.1's
   // table: Disadvantage on ability checks from level 1, on attack rolls and saving throws from level 3 (5.1 p. 291).
   const lvl = Math.max(0, Math.min(6, Math.trunc(exhaustion)));
@@ -347,6 +353,38 @@ export function rollHints(
   if (srd51 && lvl >= 3 && (kind === "attack" || kind === "save"))
     out.dis.push({ from: `Exhaustion ${lvl}` });
   return out;
+}
+
+/**
+ * What a spell's marker does to a roll (rules audit Q6; SRD 5.2.1): Blessed adds 1d4 to attack rolls and saving throws
+ * (p. 113), Baned subtracts 1d4 from them (p. 112); Hasted has Advantage on Dexterity saves (p. 139); Slowed takes −2
+ * on them (p. 163). Advantage goes into `hints.adv`; the terms come back.
+ */
+function markerRollTerms(
+  markers: readonly string[],
+  kind: RollKind,
+  ability: string | undefined,
+  hints: Pick<RollHints, "adv" | "dis">,
+): { term: string; from: string }[] {
+  const out: { term: string; from: string }[] = [];
+  const attackOrSave = kind === "attack" || kind === "save";
+  if (attackOrSave && markers.includes("blessed")) out.push({ term: "+1d4", from: "Blessed" });
+  if (attackOrSave && markers.includes("baned")) out.push({ term: "-1d4", from: "Baned" });
+  if (kind === "save" && ability === "dex") {
+    if (markers.includes("hasted")) hints.adv.push({ from: "Hasted" });
+    if (markers.includes("slowed")) out.push({ term: "-2", from: "Slowed" });
+  }
+  return out;
+}
+
+/** A creature's AC with its markers (rules audit Q6): Hasted +2 (SRD 5.2.1 p. 139), Slowed −2 (p. 163). */
+export function acWithMarkers(ac: number, markers: readonly string[]): number {
+  return ac + (markers.includes("hasted") ? 2 : 0) - (markers.includes("slowed") ? 2 : 0);
+}
+
+/** Why a creature can take no Reactions, from its markers (Slowed: "it can't take Reactions", p. 163), else null. */
+export function reactionsBarredBy(markers: readonly string[]): string | null {
+  return markers.includes("slowed") ? "Slowed" : null;
 }
 
 /**
@@ -382,7 +420,13 @@ export interface AttackHints extends RollHints {
  * Each hint says why; the roller can take any of them away before rolling.
  */
 export function attackHints(
-  attacker: { conditions: readonly string[]; exhaustion: number; pack?: string | undefined },
+  attacker: {
+    conditions: readonly string[];
+    exhaustion: number;
+    pack?: string | undefined;
+    /** Its markers (Blessed's +1d4, Baned's −1d4 on the roll; rules audit Q6). */
+    markers?: readonly string[];
+  },
   target: {
     conditions: readonly string[];
     markers: readonly string[];
@@ -405,7 +449,14 @@ export function attackHints(
   },
 ): AttackHints {
   const out: AttackHints = {
-    ...rollHints(attacker.conditions, attacker.exhaustion, "attack", undefined, undefined, attacker.pack),
+    ...rollHints(
+      attacker.conditions,
+      attacker.exhaustion,
+      "attack",
+      undefined,
+      attacker.markers ? { markers: attacker.markers } : undefined,
+      attacker.pack,
+    ),
     critOnHit: null,
   };
   const near = at.withinFt <= 5 + 1e-6;
@@ -440,20 +491,40 @@ export function hintedMode(h: Pick<RollHints, "adv" | "dis">): "normal" | "adv" 
 }
 
 /**
- * Speed after conditions (§19.4): 0 with any Speed-0 condition (unless the DM lets it ignore them); otherwise less
- * 5 ft per Exhaustion level, never below 0 — or, in SRD 5.1, halved from Exhaustion 2 and 0 from 5 (rules audit C2).
+ * Speed after conditions (§19.4): 0 with any Speed-0 condition (unless the DM lets it ignore them), or a condition
+ * holding it at 0 for its while (Haste's lethargy: `speed0`); otherwise less 5 ft per Exhaustion level, never below 0 —
+ * or, in SRD 5.1, halved from Exhaustion 2 and 0 from 5 (rules audit C2). Then its markers (rules audit Q6): Hasted
+ * doubles it (SRD 5.2.1 p. 139), Slowed halves it (p. 163), rounded down — after Exhaustion, as Dash multiplies Speed
+ * after its modifiers.
  */
 export function effectiveSpeed(
   speed: number,
-  conditions: readonly string[],
+  conditions: readonly (string | { id: string; speed0?: boolean | undefined })[],
   exhaustion: number,
   ignoreConditionSpeed = false,
   pack?: string,
+  markers: readonly string[] = [],
 ): number {
-  if (!ignoreConditionSpeed && speedZeroCondition(conditions, pack)) return 0;
+  const ids = conditions.map((c) => (typeof c === "string" ? c : c.id));
+  if (!ignoreConditionSpeed && (speedZeroCondition(ids, pack) || heldAtZero(conditions))) return 0;
   const lvl = Math.max(0, Math.min(6, Math.trunc(exhaustion)));
-  if (pack === "srd-5.1") return lvl >= 5 ? 0 : lvl >= 2 ? Math.floor(speed / 2) : speed;
-  return Math.max(0, speed - 5 * lvl);
+  const base =
+    pack === "srd-5.1"
+      ? lvl >= 5
+        ? 0
+        : lvl >= 2
+          ? Math.floor(speed / 2)
+          : speed
+      : Math.max(0, speed - 5 * lvl);
+  const times = (markers.includes("hasted") ? 2 : 1) / (markers.includes("slowed") ? 2 : 1);
+  return Math.floor(base * times);
+}
+
+/** A condition held at Speed 0 for its while (Haste's lethargy, SRD 5.2.1 p. 139), whatever it is. */
+export function heldAtZero(
+  conditions: readonly (string | { id: string; speed0?: boolean | undefined })[],
+): boolean {
+  return conditions.some((c) => typeof c !== "string" && c.speed0 === true);
 }
 
 /** The condition holding a creature's Speed at 0 (Grappled, Restrained…), if any (§8.6: "Can't move — Grappled"). */

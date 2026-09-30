@@ -1,4 +1,4 @@
-import type { Ability, ConditionId, DamageType } from "@gloam/shared";
+import type { Ability, ConditionId, DamageType, SpellMarkerId } from "@gloam/shared";
 import type { Cover } from "@gloam/shared/aoe";
 import type { Spell } from "@gloam/shared/schemas";
 
@@ -44,6 +44,8 @@ export interface CastData {
     /** The cast's roll (per "cast"). */
     roll: DamageRoll | null;
   } | null;
+  /** Markers the spell's card lands (Bane's Baned, Slow's Slowed on a failed save; rules audit Q6). */
+  markers?: { id: SpellMarkerId; onFailedSave: boolean }[];
   /** Conditions the spell applies (on a failed save, or always). */
   conditions: {
     /** Until the end of the caster's next turn, the start of it, the end of the creature's own next turn. */
@@ -134,6 +136,8 @@ export interface CastTargetData {
   ignore: { resist: boolean; vuln: boolean; immune: boolean };
   /** The DM's choice of conditions to apply (absent: as the spell and the save say). */
   conditions?: ConditionId[];
+  /** The spell's markers this row lands, as the DM ticked them (else as its save or hit says). */
+  markers?: SpellMarkerId[];
   /** The DM's final number. */
   final?: number | null;
 }

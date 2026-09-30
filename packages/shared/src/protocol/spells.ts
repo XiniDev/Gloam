@@ -4,7 +4,13 @@
  * cut to its reader — the DM's whole card, the caster's parts, everyone else's one line (§13.4).
  */
 import { z } from "zod";
-import { type ABILITIES, CONDITION_IDS, DAMAGE_TYPES, type VFX_PRESETS } from "../constants.ts";
+import {
+  type ABILITIES,
+  CONDITION_IDS,
+  DAMAGE_TYPES,
+  SPELL_MARKER_IDS,
+  type VFX_PRESETS,
+} from "../constants.ts";
 
 const Id = z
   .string()
@@ -138,6 +144,8 @@ export const CastSet = z.strictObject({
     })
     .optional(),
   conditions: z.array(z.enum(CONDITION_IDS)).max(8).optional(),
+  /** The spell's markers this row lands, as the DM ticks them (rules audit Q6). */
+  markers: z.array(z.enum(SPELL_MARKER_IDS)).max(4).optional(),
   /** The final number, as the DM edits it (null: back to the computed one). */
   final: z.number().int().min(0).max(99_999).nullable().optional(),
   /** A hit made (or unmade) a critical hit, the DM's call (§8.13; a feature, a house rule). */
@@ -240,6 +248,8 @@ export interface CastTargetView {
     adv: string[];
     dis: string[];
     penalty: number;
+    /** What its markers add to the roll (Blessed "+1d4", Baned "-1d4"; rules audit Q6). */
+    extra?: { term: string; from: string }[];
     mode: "none" | "adv" | "dis";
     critOnHit: string | null;
   };
@@ -254,7 +264,7 @@ export interface CastTargetView {
     has: { resist: boolean; vuln: boolean; immune: boolean };
   };
   /** The spell's conditions for this row: ticked or not; a choice's group (ticking one unticks the others). */
-  conditions: { id: string; on: boolean; group?: string; stage?: number }[];
+  conditions: { id: string; on: boolean; group?: string; stage?: number; marker?: boolean }[];
   /** The computed number and the DM's edit (the edit wins). */
   computed?: number;
   final?: number;

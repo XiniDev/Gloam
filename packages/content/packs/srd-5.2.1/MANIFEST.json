@@ -72,16 +72,16 @@
     "spell-areas.json": "fc70a2c308850b7a1442b1c2b05da577ffc71f1738380dccc034d5560d61fa8d",
     "spell-light.json": "578cd8427ebb8929f8a0eff7094a222b32faf08b321dad14e508ea1ce57755cf",
     "spell-effects.json": "ea47c8aa868dda948399b7cc6e25c67d8612686ba53ad45cfa36a0f3776ee45d",
-    "spell-mechanics.json": "f66535cfa20b55808f21d0ea22cf5848c17d5805c71ef28fb222273c59bcf496",
+    "spell-mechanics.json": "729db0861b0bd2b9414f214b59eb9e7f082b803b69362797d963be6d86dec77d",
     "spell-vfx.json": "c991961179ac8c2dde0c7ad3161a4212f894b2e4a89edd7fb422641d7ad07451",
     "hyphenation.json": "60912c3a92a35a90bf29360b2f4998ad995ed0459eb7532d2843dbc1f2f3555e",
     "light-sources.json": "5de113cd5a42093d2d8867639d96887e380b4e6070e6955d0b7a2982429da906"
   },
   "files": {
-    "spells.json": "2f7304096b7fb36c82032e281d35d8876b786e452c73662715d1901c5cedfdde",
+    "spells.json": "4bdbb75a9a37ef2606bebc7a9ce383dc7eed08f2fabadb6e791c071eb611ab39",
     "light-sources.json": "79db4aff7081d31180decdf8b844c0a72356e9a283d6b7db285cbb83113e86de",
     "conditions.json": "60fd1f139d491a3cd36a3b75389ecf0c63b629923b8723dea7d41f3a3f440df3",
     "ATTRIBUTION.md": "954b70ff01688c53fbaf11bca9aaab8e26eaaa2ac23fc80b18c4b7678485098b"
   },
-  "generatedAt": "2026-09-30T20:45:27.236Z"
+  "generatedAt": "2026-09-30T22:31:07.718Z"
 }

@@ -722,6 +722,13 @@ export function mergeSpell(
       `Foundry statuses without an SRD condition id ignored: ${foundryOtherStatuses.join(", ")}`,
     );
 
+  // --- Markers (rules audit Q6): Bless's Blessed, Bane's Baned, Haste's Hasted, Slow's Slowed — by overlay only -----
+  const oMarkers = overlayFor("markers");
+  if (oMarkers) {
+    record.markers = oMarkers.set.markers ?? [];
+    prov.markers = `overlay:${oMarkers.file}`;
+  }
+
   // --- Light and obscurement -----------------------------------------------------------------------------
   const oLight = overlayFor("light");
   const pLight = proseLight(text);

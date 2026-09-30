@@ -7,10 +7,11 @@
  */
 import type { Ability, DamageType } from "@gloam/shared";
 import { COVER_BONUS, coverHint, saveCoverBonus } from "@gloam/shared/aoe";
-import { withPenalty } from "@gloam/shared/dice";
+import { withPenalty, withTerms } from "@gloam/shared/dice";
 import { hostileTo, sideOf } from "@gloam/shared/movement";
 import { type CastTargetView, type CastView, GloamError } from "@gloam/shared/protocol";
 import {
+  acWithMarkers,
   applyDamage,
   applyHealing,
   attackHints,
@@ -39,6 +40,7 @@ import {
   type CastFollowup,
   castLineText,
   conditionsFor,
+  markersFor,
   outcomeOf,
   rowFormula,
   rowInstances,
@@ -252,7 +254,7 @@ export class CastFlow {
               ...(t.attack.entered ? { entered: true } : {}),
               ...(rerollableAttack(d, t) ? { dice: t.attack.dice } : {}),
               ...(t.attack.inspired ? { inspired: true } : {}),
-              ...(h ? { ac: h.stats.ac } : {}),
+              ...(h ? { ac: acOf(h) } : {}),
             },
           }
         : {}),
@@ -273,6 +275,10 @@ export class CastFlow {
         ...(spec?.stage ? { stage: spec.stage } : {}),
       };
     });
+    // Its markers beside them, each the DM's to tick (rules audit Q6).
+    const marks = markersFor(d, t);
+    for (const x of d.markers ?? [])
+      row.conditions.push({ id: x.id, on: marks.includes(x.id), marker: true });
     const parts = rowParts(d, t);
     if (d.damage?.healing) {
       const amount = parts ? parts.parts.reduce((s, p) => s + p.amount, 0) : null;
@@ -383,6 +389,8 @@ export class CastFlow {
         }),
         exhaustion: a?.status.exhaustion ?? 0,
         pack: m.campaign.rulesPack,
+        // Blessed's +1d4, Baned's −1d4 (rules audit Q6).
+        markers: a?.status.markers.map((x) => x.id as string) ?? [],
       },
       {
         conditions: b?.status.conditions.map((c) => c.id) ?? [],
@@ -407,6 +415,7 @@ export class CastFlow {
       adv: h.adv.map((x) => x.from),
       dis: h.dis.map((x) => x.from),
       penalty: h.penalty,
+      ...(h.extra.length ? { extra: h.extra } : {}),
       mode: mode === "normal" ? "none" : mode,
       critOnHit: h.critOnHit,
     };
@@ -720,7 +729,7 @@ export class CastFlow {
     const natural = roll.natural ?? null;
     const hints = this.hintsFor(this.ctx(), d, row);
     const target = holderOf(this.ctx(), { tokenId: row.id });
-    const ac = target.stats.ac + (COVER_BONUS[row.cover] ?? 0);
+    const ac = acOf(target) + (COVER_BONUS[row.cover] ?? 0);
     const hit = natural === 20 ? true : natural === 1 ? false : roll.total >= ac;
     const crit = natural === 20 || (hit && hints.critOnHit !== null);
     this.host.bus().execute(
@@ -778,7 +787,10 @@ export class CastFlow {
       // What it gets (§19.3): the hints' mode unless the roller set it; Exhaustion's penalty on the roll.
       const hints = this.hintsFor(this.ctx(), d, row);
       const mode = p.adv ?? hints.mode;
-      const base = hints.penalty ? withPenalty(d.attack.formula, hints.penalty) : d.attack.formula;
+      const base = withTerms(
+        hints.penalty ? withPenalty(d.attack.formula, hints.penalty) : d.attack.formula,
+        (hints.extra ?? []).map((x) => x.term),
+      );
       const formula = `${base}${mode !== "none" ? ` ${mode}` : ""}`;
       // A physical roll is entered by its dice — the d20 says whether it's a natural 20 or 1 (security review M3); a
       // total is the DM's own roll behind the screen, its natural unknown (the DM marks a critical by hand).
@@ -796,7 +808,7 @@ export class CastFlow {
       const target = holderOf(this.ctx(), { tokenId: row.id });
       // Against its AC and its cover (the card's hint: +2 half, +5 three-quarters; rules audit m13) — the DM can
       // overturn the hit on the card.
-      const ac = target.stats.ac + (COVER_BONUS[row.cover] ?? 0);
+      const ac = acOf(target) + (COVER_BONUS[row.cover] ?? 0);
       const hit = natural === 20 ? true : natural === 1 ? false : roll.total >= ac;
       // A natural 20; or a hit that the target's state makes critical (a melee hit within 5 ft of the Paralyzed).
       const crit = natural === 20 || (hit && hints.critOnHit !== null);
@@ -924,6 +936,14 @@ function splitByAverage(
   const rest = total - out.reduce((s, x) => s + x.amount, 0);
   if (out[0]) out[0].amount += rest;
   return out.filter((x) => x.amount > 0);
+}
+
+/** A creature's AC now: its sheet's, with its markers' (Hasted +2, Slowed −2; rules audit Q6). */
+function acOf(h: { stats: { ac: number }; status: { markers: readonly { id: string }[] } }): number {
+  return acWithMarkers(
+    h.stats.ac,
+    h.status.markers.map((x) => x.id),
+  );
 }
 
 /**

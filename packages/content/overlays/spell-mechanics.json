@@ -379,9 +379,31 @@
     },
     "haste": {
       "page": 139,
-      "source": "\"When the spell ends, the target is Incapacitated and has a Speed of 0 until the end of its next turn, as a wave of lethargy washes over it.\" Happens when the spell ends, not a condition to apply on casting.",
+      "source": "\"Until the spell ends, the target's Speed is doubled, it gains a +2 bonus to Armor Class, it has Advantage on Dexterity saving throws\": the Hasted marker, on at once (rules audit Q6). \"When the spell ends, the target is Incapacitated and has a Speed of 0 until the end of its next turn, as a wave of lethargy washes over it.\" Happens when the spell ends (its concentration's cleanup), not a condition to apply on casting.",
       "set": {
-        "conditions": []
+        "conditions": [],
+        "markers": [{ "id": "hasted", "onFailedSave": false }]
+      }
+    },
+    "bless": {
+      "page": 113,
+      "source": "\"Whenever a target makes an attack roll or a saving throw before the spell ends, the target adds 1d4 to the attack roll or save.\": the Blessed marker, on at once (rules audit Q6).",
+      "set": {
+        "markers": [{ "id": "blessed", "onFailedSave": false }]
+      }
+    },
+    "bane": {
+      "page": 112,
+      "source": "\"Whenever a target that fails this save makes an attack roll or a saving throw before the spell ends, the target must subtract 1d4 from the attack roll or save.\": the Baned marker, on a failed save (rules audit Q6).",
+      "set": {
+        "markers": [{ "id": "baned", "onFailedSave": true }]
+      }
+    },
+    "slow": {
+      "page": 163,
+      "source": "\"Each target must succeed on a Wisdom saving throw or be affected by this spell for the duration. An affected target's Speed is halved, it takes a -2 penalty to AC and Dexterity saving throws, and it can't take Reactions.\": the Slowed marker, on a failed save (rules audit Q6).",
+      "set": {
+        "markers": [{ "id": "slowed", "onFailedSave": true }]
       }
     },
     "wind-walk": {

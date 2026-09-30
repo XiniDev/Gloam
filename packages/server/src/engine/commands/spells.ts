@@ -1,4 +1,4 @@
-import type { ConditionId, DamageType } from "@gloam/shared";
+import type { ConditionId, DamageType, SpellMarkerId } from "@gloam/shared";
 import {
   type AreaShape as Area,
   affected as areaAffected,
@@ -58,6 +58,7 @@ import {
   scaledFormula,
   sheetRefs,
   sortConsequences,
+  statusName,
   targetCount,
   targetingKind,
   vfxFor,
@@ -1301,13 +1302,22 @@ export const spellCast: CommandDef<
       : undefined;
     let casterStatus = concentration ? withConcentration(caster.h.status, concentration) : caster.h.status;
 
-    // Conditions a touch or self spell simply gives (Invisibility): on at once, for as long as the spell lasts.
+    // Conditions a touch or self spell simply gives (Invisibility): on at once, for as long as the spell lasts. So do its
+    // markers (Bless's Blessed, Haste's Hasted — rules audit Q6), ended with its concentration.
     const given: string[] = [];
     const gives = (spell.conditions ?? []).filter((x) => !x.onFailedSave);
-    if (!p.narrative && gives.length && !spell.save && !spell.attack && kind !== "area") {
+    const marks = (spell.markers ?? []).filter((x) => !x.onFailedSave);
+    if (!p.narrative && (gives.length || marks.length) && !spell.save && !spell.attack && kind !== "area") {
       for (const x of targets) {
+        if (x.state !== "in") continue;
         const h = x.id === t.id ? { ...caster.h, status: casterStatus } : holderOf(ctx, { tokenId: x.id });
         let s = h.status;
+        for (const m of marks)
+          if (!s.markers.some((k) => k.id === m.id))
+            s = {
+              ...s,
+              markers: [...s.markers, { id: m.id, ...(spell.duration.concentration ? { castId } : {}) }],
+            };
         for (const g of gives)
           if (
             !s.conditions.some((k) => k.id === g.id) &&
@@ -1370,6 +1380,10 @@ export const spellCast: CommandDef<
         damage: damageOf(spell, level, caster, p.damageType),
         // What a failed save lands — and what an attack's hit lands (Ray of Sickness' Poisoned: the card is where a
         // hit is known; the cast-time path only gives what needs neither).
+        // Its markers that a failed save or a hit lands (Bane's Baned, Slow's Slowed; rules audit Q6).
+        markers: (spell.markers ?? [])
+          .filter((x) => x.onFailedSave || spell.attack)
+          .map((x) => ({ id: x.id, onFailedSave: x.onFailedSave })),
         conditions: (spell.conditions ?? [])
           .filter((x) => x.onFailedSave || spell.attack)
           .map((x) => ({
@@ -1709,6 +1723,7 @@ export const castSet: CommandDef<z.infer<typeof CastSet>, { ok: true }> = {
     if (p.outcome) ops.push(...castPathOp(c, ["targets", i, "outcome"], p.outcome));
     if (p.ignore) ops.push(...castPathOp(c, ["targets", i, "ignore"], { ...row.ignore, ...p.ignore }));
     if (p.conditions) ops.push(...castPathOp(c, ["targets", i, "conditions"], p.conditions));
+    if (p.markers) ops.push(...castPathOp(c, ["targets", i, "markers"], p.markers));
     if (p.final !== undefined) ops.push(...castPathOp(c, ["targets", i, "final"], p.final));
     return { ops, summary: `${c.data.name}: ${row.name} changed`, result: { ok: true } };
   },
@@ -1841,6 +1856,14 @@ export function conditionsFor(c: CastData, t: CastTargetData): ConditionId[] {
   const failed = c.save ? (t.save?.autoFail ? true : t.save?.success !== true) : true;
   const hit = c.attack ? t.attack?.hit === true : true;
   return first.filter((x) => (x.onFailedSave ? failed && hit : hit)).map((x) => x.id);
+}
+
+/** The markers a row's hit (or failed save) lands (the DM's choice, else the spell's; rules audit Q6). */
+export function markersFor(c: CastData, t: CastTargetData): SpellMarkerId[] {
+  if (t.markers) return t.markers;
+  const failed = c.save ? (t.save?.autoFail ? true : t.save?.success !== true) : true;
+  const hit = c.attack ? t.attack?.hit === true : true;
+  return (c.markers ?? []).filter((x) => (x.onFailedSave ? failed && hit : hit)).map((x) => x.id);
 }
 
 /** A row's damage instances after its outcome (half: each halved first, SRD 5.2.1 p. 17), or its DM-edited final. */
@@ -2031,6 +2054,19 @@ export const castApply: CommandDef<z.infer<typeof CastApply>, { applied: number 
           // 5.2.1 p. 191: "When this condition ends, you remain Prone"; rules audit A5).
           if (cid === "unconscious" && !status.conditions.some((x) => x.id === "prone"))
             status = { ...status, conditions: [...status.conditions, { id: "prone", source: d.name }] };
+        }
+      // Markers (Bane's Baned, Slow's Slowed — rules audit Q6): as its conditions land, ended with its concentration.
+      for (const { row } of mine)
+        for (const mid of markersFor(d, row)) {
+          if (status.markers.some((x) => x.id === mid)) continue;
+          status = {
+            ...status,
+            markers: [
+              ...status.markers,
+              { id: mid, ...(d.concentration || d.sourceCastId ? { castId: d.sourceCastId ?? c.id } : {}) },
+            ],
+          };
+          lines.push(`${h.name}: ${statusName(mid)}`);
         }
       // A condition that incapacitates ends its Concentration (SRD p. 179; rules audit I2): Hold Person on a caster
       // holding a spell — as the DM's automation setting has it (at once, or asked).
@@ -2572,11 +2608,41 @@ export const concentrationCleanup: CommandDef<z.infer<typeof ConcentrationCleanu
         const key = h.actor ? `a:${h.actor.id}` : `t:${t.id}`;
         if (seen.has(key)) continue;
         seen.add(key);
-        const keep = h.status.conditions.filter((x) => x.castId !== p.castId);
-        if (keep.length === h.status.conditions.length) continue;
-        removed += h.status.conditions.length - keep.length;
+        let keep = h.status.conditions.filter((x) => x.castId !== p.castId);
+        // Its markers too (Bless's Blessed, Haste's Hasted; rules audit Q6).
+        const keepMarkers = h.status.markers.filter((x) => x.castId !== p.castId);
+        const lost =
+          h.status.conditions.length - keep.length + (h.status.markers.length - keepMarkers.length);
+        if (!lost) continue;
+        removed += lost;
+        // Haste ends: "the target is Incapacitated and has a Speed of 0 until the end of its next turn, as a wave of
+        // lethargy washes over it" (SRD 5.2.1 p. 139) — where there are turns to count (a fight under way).
+        const active = activeTurnOf(ctx);
+        const hasteEnded = h.status.markers.some((x) => x.id === "hasted" && x.castId === p.castId);
+        if (
+          hasteEnded &&
+          active !== undefined &&
+          !immuneToCondition(
+            h.stats.conditionImmune,
+            keep.map((x) => x.id as string),
+            "incapacitated",
+          )
+        )
+          keep = [
+            ...keep,
+            {
+              id: "incapacitated",
+              source: "Haste's lethargy",
+              speed0: true,
+              ...turnBound("ownTurnEnd", null, t.id, active),
+            },
+          ];
         ops.push(
-          ...holderOps(ctx, h, { hp: h.hp, hpTemp: h.hpTemp, status: { ...h.status, conditions: keep } }),
+          ...holderOps(ctx, h, {
+            hp: h.hp,
+            hpTemp: h.hpTemp,
+            status: { ...h.status, conditions: keep, markers: keepMarkers },
+          }),
         );
       }
     }

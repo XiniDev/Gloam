@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { SPELL_MARKER_IDS } from "../constants.ts";
 import {
   Ability,
   ConditionId,
@@ -400,6 +401,20 @@ export const SpellSchema = z
     damage: z.array(SpellDamage).max(8).optional(),
     healing: SpellHealing.nullable().optional(),
     conditions: z.array(SpellConditionApplied).max(8).optional(),
+    markers: z
+      .array(
+        z
+          .object({
+            id: z.enum(SPELL_MARKER_IDS),
+            onFailedSave: z.boolean().default(false),
+          })
+          .strict(),
+      )
+      .max(4)
+      .optional()
+      .describe(
+        "Markers it puts on its targets, with their rules (Bless's Blessed, Haste's Hasted; Bane's Baned and Slow's Slowed on a failed save) — ended with its concentration",
+      ),
     effect: EffectTemplate.nullable().optional(),
     light: LightSpec.nullable().optional(),
     obscurement: Obscurement.nullable().optional(),

@@ -418,6 +418,9 @@ export const MARKER_IDS = [
   "readied",
 ] as const;
 export type MarkerId = (typeof MARKER_IDS)[number];
+/** The markers a spell puts on (rules audit Q6): Bless, Bane, Haste, Slow — each with its rules (conditions.ts). */
+export const SPELL_MARKER_IDS = ["blessed", "baned", "hasted", "slowed"] as const;
+export type SpellMarkerId = (typeof SPELL_MARKER_IDS)[number];
 
 export const SKILLS = {
   acrobatics: "dex",

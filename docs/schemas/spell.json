@@ -1218,6 +1218,33 @@
         "additionalProperties": false
       }
     },
+    "markers": {
+      "description": "Markers it puts on its targets, with their rules (Bless's Blessed, Haste's Hasted; Bane's Baned and Slow's Slowed on a failed save) — ended with its concentration",
+      "maxItems": 4,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "enum": [
+              "blessed",
+              "baned",
+              "hasted",
+              "slowed"
+            ]
+          },
+          "onFailedSave": {
+            "default": false,
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false
+      }
+    },
     "effect": {
       "anyOf": [
         {

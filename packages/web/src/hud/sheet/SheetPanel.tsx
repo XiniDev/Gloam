@@ -1,5 +1,5 @@
 import type { ActorView } from "@gloam/shared/protocol";
-import { effectiveSpeed, statusName, statusSummary } from "@gloam/shared/rules";
+import { acWithMarkers, effectiveSpeed, statusName, statusSummary } from "@gloam/shared/rules";
 import { parseCustomMarkers } from "@gloam/shared/state";
 import {
   ChevronDown,
@@ -477,16 +477,19 @@ function SheetHeader({ ctx, onImport }: { ctx: SheetCtx; onImport: (m: "json" | 
       {/* The numbers most asked for, labels above values. */}
       <dl className="mt-2 grid grid-cols-4 gap-1.5 text-center" data-testid="sheet-stats">
         <Stat label="AC">
-          <NumberField
-            label="Armour class"
-            value={c.ac.value}
-            min={0}
-            max={99}
-            width="100%"
-            disabled={!ctx.canEdit}
-            onCommit={(v) => void ctx.set(["core", "ac", "value"], v)}
-            className="text-16"
-          />
+          <span className="flex w-full flex-col items-center leading-tight">
+            <NumberField
+              label="Armour class"
+              value={c.ac.value}
+              min={0}
+              max={99}
+              width="100%"
+              disabled={!ctx.canEdit}
+              onCommit={(v) => void ctx.set(["core", "ac", "value"], v)}
+              className="text-16"
+            />
+            <AcNow actorId={ctx.actor.id} ac={c.ac.value} />
+          </span>
         </Stat>
         <Stat label="Init">
           <Rollable
@@ -499,7 +502,7 @@ function SheetHeader({ ctx, onImport }: { ctx: SheetCtx; onImport: (m: "json" | 
           </Rollable>
         </Stat>
         <Stat label="Speed">
-          <SpeedValue core={c} />
+          <SpeedValue core={c} actorId={ctx.actor.id} />
         </Stat>
         <Stat label="Prof">
           <span className="tabular text-16 font-bold">{signed(d.proficiencyBonus)}</span>
@@ -553,10 +556,16 @@ function Stat({ label, children }: { label: string; children: React.ReactNode })
  * Its walking speed as it moves now — after its conditions (Speed 0) and Exhaustion (−5 ft a level; §19.4, AC-HP-05),
  * as its token and hover card say (critic P7 r2 #11) — with its base speed under it when they differ.
  */
-function SpeedValue({ core: c }: { core: SheetCtx["sheet"]["core"] }) {
+function SpeedValue({ core: c, actorId }: { core: SheetCtx["sheet"]["core"]; actorId: string }) {
   // (The campaign's pack: SRD 5.1's Exhaustion halves Speed from level 2, Stunned holds it at 0 — rules audit C2.)
   const pack = useTable((s) => s.rulesPack);
-  const now = effectiveSpeed(c.speeds.walk, c.conditions, c.exhaustion, false, pack);
+  // Its token's markers (Hasted doubles it, Slowed halves it) and a Speed of 0 the server holds it at (Haste's
+  // lethargy) — rules audit Q6.
+  const target = useSheetTarget(actorId);
+  const token = useBoard((d) => (target.tokenId ? d.tokens.get(target.tokenId) : undefined));
+  const markers = token?.markers ?? [];
+  const held = token?.own?.stuck === "speed0";
+  const now = held ? 0 : effectiveSpeed(c.speeds.walk, c.conditions, c.exhaustion, false, pack, markers);
   const srd51 = pack === "srd-5.1";
   const tired =
     c.exhaustion > 0 && (!srd51 || c.exhaustion >= 2)
@@ -570,7 +579,10 @@ function SpeedValue({ core: c }: { core: SheetCtx["sheet"]["core"] }) {
     ...c.conditions
       .filter((id) => effectiveSpeed(30, [id], 0, false, pack) === 0)
       .map((id) => `${statusName(id)}: Speed 0`),
+    ...(held ? ["Speed 0"] : []),
     ...tired,
+    ...(markers.includes("hasted") ? ["Hasted: Speed doubled"] : []),
+    ...(markers.includes("slowed") ? ["Slowed: Speed halved"] : []),
   ].join(" · ");
   return (
     <span
@@ -585,6 +597,23 @@ function SpeedValue({ core: c }: { core: SheetCtx["sheet"]["core"] }) {
           base {c.speeds.walk}
         </span>
       ) : null}
+    </span>
+  );
+}
+
+/** Its AC now, under the sheet's own, where its token's markers change it (Hasted +2, Slowed −2; rules audit Q6). */
+function AcNow({ actorId, ac }: { actorId: string; ac: number }) {
+  const target = useSheetTarget(actorId);
+  const markers = useBoard((d) => (target.tokenId ? d.tokens.get(target.tokenId)?.markers : undefined));
+  const now = acWithMarkers(ac, markers ?? []);
+  if (now === ac) return null;
+  const why = [
+    ...(markers?.includes("hasted") ? ["Hasted +2"] : []),
+    ...(markers?.includes("slowed") ? ["Slowed −2"] : []),
+  ].join(" · ");
+  return (
+    <span className="tabular text-12 text-paper-muted" title={why} data-testid="sheet-ac-now">
+      now {now}
     </span>
   );
 }

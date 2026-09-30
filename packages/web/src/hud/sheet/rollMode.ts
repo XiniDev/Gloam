@@ -1,5 +1,4 @@
-import { SKILLS } from "@gloam/shared";
-import { findD20, parseFormula } from "@gloam/shared/dice";
+import { findD20, parseFormula, sheetTestOf } from "@gloam/shared/dice";
 import { hintedMode, type RollKind, rollHints } from "@gloam/shared/rules";
 
 export type RollMode = "normal" | "adv" | "dis";
@@ -34,14 +33,7 @@ export interface RollTest {
 
 /** A sheet roll's test from its formula: a save (`@dex.save`), a skill or ability check, initiative; else none. */
 export function testOf(formula: string): RollTest | null {
-  const save = formula.match(/@(str|dex|con|int|wis|cha)\.save\b/);
-  if (save) return { kind: "save", ability: save[1] as string };
-  const skill = formula.match(/@skill\.([a-zA-Z]+)/);
-  if (skill) return { kind: "check", ability: (SKILLS as Record<string, string>)[skill[1] as string] ?? "" };
-  if (/@init\b/.test(formula)) return { kind: "initiative" };
-  const check = formula.match(/^\s*1d20\s*\+\s*@(str|dex|con|int|wis|cha)\s*$/);
-  if (check) return { kind: "check", ability: check[1] as string };
-  return null;
+  return sheetTestOf(formula);
 }
 
 /**

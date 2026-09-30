@@ -1973,6 +1973,12 @@
       "ability": "cha",
       "onSuccess": "none"
     },
+    "markers": [
+      {
+        "id": "baned",
+        "onFailedSave": true
+      }
+    ],
     "vfx": "arcane",
     "source": {
       "pack": "srd-5.2.1",
@@ -1986,6 +1992,7 @@
       "higherLevels": "pdf",
       "id": "pdf",
       "level": "pdf",
+      "markers": "overlay:spell-mechanics.json",
       "name": "pdf",
       "range": "pdf",
       "ritual": "pdf",
@@ -2034,6 +2041,12 @@
       "count": 3,
       "countPerSlot": 1
     },
+    "markers": [
+      {
+        "id": "blessed",
+        "onFailedSave": false
+      }
+    ],
     "vfx": "arcane",
     "source": {
       "pack": "srd-5.2.1",
@@ -2047,6 +2060,7 @@
       "higherLevels": "pdf",
       "id": "pdf",
       "level": "pdf",
+      "markers": "overlay:spell-mechanics.json",
       "name": "pdf",
       "range": "pdf",
       "ritual": "pdf",
@@ -10487,6 +10501,12 @@
       "count": 1
     },
     "conditions": [],
+    "markers": [
+      {
+        "id": "hasted",
+        "onFailedSave": false
+      }
+    ],
     "vfx": "arcane",
     "source": {
       "pack": "srd-5.2.1",
@@ -10500,6 +10520,7 @@
       "duration": "pdf",
       "id": "pdf",
       "level": "pdf",
+      "markers": "overlay:spell-mechanics.json",
       "name": "pdf",
       "range": "pdf",
       "ritual": "pdf",
@@ -11456,6 +11477,12 @@
       "ability": "wis",
       "onSuccess": "none"
     },
+    "markers": [
+      {
+        "id": "slowed",
+        "onFailedSave": true
+      }
+    ],
     "vfx": "arcane",
     "source": {
       "pack": "srd-5.2.1",
@@ -11469,6 +11496,7 @@
       "duration": "pdf",
       "id": "pdf",
       "level": "pdf",
+      "markers": "overlay:spell-mechanics.json",
       "name": "pdf",
       "range": "pdf",
       "ritual": "pdf",
