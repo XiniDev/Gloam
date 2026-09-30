@@ -102,6 +102,7 @@ import {
   movementOf,
 } from "../engine/commands/combat.ts";
 import { homebrewFor } from "../engine/commands/content.ts";
+import { holds } from "../engine/commands/handout.ts";
 import { FOLLOWUPS, type Followups, hpApply, previewHp } from "../engine/commands/health.ts";
 import { SYSTEM_ACTOR } from "../engine/commands/party.ts";
 import { REST_FOLLOWUPS, type RestFollowups } from "../engine/commands/rest.ts";
@@ -900,7 +901,8 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
           // none of them is dying after all
         }
       },
-      log: (kind, text, data) => this.fun.append(kind, text, { data }),
+      log: (kind, text, data, visibility) =>
+        this.fun.append(kind, text, { data, ...(visibility ? { visibility } : {}) }),
       closeAsked: (combatId) => {
         for (const r of this.requests.open(this.campaignId)) {
           const p = r.purpose as { kind?: string; combatId?: string } | undefined;
@@ -1541,7 +1543,8 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
         (o) => o.k === "set" && o.e === "campaign" && o.path[0] === "settings" && o.path[1] === "audio",
       )
     ) {
-      this.broadcastAll(AUDIO_SYNC, campaignAudio({ model: this.model }));
+      const audio = campaignAudio({ model: this.model });
+      for (const c of this.clients) c.send(AUDIO_SYNC, this.audioFor(c, audio));
       this.audioTimer.changed();
     }
     if (info.ops.some((o) => (o.k === "set" || o.k === "create") && o.e === "campaign")) this.syncCampaign();
@@ -1667,15 +1670,49 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
       const json = view ? JSON.stringify(view) : "";
       if (!view || this.renderSent.get(id) === json) continue;
       this.renderSent.set(id, json);
+      // (Only to players with a reason to see it — assetVisibleTo; others fetch its view when they come to need it.)
       for (const c of this.clients) {
         const auth = c.auth as ClientAuth | undefined;
         if (!auth || auth.role === "admin" || auth.role === "dm" || auth.userId === dto.uploaderId) continue;
+        if (!this.assetVisibleTo(auth.userId, id)) continue;
         c.send("asset.render", { asset: view });
       }
     }
   }
   /** The last render view sent to players per asset (only real changes go out). */
   private readonly renderSent = new Map<string, string>();
+
+  /**
+   * Whether an asset is one this player has a reason to see now (security review M2): the live scene's map, a token
+   * in their view (its art, portrait or mini), a handout they hold, a picture on a sheet they may read, the track
+   * playing, or their own upload. A DM's secret boss mini, a handout meant for someone else, the map of a scene in prep
+   * and the rest of the Library stay the DM's — they were announced to every player and could be fetched by any.
+   */
+  assetVisibleTo(userId: string, assetId: string): boolean {
+    const model = this.model;
+    const scene = model.get("scene", this.projector.activeSceneId);
+    if (scene?.mapAssetId === assetId) return true;
+    const clients = this.clientsByUser.get(userId) ?? [];
+    for (const c of clients)
+      for (const id of this.views.grantsOf(c)?.tokens.keys() ?? []) {
+        const a = model.get("token", id)?.appearance;
+        if (a && (a.assetId === assetId || a.portraitAssetId === assetId)) return true;
+      }
+    for (const h of model.all("handout")) if (h.imageAssetId === assetId && holds(h, userId)) return true;
+    const viewer = { userId, role: "player" as const };
+    for (const a of model.all("actor")) {
+      if (!this.sheets.mayRead(viewer, a)) continue;
+      const core = readSheet(a).core;
+      if (core.portraitAssetId === assetId || core.tokenAssetId === assetId) return true;
+    }
+    return campaignAudio({ model }).music.trackId === assetId;
+  }
+
+  /** The campaign's audio as someone at the table gets it: players the playing, not the DM's playlists. */
+  private audioFor(c: Client, state: ReturnType<typeof campaignAudio>): unknown {
+    const role = (c.auth as ClientAuth | undefined)?.role;
+    return role === "admin" || role === "dm" ? state : { ...state, playlists: [] };
+  }
 
   /** How many tokens and scenes use each asset (Library "usage count", SPEC §8.16). */
   assetUsage(): Map<string, number> {
@@ -1765,7 +1802,7 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
     if (cv) this.casts.join(cv);
     this.sendHomebrewAll(client, auth);
     // What's playing and the ambience, to join it where it is (SPEC §25.3: a late joiner starts at the position).
-    client.send(AUDIO_SYNC, campaignAudio({ model: this.model }));
+    client.send(AUDIO_SYNC, this.audioFor(client, campaignAudio({ model: this.model })));
     client.send("welcome", {
       userId: auth.userId,
       role: auth.role,
@@ -2125,7 +2162,13 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
       else if ("all" in e.to) {
         const skip = new Set(e.to.exceptUsers ?? []);
         for (const c of this.clients)
-          if (!skip.has((c.auth as ClientAuth | undefined)?.userId ?? "")) c.send(e.name, e.payload);
+          if (!skip.has((c.auth as ClientAuth | undefined)?.userId ?? ""))
+            c.send(
+              e.name,
+              e.name === AUDIO_SYNC
+                ? this.audioFor(c, e.payload as ReturnType<typeof campaignAudio>)
+                : e.payload,
+            );
         if (e.name === AUDIO_SYNC) this.audioTimer.changed();
       } else if ("users" in e.to)
         for (const u of e.to.users)

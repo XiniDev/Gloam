@@ -12,6 +12,7 @@ import { newId } from "../ids.ts";
 import type { Role } from "../services/campaigns.ts";
 import { AssetProcessor } from "./processorHost.ts";
 import {
+  ABANDONED_TTL_MS,
   classOf,
   PROFILE_CAP,
   type ProcessMeta,
@@ -198,6 +199,25 @@ export class AssetService {
     return total;
   }
 
+  /**
+   * Bytes the waiting room holds for a campaign now: uploads not yet decided on, by people who aren't its members
+   * (counted against LOBBY_TOTAL: security review M4).
+   */
+  lobbyBytes(campaignId: string): number {
+    const rows = this.ctx.db
+      .select({ fileId: assets.fileId, bytes: assetFiles.bytes, uploaderId: assets.uploaderId })
+      .from(assets)
+      .innerJoin(assetFiles, eq(assets.fileId, assetFiles.id))
+      .where(and(eq(assets.campaignId, campaignId), eq(assets.status, "pending"), isNull(assets.deletedAt)))
+      .all();
+    const seen = new Map<string, number>();
+    for (const r of rows)
+      if (!this.ctx.campaigns.membership(campaignId, r.uploaderId)) seen.set(r.fileId, r.bytes);
+    let total = 0;
+    for (const b of seen.values()) total += b;
+    return total;
+  }
+
   /** null = unlimited (DMs and the Admin). */
   quotaFor(u: Uploader): number | null {
     if (isDm(u.role)) return null;
@@ -241,8 +261,20 @@ export class AssetService {
       );
     const fileId = `${o.sha256}-${profile}`;
     let file = this.ctx.db.select().from(assetFiles).where(eq(assetFiles.id, fileId)).get();
-    const deduped = Boolean(file);
+    // The same file stored already is kept once. A player is told so only of a file of their own: "someone has this
+    // file" let one test whether the DM had a known map — and so, without that, does the time a stored file saves; so a
+    // player's copy of someone else's file is put through the processor all the same (its outputs dropped for the
+    // stored ones) and takes as long as a new one (security review L3). A DM sees the whole Library anyway.
+    const mine =
+      Boolean(file) &&
+      this.ctx.db
+        .select({ id: assets.id })
+        .from(assets)
+        .where(and(eq(assets.fileId, fileId), eq(assets.uploaderId, o.uploader.userId)))
+        .get() !== undefined;
+    const deduped = Boolean(file) && (mine || isDm(o.uploader.role));
     if (!file) file = await this.process(o, detected, cls, profile, fileId);
+    else if (!deduped) await this.process(o, detected, cls, profile, fileId, { discard: true });
     // One reference per uploader, campaign, file and purpose: a repeated upload returns the existing one.
     const existing = this.ctx.db
       .select()
@@ -300,6 +332,7 @@ export class AssetService {
     cls: "image" | "model" | "audio",
     profile: Profile,
     fileId: string,
+    opts: { discard?: boolean } = {},
   ): Promise<typeof assetFiles.$inferSelect> {
     const staging = await mkdtemp(join(this.ctx.paths.tmp, "job-"));
     try {
@@ -312,6 +345,9 @@ export class AssetService {
         outDir: staging,
       });
       if (!result.ok) throw new GloamError("INVALID", result.reason);
+      // (Processed only to take the time a new file takes: the stored file stands; staging goes below.)
+      if (opts.discard)
+        return this.ctx.db.select().from(assetFiles).where(eq(assetFiles.id, fileId)).get() as never;
       const shard = o.sha256.slice(0, 2);
       const dir = join(this.ctx.paths.assets, shard);
       mkdirSync(dir, { recursive: true });
@@ -447,7 +483,8 @@ export class AssetService {
 
   /**
    * Who may fetch an asset (SPEC §21.6): the Admin; the uploader (any status); DMs of its campaign; and admitted
-   * members of the running table for approved assets. Everything else answers 404 (no existence oracle).
+   * members of the running table for approved assets they have a reason to see (TableRoom.assetVisibleTo). Everything
+   * else answers 404 (no existence oracle).
    */
   canRead(
     a: AssetEntity,
@@ -464,7 +501,13 @@ export class AssetService {
     if (!admitted) return false;
     const role = this.ctx.campaigns.membership(a.campaignId, s.userId);
     if (role === "dm") return true;
-    return Boolean(role) && a.status === "approved";
+    // A player: an approved asset they have a reason to see now — on their board, in their hands, on their sheet,
+    // playing (security review M2) — not every file in the campaign's Library.
+    return (
+      Boolean(role) &&
+      a.status === "approved" &&
+      (this.ctx.rooms.table(a.campaignId)?.assetVisibleTo(s.userId, a.id) ?? false)
+    );
   }
 
   /** Absolute path of a variant, confined to the assets directory. */
@@ -557,11 +600,19 @@ export class AssetService {
 
   /** Rejected references older than 24 h are purged, then files nothing references (SPEC §8.16 Approval). */
   purge(now = Date.now()): { references: number; files: number } {
-    const stale = this.ctx.db
+    const rejected = this.ctx.db
       .select({ id: assets.id, campaignId: assets.campaignId })
       .from(assets)
       .where(and(eq(assets.status, "rejected"), lt(assets.reviewedAt, now - REJECTED_TTL_MS)))
       .all();
+    // Left in the waiting room a day by someone never let in (turned away, or gone): theirs goes too (security review M4).
+    const abandoned = this.ctx.db
+      .select({ id: assets.id, campaignId: assets.campaignId, uploaderId: assets.uploaderId })
+      .from(assets)
+      .where(and(eq(assets.status, "pending"), lt(assets.createdAt, now - ABANDONED_TTL_MS)))
+      .all()
+      .filter((a) => !this.ctx.campaigns.membership(a.campaignId, a.uploaderId));
+    const stale = [...rejected, ...abandoned];
     if (stale.length) {
       this.ctx.db
         .delete(assets)

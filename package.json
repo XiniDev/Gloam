@@ -9,9 +9,9 @@
     "node": ">=22.18"
   },
   "scripts": {
-    "dev": "node --watch-path=packages/server/src --watch-path=packages/shared/src --disable-warning=ExperimentalWarning packages/server/src/main.ts --dev",
+    "dev": "node --watch-path=packages/server/src --watch-path=packages/shared/src --disable-warning=ExperimentalWarning --disable-proto=throw packages/server/src/main.ts --dev",
     "build": "pnpm --filter @gloam/web build",
-    "start": "node --disable-warning=ExperimentalWarning packages/server/src/main.ts --production",
+    "start": "node --disable-warning=ExperimentalWarning --disable-proto=throw packages/server/src/main.ts --production",
     "typecheck": "tsc -b",
     "lint": "biome ci . && node tools/check-tokens.mjs && node tools/extract-icons.mjs --check",
     "test": "vitest run",

@@ -1,3 +1,4 @@
+import { assertSafeKey, ownGet } from "../safeKeys.ts";
 /**
  * Sheet locks and proposals (SPEC §8.10 Ownership and locks): what a player may change on their own sheet at each
  * lock level, found by diffing the sheet before and after — **Unlocked**: anything; **Core locked**: only the
@@ -112,10 +113,12 @@ export function applyChanges<T>(sheet: T, changes: SheetChange[]): T {
   const out = clone(sheet) as Record<string | number, unknown>;
   for (const c of changes) {
     if (c.path.length === 0) return clone(c.after) as T;
+    // (Own properties only, and never a key that reaches Object.prototype: safeKeys.ts.)
+    for (const k of c.path) assertSafeKey(k);
     let o: Record<string | number, unknown> = out;
     for (let i = 0; i < c.path.length - 1; i++) {
       const k = c.path[i] as string | number;
-      const next = o[k];
+      const next = ownGet(o, k);
       if (next === null || typeof next !== "object") {
         o[k] = typeof c.path[i + 1] === "number" ? [] : {};
       }

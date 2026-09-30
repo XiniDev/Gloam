@@ -47,6 +47,8 @@ export const LOCAL_ONLY_SETTINGS: ReadonlySet<SettingKey> = new Set([
   "lanConfirmed",
   // API tokens answering from anywhere but this computer: widened only from this computer (SPEC §8.23).
   "allowRemoteApi",
+  // The Admin signing in through the doorway (from elsewhere): likewise opened only from here (security review, Info).
+  "allowAdminThroughDoorway",
 ]);
 
 export class SettingsService {

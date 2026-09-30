@@ -29,6 +29,8 @@ export interface Limits {
   adminLogin: AttemptLimiter;
   /** REST per session (or IP when anonymous): 60 per 10 s (§22.5). */
   rest: BucketMap;
+  /** New profiles made at the door, per address (security review M4). */
+  newProfiles: BucketMap;
   /** Uploads per user: 10 per minute (§22.5). */
   uploads: BucketMap;
   /** Matchmaking joins per session/IP (Colyseus routes bypass Express, R3 deviation 2). */

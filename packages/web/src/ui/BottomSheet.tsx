@@ -1,7 +1,7 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { create } from "zustand";
-import { insetMeasures, useBoardCovers, useMeasuredInset } from "../hud/insets.ts";
+import { insetMeasures, useBoardCovers, useHudInsets, useMeasuredInset } from "../hud/insets.ts";
 
 /** How many bottom sheets are open: a phone's tab bar steps aside for them (they rise over the bottom edge it holds). */
 export const useOpenSheets = create<{ n: number }>(() => ({ n: 0 }));
@@ -47,7 +47,10 @@ export function BottomSheet({
     useOpenSheets.setState((s) => ({ n: s.n + 1 }));
     return () => useOpenSheets.setState((s) => ({ n: Math.max(0, s.n - 1) }));
   }, []);
-  const vh = () => (typeof window === "undefined" ? 800 : window.innerHeight);
+  // The snaps are shares of the room under the top bar (at the table): at 95 % of the whole screen the sheet's handle
+  // came up over the top bar's buttons. Elsewhere (no table HUD), of the whole screen.
+  const topBar = useHudInsets((s) => (s.active ? s.top : 0));
+  const vh = () => (typeof window === "undefined" ? 800 : window.innerHeight) - topBar;
   const snapPx = (i: number) => Math.round((SHEET_SNAPS[i] as number) * vh());
   // Re-measure on rotation: the snap is a share of the screen.
   const [, setTick] = useState(0);
@@ -58,7 +61,8 @@ export function BottomSheet({
   }, []);
   // Toasts standing at the top while a sheet is up (Toast.tsx): the sheet stops short of them.
   const toasts = useBoardCovers((s) => s.rects.toasts);
-  const cap = toasts && toasts.top < vh() / 3 ? vh() - toasts.bottom - 8 : Number.POSITIVE_INFINITY;
+  const screenH = typeof window === "undefined" ? 800 : window.innerHeight;
+  const cap = toasts && toasts.top < screenH / 3 ? screenH - toasts.bottom - 8 : Number.POSITIVE_INFINITY;
   const height = Math.min(cap, dragPx ?? snapPx(snap));
 
   const end = (clientY: number) => {
@@ -107,7 +111,7 @@ export function BottomSheet({
           d.last.push({ y: e.clientY, t: e.timeStamp });
           // The last 100 ms of movement set the flick's speed.
           while (d.last.length > 2 && e.timeStamp - (d.last[0] as { t: number }).t > 100) d.last.shift();
-          setDragPx(Math.max(snapPx(0) * 0.6, Math.min(vh() * 0.97, d.h0 + (d.y0 - e.clientY))));
+          setDragPx(Math.max(snapPx(0) * 0.6, Math.min(vh(), d.h0 + (d.y0 - e.clientY))));
         }}
         onPointerUp={(e) => end(e.clientY)}
         onPointerCancel={(e) => end(e.clientY)}

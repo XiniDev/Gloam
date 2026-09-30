@@ -16,6 +16,7 @@ import type { HttpControl, ServerContext } from "./context.ts";
 import { dataPaths, ensureDataDir } from "./dataDir.ts";
 import { openDatabase } from "./db/client.ts";
 import { buildHttpApp, type HttpAppHandle } from "./http/app.ts";
+import { guardMatchmaking } from "./http/matchmakeGuard.ts";
 import { selectCampaign } from "./http/routes/admin.ts";
 import { createLogger } from "./logger.ts";
 import { BackupService } from "./persistence/backups.ts";
@@ -141,6 +142,8 @@ export async function startServer(opts: StartOptions = {}): Promise<GloamServer>
       joinCode: new AttemptLimiter({ max: 10, windowMs: 10 * 60_000, lockMs: 10 * 60_000 }),
       adminLogin: new AttemptLimiter({ max: 5, windowMs: 15 * 60_000, lockMs: 15 * 60_000, backoff: true }),
       rest: new BucketMap(60, 6),
+      // A household at one address: several new faces at once, then one every two minutes.
+      newProfiles: new BucketMap(6, 1 / 120),
       uploads: new BucketMap(10, 10 / 60),
       matchmake: new BucketMap(10, 1),
     },
@@ -194,6 +197,8 @@ export async function startServer(opts: StartOptions = {}): Promise<GloamServer>
   const chosen = config.portExplicit ? null : settings.get().port;
   if (chosen) config.port = chosen;
   await server.listen(config.port, config.host);
+  // Matchmaking requests judged before Colyseus reads them (body size, rate: security review M1).
+  guardMatchmaking(httpServer, ctx.limits.matchmake);
   const port = ctx.http.address().port;
 
   // 5. Rooms: the lobby (always) and the table for the selected campaign.
@@ -224,11 +229,15 @@ export async function startServer(opts: StartOptions = {}): Promise<GloamServer>
         ctx.limits.rest.sweep(60_000);
         ctx.limits.uploads.sweep(10 * 60_000);
         ctx.limits.matchmake.sweep(60_000);
+        ctx.limits.newProfiles.sweep(30 * 60_000);
         ctx.profiles.pinLimiter.sweep();
         if (now - lastPurge >= 60 * 60_000) {
           lastPurge = now;
           const purged = ctx.assets.purge(now);
           if (purged.references || purged.files) log.info(purged, "purged rejected uploads");
+          // The security log's retention (security review M5).
+          const pruned = ctx.security.prune(now);
+          if (pruned) log.info({ pruned }, "pruned the security log");
         }
       } catch (err) {
         log.error({ err }, "scheduler tick failed");

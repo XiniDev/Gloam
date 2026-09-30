@@ -5,6 +5,7 @@ import express, { type Express, type NextFunction, type Request, type Response }
 import helmet from "helmet";
 import type { ViteDevServer } from "vite";
 import { z } from "zod";
+import { isLoopback } from "../auth/localOnly.ts";
 import type { ServerContext } from "../context.ts";
 import { lanAddress } from "../services/table.ts";
 import { csrfGuard, ok, requestContext, route, sendError } from "./helpers.ts";
@@ -130,9 +131,13 @@ export async function buildHttpApp(
   app.use("/api", (req: Request, res: Response, next: NextFunction) =>
     BIG_BODY_PATHS.has(req.path) ? next() : json(req, res, next),
   );
-  // REST per session (or per IP when anonymous): 60 per 10 s (SPEC §22.5).
+  // REST per session (or per IP when anonymous): 60 per 10 s (SPEC §22.5). Someone still in the waiting room counts by
+  // address too: a new pending session is one request away, and each was a fresh allowance (security review M4).
   app.use("/api", (req: Request, res: Response, next: NextFunction) => {
-    const key = req.gloam.auth ? `s:${req.gloam.auth.session.id}` : `ip:${req.gloam.ip}`;
+    const s = req.gloam.auth?.session;
+    // (This computer's own callers keep their own allowance each: it's the host.)
+    const counted = s && (!(s.kind === "player" && s.status !== "admitted") || isLoopback(req.gloam.ip));
+    const key = counted ? `s:${s.id}` : `ip:${req.gloam.ip}`;
     if (!ctx.limits.rest.take(key)) return sendError(res, 429, "RATE_LIMITED", "Slow down a little.");
     next();
   });

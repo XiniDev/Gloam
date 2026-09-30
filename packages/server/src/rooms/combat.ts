@@ -57,7 +57,8 @@ export interface CombatHost {
   /** Death saving throws for the dying among these (health.ts). */
   requestDeathSaves(tokenIds: string[]): void;
   /** Appends to the campaign log (the combat's summary). */
-  log(kind: string, text: string, data: Record<string, unknown>): void;
+  /** A log entry; `visibility` as the log keeps it ("everyone", or "only:" and the user ids — none: the DMs only). */
+  log(kind: string, text: string, data: Record<string, unknown>, visibility?: string): void;
   /** Closes the open requests this combat asked (its initiative cards), when it stops. */
   closeAsked(combatId: string): void;
 }
@@ -442,25 +443,61 @@ export class CombatFlow {
 
   // ── stopping ─────────────────────────────────────────────────────────────────────────────────────────────
 
-  /** Combat stopped (AC-CMB-07): its summary in the log, and everyone told. */
+  /**
+   * Combat stopped (AC-CMB-07): its summary in the log, and everyone told — each person of what they could know
+   * (§13.4, AC-SEC-07): the DM of every combatant; a player of those they perceive or control — a hidden sniper's
+   * damage isn't named to them — with the damage a creature took only where its hit points show them exact numbers
+   * (a total taken would give away what a bar or a word keeps back).
+   */
   stopped(e: CombatStopped): void {
     // Initiative still being asked for: the cards go (there's nothing to roll it for now).
     this.host.closeAsked(e.combatId);
-    // Stopped before its first turn: called off, not "ended after 0 rounds" (critic P11 r1 I7 — the log is exported and
-    // read by the recap).
-    const parts = [
-      e.rounds > 0
-        ? `Combat ended after ${e.rounds} ${e.rounds === 1 ? "round" : "rounds"}.`
-        : "Combat called off before it began.",
-    ];
-    if (e.downed.length) parts.push(`Down: ${e.downed.join(", ")}.`);
-    const hits = e.tally.filter((x) => x.dealt || x.taken);
-    if (hits.length)
-      parts.push(`Damage — ${hits.map((x) => `${x.name}: dealt ${x.dealt}, took ${x.taken}`).join("; ")}.`);
-    const text = parts.join(" ");
-    this.host.log("combat.summary", text, { rounds: e.rounds, downed: e.downed, tally: e.tally });
-    // The words for the log; the parts for the toast's own layout (a title, who went down, a tally row each).
-    for (const v of this.host.viewers())
-      v.send("combat.stopped", { text, rounds: e.rounds, downed: e.downed, tally: hits });
+    const model = this.host.model();
+    const summaryFor = (v: CombatViewer | null) => {
+      const knows = (tokenId: string) =>
+        !v || v.dm || controllersOf(model, tokenId).includes(v.userId) || v.perceives(tokenId);
+      const exact = (tokenId: string) =>
+        !v ||
+        v.dm ||
+        controllersOf(model, tokenId).includes(v.userId) ||
+        model.get("token", tokenId)?.hpDisplay === "exact";
+      const downed = e.downed.filter((x) => knows(x.tokenId)).map((x) => x.name);
+      const hits = e.tally
+        .filter((x) => knows(x.tokenId) && (x.dealt || x.taken))
+        .map((x) => ({ name: x.name, dealt: x.dealt, taken: exact(x.tokenId) ? x.taken : null }));
+      // Stopped before its first turn: called off, not "ended after 0 rounds" (critic P11 r1 I7 — the log is exported
+      // and read by the recap).
+      const parts = [
+        e.rounds > 0
+          ? `Combat ended after ${e.rounds} ${e.rounds === 1 ? "round" : "rounds"}.`
+          : "Combat called off before it began.",
+      ];
+      if (downed.length) parts.push(`Down: ${downed.join(", ")}.`);
+      if (hits.length)
+        parts.push(
+          `Damage — ${hits.map((x) => `${x.name}: dealt ${x.dealt}${x.taken === null ? "" : `, took ${x.taken}`}`).join("; ")}.`,
+        );
+      return { text: parts.join(" "), downed, hits };
+    };
+    // The log: the whole summary for the DMs; each player's own (those who'd read the same share one entry).
+    const full = summaryFor(null);
+    this.host.log(
+      "combat.summary",
+      full.text,
+      { rounds: e.rounds, downed: full.downed, tally: e.tally },
+      "only:",
+    );
+    const byText = new Map<string, string[]>();
+    for (const v of this.host.viewers()) {
+      const s = summaryFor(v);
+      // The words for the log; the parts for the toast's own layout (a title, who went down, a tally row each).
+      v.send("combat.stopped", { text: s.text, rounds: e.rounds, downed: s.downed, tally: s.hits });
+      if (v.dm) continue;
+      const users = byText.get(s.text) ?? [];
+      if (!users.includes(v.userId)) users.push(v.userId);
+      byText.set(s.text, users);
+    }
+    for (const [text, users] of byText)
+      this.host.log("combat.summary", text, { rounds: e.rounds }, `only:${users.join(",")}`);
   }
 }

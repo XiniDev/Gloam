@@ -48,7 +48,12 @@ interface AssetDto {
   overrides: Record<string, number>;
   dominant?: string;
 }
-type UploadResult = { status: number; asset?: AssetDto; error?: { code: string; message: string } };
+type UploadResult = {
+  status: number;
+  asset?: AssetDto;
+  deduped?: boolean;
+  error?: { code: string; message: string };
+};
 
 async function upload(
   agent: Agent,
@@ -69,8 +74,11 @@ async function upload(
     },
     body: form,
   });
-  const j = (await res.json()) as { data?: { asset: AssetDto }; error?: { code: string; message: string } };
-  return { status: res.status, asset: j.data?.asset, error: j.error };
+  const j = (await res.json()) as {
+    data?: { asset: AssetDto; deduped?: boolean };
+    error?: { code: string; message: string };
+  };
+  return { status: res.status, asset: j.data?.asset, deduped: j.data?.deduped, error: j.error };
 }
 
 const get = (agent: Agent | null, path: string, headers: Record<string, string> = {}) =>
@@ -133,6 +141,31 @@ describe("P2 — assets and uploads (AST)", () => {
   });
 
   const health = async () => (await fetch(`${t.url}/api/health`)).status;
+
+  /** A live scene (made once) with a token showing `assetId` in the open: something Dave has a reason to see. */
+  let hall: string | null = null;
+  async function showToDave(assetId: string, mode: "auto" | "model" = "auto"): Promise<string> {
+    if (!hall) {
+      hall = (
+        await rq<{ sceneId: string }>(dm, "scene.create", {
+          name: "Hall",
+          mapKind: "procedural",
+          floorStyle: "stone",
+          widthFt: 30,
+          heightFt: 30,
+        })
+      ).sceneId;
+      await rq(dm, "scene.activate", { sceneId: hall });
+    }
+    const { tokenId } = await rq<{ tokenId: string }>(dm, "token.create", {
+      sceneId: hall,
+      name: "Shown",
+      pos: { x: 12.5, y: 12.5 },
+      appearance: { mode, assetId, scale: 1, offsetY: 0, rotationOffsetDeg: 0 },
+    });
+    await waitFor(() => t.server.ctx.rooms.table(campaignId)?.assetVisibleTo(daveId, assetId));
+    return tokenId;
+  }
   const tmpFiles = () => readdirSync(t.server.ctx.paths.tmp);
 
   it("the production limits match SPEC §8.16/§21.1 (tests shorten only the kill-path timeouts)", () => {
@@ -252,6 +285,7 @@ describe("P2 — assets and uploads (AST)", () => {
     // (Its message says why, should it ever be refused — seen once under a full parallel run.)
     expect(first.status, first.error?.message).toBe(200);
     expect(first.asset?.status).toBe("pending");
+    lobbyUpload = first.asset?.id as string;
     const second = await upload(lobby.agent, "art", "me-again.png", await noisePng(2310, 2300));
     expect(second.status).toBe(413);
     expect(second.error?.message).toMatch(/storage allowance/);
@@ -261,6 +295,8 @@ describe("P2 — assets and uploads (AST)", () => {
 
   let tokenAsset: AssetDto;
   let miniAsset: AssetDto;
+  /** A drawing uploaded from the waiting room by someone never let in. */
+  let lobbyUpload: string;
 
   it("AC-AST-03 images are re-encoded to WebP variants with metadata stripped", async () => {
     const jpeg = await image("jpeg", 1600, 1200, { exif: "SECRET-EXIF-MARK" });
@@ -400,13 +436,18 @@ describe("P2 — assets and uploads (AST)", () => {
     expect((await heard).asset.status).toBe("approved");
     await dm.request("asset.review", { assetIds: [again.asset?.id], decision: "reject" });
     await expect(dm.request("history.undo", {})).rejects.toBeTruthy(); // approvals aren't undoable
-    // Rejected files are purged after 24 h.
+    // Rejected files are purged after 24 h — and what someone never let in left in the waiting room (security review M4).
+    expect(t.server.ctx.assets.get(lobbyUpload)).toBeDefined();
     const purged = t.server.ctx.assets.purge(Date.now() + 25 * 3600_000);
-    expect(purged.references).toBe(1);
+    expect(purged.references).toBe(2);
     expect(t.server.ctx.assets.get(again.asset?.id as string)).toBeUndefined();
+    expect(t.server.ctx.assets.get(lobbyUpload)).toBeUndefined();
   }, 60_000);
 
   it("AC-AST-05 assets are served only to admitted members, immutable, with fixed type, nosniff and a sandbox CSP", async () => {
+    // Nothing on the table shows it yet: a player has no reason to fetch the DM's art (security review M2).
+    expect((await get(dave, `/assets/${tokenAsset.id}/w512`)).status).toBe(404);
+    await showToDave(tokenAsset.id);
     const res = await get(dave, `/assets/${tokenAsset.id}/w512`);
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toBe("image/webp");
@@ -426,8 +467,10 @@ describe("P2 — assets and uploads (AST)", () => {
     expect((await get(erin, `/assets/${pending.asset?.id}/w70`)).status).toBe(404);
     expect((await get(admin, `/assets/${pending.asset?.id}/w70`)).status).toBe(200);
     expect((await get(dave, `/assets/${tokenAsset.id}/..%2F..%2Fgloam.db`)).status).toBe(404);
-    // Audio supports Range requests.
+    // Audio supports Range requests — the track playing (the Library's others aren't a player's to fetch).
     const song = await upload(admin, "audio", "song.wav", wav(800));
+    expect((await get(dave, `/assets/${song.asset?.id}/orig`, { range: "bytes=0-99" })).status).toBe(404);
+    await rq(dm, "audio.music", { action: "playTrack", trackId: song.asset?.id });
     const part = await get(dave, `/assets/${song.asset?.id}/orig`, { range: "bytes=0-99" });
     expect(part.status).toBe(206);
     expect((await part.arrayBuffer()).byteLength).toBe(100);
@@ -556,8 +599,36 @@ describe("P2 — assets and uploads (AST)", () => {
     ).rejects.toBeTruthy();
   });
 
+  it("security review L3: a player isn't told another's file is stored — and their copy takes as long as a new one", async () => {
+    const bytes = await noisePng(900, 900);
+    const dmCopy = await upload(admin, "token", "known-map.png", bytes);
+    expect(dmCopy.status).toBe(200);
+    // Dave uploads the very same file: nothing says someone has it; it's his own reference, waiting for a DM.
+    const t0 = Date.now();
+    const his = await upload(dave, "token", "found-online.png", bytes);
+    const took = Date.now() - t0;
+    expect(his.status).toBe(200);
+    expect(his.deduped).toBe(false);
+    expect(his.asset?.status).toBe("pending");
+    expect(his.asset?.id).not.toBe(dmCopy.asset?.id);
+    // (Processed all the same: the stored file stands — one file, two references.)
+    expect(took).toBeGreaterThan(20);
+    expect(
+      t.server.ctx.assets.file(`${his.asset?.id ? t.server.ctx.assets.get(his.asset.id)?.fileId : ""}`),
+    ).toBeDefined();
+    // Again: now it's his own file, and he's told.
+    expect((await upload(dave, "token", "found-online.png", bytes)).deduped).toBe(true);
+  }, 60_000);
+
   it("asset privacy: players get only what drawing needs, and override changes reach them live", async () => {
-    // The DM's mini, as a player's client would fetch it for a token: no name, tags or uploader.
+    // The DM's mini, not yet on the table: nothing of it reaches a player — no fetch, no update (security review M2).
+    expect((await get(dave, `/api/assets/${miniAsset.id}`)).status).toBe(404);
+    daveAssetMsgs.length = 0;
+    await rq(dm, "asset.update", { assetId: miniAsset.id, overrides: { scale: 1.2, offsetY: 0 } });
+    await new Promise((r) => setTimeout(r, 200));
+    expect(daveAssetMsgs.filter((m) => m.asset.id === miniAsset.id)).toEqual([]);
+    await showToDave(miniAsset.id, "model");
+    // On a token in front of him, as a player's client would fetch it: no name, tags or uploader.
     const asPlayer = (await (await get(dave, `/api/assets/${miniAsset.id}`)).json()) as {
       data: Record<string, unknown>;
     };

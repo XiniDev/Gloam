@@ -219,7 +219,14 @@ describe("P11 — table flavour on the server (FUN)", () => {
   it("AC-FUN-05: the log records sessions, scene changes, deaths and stabilisations, level changes and handouts shown; takes manual entries; each person reads what's theirs; grouped by session", async () => {
     const dave = seats.Dave as Seat;
     const erin = seats.Erin as Seat;
-    // A creature dies; another becomes stable.
+    // A creature dies and another becomes stable on Dave's side of the wall, in the dark (Erin can't see there); a
+    // third dies in front of Erin's rogue, in her darkvision.
+    const { tokenId: seen } = await rq<{ tokenId: string }>(dm.room, "token.create", {
+      sceneId,
+      name: "Cave rat",
+      pos: { x: 45, y: 20 },
+      stats: { hp: 7, hpMax: 7, ac: 12 },
+    });
     const { tokenId: goblin } = await rq<{ tokenId: string }>(dm.room, "token.create", {
       sceneId,
       name: "Goblin G7",
@@ -233,6 +240,7 @@ describe("P11 — table flavour on the server (FUN)", () => {
       stats: { hp: 20, hpMax: 20, ac: 15 },
     });
     await sleep(250);
+    await rq(dm.room, "status.change", { tokenId: seen, add: [{ id: "dead" }] });
     await rq(dm.room, "status.change", { tokenId: goblin, add: [{ id: "dead" }] });
     await sleep(250);
     await rq(dm.room, "status.change", { tokenId: guard, add: [{ id: "stable" }] });
@@ -262,8 +270,14 @@ describe("P11 — table flavour on the server (FUN)", () => {
     const erinLog = await rq<LogEntryView[]>(erin.room, "log.list", {});
     const texts = erinLog.map((e) => e.text);
     expect(texts).toContain("Session 1 began.");
-    expect(texts).toContain("Goblin G7 died.");
-    expect(texts).toContain("Captain Vey is stable.");
+    // Deaths and stabilisations: told to those who'd know (§13.4, AC-SEC-07) — Erin of the goblin she saw fall, not
+    // of what happened out of her sight; the DM of all of them.
+    expect(texts).toContain("Cave rat died.");
+    expect(texts).not.toContain("Goblin G7 died.");
+    expect(texts).not.toContain("Captain Vey is stable.");
+    const dmTexts = (await rq<LogEntryView[]>(dm.room, "log.list", {})).map((e) => e.text);
+    for (const x of ["Cave rat died.", "Goblin G7 died.", "Captain Vey is stable."])
+      expect(dmTexts).toContain(x);
     expect(texts).toContain("Mira reached level 2.");
     expect(texts).toContain("The table moved to Flooded chamber.");
     expect(erinLog.find((e) => e.kind === "manual")).toMatchObject({

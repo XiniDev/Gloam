@@ -3,6 +3,7 @@ import { GloamError } from "@gloam/shared/protocol";
 import type { Express, Request, Response } from "express";
 import { z } from "zod";
 import { MIN_PASSWORD } from "../../auth/admin.ts";
+import { isLoopback } from "../../auth/localOnly.ts";
 import { passwordStrength } from "../../auth/passwords.ts";
 import { deviceLabel, sanitizeDisplayName, validDisplayName, validPin } from "../../auth/profiles.ts";
 import type { ServerContext } from "../../context.ts";
@@ -58,9 +59,16 @@ function colorHex(id: string): string {
 
 export function authRoutes(app: Express, ctx: ServerContext, hooks: AuthRouteHooks): void {
   // ── first run ──────────────────────────────────────────────────────────────────────────────────────────
+  // (Outside /api, so outside its rate limit: these two have their own — by address, as anyone may ask.)
+  const limited = (req: Request, res: Response): boolean => {
+    if (ctx.limits.rest.take(`ip:${req.gloam.ip}`)) return false;
+    res.status(429).type("text").send("Slow down a little.");
+    return true;
+  };
   app.get(
     "/setup",
     route(async (req, res) => {
+      if (limited(req, res)) return;
       if (!req.gloam.local) {
         ctx.security.record("localonly.refused", { ip: req.gloam.ip, detail: { path: "/setup" } });
         res.status(403).type("text").send("The setup page only works on the host PC.");
@@ -120,6 +128,7 @@ export function authRoutes(app: Express, ctx: ServerContext, hooks: AuthRouteHoo
   app.get(
     "/admin/magic",
     route(async (req, res) => {
+      if (limited(req, res)) return;
       if (!req.gloam.local) {
         ctx.security.record("localonly.refused", { ip: req.gloam.ip, detail: { path: "/admin/magic" } });
         res.status(403).type("text").send("Admin links only work on the host PC.");
@@ -311,6 +320,9 @@ export function authRoutes(app: Express, ctx: ServerContext, hooks: AuthRouteHoo
         userId = u.id;
         identity = "device";
       } else if (b.mode === "new") {
+        // (Each new profile is a knock, a PIN to hash and a waiting-room allowance: so many per address.)
+        if (!isLoopback(ip) && !ctx.limits.newProfiles.take(ip))
+          return sendError(res, 429, "RATE_LIMITED", "Too many new names from here — wait a few minutes.");
         const name = sanitizeDisplayName(b.name);
         if (!validDisplayName(name)) {
           throw new GloamError("INVALID", "Names are 2–24 characters: letters, digits, spaces and - ' _ .");
@@ -359,7 +371,8 @@ export function authRoutes(app: Express, ctx: ServerContext, hooks: AuthRouteHoo
       const user = ctx.profiles.get(userId);
       if (!user || user.bannedAt) throw new GloamError("FORBIDDEN", "You can't join this table");
       const label = deviceLabel(req.headers["user-agent"]);
-      const device = ctx.profiles.linkDevice(userId, deviceToken, label);
+      // (An unverified claim's browser is recorded unconfirmed: recognised as the profile only once it's admitted.)
+      const device = ctx.profiles.linkDevice(userId, deviceToken, label, identity !== "unverified");
       if (!req.gloam.cookies[COOKIE.dev]) issueDeviceCookie(req, res, deviceToken);
       // Replace any previous player session in this browser.
       const prev = req.gloam.auth;

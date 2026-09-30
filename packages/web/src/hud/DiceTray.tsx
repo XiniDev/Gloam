@@ -26,8 +26,9 @@ import { BottomSheet } from "../ui/BottomSheet.tsx";
 import { Button, IconButton } from "../ui/Button.tsx";
 import { Segmented, Toggle } from "../ui/controls.tsx";
 import { BrassPin } from "../ui/ornaments.tsx";
+import { ScrollFade } from "../ui/ScrollFade.tsx";
 import { toast } from "../ui/Toast.tsx";
-import { useHudInsets, useIsPhone, useObstacle } from "./insets.ts";
+import { underTopBar, useBoardCovers, useHudInsets, useIsPhone, useObstacle } from "./insets.ts";
 
 const QUICK = [4, 6, 8, 10, 12, 20, "%"] as const;
 
@@ -127,6 +128,22 @@ function KeepOpen() {
   );
 }
 
+/** The narrowest the tray lays out in (its dice four to a row, its steppers one above the other). */
+const TRAY_MIN_PX = 300;
+/** The room the board's covers keep round what they measure (insets.ts). */
+const COVER_GAP_PX = 4;
+
+/** The window's width, kept current as it changes. */
+function useViewportWidth(): number {
+  const [w, setW] = useState(() => window.innerWidth);
+  useEffect(() => {
+    const on = () => setW(window.innerWidth);
+    window.addEventListener("resize", on);
+    return () => window.removeEventListener("resize", on);
+  }, []);
+  return w;
+}
+
 function DesktopTray({
   userId,
   dm,
@@ -144,17 +161,34 @@ function DesktopTray({
   // Kept open for a run of rolls, it stands beside the dock rather than over the middle of the board, where the dice
   // come to rest.
   const keep = useSettings((s) => s.diceTrayKeepOpen);
+  // In the board's free part: beside the tool column and short of an open panel (it stood over the sheet's buttons),
+  // under the top bar, above the dice button — scrolling inside when a short screen (a phone on its side) can't hold it.
+  const left = useHudInsets((s) => s.left);
   const right = useHudInsets((s) => s.right);
+  const top = useHudInsets((s) => s.banner + s.tracker);
+  const width = useViewportWidth();
+  // A tablet with a panel open can leave less of the board than the tray needs: it takes the panel's place while it's
+  // open (the panel is as it was when it closes) rather than squeezing into the gap or lying across the panel's buttons.
+  const panel = useBoardCovers((s) => s.rects["dock-panel"]);
+  const inPanel = panel && width - left - right < TRAY_MIN_PX;
+  const box = inPanel
+    ? {
+        left: panel.left + COVER_GAP_PX,
+        top: panel.top + COVER_GAP_PX,
+        right: width - panel.right + COVER_GAP_PX,
+        bottom: window.innerHeight - panel.bottom + COVER_GAP_PX,
+      }
+    : { left, right, top: underTopBar(top), bottom: 76 };
   return (
     <div
-      className={`pointer-events-none absolute right-0 bottom-[76px] left-0 z-40 flex px-3 ${keep ? "justify-end" : "justify-center"}`}
-      style={keep ? { paddingRight: right } : undefined}
+      className={`pointer-events-none absolute z-40 flex items-end ${keep ? "justify-end" : "justify-center"}`}
+      style={box}
     >
       <section
         ref={ref}
         aria-label="Dice tray"
         data-testid="dice-tray"
-        className="panel pointer-events-auto flex w-full max-w-[520px] flex-col gap-3 p-3"
+        className={`panel pointer-events-auto flex max-h-full min-h-0 w-full flex-col gap-3 p-3 ${inPanel ? "h-full" : "max-w-[520px]"}`}
       >
         <header className="flex items-center gap-2">
           <D20Icon size={18} className="text-brass" />
@@ -165,7 +199,9 @@ function DesktopTray({
             <X size={16} />
           </IconButton>
         </header>
-        <TrayBody userId={userId} dm={dm} onRolled={onRolled} />
+        <ScrollFade outerClassName="min-h-0" className="flex flex-col [scrollbar-width:thin]">
+          <TrayBody userId={userId} dm={dm} onRolled={onRolled} />
+        </ScrollFade>
       </section>
     </div>
   );
@@ -293,8 +329,10 @@ function TrayBody({
     : [];
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="grid grid-cols-7 gap-1" role="group" aria-label="Quick dice">
+    // Laid out by its own width (a panel's column, a phone, the board's free part): below 330 px the dice go four to a
+    // row and the steppers one above the other — squeezed side by side, a stepper's + ran into the next one's −.
+    <div className="@container flex flex-col gap-3">
+      <div className="grid grid-cols-4 gap-1 @[330px]:grid-cols-7" role="group" aria-label="Quick dice">
         {QUICK.map((s) => (
           <button
             key={s}
@@ -312,7 +350,7 @@ function TrayBody({
         ))}
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 gap-3 @[330px]:grid-cols-2">
         <Stepper
           label="Dice"
           disabled={count === null}

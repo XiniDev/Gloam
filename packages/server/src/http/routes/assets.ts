@@ -8,7 +8,14 @@ import busboy from "busboy";
 import type { Express, Request, Response } from "express";
 import { z } from "zod";
 import { cleanName, renderDto, type Uploader } from "../../assets/service.ts";
-import { PROFILE_CAP, PURPOSE_PROFILES, PURPOSES, type Purpose, streamCap } from "../../assets/types.ts";
+import {
+  LOBBY_TOTAL,
+  PROFILE_CAP,
+  PURPOSE_PROFILES,
+  PURPOSES,
+  type Purpose,
+  streamCap,
+} from "../../assets/types.ts";
 import type { ServerContext } from "../../context.ts";
 import type { Role } from "../../services/campaigns.ts";
 import { ok, requireSession, route, sendError } from "../helpers.ts";
@@ -149,7 +156,17 @@ export function assetRoutes(app: Express, ctx: ServerContext): void {
       if (!String(req.headers["content-type"] ?? "").startsWith("multipart/form-data"))
         return fail(400, "INVALID", "Send the file as multipart/form-data.");
       const quota = ctx.assets.quotaFor(uploader);
-      const quotaLeft = quota === null ? null : quota - ctx.assets.usedBytes(uploader.userId);
+      // The waiting room's own allowance, whoever's in it (each new face had its 20 MB: security review M4).
+      const lobbyLeft = uploader.lobby ? LOBBY_TOTAL - ctx.assets.lobbyBytes(campaignId) : null;
+      const personalLeft = quota === null ? null : quota - ctx.assets.usedBytes(uploader.userId);
+      const quotaLeft = lobbyLeft === null ? personalLeft : Math.min(lobbyLeft, personalLeft ?? lobbyLeft);
+      if (lobbyLeft !== null && lobbyLeft <= 0)
+        return fail(
+          413,
+          "INVALID",
+          "The waiting room holds all the uploads it can for now — add your art once the DM lets you in.",
+          true,
+        );
       if (quotaLeft !== null && quotaLeft <= 0)
         return fail(
           413,

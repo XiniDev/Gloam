@@ -10,8 +10,7 @@ import {
 } from "@gloam/shared/rules";
 import type { Spell } from "@gloam/shared/schemas";
 import type { ReactNode } from "react";
-import Markdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { DocMarkdown } from "../../ui/DocMarkdown.tsx";
 import { Filigree } from "../../ui/ornaments.tsx";
 import { SrdLine } from "../../ui/SrdLine.tsx";
 
@@ -132,7 +131,7 @@ export function SpellCard({
       ) : null}
       {compact ? null : (
         <div className="spell-text flex flex-col gap-2 text-14 leading-relaxed [&_p]:m-0 [&_table]:text-13 [&_td]:pr-3 [&_th]:pr-3 [&_th]:text-left">
-          <Markdown remarkPlugins={[remarkGfm]}>{spell.text}</Markdown>
+          <DocMarkdown>{spell.text}</DocMarkdown>
           {spell.higherLevels ? (
             <p>
               <strong className="italic">Using a Higher-Level Spell Slot.</strong> {spell.higherLevels}

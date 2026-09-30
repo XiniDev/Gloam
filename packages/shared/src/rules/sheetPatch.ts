@@ -3,6 +3,8 @@
  * sheet edit undoes path by path and two edits to different fields of one sheet never conflict. `applyPatch` is the
  * one applier — the server's command bus and the clients' sheet mirrors both use it.
  */
+
+import { assertSafeKey } from "../safeKeys.ts";
 import type { SheetChange } from "./sheetLocks.ts";
 
 export interface JsonPatchOp {
@@ -58,6 +60,8 @@ export function applyPatch<T>(doc: T, patch: readonly JsonPatchOp[]): T {
   let root = clone(doc) as unknown;
   for (const p of patch) {
     const ts = tokens(p.path);
+    // (Own properties only, and never a key that reaches Object.prototype: safeKeys.ts.)
+    for (const t of ts) assertSafeKey(t);
     if (ts.length === 0) {
       if (p.op === "remove") throw new Error("can't remove the whole document");
       root = clone(p.value);
@@ -68,7 +72,7 @@ export function applyPatch<T>(doc: T, patch: readonly JsonPatchOp[]): T {
       if (Array.isArray(parent)) {
         if (!isIndex(t) || Number(t) >= parent.length) throw new Error(`no ${p.path}`);
         parent = parent[Number(t)];
-      } else if (parent !== null && typeof parent === "object" && t in parent) {
+      } else if (parent !== null && typeof parent === "object" && Object.hasOwn(parent, t)) {
         parent = (parent as Record<string, unknown>)[t];
       } else throw new Error(`no ${p.path}`);
     }
@@ -86,7 +90,7 @@ export function applyPatch<T>(doc: T, patch: readonly JsonPatchOp[]): T {
       }
     } else if (parent !== null && typeof parent === "object") {
       const o = parent as Record<string, unknown>;
-      if (p.op !== "add" && !(last in o)) throw new Error(`no ${p.path}`);
+      if (p.op !== "add" && !Object.hasOwn(o, last)) throw new Error(`no ${p.path}`);
       if (p.op === "remove") delete o[last];
       else o[last] = clone(p.value);
     } else throw new Error(`no ${p.path}`);

@@ -1,0 +1,1 @@
+ALTER TABLE `devices` ADD `confirmed` integer DEFAULT true NOT NULL;

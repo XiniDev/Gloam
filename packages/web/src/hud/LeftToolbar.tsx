@@ -6,6 +6,7 @@ import { setWallMode, useWallTool } from "../board/tools/walls.ts";
 import { request, useTable } from "../net/table.ts";
 import { type Tool, useUi } from "../state/ui.ts";
 import { IconButton } from "../ui/Button.tsx";
+import { ScrollFade } from "../ui/ScrollFade.tsx";
 import { openEmoteWheel } from "./EmoteWheel.tsx";
 import { hudOrder } from "./Intro.tsx";
 import {
@@ -114,18 +115,33 @@ export function LeftToolbar() {
 
 function Rail({ tool, dm }: { tool: Tool; dm: boolean }) {
   const navRef = useRef<HTMLElement>(null);
+  const banner = useHudInsets((s) => s.banner);
+  const tracker = useHudInsets((s) => s.tracker);
   useMeasuredInset("left", navRef, insetMeasures.left);
   useCover("toolbar", navRef);
   return (
-    <nav
-      ref={navRef}
-      {...hudOrder(1)}
-      aria-label="Board tools"
-      data-hud="toolbar"
-      className="panel pointer-events-auto absolute left-3 top-1/2 z-30 flex min-w-[52px] -translate-y-1/2 flex-col items-center gap-1 p-1.5"
+    // Between the top bar (and a banner or the tracker under it) and the foot of the screen: in the middle of that when
+    // it fits, scrolling when a short screen can't hold every tool — a phone on its side ran the DM's column off both
+    // ends, its first tool under the title.
+    <div
+      className="pointer-events-none absolute bottom-3 left-3 z-30 flex flex-col justify-center"
+      style={{ top: underTopBar(banner + tracker) }}
     >
-      <ToolButtons tool={tool} dm={dm} />
-    </nav>
+      <nav
+        ref={navRef}
+        {...hudOrder(1)}
+        aria-label="Board tools"
+        data-hud="toolbar"
+        className="panel pointer-events-auto flex max-h-full min-h-0 min-w-[52px] flex-col overflow-hidden p-1.5"
+      >
+        <ScrollFade
+          outerClassName="min-h-0"
+          className="flex flex-col items-center gap-1 [scrollbar-width:none]"
+        >
+          <ToolButtons tool={tool} dm={dm} />
+        </ScrollFade>
+      </nav>
+    </div>
   );
 }
 

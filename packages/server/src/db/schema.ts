@@ -56,6 +56,11 @@ export const devices = sqliteTable(
     createdAt: integer("created_at").notNull(),
     lastSeenAt: integer("last_seen_at").notNull(),
     bannedAt: integer("banned_at"),
+    /**
+     * Whether this browser has shown it's the profile's: made it, knew its PIN, or was admitted by the Admin or a DM
+     * after an unverified claim. An unconfirmed row is never recognised as the profile (security review H2).
+     */
+    confirmed: integer("confirmed", { mode: "boolean" }).notNull().default(true),
   },
   (t) => [index("devices_user_idx").on(t.userId), index("devices_hash_idx").on(t.deviceHash)],
 );

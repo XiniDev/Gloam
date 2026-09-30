@@ -1,3 +1,5 @@
+import { assertSafeKey, ownGet } from "@gloam/shared/safeKeys";
+
 /**
  * Operations (SPEC §14.3): the unit of change the command bus persists, broadcasts, and inverts for undo.
  */
@@ -62,11 +64,13 @@ export function clone<T>(v: T): T {
   return v === undefined ? v : (JSON.parse(JSON.stringify(v)) as T);
 }
 
+/** The value at `path` in a plain document (own properties only: safeKeys.ts). */
 export function getPath(obj: unknown, path: string[]): unknown {
   let cur: unknown = obj;
   for (const k of path) {
+    assertSafeKey(k);
     if (cur === null || typeof cur !== "object") return undefined;
-    cur = (cur as Record<string, unknown>)[k];
+    cur = ownGet(cur, k);
   }
   return cur;
 }
@@ -74,11 +78,12 @@ export function getPath(obj: unknown, path: string[]): unknown {
 /** Returns a copy of `obj` with `path` set to `value` (undefined deletes the key). */
 export function setPath<T>(obj: T, path: string[], value: unknown): T {
   if (path.length === 0) return clone(value) as T;
+  for (const k of path) assertSafeKey(k);
   const root = clone(obj) as Record<string, unknown>;
   let cur: Record<string, unknown> = root;
   for (let i = 0; i < path.length - 1; i++) {
     const k = path[i] as string;
-    const next = cur[k];
+    const next = ownGet(cur, k);
     if (next === null || typeof next !== "object") cur[k] = {};
     cur = cur[k] as Record<string, unknown>;
   }

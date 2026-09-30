@@ -183,8 +183,10 @@ describe("P11 — music and ambience on the server (AUD)", () => {
     // Undo puts the playlist back (an edit), but never the playback (AC-UNDO-05).
     await rq(dm, "history.undo", {});
     expect(last("dm")?.playlists.map((p) => p.name)).toEqual(["Road"]);
-    // Dave's client heard every change as the DM's did.
-    await waitFor(() => JSON.stringify(last("dave")) === JSON.stringify(last("dm")));
+    // Dave's client heard every change as the DM's did — all but the DM's playlists (a player is told what plays, not
+    // what's lined up: security review M2).
+    await waitFor(() => JSON.stringify(last("dave")) === JSON.stringify({ ...last("dm"), playlists: [] }));
+    expect(last("dave")?.playlists).toEqual([]);
   });
 
   it("sets the ambience from a preset or layer by layer, for everyone; a late joiner hears it as it is", async () => {

@@ -76,10 +76,28 @@ export class PeopleService {
       throw new GloamError("FORBIDDEN");
     const session = this.ctx.sessions.get(d.sessionId);
     if (session?.kind !== "player") throw new GloamError("NOT_FOUND", "That knock is gone.");
+    // A DM decides knocks: a pending one, never a DM's own session — only the Admin removes a DM (security review L1;
+    // the session ids are on the knock cards every DM holds).
+    if (actor.role !== "admin") {
+      if (session.status !== "pending") throw new GloamError("NOT_FOUND", "That knock is gone.");
+      const campaignId = this.ctx.table.campaignId;
+      if (campaignId && this.ctx.campaigns.membership(campaignId, session.userId) === "dm")
+        throw new GloamError("FORBIDDEN", "Only the Admin can turn a DM away.");
+    }
     if (d.decision === "admitPlayer") this.admit(session.id, "player", actor);
     else if (d.decision === "admitSpectator") this.admit(session.id, "spectator", actor);
     else if (d.decision === "deny") this.deny(session.id, actor);
-    else this.ban(session.userId, actor, d.reason ?? null);
+    else if (session.identityKind === "unverified" && session.deviceId) {
+      // An unverified claim: whoever knocked isn't known to be the profile they named — their browser is banned,
+      // not the profile (its owner didn't knock).
+      this.ctx.profiles.banDevice(session.deviceId);
+      this.ctx.security.record("ban", {
+        userId: session.userId,
+        ip: actor.ip,
+        detail: { by: actor.userId, browser: true, claimed: true },
+      });
+      this.deny(session.id, actor);
+    } else this.ban(session.userId, actor, d.reason ?? null);
   }
 
   admit(sessionId: string, as: "player" | "spectator", actor: Actor, opts: { auto?: boolean } = {}): void {
@@ -94,6 +112,9 @@ export class PeopleService {
       admittedAs: as,
       tableSessionNo: this.ctx.table.sessionNo,
     });
+    // An unverified claim let in: its browser is now this profile's (recognised next time, security review H2).
+    if (session.identityKind === "unverified" && session.deviceId)
+      this.ctx.profiles.confirmDevice(session.deviceId);
     const current = this.ctx.campaigns.membership(campaignId, user.id);
     // Never demote a DM; spectator ↔ player follows the latest admission.
     if (current !== "dm") this.ctx.campaigns.setMembership(campaignId, user.id, as);

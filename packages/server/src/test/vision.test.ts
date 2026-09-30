@@ -229,6 +229,27 @@ describe("P4 — vision, light and fog on the server (VIS)", () => {
     await waitFor(() => !sees(bob, goblin));
   });
 
+  it("security review L4: a light's name is the DM's — its light reaches players, its name never does", async () => {
+    const mark = anna.socket.frames.length;
+    const { lightId } = await rq<{ lightId: string }>(dm, "light.create", {
+      sceneId,
+      pos: { x: 12, y: 12 },
+      preset: "torch",
+      label: "Trap brazier",
+    });
+    await waitFor(() => anna.room.state.lights?.get?.(lightId as string));
+    await waitFor(
+      () =>
+        (dm.state as unknown as { lights: Map<string, { label?: string }> }).lights?.get?.(lightId)?.label,
+    );
+    expect(
+      (dm.state as unknown as { lights: Map<string, { label?: string }> }).lights.get(lightId)?.label,
+    ).toBe("Trap brazier");
+    expect((anna.room.state.lights.get(lightId) as { label?: string }).label ?? "").toBe("");
+    expect(anna.socket.receivedSince(mark, "Trap brazier")).toBe(false);
+    await rq(dm, "light.delete", { lightIds: [lightId] });
+  });
+
   it("AC-VIS-11 / AC-WAL-03 (vision): a goblin leaving Anna's sight is seen only to where it vanished, never at its destination; a door shuts it out within 200 ms", async () => {
     await toggleDoor("open");
     await sleep(150);

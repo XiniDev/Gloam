@@ -67,7 +67,7 @@ function onMessage(type: string, payload: unknown): void {
         text: string;
         rounds: number;
         downed?: string[];
-        tally?: { name: string; dealt: number; taken: number }[];
+        tally?: { name: string; dealt: number; taken: number | null }[];
       };
       toast.info(
         p.rounds > 0

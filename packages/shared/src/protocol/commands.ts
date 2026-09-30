@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { ABILITIES, CONDITION_IDS, DAMAGE_TYPES, MARKER_IDS, SIZES, SKILL_IDS } from "../constants.ts";
+import { isSafeKey } from "../safeKeys.ts";
 
 /** Command payload schemas (SPEC §13.5). All strict: unknown keys are rejected (AC-SEC-01). */
 
@@ -709,7 +710,15 @@ export type TokenUpdate = z.infer<typeof TokenUpdate>;
 
 /** One change to a sheet: where (object keys and list indices) and the new value there (absent: remove it). */
 export const SheetChangeIn = z.strictObject({
-  path: z.array(z.union([z.string().min(1).max(60), z.number().int().min(0).max(999)])).max(8),
+  // (Never __proto__, constructor or prototype: a path through them reaches Object.prototype — safeKeys.ts.)
+  path: z
+    .array(
+      z.union([
+        z.string().min(1).max(60).refine(isSafeKey, "not a sheet field"),
+        z.number().int().min(0).max(999),
+      ]),
+    )
+    .max(8),
   after: z.unknown(),
 });
 const SheetChanges = z.array(SheetChangeIn).min(1).max(200);

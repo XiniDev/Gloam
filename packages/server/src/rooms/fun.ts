@@ -99,6 +99,30 @@ export class FunFlow {
   // ── The campaign log ──────────────────────────────────────────────────────────────────────────────────
 
   /** Whether a person may read an entry: everyone's, or one given to them; DMs read them all. */
+  /**
+   * Who may be told of something that happened to a creature (a token, or a character's sheet): its players, and every
+   * player at the table whose view holds it (one of its tokens) now. DMs read every entry anyway.
+   */
+  private knowing(kind: "token" | "actor", id: string): string[] {
+    const model = this.host.model();
+    const tokens =
+      kind === "token"
+        ? [model.get("token", id)].filter((t) => t !== undefined)
+        : model.all("token").filter((t) => t.actorId === id);
+    const users = new Set<string>();
+    for (const t of tokens) for (const u of t.ownerIds) users.add(u);
+    if (kind === "actor") {
+      const owner = model.get("actor", id)?.ownerUserId;
+      if (owner) users.add(owner);
+    }
+    for (const c of this.host.clients()) {
+      const a = c.auth as ClientAuth | undefined;
+      if (!a || isDmRole(a.role)) continue;
+      if (tokens.some((t) => this.host.perceives(c, t.id))) users.add(a.userId);
+    }
+    return [...users];
+  }
+
   private readable(visibility: string, userId: string, dm: boolean): boolean {
     if (dm || visibility === "everyone") return true;
     return visibility.startsWith("only:") && visibility.slice(5).split(",").includes(userId);
@@ -195,9 +219,13 @@ export class FunFlow {
         const after = (op.value as { deathSaves?: { dead?: boolean; stable?: boolean } } | null)?.deathSaves;
         const name = nameOf(model, op.e, op.id);
         if (!name) continue;
-        if (after?.dead && !before?.dead) this.append("death", `${name} died.`, { data: { [op.e]: op.id } });
+        // Told to those who'd know (§13.4, AC-SEC-07): the DMs, its players, and whoever perceives it now — a death
+        // in the dark isn't the table's news (security review M3).
+        const visibility = `only:${this.knowing(op.e, op.id).join(",")}`;
+        if (after?.dead && !before?.dead)
+          this.append("death", `${name} died.`, { visibility, data: { [op.e]: op.id } });
         else if (after?.stable && !before?.stable)
-          this.append("stable", `${name} is stable.`, { data: { [op.e]: op.id } });
+          this.append("stable", `${name} is stable.`, { visibility, data: { [op.e]: op.id } });
       }
       if (op.k === "sheet" || (op.k === "create" && op.e === "actor")) {
         const id = op.k === "sheet" ? op.actorId : op.id;

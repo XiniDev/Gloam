@@ -84,8 +84,9 @@ export interface CombatStopped {
   combatId: string;
   sceneId: string;
   rounds: number;
-  downed: string[];
-  tally: { name: string; dealt: number; taken: number }[];
+  /** Who went down (the room tells each person only of those they perceived or control). */
+  downed: { tokenId: string; name: string }[];
+  tally: { tokenId: string; name: string; dealt: number; taken: number }[];
 }
 
 // ── reading a combat ─────────────────────────────────────────────────────────────────────────────────────
@@ -395,8 +396,9 @@ export const combatStop: CommandDef<z.infer<typeof CombatNone>, { rounds: number
       combatId: c.id,
       sceneId: c.sceneId,
       rounds: d.begun ? c.round : 0,
-      downed: d.tally.downed.map(name),
+      downed: d.tally.downed.map((id) => ({ tokenId: id, name: name(id) })),
       tally: [...ids].map((id) => ({
+        tokenId: id,
         name: name(id),
         dealt: d.tally.dealt[id] ?? 0,
         taken: d.tally.taken[id] ?? 0,

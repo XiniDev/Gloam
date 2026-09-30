@@ -485,12 +485,39 @@ describe("P8 — combat on the server (§8.12, §16.5)", () => {
     expect(data().tally.dealt[hero]).toBe(dealtBefore + 3);
     expect(data().tally.downed).toEqual(before.downed);
     await drop();
+    // The goblin that took 3 slips out of sight before the end (the DM hides it): Anna isn't told of it (§13.4,
+    // AC-SEC-07; security review M3).
+    const hiddenName = data().combatants.find((e) => e.tokenId === g1)?.name as string;
+    await cmd(dm, "token.update", { tokenId: g1, hidden: true });
     anna().msgs.length = 0;
     await cmd(dm, "combat.stop", {});
     expect(combat()).toBeUndefined();
-    await waitFor(() => anna().msgs.find((m) => m.type === "combat.stopped"));
+    const told = (await waitFor(() => anna().msgs.find((m) => m.type === "combat.stopped")))?.payload as {
+      text: string;
+      downed: string[];
+      tally: { name: string; dealt: number; taken: number | null }[];
+    };
+    expect(told.text).not.toContain(hiddenName);
+    expect(told.tally.map((x) => x.name)).not.toContain(hiddenName);
+    // Her own creature's figures in full; a goblin's damage taken withheld (its hit points aren't numbers to her).
+    expect(told.tally.find((x) => x.name === "Brin")?.taken).toEqual(expect.any(Number));
+    for (const x of told.tally.filter((x) => x.name.startsWith("Goblin"))) expect(x.taken).toBeNull();
     const log = t.server.ctx.campaigns.log(campaignId);
-    const summary = log.find((e) => e.kind === "combat.summary")?.text ?? "";
+    const annaId = anna().id;
+    const hers = log.filter(
+      (e) =>
+        e.kind === "combat.summary" &&
+        e.visibility.startsWith("only:") &&
+        e.visibility.slice(5).split(",").includes(annaId),
+    );
+    expect(hers.length).toBe(1);
+    expect(hers[0]?.text).not.toContain(hiddenName);
+    // The goblin that died in plain view: its death is told to those who saw it (Anna), not to "everyone".
+    const death = log.filter((e) => e.kind === "death").at(-1);
+    expect(death?.visibility).toMatch(/^only:/);
+    expect(death?.visibility.slice(5).split(",")).toContain(annaId);
+    // The DMs' entry has everything.
+    const summary = log.find((e) => e.kind === "combat.summary" && e.visibility === "only:")?.text ?? "";
     expect(summary).toMatch(/^Combat ended after \d+ rounds?\./);
     expect(summary).toMatch(/Down: [^.]*Goblin/);
     expect(summary).toMatch(new RegExp(`Brin: dealt ${dealtBefore + 13}, took [0-9]+`));

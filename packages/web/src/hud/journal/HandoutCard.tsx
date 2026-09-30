@@ -1,6 +1,5 @@
 import type { HandoutView } from "@gloam/shared/protocol";
-import Markdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { DocMarkdown } from "../../ui/DocMarkdown.tsx";
 import { Filigree, WaxSeal } from "../../ui/ornaments.tsx";
 import { useAssetImage } from "../useAssetImage.ts";
 
@@ -52,7 +51,7 @@ export function HandoutCard({
         <div
           className={`doc-md [text-wrap:pretty] ${note ? `font-display leading-[var(--leading-display)] ${compact ? "text-16" : "text-22"}` : `leading-[var(--leading-body)] ${compact ? "text-14" : "text-16"}`}`}
         >
-          <Markdown remarkPlugins={[remarkGfm]}>{h.bodyMd}</Markdown>
+          <DocMarkdown>{h.bodyMd}</DocMarkdown>
         </div>
       ) : null}
     </article>

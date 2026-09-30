@@ -39,6 +39,8 @@ export interface TableRoomApi {
   appendLog(kind: string, text: string, data: Record<string, unknown>): void;
   /** Hands a person's characters and token ownership to someone else, or no one, through the bus. */
   reassignOwner(fromUserId: string, toUserId: string | null, adminUserId: string): void;
+  /** Whether a player has a reason to see an asset now (what fetching and render views are limited to). */
+  assetVisibleTo(userId: string, assetId: string): boolean;
 }
 
 /** Live room instances, registered by the rooms themselves on create/dispose. */

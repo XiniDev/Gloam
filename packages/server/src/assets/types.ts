@@ -63,6 +63,13 @@ export function streamCap(purpose: Purpose): number {
 
 /** Quotas (SPEC §8.16): players 200 MB of pending + approved uploads; people still in the lobby 20 MB. */
 export const QUOTA = { player: 200 * MB, lobby: 20 * MB } as const;
+/**
+ * What the waiting room may hold in all, across everyone in it (security review M4): each new face had 20 MB, and new
+ * faces were free.
+ */
+export const LOBBY_TOTAL = 200 * MB;
+/** An upload made from the waiting room by someone never let in: removed after this long. */
+export const ABANDONED_TTL_MS = 24 * 60 * 60 * 1000;
 
 /** Pixel limits: maps 16 384² (268 megapixels); tokens, portraits, handouts 50 megapixels. */
 export const PIXEL_LIMIT: Record<"map" | "tok" | "hnd", number> = {

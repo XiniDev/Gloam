@@ -67,7 +67,9 @@ export class AssetProcessor {
 
   private spawn(): Promise<void> {
     this.spawned++;
-    // Only a minimal environment: the processor needs no secrets, config or network.
+    // Only a minimal environment: the processor needs no secrets, config or network. (Its own flags, not the server's:
+    // the glTF validator is compiled Dart that sets prototypes through __proto__, which the server disallows; the
+    // processor walks no path a client chose.)
     const child = fork(PROCESSOR_ENTRY, [], {
       execArgv: ["--max-old-space-size=768", "--disable-warning=ExperimentalWarning"],
       env: this.env,

@@ -146,7 +146,8 @@ export class ViewManager {
     }
     for (const l of m.inScene("light", activeSceneId)) {
       if (dm) {
-        out.lights.set(l.id, TAG_LINK);
+        // (Its link, and its DM-only name: security review L4.)
+        out.lights.set(l.id, TAG_LINK | TAG_DM);
         continue;
       }
       if (l.dmOnly) continue;

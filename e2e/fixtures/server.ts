@@ -70,7 +70,8 @@ export async function spawnServer(
           : { CLOUDFLARED_PATH: process.execPath, GLOAM_TEST_CLOUDFLARED_SCRIPT: FAKE_CLOUDFLARED }),
         ...opts.env,
       },
-      execArgv: ["--disable-warning=ExperimentalWarning"],
+      // As `pnpm start` runs it: no reaching Object.prototype through __proto__ (security review H1).
+      execArgv: ["--disable-warning=ExperimentalWarning", "--disable-proto=throw"],
       stdio: ["ignore", "pipe", "pipe", "ipc"],
     });
     let stderr = "";

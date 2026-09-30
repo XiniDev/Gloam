@@ -139,6 +139,22 @@ export class ProfileService {
       .set({ pinHash: pin ? await hashSecret(pin) : null })
       .where(eq(users.id, userId))
       .run();
+    // A new PIN is asked of every browser: those recognised before it was set show it too (banned ones stay banned).
+    if (pin)
+      this.db
+        .delete(devices)
+        .where(and(eq(devices.userId, userId), isNull(devices.bannedAt)))
+        .run();
+  }
+
+  /** A browser admitted as the profile it claimed (an unverified claim the Admin or a DM let in). */
+  confirmDevice(deviceId: string): void {
+    this.db.update(devices).set({ confirmed: true }).where(eq(devices.id, deviceId)).run();
+  }
+
+  /** Bans one browser (an unverified claim turned away: the profile it named isn't its to lose). */
+  banDevice(deviceId: string): void {
+    this.db.update(devices).set({ bannedAt: Date.now() }).where(eq(devices.id, deviceId)).run();
   }
 
   update(
@@ -156,8 +172,13 @@ export class ProfileService {
     return randomToken(32);
   }
 
-  /** Links a browser (gloam_dev cookie) to a profile; returns the device row. */
-  linkDevice(userId: string, deviceToken: string, label: string): DeviceRow {
+  /**
+   * Records a browser (gloam_dev cookie) with a profile; returns the device row. `confirmed`: it has shown it's the
+   * profile's (made it, knew its PIN, was recognised already). An unverified claim is recorded unconfirmed — never
+   * recognised as the profile — until the Admin or a DM admits it (`confirmDevice`): it tied an impostor's browser to a
+   * PIN-less profile before anyone looked (security review H2). A confirmed row is never made unconfirmed again.
+   */
+  linkDevice(userId: string, deviceToken: string, label: string, confirmed = true): DeviceRow {
     const hash = sha256Hex(deviceToken);
     const now = Date.now();
     const existing = this.db
@@ -166,8 +187,9 @@ export class ProfileService {
       .where(and(eq(devices.deviceHash, hash), eq(devices.userId, userId)))
       .get();
     if (existing) {
-      this.db.update(devices).set({ lastSeenAt: now, label }).where(eq(devices.id, existing.id)).run();
-      return { ...existing, lastSeenAt: now, label };
+      const set = { lastSeenAt: now, label, confirmed: existing.confirmed || confirmed };
+      this.db.update(devices).set(set).where(eq(devices.id, existing.id)).run();
+      return { ...existing, ...set };
     }
     const row: DeviceRow = {
       id: newId("dev"),
@@ -177,6 +199,7 @@ export class ProfileService {
       createdAt: now,
       lastSeenAt: now,
       bannedAt: null,
+      confirmed,
     };
     this.db.insert(devices).values(row).run();
     return row;
@@ -190,7 +213,7 @@ export class ProfileService {
       .from(devices)
       .where(eq(devices.deviceHash, sha256Hex(deviceToken)))
       .all();
-    const sorted = rows.sort((a, b) => b.lastSeenAt - a.lastSeenAt);
+    const sorted = rows.filter((d) => d.confirmed).sort((a, b) => b.lastSeenAt - a.lastSeenAt);
     for (const d of sorted) {
       const u = this.get(d.userId);
       if (u && !u.deletedAt && !u.bannedAt && !u.isAdmin) return u;

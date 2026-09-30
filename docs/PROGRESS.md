@@ -681,3 +681,23 @@ PASSING 210/224 · DISPUTED 0 · FAILING 14
 ```
 PASSING 221/224 · DISPUTED 0 · FAILING 3
 ```
+
+## 2026-09-30 — A lost WebGL context restores the board (ee97a65); no blank panels (47a5d16, AC-DS-05)
+- SPEC §40: "Restoring board…" over the board (the HUD stays in use; Reload after 8 s); on the context's return the
+  environment maps are redrawn into their own textures, the vision passes redraw, anchors and prepared tiers are
+  forgotten and the warm-up runs again; ambient backdrops rebuild their shaders. Journey p15-context (the player's
+  fogged board reads as before — 46.6/255 off with the redraw disabled —, the rooms' reflections match, no compile in
+  play after, Reload brings it back).
+- AC-DS-05: `ui/Loadable.tsx` (useLoad, LoadGate, LoadFailed, LoadPanel) — every fetched panel shows loading, a named
+  failure with Try again, then its empty state; room-data stores carry their status. Journey p15-states (Admin pages
+  held/dropped by Playwright routes; table panels via test-build request faults; every panel and DM section of a new
+  campaign has words).
+- Found on the way: the Reload button's press reached the board (a pan captured it); a -g pattern with | broke the
+  e2e runner on Windows; the Moonbeam handle journey could press before a dock-close slide began; a presence check
+  measured the emote button, not the portrait.
+- Next: RSP-01 (p14-layouts, seven layouts audited and photographed) with the visual critic, DS-02 (banned patterns
+  on the final screenshots), final security review and rules audit, the full gate.
+
+```
+PASSING 222/224 · DISPUTED 0 · FAILING 2
+```

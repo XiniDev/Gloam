@@ -11,6 +11,7 @@ import {
   createCampaign,
   joinAsNew,
   openTable,
+  rq,
   setupAdmin,
   sleep,
   startTestServer,
@@ -402,6 +403,172 @@ describe("cross-cutting security (SEC)", () => {
     }
     expect(logs).not.toMatch(/"(password|pin|token|code|cookie)":"[^[]/);
     await p.room.leave();
+  });
+
+  it("security review H1: a sheet edit through __proto__ is refused — nothing on the server gains a property", async () => {
+    const p = await admittedPlayer("Proto");
+    const { actorId } = await rq<{ actorId: string }>(p.room, "actor.quickCreate", {
+      name: "Probe",
+      hpMax: 8,
+      ac: 12,
+    });
+    for (const path of [
+      ["__proto__", "shareVisionWith"],
+      ["constructor", "prototype", "freeMovement"],
+    ]) {
+      const refused = await rq(p.room, "actor.change", {
+        actorId,
+        changes: [{ path, after: [p.userId] }],
+      }).then(
+        () => null,
+        (e: Error) => e.message,
+      );
+      expect(refused, path.join(".")).toMatch(/INVALID/);
+    }
+    // (The test server runs in this process: its objects and these share one Object.prototype.)
+    const probe = {} as Record<string, unknown>;
+    expect(probe.shareVisionWith).toBeUndefined();
+    expect(probe.freeMovement).toBeUndefined();
+    p.room.leave();
+  });
+
+  it("security review H2: an unverified claim never makes a browser the profile's — until the knock is let in", async () => {
+    // Dave: a PIN-less profile, his own browser.
+    const dave = await joinAsNew(t, code, "DaveH2");
+    await admin.post("/api/admin/table/knocks/decide", {
+      sessionId: dave.sessionId,
+      decision: "admitPlayer",
+    });
+    await waitFor(() => dave.messages.find((m) => m.type === "admitted"));
+    dave.lobby.leave();
+    // Someone with the code claims to be Dave from another browser, and walks off before anyone decides.
+    const eve = new Agent(t.url);
+    expect((await eve.post("/api/join/code", { code })).status).toBe(200);
+    const claim = await eve.post("/api/join/identity", { mode: "returning", profileId: dave.userId });
+    expect(claim.status).toBe(200);
+    expect((claim.json.data as { identity: string }).identity).toBe("unverified");
+    // Back with the code: not welcomed as Dave, and "this browser" isn't Dave's.
+    expect((await eve.post("/api/join/code", { code })).status).toBe(200);
+    const asDevice = await eve.post("/api/join/identity", { mode: "device" });
+    expect(asDevice.status).toBe(404);
+    // Turned away with Ban: the claimed profile isn't banned — the browser is.
+    const again = await eve.post("/api/join/identity", { mode: "returning", profileId: dave.userId });
+    expect(again.status).toBe(200);
+    const eveSession = [...t.server.ctx.sessions.liveForUser(dave.userId)].sort(
+      (a, b) => b.createdAt - a.createdAt,
+    )[0];
+    expect(eveSession?.identityKind).toBe("unverified");
+    const ban = await admin.post("/api/admin/table/knocks/decide", {
+      sessionId: eveSession?.id,
+      decision: "ban",
+    });
+    expect(ban.status).toBe(200);
+    expect(t.server.ctx.profiles.get(dave.userId)?.bannedAt).toBeNull();
+    expect((await eve.post("/api/join/code", { code })).status).toBe(200);
+    expect((await eve.post("/api/join/identity", { mode: "new", name: "Eve", color: "amber" })).status).toBe(
+      403,
+    );
+
+    // A claim the Admin lets in: now that browser is recognised.
+    const fred = await joinAsNew(t, code, "FredH2");
+    await admin.post("/api/admin/table/knocks/decide", {
+      sessionId: fred.sessionId,
+      decision: "admitPlayer",
+    });
+    await waitFor(() => fred.messages.find((m) => m.type === "admitted"));
+    fred.lobby.leave();
+    const laptop = new Agent(t.url);
+    await laptop.post("/api/join/code", { code });
+    await laptop.post("/api/join/identity", { mode: "returning", profileId: fred.userId });
+    const s2 = [...t.server.ctx.sessions.liveForUser(fred.userId)].sort(
+      (a, b) => b.createdAt - a.createdAt,
+    )[0];
+    await admin.post("/api/admin/table/knocks/decide", { sessionId: s2?.id, decision: "admitPlayer" });
+    await laptop.post("/api/join/code", { code });
+    expect((await laptop.post("/api/join/identity", { mode: "device" })).status).toBe(200);
+    // A PIN set afterwards is asked of every browser, that one too.
+    await t.server.ctx.profiles.setPin(fred.userId, "4321");
+    await laptop.post("/api/join/code", { code });
+    expect((await laptop.post("/api/join/identity", { mode: "device" })).status).toBe(404);
+  });
+
+  it("security review L1: a DM decides pending knocks only — never another DM's session", async () => {
+    const people = t.server.ctx.people;
+    const dmActor = { userId: "usr_dm_probe", role: "dm" as const, ip: "127.0.0.1" };
+    const p = await joinAsNew(t, code, "GinaL1");
+    await admin.post("/api/admin/table/knocks/decide", { sessionId: p.sessionId, decision: "admitPlayer" });
+    await waitFor(() => p.messages.find((m) => m.type === "admitted"));
+    // Admitted: no longer a knock a DM can turn away.
+    expect(() => people.decide(dmActor, { sessionId: p.sessionId, decision: "deny" })).toThrow(
+      /knock is gone/,
+    );
+    // A DM's session, even pending: the Admin's call alone.
+    const q = await joinAsNew(t, code, "HalL1");
+    t.server.ctx.campaigns.setMembership(campaignId, q.userId, "dm");
+    expect(() => people.decide(dmActor, { sessionId: q.sessionId, decision: "deny" })).toThrow(
+      /Only the Admin/,
+    );
+    p.lobby.leave();
+    q.lobby.leave();
+  });
+
+  it("security review M1: a matchmaking body without a length, chunked, or over 16 KiB is refused unread", async () => {
+    const url = new URL(`${t.url}/matchmake/joinById/lobby`);
+    // Only the headers go: the answer must come before any of the body does (it's never read).
+    const headersOnly = (headers: Record<string, string>) =>
+      new Promise<number>((resolve, reject) => {
+        const req = httpRequest(
+          { host: url.hostname, port: url.port, path: url.pathname, method: "POST", headers },
+          (res) => {
+            res.resume();
+            resolve(res.statusCode ?? 0);
+            req.destroy();
+          },
+        );
+        req.on("error", reject);
+        req.flushHeaders();
+      });
+    const json = { "content-type": "application/json" };
+    expect(await headersOnly({ ...json, "content-length": String(100 * 1024 * 1024) })).toBe(413);
+    expect(await headersOnly({ ...json, "transfer-encoding": "chunked" })).toBe(413);
+    // The server is still up, and an ordinary join still goes through (this suite's players join the same way).
+    expect((await fetch(`${t.url}/api/health`)).status).toBe(200);
+  });
+
+  it("security review M4: new profiles from one address are limited (this computer's own aren't)", async () => {
+    // From outside (through the tunnel: Cloudflare's header names the address).
+    const outside = { "cf-connecting-ip": "203.0.113.77" };
+    const statuses: number[] = [];
+    for (let i = 0; i < 7; i++) {
+      const a = new Agent(t.url, outside);
+      expect((await a.post("/api/join/code", { code })).status).toBe(200);
+      statuses.push(
+        (await a.post("/api/join/identity", { mode: "new", name: `Guest ${i}`, color: "amber" })).status,
+      );
+    }
+    expect(statuses.slice(0, 6)).toEqual([200, 200, 200, 200, 200, 200]);
+    expect(statuses[6]).toBe(429);
+    // Another address isn't held back by that one.
+    const other = new Agent(t.url, { "cf-connecting-ip": "198.51.100.4" });
+    await other.post("/api/join/code", { code });
+    expect(
+      (await other.post("/api/join/identity", { mode: "new", name: "Elsewhere", color: "amber" })).status,
+    ).toBe(200);
+  });
+
+  it("security review M5: the same refusal from one address is written once a minute; old events are pruned", async () => {
+    const before = t.server.ctx.security.list({ event: "localonly.refused" }).length;
+    const outside = new Agent(t.url, { "cf-connecting-ip": "203.0.113.200" });
+    for (let i = 0; i < 30; i++) expect((await outside.get("/setup")).status).toBe(403);
+    const rows = t.server.ctx.security
+      .list({ event: "localonly.refused" })
+      .filter((e) => e.ip === "203.0.113.200");
+    expect(rows).toHaveLength(1);
+    expect(t.server.ctx.security.list({ event: "localonly.refused" }).length).toBe(before + 1);
+    // Past the retention, events go.
+    const pruned = t.server.ctx.security.prune(Date.now() + 181 * 86_400_000);
+    expect(pruned).toBeGreaterThan(0);
+    expect(t.server.ctx.security.list({ limit: 5 })).toEqual([]);
   });
 
   it("AC-SEC-08 the data directory and secret.key are owner-only", () => {
