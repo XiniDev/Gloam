@@ -12,7 +12,7 @@ import {
   openPanel,
   req,
 } from "../fixtures/board.ts";
-import { expect, newPlayerContext, test } from "../fixtures/test.ts";
+import { expect, newPlayerContext, openTableAs, test } from "../fixtures/test.ts";
 
 type Tok = { id: string; name: string; pos: { x: number; y: number } };
 
@@ -91,7 +91,13 @@ test.describe("P14 — accessibility (A11Y)", () => {
     }
 
     // The table, as the DM: idle, each panel, the dice tray, a dialog.
-    await adminAtTable(admin);
+    await admin
+      .getByRole("navigation", { name: "Admin sections" })
+      .getByRole("link", { name: "Table", exact: true })
+      .click();
+    await openTableAs(admin, "Local only");
+    await admin.getByRole("button", { name: "Go to the table" }).click();
+    await expect(admin.getByRole("heading", { name: "The Lantern Crypt" })).toBeVisible();
     await introDone(admin);
     problems.push(...(await axe(admin, "table")));
     for (const panel of ["Sheet", "Party", "Journal"] as const) {
@@ -144,25 +150,18 @@ test.describe("P14 — accessibility (A11Y)", () => {
       stats: { hp: 20, hpMax: 20, ac: 12 },
     });
     await expect.poll(() => hook(admin, "token", tokenId)).not.toBeNull();
-    const bodyX = async () => (await hook<{ bodyX: number }>(admin, "tokenState", tokenId)).bodyX;
-    /** The largest sideways offset of its body over the next `ms`. */
-    const sway = async (ms: number) => {
-      let most = 0;
-      const until = Date.now() + ms;
-      while (Date.now() < until) {
-        most = Math.max(most, Math.abs(await bodyX()));
-        await admin.waitForTimeout(25);
-      }
-      return most;
-    };
+    /** The largest sideways offset of its body in the frames drawn over the next `ms` (watched in the page). */
+    const sway = (ms: number) => hook<number>(admin, "sway", tokenId, ms);
 
     // ── AC-A11Y-02: with full motion a hit shakes it; reduced, it doesn't — nor do the camera and the dice move ──
     await hook(admin, "settings", { motion: "full" });
+    const shaking = sway(900);
     await req(admin, "hp.apply", { targets: [tokenId], amount: 3, kind: "damage" });
-    expect(await sway(500), "a hit shakes it (full motion)").toBeGreaterThan(0.02);
+    expect(await shaking, "a hit shakes it (full motion)").toBeGreaterThan(0.02);
     await hook(admin, "settings", { motion: "reduced" });
+    const still = sway(900);
     await req(admin, "hp.apply", { targets: [tokenId], amount: 3, kind: "damage" });
-    expect(await sway(500), "no shake with reduced motion").toBe(0);
+    expect(await still, "no shake with reduced motion").toBe(0);
     // The camera cuts: brought to the creature, no tween starts and it's there at once.
     const tweensBefore = (await hook<{ tweenStarts: unknown[] }>(admin, "cameraLog")).tweenStarts.length;
     await camera(admin, { target: [50, 0, 35], ms: 0 });
@@ -173,17 +172,23 @@ test.describe("P14 — accessibility (A11Y)", () => {
     expect((await hook<{ tweenStarts: unknown[] }>(admin, "cameraLog")).tweenStarts.length).toBe(
       tweensBefore,
     );
-    // The dice don't tumble: they're at rest the moment they appear.
+    // The dice don't tumble: they're at rest the moment they appear (their playback starts and ends together).
     await req(admin, "dice.roll", { formula: "2d20", visibility: "public" });
+    type Th = { start: number | null; settledAt: number | null; tumbleFrames: number };
+    let th: Th | null = null;
     await expect
       .poll(
-        async () =>
-          (await hook<{ throws: { settledAt: number | null }[] }>(admin, "diceStage")).throws.some(
-            (t) => t.settledAt !== null,
-          ),
-        { timeout: 1500, intervals: [50] },
+        async () => {
+          th =
+            (await hook<{ throws: Th[] }>(admin, "diceStage")).throws.find((t) => t.settledAt !== null) ?? th;
+          return th !== null;
+        },
+        { timeout: 15_000, intervals: [50] },
       )
       .toBe(true);
+    if (!th) throw new Error("no throw came to rest");
+    // Not one frame drawn with them in the air (a tumble is a second or more of frames).
+    expect((th as Th).tumbleFrames, "frames drawn tumbling, with reduced motion").toBe(0);
     await hook(admin, "settings", { motion: "system" });
 
     // ── AC-A11Y-03: the colour-blind palette swaps the disposition ring and HP colours, and stripes low HP ──
@@ -192,13 +197,16 @@ test.describe("P14 — accessibility (A11Y)", () => {
     await hook(admin, "settings", { colorBlind: true });
     await expect.poll(ring).toBe("#d55e00");
     expect(normal).not.toBe("#d55e00");
+    // The real HP bar shader drawn into a strip, its middle row read back as [r, g, b] per pixel.
     const bar = async (frac: number) =>
-      hook<{ r: number; g: number; b: number }[]>(admin, "renderHpBar", { frac, temp: 0, ghost: frac }, 200);
+      hook<number[][]>(admin, "renderHpBar", { frac, temp: 0, ghost: frac }, 200);
     const low = await bar(0.2);
     // Striped: its filled part alternates between two tones.
-    const filled = low.slice(2, 36);
+    const filled = low.slice(4, 36);
     const tones = new Set(
-      filled.map((p) => `${Math.round(p.r / 24)}|${Math.round(p.g / 24)}|${Math.round(p.b / 24)}`),
+      filled.map(
+        ([r = 0, g = 0, b = 0]) => `${Math.round(r / 24)}|${Math.round(g / 24)}|${Math.round(b / 24)}`,
+      ),
     );
     expect(tones.size, "low HP striped").toBeGreaterThan(1);
     await hook(admin, "settings", { colorBlind: false });
@@ -247,7 +255,8 @@ test.describe("P14 — accessibility (A11Y)", () => {
     await req(admin, "token.create", {
       sceneId,
       name: "Dave's scout",
-      pos: { x: 27.5, y: 15 },
+      // Within reach of the door, its coin clear of the handle (a press there would pick the creature).
+      pos: { x: 26, y: 15 },
       ownerIds: [daveId],
       disposition: "party",
     });

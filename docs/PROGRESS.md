@@ -660,3 +660,24 @@ groundwork; its restart test still to write: spawnServer({ dataDir, env: { PORT 
 ```
 PASSING 210/224 · DISPUTED 0 · FAILING 14
 ```
+
+## 2026-09-30 — P13–P15 journeys: phones, touch, accessibility, secrecy (RSP-02/03/04, A11Y-01…05, SEC-07, API-05, ADM-01)
+- p14-mobile: iPhone 13 in WebKit (Linux WebKit through `GLOAM_WEBKIT_WS`; Windows WebKit also passes, annotated —
+  it has no Web Audio or overscroll-behavior) and Pixel 7 in Chromium: audio unlocks on the first tap, 100dvh,
+  no rubber-band, drags keep their pointer over the HUD and land. App fixes found by it: the Colyseus SDK's
+  WebSocket options were a page error in WebKit (browser form of the transport's connect, with a guard test);
+  `interactive-widget` set only outside Safari; `overscroll-behavior: none` on html; `touch-action: none` on the
+  board's canvas; token drags capture their pointer (a mouse's moves over the HUD went to the HUD).
+- p14-targets (44-px targets, 12-px text on a phone): TopBar emote, More menu, dice input, token checkboxes, scene
+  names, the API page's code blocks; panels under the top bar follow the UI scale (`underTopBar`). p14-gestures:
+  a long press lifts anywhere (its timer judged by the events' clocks); a hit's shake timed in drawn frames.
+  p14-a11y, p15-secrecy, p13-api pass.
+- `node tools/e2e.mjs <specs>` splits chosen specs into the parallel and the timing part as the full run does.
+- docs/HOSTING.md: install, start, game night, tunnels, backups, updating, Claude, troubleshooting, a real-phone
+  checklist, `pnpm bench`.
+- Next: WebGL context loss (restore the board), RSP-01 (7 viewports) and DS-02/DS-05 with the critic, P12–P14 key
+  screens critic round 2, final security review and rules audit, the full gate.
+
+```
+PASSING 221/224 · DISPUTED 0 · FAILING 3
+```

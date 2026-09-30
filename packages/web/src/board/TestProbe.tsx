@@ -45,6 +45,8 @@ import { useZoneTool } from "./tools/zones.ts";
 import { fogUniforms } from "./vision/fogMaterial.ts";
 import { visionDiag } from "./vision/VisionLayer.tsx";
 
+/** Tokens whose body's sideways offset is watched, frame by frame, and the largest seen (the `sway` hook). */
+const swayWatch = new Map<string, { max: number }>();
 /** Frame timestamps while the benchmark records (the `frameTimes` hook). */
 const frameLog: number[] & { recording?: boolean } = [];
 /** Every shader program the board compiled, when, and which materials used it then (the `programs` hook). */
@@ -61,6 +63,10 @@ export function TestProbe() {
   const v = useMemo(() => new Vector3(), []);
   useFrame(() => {
     if (frameLog.recording) frameLog.push(performance.now());
+    for (const [id, w] of swayWatch) {
+      const x = scene.getObjectByName(`token:${id}`)?.getObjectByName("token-body")?.position.x ?? 0;
+      w.max = Math.max(w.max, Math.abs(x));
+    }
     const c = cameraRig.controls;
     if (!c) return;
     c.getTarget(v);
@@ -590,6 +596,19 @@ export function TestProbe() {
         // How far it has fallen (0 standing … 1 lying: prone, unconscious or dead — AC-HP-11's fall).
         lie: lieOf.get(id) ?? 0,
       };
+    });
+    /**
+     * The largest sideways offset a token's body reaches in the frames drawn over the next `ms` (a hit's shake,
+     * AC-A11Y-02) — read in every frame, not polled, so a slow machine's few frames are all counted.
+     */
+    provideTestHook("sway", async (id: string, ms: number) => {
+      const w = { max: 0 };
+      swayWatch.set(id, w);
+      setAnimating("test:sway", true);
+      await new Promise((r) => setTimeout(r, ms));
+      setAnimating("test:sway", false);
+      swayWatch.delete(id);
+      return w.max;
     });
     /** Renders the real HP bar shader into a strip and reads its middle row back (AC-TOK-05). */
     provideTestHook("renderHpBar", (v: { frac: number; temp: number; ghost: number }, w?: number) => {

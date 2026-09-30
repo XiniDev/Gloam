@@ -144,9 +144,11 @@ export function PhoneTabBar() {
         <Menu
           label={more ? `More (${more})` : "More"}
           up
+          // The whole fifth of the bar is its button (44 px and more to tap), not just its icon and word.
+          wide
           trigger={{
             testId: "more-tab",
-            className: `${TAB} text-muted hover:text-bone`,
+            className: `${TAB} w-full text-muted hover:text-bone`,
             content: (
               <>
                 <span className="relative">

@@ -170,12 +170,12 @@ export function ScenesPanel() {
                   ) : (
                     <button
                       type="button"
-                      className="block max-w-full truncate text-left text-14 font-bold text-bone"
+                      className="flex min-h-[var(--touch-min)] min-w-[var(--touch-min)] max-w-full items-center text-left text-14 font-bold text-bone"
                       title="Rename"
                       onDoubleClick={() => setRenaming(s.id)}
                       onClick={() => void act("open the scene", () => openPrep(s.active ? null : s.id))}
                     >
-                      {s.name}
+                      <span className="truncate">{s.name}</span>
                     </button>
                   )}
                   {/* The state badge sits under the title with the details, so a narrow panel keeps the name. */}

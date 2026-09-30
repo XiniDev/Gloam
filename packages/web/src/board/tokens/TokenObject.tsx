@@ -666,7 +666,8 @@ export const TokenObject = memo(function TokenObject({
     // A hit's shake and red flash; a heal's glow (hpFx.tsx starts them).
     const fx = tokenFx.get(token.id);
     if (fx && body.current && fxDisc.current) {
-      const el = performance.now() - fx.at;
+      fx.played += Math.min(dt, 1 / 30) * 1000;
+      const el = fx.played;
       const reduced = useSettings.getState().motion === "reduced";
       if (fx.kind === "hit") {
         const k = Math.max(0, 1 - el / 280);
@@ -743,9 +744,27 @@ export const TokenObject = memo(function TokenObject({
         );
       }
       if (n.pointerType === "touch") {
-        down.current.timer = window.setTimeout(() => {
+        const press = down.current;
+        let opened = false;
+        press.timer = window.setTimeout(() => {
+          press.timer = null;
+          opened = true;
           useUi.getState().set({ radial: { tokenId: token.id, x: n.clientX, y: n.clientY } });
         }, 500);
+        // A long press is one that's still down after 500 ms: the finger lifting anywhere ends it (the board may not
+        // see that pointer's up over the token — the token's own handler isn't enough). Held less by the events' own
+        // clocks, it was a tap — even if a busy page ran the timer before it got to the lift.
+        const lift = (ev: PointerEvent) => {
+          if (ev.pointerId !== n.pointerId) return;
+          if (press.timer) clearTimeout(press.timer);
+          press.timer = null;
+          if (opened && ev.timeStamp - n.timeStamp < 500 && useUi.getState().radial?.tokenId === token.id)
+            useUi.getState().set({ radial: null });
+          window.removeEventListener("pointerup", lift, true);
+          window.removeEventListener("pointercancel", lift, true);
+        };
+        window.addEventListener("pointerup", lift, true);
+        window.addEventListener("pointercancel", lift, true);
       }
     }
   };

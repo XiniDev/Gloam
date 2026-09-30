@@ -14,6 +14,7 @@ import { PromptCards } from "./health/PromptCards.tsx";
 import { hudOrder } from "./Intro.tsx";
 import {
   insetMeasures,
+  underTopBar,
   useBoardCovers,
   useCover,
   useHudInsets,
@@ -186,8 +187,9 @@ export function Dock() {
       // prop would drop.)
       style={{
         ...order.style,
-        // (A phone's rail steps down below the combat tracker, which spans the width under the top bar.)
-        top: 68 + (phone ? banner + (page ? 0 : tracker) : 0),
+        // (A phone's rail steps down below the combat tracker, which spans the width under the top bar.) The top bar is
+        // 3.5 rem — it grows with the UI scale — and the rail keeps 12 px under it.
+        top: underTopBar(phone ? banner + (page ? 0 : tracker) : 0),
         bottom: phone ? Math.max(12, actionBand, toastFoot) : 12,
       }}
       data-hud="dock"

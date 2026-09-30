@@ -30,6 +30,10 @@
   #root {
     height: 100%;
   }
+  /* The page never scrolls, bounces or pulls to refresh: the board takes every swipe (§29.4; AC-RSP-04). */
+  html {
+    overscroll-behavior: none;
+  }
   body {
     margin: 0;
     min-height: 100dvh;

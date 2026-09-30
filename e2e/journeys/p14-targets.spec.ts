@@ -110,7 +110,7 @@ test.describe("P14 — touch targets and text (RSP)", () => {
     await check("a creature chosen");
     await admin.getByRole("button", { name: /^Tools: / }).click();
     await check("the tools");
-    await admin.getByRole("button", { name: /^Tools: / }).click();
+    await admin.getByRole("button", { name: "Close tools" }).click();
 
     await admin.getByTestId("dice-button").click();
     await expect(admin.getByTestId("dice-tray")).toBeVisible();

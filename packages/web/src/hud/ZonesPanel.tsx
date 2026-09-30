@@ -12,7 +12,7 @@ import { Button, IconButton } from "../ui/Button.tsx";
 import { CompactSelect } from "../ui/CompactSelect.tsx";
 import { Segmented, Select, Toggle } from "../ui/controls.tsx";
 import { toast } from "../ui/Toast.tsx";
-import { useCompactBar, useHudInsets, useIsPhone } from "./insets.ts";
+import { underTopBar, useCompactBar, useHudInsets, useIsPhone } from "./insets.ts";
 import { ToolBar } from "./ToolBar.tsx";
 
 type ZoneKind = keyof typeof ZONE_COLORS;
@@ -211,10 +211,10 @@ export function ZoneEditor() {
       // Never over the zone being edited: on the side of the screen away from it.
       style={
         phone
-          ? { top: 68 + banner, left: 12, right }
+          ? { top: underTopBar(banner), left: 12, right }
           : zoneOnLeft
-            ? { top: 68 + banner, right, width: "min(320px, calc(100vw - 96px))" }
-            : { top: 68 + banner, left, width: "min(320px, calc(100vw - 96px))" }
+            ? { top: underTopBar(banner), right, width: "min(320px, calc(100vw - 96px))" }
+            : { top: underTopBar(banner), left, width: "min(320px, calc(100vw - 96px))" }
       }
     >
       <header className="flex items-center justify-between gap-2">

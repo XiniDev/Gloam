@@ -568,6 +568,9 @@ export default function Board() {
         }}
         onCreated={({ gl }) => {
           gl.setClearColor(C.ink950);
+          // Every touch on the board is the board's: no browser pan, zoom or pull-to-refresh takes the gesture (and a
+          // drag keeps its pointer instead of being cancelled for a scroll, AC-RSP-04).
+          gl.domElement.style.touchAction = "none";
           // The fog composite's fixed noise goes up with the renderer, not with a scene's first frame (§24.7: nothing
           // uploads or compiles mid-game).
           gl.initTexture(fogUniforms.gNoise.value);

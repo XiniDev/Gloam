@@ -1,5 +1,34 @@
 import { Client, type Room } from "@colyseus/sdk";
+import { WebSocketTransport } from "@colyseus/sdk/transport/WebSocketTransport";
 import { ERROR_TOAST, type ErrorCode, type Rejection } from "@gloam/shared/protocol";
+
+/**
+ * The SDK opens its socket Node's way first — `new WebSocket(url, { headers, protocols })` — and falls back to the
+ * browser's `(url, protocols)` when that throws. Browsers can't send headers anyway, and WebKit reports that throw as a
+ * page error even though it's caught (AC-RSP-04's WebKit run). So in the browser it opens the browser's way straight
+ * off — otherwise exactly as the SDK's `connect` (0.18.4) does.
+ */
+type Transport = {
+  ws: WebSocket;
+  protocols?: string | string[];
+  events: {
+    onopen?: (e: Event) => void;
+    onmessage?: (e: MessageEvent) => void;
+    onclose?: (e: CloseEvent) => void;
+    onerror?: (e: Event) => void;
+  };
+};
+(WebSocketTransport.prototype as unknown as { connect(url: string): void }).connect = function (
+  this: Transport,
+  url: string,
+) {
+  this.ws = new WebSocket(url, this.protocols);
+  this.ws.binaryType = "arraybuffer";
+  this.ws.onopen = (event) => this.events.onopen?.(event);
+  this.ws.onmessage = (event) => this.events.onmessage?.(event);
+  this.ws.onclose = (event) => this.events.onclose?.(event);
+  this.ws.onerror = (event) => this.events.onerror?.(event);
+};
 
 let client: Client | null = null;
 

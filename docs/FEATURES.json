@@ -1988,10 +1988,10 @@
       "code": "ADM",
       "phase": "P12",
       "text": "All sections listed exist and work end to end.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "Every §8.20 section end to end: Table (p1-host, p12-admin checklist), People / Campaigns / Assets / Content / Security log / About & Credits (e2e/journeys/p12-admin.spec.ts), Saves & Backups (p10 journeys), API & MCP and Settings — port, new-campaign defaults, auto-approve images, allow remote API (e2e/journeys/p13-api.spec.ts › AC-API-05 / AC-ADM-01) · packages/server/src/test/adminconsole.test.ts",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-30T14:16:22.589Z"
     },
     {
       "id": "AC-ADM-02",
@@ -2065,10 +2065,10 @@
       "code": "RSP",
       "phase": "P14",
       "text": "All listed gestures work (Playwright touch emulation tests for drag-to-move, pinch zoom and long-press menu).",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p14-gestures.spec.ts › AC-RSP-02 (390×844 touch, Chromium touch input through CDP: pointerType touch): a short tap selects and opens nothing; a 750-ms long press on a token opens its radial menu (Escape closes it) — a press is judged long by the events' own timestamps; one finger drags the token two squares and it lands there; two fingers pinching apart bring the camera closer and together send it back, never moving the token",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-30T14:47:10.441Z"
     },
     {
       "id": "AC-RSP-03",
@@ -2076,10 +2076,10 @@
       "code": "RSP",
       "phase": "P14",
       "text": "Touch targets are at least 44 × 44 px; HUD text is at least 12 px.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p14-targets.spec.ts › AC-RSP-03 (390×844, touch): an audit of every visible control (buttons, links, inputs, tabs, switches, radios, menu items, checkboxes by their label) and every visible text node on the table idle and with a creature chosen, the tools, the dice tray, the rolls, the Sheet/Party/Journal panels, each DM panel section and the settings sheet: none under 44 × 44 px, no text under 12 px (fixed on the way: the emote portrait's press area, the More tab, the dice formula field, token-row checkboxes, scene names)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-30T14:39:23.342Z"
     },
     {
       "id": "AC-RSP-04",
@@ -2087,10 +2087,10 @@
       "code": "RSP",
       "phase": "P14",
       "text": "In Playwright WebKit (iPhone) and Chromium (Pixel) emulation: audio unlocks on the first gesture, the layout uses `100dvh`, the board doesn't rubber-band scroll, and drags keep pointer capture; `docs/HOSTING.md` includes a short manual checklist for real phones.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p14-mobile.spec.ts › AC-RSP-04 — iPhone 13 profile in Playwright WebKit (Linux WebKit via GLOAM_WEBKIT_WS=playwright run-server in mcr.microsoft.com/playwright:v1.63.0-noble: Web Audio locked → running after the first tap; also passes on Windows WebKit, which has no Web Audio/overscroll-behavior, annotated) and Pixel 7 in Chromium (CDP touch): 100dvh root = innerHeight, overscroll-behavior none on html/body, touch-action none up to the board, swipe + scrollBy leave scroll 0, token drag through the tab bar keeps pointer capture (moves over the HUD target the CANVAS — setPointerCapture in move/input.ts pressToken) and lands within 0.5 ft; docs/HOSTING.md §10 manual real-phone checklist",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-30T15:39:22.657Z"
     },
     {
       "id": "AC-RSP-05",
@@ -2109,10 +2109,10 @@
       "code": "A11Y",
       "phase": "P14",
       "text": "All DOM UI is keyboard-operable with a visible focus ring, and icon-only buttons have accessible names (axe-core check on the main screens has no serious violations).",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p14-a11y.spec.ts › AC-A11Y-01: axe-core (@axe-core/playwright, WCAG 2.x A/AA) finds no serious or critical violations on the join page, every Admin console section (first run, People, Campaigns, Saves, Assets, Content, API & MCP, Settings, Security log, About), the table idle, the Sheet/Party/Journal panels, four DM panel sections and the dice tray; Tab from the page start focuses controls that each show a visible focus ring (outline or ring)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-30T14:34:44.841Z"
     },
     {
       "id": "AC-A11Y-02",
@@ -2120,10 +2120,10 @@
       "code": "A11Y",
       "phase": "P14",
       "text": "Reduced motion disables camera flights, shake, dice tumbling and parallax.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p14-a11y.spec.ts › AC-A11Y-02 / 03 / 04 / 05: with full motion a hit shakes the creature (its body's offset watched in every frame drawn; the shake plays by drawn time, so a slow machine still shows it) and with reduced motion it doesn't; a jump to a creature cuts the camera there with no tween; a public roll's dice are drawn at rest — not one frame tumbling",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-30T14:56:10.086Z"
     },
     {
       "id": "AC-A11Y-03",
@@ -2131,10 +2131,10 @@
       "code": "A11Y",
       "phase": "P14",
       "text": "The colour-blind palette swaps the specified colours and adds the patterns.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p14-a11y.spec.ts › AC-A11Y-02 / 03 / 04 / 05: the colour-blind palette turns a hostile creature's ring to the Okabe–Ito vermilion (#D55E00) and the real HP bar shader, drawn into a strip, stripes a low-HP fill (two tones alternating)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-30T14:56:10.167Z"
     },
     {
       "id": "AC-A11Y-04",
@@ -2142,10 +2142,10 @@
       "code": "A11Y",
       "phase": "P14",
       "text": "UI scale works from 90% to 130% without layout breakage; body text contrast is at least 4.5:1.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p14-a11y.spec.ts › AC-A11Y-02 / 03 / 04 / 05: at 90 % and 130 % UI scale nothing scrolls sideways and the top bar, tool bar, dock rail and action bar neither leave the screen nor overlap (pieces under the top bar now sit 12 px under its scaled 3.5-rem height, not a fixed 68 px) · packages/web/src/styles/tokens.test.ts: body text ≥ 4.5:1 against its surfaces",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-30T14:56:10.247Z"
     },
     {
       "id": "AC-A11Y-05",
@@ -2153,10 +2153,10 @@
       "code": "A11Y",
       "phase": "P14",
       "text": "Every sound event has a visual counterpart.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "packages/web/src/audio/visuals.test.ts: every sound event in the recipe registry names its visual counterpart, and each counterpart exists in the code · e2e/journeys/p14-a11y.spec.ts › AC-A11Y-02 / 03 / 04 / 05: with the sound muted, a player pressing a locked door's handle gets 'The door is locked' on screen (the rattle's picture as well as the shake)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-30T14:56:10.328Z"
     },
     {
       "id": "AC-API-01",
@@ -2208,10 +2208,10 @@
       "code": "API",
       "phase": "P13",
       "text": "The Connect Claude page shows working setup instructions with the real repository path and a freshly created token.",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p13-api.spec.ts › AC-API-05 / AC-ADM-01: Admin → API & MCP creates a token (shown once, then listed without it); Connect Claude's setup shows this repository's real path and the new token; the MCP server started exactly as written answers tools/list and list_campaigns over stdio; revoked, the same setup is refused",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-30T14:16:22.471Z"
     },
     {
       "id": "AC-DEMO-01",
@@ -2318,10 +2318,10 @@
       "code": "SEC",
       "phase": "P15",
       "text": "Hidden information (hidden tokens, secret doors, hidden walls other than as anonymous occluders, carried lights' and effects' token links while the carrier isn't perceived, DM notes, NPC exact HP and AC when not permitted, blind roll results, other players' private rolls, other scenes' prep data) never appears in a player's received WebSocket frames (automated frame inspection in the E2E suite).",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p15-secrecy.spec.ts › AC-SEC-07: every WebSocket frame Dave's page receives from its first load is recorded; none contains a DM-hidden creature (name or id), a creature out of his sight carrying a torch, the DM's scene and creature notes, another scene's name, creature or notes, Erin's DM-only and self-only rolls, or a hidden window; his page holds the guard without exact HP/AC/DM data, the secret door as a plain wall, the hidden sight-blocker only as an anonymous occluder (no kind, door or DM fields), and his DM-asked blind roll as rolled but without its total (the server's answer to him carries none)",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-09-30T14:34:44.923Z"
     },
     {
       "id": "AC-SEC-08",

@@ -8,7 +8,7 @@ import { useUi } from "../../state/ui.ts";
 import { Button, IconButton } from "../../ui/Button.tsx";
 import { Segmented } from "../../ui/controls.tsx";
 import { toast } from "../../ui/Toast.tsx";
-import { useHudInsets, useIsPhone } from "../insets.ts";
+import { underTopBar, useHudInsets, useIsPhone } from "../insets.ts";
 
 const BATCH = 500;
 
@@ -208,8 +208,8 @@ export function MapToolsPanel() {
       className="panel pointer-events-auto absolute z-30 flex flex-col gap-3 p-3"
       style={
         phone
-          ? { top: 68 + banner, left: 12, right: dockRight }
-          : { top: 68 + banner, left: 76, width: "min(300px, calc(100vw - 96px))" }
+          ? { top: underTopBar(banner), left: 12, right: dockRight }
+          : { top: underTopBar(banner), left: 76, width: "min(300px, calc(100vw - 96px))" }
       }
     >
       <header className="flex items-center justify-between gap-2">

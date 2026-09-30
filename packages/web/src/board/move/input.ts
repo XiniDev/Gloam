@@ -33,6 +33,16 @@ export function canMove(t: TokenView | undefined): t is TokenView {
 export function pressToken(tokenId: string, e: PointerEvent): void {
   const t = boardData(useEntities.getState()).tokens.get(tokenId);
   if (!canMove(t)) return;
+  // The board keeps the pointer until it lifts (SPEC §8.21): a finger or mouse running over the HUD — the tab bar,
+  // a panel — still steers the token and presses nothing there, and a mouse past the window's edge still drags.
+  // (A finger's pointer is captured by the browser anyway; a mouse's isn't. Released by the browser on the lift.)
+  const el = e.target as Element | null;
+  if (el?.isConnected)
+    try {
+      el.setPointerCapture(e.pointerId);
+    } catch {
+      // (A pointer that's already gone: nothing to keep.)
+    }
   const x0 = e.clientX;
   const y0 = e.clientY;
   let dragging = false;

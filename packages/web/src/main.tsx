@@ -11,10 +11,10 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { z } from "zod";
 import { App } from "./App.tsx";
-import { audio } from "./audio/engine.ts";
+import { audio, useAudioStatus } from "./audio/engine.ts";
 import { reportClientError } from "./net/http.ts";
 import { applyDocumentSettings } from "./state/settings.ts";
-import { installTestHooks } from "./test/hooks.ts";
+import { installTestHooks, provideTestHook } from "./test/hooks.ts";
 
 // Our CSP forbids eval (script-src 'self' + nonce). zod 4 probes for eval with `new Function("")` the first time
 // it parses an object — a CSP violation report on every page — unless told to stay on its interpreter path.
@@ -45,7 +45,15 @@ window.addEventListener("vite:preloadError", (e) => {
   window.location.reload();
 });
 applyDocumentSettings();
+// A phone's keyboard shrinks the layout (the bottom sheets and bars rise above it) where the browser knows the
+// viewport key — Chrome and Firefox; Safari doesn't, and logs the unknown key as an error, so it isn't given it.
+if (!/^((?!chrome|chromium|crios|fxios|android).)*safari/i.test(navigator.userAgent)) {
+  const vp = document.querySelector<HTMLMetaElement>('meta[name="viewport"]');
+  if (vp && !vp.content.includes("interactive-widget")) vp.content += ", interactive-widget=resizes-content";
+}
 audio.bindUnlock();
+// Test builds: whether sound has been unlocked by a gesture yet (AC-RSP-04).
+provideTestHook("audioStatus", () => useAudioStatus.getState().state);
 window.addEventListener("error", (e) =>
   reportClientError("error", e.message, (e.error as Error | undefined)?.stack),
 );

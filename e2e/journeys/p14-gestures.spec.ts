@@ -84,11 +84,19 @@ test.describe("P14 — touch gestures (RSP)", () => {
       await wait(30);
     }
     await touch(cdp, "touchEnd", []);
+    // (The DM places a creature where the finger lifts — out of combat, no square to snap to: within half a foot.)
     await expect
-      .poll(async () => ((await hook<Tok>(admin, "token", tokenId)) as Tok).pos, { timeout: 10_000 })
-      .toEqual({ x: 27.5, y: 27.5 });
+      .poll(
+        async () => {
+          const p = ((await hook<Tok>(admin, "token", tokenId)) as Tok).pos;
+          return Math.hypot(p.x - 27.5, p.y - 27.5) < 0.5;
+        },
+        { timeout: 10_000 },
+      )
+      .toBe(true);
 
     // ── Two fingers pinch: apart zooms in (the camera comes closer), together zooms out ──
+    const placed = ((await hook<Tok>(admin, "token", tokenId)) as Tok).pos;
     const before = (await camera(admin)).distance;
     const cx = PHONE.width / 2;
     const cy = PHONE.height * 0.45;
@@ -114,6 +122,6 @@ test.describe("P14 — touch gestures (RSP)", () => {
     await pinch(260, 80);
     expect((await camera(admin)).distance, "pinched together: further").toBeGreaterThan(closer * 1.1);
     // (A pinch never moved the token.)
-    expect(((await hook<Tok>(admin, "token", tokenId)) as Tok).pos).toEqual({ x: 27.5, y: 27.5 });
+    expect(((await hook<Tok>(admin, "token", tokenId)) as Tok).pos).toEqual(placed);
   });
 });

@@ -372,7 +372,7 @@ function TrayBody({
             }}
             aria-invalid={error ? true : undefined}
             aria-describedby={error ? "dice-formula-error" : undefined}
-            className={`mono relative h-10 w-full rounded-[var(--radius-control)] border bg-transparent px-3 text-16 text-transparent caret-[var(--bone-100)] focus:outline-none ${error ? "border-[var(--danger-text)]" : "border-line focus:border-brass"}`}
+            className={`mono relative h-10 min-h-[var(--touch-min)] w-full rounded-[var(--radius-control)] border bg-transparent px-3 text-16 text-transparent caret-[var(--bone-100)] focus:outline-none ${error ? "border-[var(--danger-text)]" : "border-line focus:border-brass"}`}
           />
         </div>
         {suggestions.length > 0 ? (

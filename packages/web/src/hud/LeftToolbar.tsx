@@ -8,7 +8,14 @@ import { type Tool, useUi } from "../state/ui.ts";
 import { IconButton } from "../ui/Button.tsx";
 import { openEmoteWheel } from "./EmoteWheel.tsx";
 import { hudOrder } from "./Intro.tsx";
-import { insetMeasures, useCover, useHudInsets, useIsPhone, useMeasuredInset } from "./insets.ts";
+import {
+  insetMeasures,
+  underTopBar,
+  useCover,
+  useHudInsets,
+  useIsPhone,
+  useMeasuredInset,
+} from "./insets.ts";
 
 /** Quick Unit glyph: a coin with a plus (custom, since creatures are a game concept; SPEC §27.6). */
 function QuickUnitGlyph() {
@@ -168,7 +175,8 @@ function PhoneTools({ tool, dm }: { tool: Tool; dm: boolean }) {
       aria-label="Board tools"
       data-hud="toolbar"
       className="panel pointer-events-auto absolute left-3 z-30 flex flex-col items-center gap-1 p-1.5"
-      style={{ ...order.style, top: 68 + banner + tracker }}
+      // 12 px under the top bar (3.5 rem: it grows with the UI scale), and under a banner or the tracker.
+      style={{ ...order.style, top: underTopBar(banner + tracker) }}
     >
       <div ref={buttonRef}>
         <IconButton

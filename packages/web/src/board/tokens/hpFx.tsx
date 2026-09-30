@@ -19,7 +19,11 @@ const PHYSICAL = new Set<string>(["bludgeoning", "piercing", "slashing"]);
 export const lieOf = new Map<string, number>();
 
 /** What a token is playing now (TokenObject reads it each frame): the kind and when it began. */
-export const tokenFx = new Map<string, { kind: "hit" | "heal"; at: number }>();
+/**
+ * Each token's running shake / flash / glow: its kind, when it started, and how far it has played (ms of drawn time —
+ * each frame counts at most 1/30 s, so a slow machine still draws every part of it instead of skipping to the end).
+ */
+export const tokenFx = new Map<string, { kind: "hit" | "heal"; at: number; played: number }>();
 /** Every shake / flash / glow started (tests: which token, which kind). */
 export const fxPlayed: { tokenId: string; kind: "hit" | "heal" }[] = [];
 
@@ -34,7 +38,7 @@ export function HpFxLayer() {
           f.kind === "damage" && f.amount > 0 ? "hit" : f.kind === "heal" && f.amount > 0 ? "heal" : null;
         // Only a token this client has on its board plays (the server sends to its viewers alone anyway).
         if (kind && scene.getObjectByName(`token:${f.tokenId}`)) {
-          tokenFx.set(f.tokenId, { kind, at: now });
+          tokenFx.set(f.tokenId, { kind, at: now, played: 0 });
           if (__GLOAM_TEST__) fxPlayed.push({ tokenId: f.tokenId, kind });
         }
         // The sounds — a hit, a heal, a fall (the heaviest) — for a token on this client's board.

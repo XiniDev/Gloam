@@ -30,7 +30,8 @@ function Initials({ p, mine }: { p: PresenceView; mine: boolean }) {
         <button
           type="button"
           aria-label="Emotes"
-          className="block rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
+          // A 44-px press area round the 32-px portrait (§29.1 touch targets), without moving it.
+          className="-m-1.5 block rounded-full p-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
           onClick={(e) => {
             const r = e.currentTarget.getBoundingClientRect();
             openEmoteWheel({ x: r.left + r.width / 2, y: r.bottom + 150 });

@@ -11,6 +11,8 @@ import type { Page } from "@playwright/test";
 export async function withAutoplayPolicy(page: Page): Promise<void> {
   await page.addInitScript(() => {
     const Real = window.AudioContext;
+    // (A browser without Web Audio — Playwright's WebKit on Windows — has nothing to hold.)
+    if (!Real) return;
     let activated = false;
     const contexts = new Set<AudioContext>();
     for (const type of ["pointerdown", "pointerup", "keydown", "touchend", "click"])

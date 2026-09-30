@@ -369,3 +369,9 @@ export function useCompactBar(): boolean {
   }, []);
   return narrow;
 }
+
+/**
+ * A HUD piece's top, 12 px (plus `extra`) under the top bar — which is 3.5 rem, so it grows with the UI scale (90–130 %,
+ * AC-A11Y-04); a fixed pixel offset left the rail and the tool panels under a scaled-up bar.
+ */
+export const underTopBar = (extra = 0): string => `calc(3.5rem + ${12 + extra}px)`;

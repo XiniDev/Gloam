@@ -92,6 +92,8 @@ interface Throw {
   lastClack: number[];
   clacks: { step: number; die: number; other: "tray" | "die"; gain: number }[];
   reduced: boolean;
+  /** Frames drawn while it was still in the air. */
+  tumbleFrames: number;
   done: boolean;
   /** The dice camera has taken this throw in (it jumps to a new throw's arc once). */
   framed?: boolean;
@@ -357,6 +359,7 @@ function DiceStage({ tier, onIdle }: { tier: TierSpec; onIdle: () => void }) {
         lastClack: kinds.map(() => Number.NEGATIVE_INFINITY),
         clacks: [],
         reduced: prefersReducedMotion(),
+        tumbleFrames: 0,
         done: false,
       };
       throws.push(t);
@@ -401,7 +404,10 @@ function DiceStage({ tier, onIdle }: { tier: TierSpec; onIdle: () => void }) {
         throws: throws.map((t) => ({
           id: t.roll.id,
           done: t.done,
+          // When its playback began (the physics' result in), when it came to rest, and the frames drawn between.
+          start: t.result ? t.start : null,
           settledAt: t.settledAt,
+          tumbleFrames: t.tumbleFrames,
           tray: t.tray,
           dice: t.meshes.map((m) => {
             v.copy(m.position).project(cam);
@@ -540,6 +546,8 @@ function DiceStage({ tier, onIdle }: { tier: TierSpec; onIdle: () => void }) {
           }
         const restMs = res.steps * STEP_S * 1000 + (res.settled ? 0 : REST_TWEEN_MS);
         if (t.settledAt === null && (t.reduced || played >= restMs)) finish(t, now);
+        // A frame drawn with the dice still tumbling (none with reduced motion: they're drawn at rest, AC-A11Y-02).
+        else if (t.settledAt === null) t.tumbleFrames++;
         // Held, then faded out.
         if (t.settledAt !== null) {
           const a = fade(t, now);

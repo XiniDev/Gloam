@@ -10,7 +10,7 @@ import { Button, IconButton } from "../ui/Button.tsx";
 import { CompactSelect } from "../ui/CompactSelect.tsx";
 import { Toggle } from "../ui/controls.tsx";
 import { toast } from "../ui/Toast.tsx";
-import { useHudInsets, useIsPhone } from "./insets.ts";
+import { underTopBar, useHudInsets, useIsPhone } from "./insets.ts";
 import { ToolBar } from "./ToolBar.tsx";
 
 /** Light colours (tokens only, SPEC §27): flame, candle, lamplight, moonlight, arcane, fey, and plain white. */
@@ -123,10 +123,10 @@ function LightEditor() {
       className="panel pointer-events-auto absolute z-30 flex max-h-[calc(100dvh-160px)] flex-col gap-3 overflow-y-auto p-3"
       style={
         phone
-          ? { top: 68 + banner, left: 12, right }
+          ? { top: underTopBar(banner), left: 12, right }
           : onLeft
-            ? { top: 68 + banner, right, width: "min(300px, calc(100vw - 96px))" }
-            : { top: 68 + banner, left, width: "min(300px, calc(100vw - 96px))" }
+            ? { top: underTopBar(banner), right, width: "min(300px, calc(100vw - 96px))" }
+            : { top: underTopBar(banner), left, width: "min(300px, calc(100vw - 96px))" }
       }
     >
       <header className="flex items-center justify-between gap-2">

@@ -56,13 +56,16 @@ function Row({
   }));
   return (
     <li className="flex items-center gap-2 px-2 py-1.5" data-testid="token-row" data-token={t.id}>
-      <input
-        type="checkbox"
-        aria-label={`Choose ${t.name}`}
-        checked={picked}
-        onChange={onPick}
-        className="h-4 w-4 shrink-0 accent-[var(--brass-500)]"
-      />
+      {/* The box in a finger-sized press area on touch screens (§29.1), the label round it. */}
+      <label className="flex min-h-[var(--touch-min)] min-w-[var(--touch-min)] shrink-0 cursor-pointer items-center justify-center">
+        <input
+          type="checkbox"
+          aria-label={`Choose ${t.name}`}
+          checked={picked}
+          onChange={onPick}
+          className="h-4 w-4 accent-[var(--brass-500)]"
+        />
+      </label>
       <button
         type="button"
         onClick={() => focusToken(t)}

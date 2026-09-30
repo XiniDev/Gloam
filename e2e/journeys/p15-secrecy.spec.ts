@@ -18,7 +18,7 @@ type Tok = {
   dm?: unknown;
   pos: { x: number; y: number };
 };
-type Wall = { id: string; kind: string; doorState?: string | null; dmKind?: string };
+type Wall = { id: string; kind: string; door?: string; dmKind?: string; dmHidden?: boolean };
 
 /** Everything a page receives over its WebSockets from the moment it opens, as text (binary frames as latin-1). */
 function recordFrames(page: Page, into: string[]): void {
@@ -93,7 +93,7 @@ test.describe("P15 — hidden information never reaches a player (SEC)", () => {
     });
     const erin = await admitPlayer(admin, browser, gloam, guardLog, code, "Erin");
     const daveId = (await hook<{ userId: string }>(dave, "me")).userId;
-    await req(admin, "token.create", {
+    const { tokenId: scout } = await req<{ tokenId: string }>(admin, "token.create", {
       sceneId,
       name: "Dave's scout",
       pos: { x: 12.5, y: 12.5 },
@@ -126,8 +126,21 @@ test.describe("P15 — hidden information never reaches a player (SEC)", () => {
     await boardSettled(dave, sceneId);
     await expect.poll(async () => (await hook<Tok[]>(dave, "tokens")).some((t) => t.id === guard)).toBe(true);
 
-    // Rolls: Dave's own blind roll; Erin's to the DM alone and to herself.
-    await req(dave, "dice.roll", { formula: "1d20", visibility: "blind", label: "DaveBlind-QZ9" });
+    // Rolls: a blind check the DM asks of Dave (he rolls it, the DM alone sees what); Erin's to the DM alone and to
+    // herself.
+    const { requestId } = await req<{ requestId: string }>(admin, "request.create", {
+      targets: [scout],
+      type: "custom",
+      formula: "1d20",
+      label: "DaveBlind-QZ9",
+      visibility: "blind",
+    });
+    const answered = await req<{ state: string; total?: number }>(dave, "request.respond", {
+      requestId,
+      target: scout,
+      action: "roll",
+    });
+    expect(answered.total, "what his blind roll came to").toBeUndefined();
     await req(erin, "dice.roll", { formula: "1d20", visibility: "dm", label: "ErinPrivate-QZ9" });
     await req(erin, "dice.roll", { formula: "1d20", visibility: "self", label: "ErinSelf-QZ9" });
     await dave.waitForTimeout(2500);
@@ -143,10 +156,17 @@ test.describe("P15 — hidden information never reaches a player (SEC)", () => {
     const heldWalls = await hook<Wall[]>(dave, "walls");
     const door = heldWalls.find((w) => w.id === secretDoor);
     expect(door?.kind ?? "wall", "the secret door is a wall to him").toBe("wall");
-    expect(door?.doorState ?? null).toBeNull();
+    expect(door?.door ?? "", "no door state on it").toBe("");
     expect(heldWalls.map((w) => w.id)).not.toContain(hiddenWindow);
+    // The hidden sight-blocker: an anonymous occluder (it blocks his sight, so his client must know it's there) — no
+    // door, no DM kind, nothing of what it is.
     const occluder = heldWalls.find((w) => w.id === hiddenWall);
-    if (occluder) expect(occluder.kind).toBe("wall");
+    if (occluder) {
+      expect(occluder.kind).toBe("occluder");
+      expect(occluder.dmKind).toBeUndefined();
+      expect(occluder.dmHidden).toBeUndefined();
+      expect(occluder.door ?? "").toBe("");
+    }
     // His blind roll: that he rolled, not what.
     const feed = await hook<{ label?: string; total?: number; masked?: boolean }[]>(dave, "rollFeed");
     const blind = feed.find((r) => r.label === "DaveBlind-QZ9") ?? feed.find((r) => r.masked);
