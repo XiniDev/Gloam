@@ -232,6 +232,51 @@ export class DiceService {
     return r;
   }
 
+  /** A roll as recorded (its roller's copy), or null. */
+  get(campaignId: string, id: string): RollRecord | null {
+    const row = this.db.select().from(rolls).where(eq(rolls.id, id)).get();
+    if (!row || row.campaignId !== campaignId) return null;
+    const { rollerIsDm: _dm, ...rec } = JSON.parse(row.resultJson) as RollRecord & { rollerIsDm?: boolean };
+    return rec;
+  }
+
+  /**
+   * One die of a roll rolled again (Heroic Inspiration, SRD 5.2.1 p. 183: "reroll any die immediately after rolling
+   * it, and you must use the new roll"; rules audit C4): the same formula, its other dice and references as they fell,
+   * that one die fresh from the dice source. Recorded as a roll of its own. Dice that exploded or were rerolled by the
+   * formula can't be taken one by one: refused.
+   */
+  reroll(
+    campaignId: string,
+    sceneId: string | null,
+    roller: Roller,
+    original: RollRecord,
+    index: number,
+    p: { label?: string; visibility: RollVisibility; purpose?: string; token?: TokenEntity },
+  ): RollRecord {
+    const dice = rerollableDice(original);
+    if (!dice) throw new GloamError("INVALID", "That roll's dice can't be rolled again one by one.");
+    const pick = dice[index];
+    if (!pick) throw new GloamError("INVALID", "That roll has no such die.");
+    const values = dice.map((d) => d.value);
+    values[index] = this.source.roll(pick.sides);
+    const refs = new Map<string, number>();
+    for (const t of original.terms) if (t.kind === "ref") refs.set(t.ref, t.value);
+    let i = 0;
+    let outcome: RollOutcome;
+    try {
+      const formula = original.normalized || original.formula;
+      outcome = rollParsed(formula, parseFormula(formula), {
+        die: () => values[i++] as number,
+        resolve: (path) => refs.get(path.join(".")),
+      });
+    } catch (e) {
+      if (e instanceof DiceError) throw new GloamError("INVALID", e.message);
+      throw e;
+    }
+    return this.record(campaignId, sceneId, roller, outcome, { ...p, manual: false });
+  }
+
   /** The campaign's latest rolls, newest first, as a viewer may see them (the feed on joining). */
   feed(campaignId: string, viewer: { userId: string; dm: boolean }, limit = 50): (RollRecord | MaskedRoll)[] {
     const rows = this.db
@@ -250,6 +295,22 @@ export class DiceService {
     }
     return out;
   }
+}
+
+/**
+ * A roll's dice in the order they were rolled, each with its sides — or null where one exploded or was rerolled by its
+ * formula (the order of those can't be told from the result alone).
+ */
+export function rerollableDice(r: RollRecord): { sides: number; value: number; kept: boolean }[] | null {
+  const out: { sides: number; value: number; kept: boolean }[] = [];
+  for (const t of r.terms) {
+    if (t.kind !== "dice") continue;
+    for (const d of t.dice) {
+      if (d.exploded || d.rerolledFrom?.length) return null;
+      out.push({ sides: t.sides, value: d.value, kept: d.kept });
+    }
+  }
+  return out.length ? out : null;
 }
 
 /** A formula as it rolls, or as written when it can't be read. */

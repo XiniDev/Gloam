@@ -40,6 +40,8 @@ export interface RequestResponse {
   total?: number;
   success?: boolean;
   by?: string;
+  /** Rolled, the roller yet to keep it or spend Heroic Inspiration on a die (rules audit C4): nothing follows yet. */
+  held?: { dice: { sides: number; value: number; kept: boolean }[] };
 }
 
 export interface RollRequest {
@@ -219,6 +221,7 @@ export function cardFor(r: RollRequest, t: RequestTarget, extra: Partial<Request
     ...(!blind && r.showDc && res.success !== undefined ? { success: res.success } : {}),
     ...(t.hint ? { hint: t.hint } : {}),
     ...(t.autoFail?.length ? { autoFail: t.autoFail } : {}),
+    ...(res.held && !blind ? { held: res.held } : {}),
     open: r.status === "open",
     ...extra,
   };

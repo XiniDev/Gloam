@@ -1694,14 +1694,16 @@ export const castSet: CommandDef<z.infer<typeof CastSet>, { ok: true }> = {
           byHand: true,
         }),
       );
-    if (p.hit !== undefined && row.attack) ops.push(...castPathOp(c, ["targets", i, "attack", "hit"], p.hit));
-    if (p.crit !== undefined && row.attack)
+    // The DM's call on an attack (one write: a hit and a critical set together no longer undo each other). Called, it
+    // stands — Heroic Inspiration's reroll, made just after the roll, is past (rules audit C4).
+    if ((p.hit !== undefined || p.crit !== undefined) && row.attack)
       ops.push(
         ...castPathOp(c, ["targets", i, "attack"], {
           ...row.attack,
-          crit: p.crit,
+          ...(p.hit !== undefined ? { hit: p.hit } : {}),
           // A critical hit hits (SRD p. 16).
-          ...(p.crit ? { hit: true } : {}),
+          ...(p.crit !== undefined ? { crit: p.crit, ...(p.crit ? { hit: true } : {}) } : {}),
+          ruled: true,
         }),
       );
     if (p.outcome) ops.push(...castPathOp(c, ["targets", i, "outcome"], p.outcome));
@@ -2217,6 +2219,13 @@ export const CastRecord = z.strictObject({
       crit: z.boolean(),
       hit: z.boolean().nullable(),
       entered: z.boolean().optional(),
+      rollId: z.string().max(40).optional(),
+      inspired: z.boolean().optional(),
+      dice: z
+        .array(z.strictObject({ sides: z.number().int(), value: z.number().int(), kept: z.boolean() }))
+        .max(10)
+        .optional(),
+      ruled: z.boolean().optional(),
     })
     .optional(),
   roll: z

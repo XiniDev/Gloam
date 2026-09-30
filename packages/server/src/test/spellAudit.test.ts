@@ -705,6 +705,109 @@ describe("P9 — the rules audit's fixes on the card", () => {
     off();
   });
 
+  it("C4: Heroic Inspiration on an attack — the player rolls one of its dice again before the card is applied; the new roll counts, judged anew; spent", async () => {
+    await fresh();
+    await place(sera, { x: 10, y: 20 });
+    await place(ogre, { x: 15, y: 20 });
+    const tok = room().model.get("token", sera);
+    const actorId = tok?.actorId as string;
+    await cmd(dm, "actor.change", {
+      actorId,
+      changes: [
+        {
+          path: ["core", "attacks"],
+          after: [{ name: "Mace", attack: "1d20 + 2", damage: "1d6 [bludgeoning]", range: "5 ft" }],
+        },
+        { path: ["core", "inspiration"], after: true },
+      ],
+    });
+    const inspired = () =>
+      (room().model.get("actor", actorId)?.sheet as { core: { inspiration: boolean } } | undefined)?.core
+        .inspiration;
+    const { castId } = await cmd<{ castId: string }>(anna.room, "attack.start", {
+      tokenId: sera,
+      attack: 0,
+      targets: [ogre],
+    });
+    const row = () =>
+      room()
+        .model.get("cast", castId)
+        ?.data.targets.find((t) => t.id === ogre);
+    // Nothing rolled yet: nothing to roll again.
+    await expect(cmd(anna.room, "cast.inspire", { castId, targetId: ogre, die: 0 })).rejects.toThrow(
+      /no attack roll/,
+    );
+    await cmd(anna.room, "cast.roll", { castId, what: "attack", targetId: ogre });
+    const first = row()?.attack;
+    expect(first?.rollId).toBeTruthy();
+    expect(first?.dice?.[0]?.sides).toBe(20);
+    // Her card (the caster's player's view) offers it: Inspiration to spend, and the d20 it would roll again.
+    type View = {
+      id: string;
+      can: { inspire?: boolean };
+      targets: { id: string; attack?: { dice?: { sides: number }[]; inspired?: boolean } }[];
+    };
+    const view = () =>
+      anna.msgs
+        .filter((m) => m.type === "cast.view" && (m.payload as View).id === castId)
+        .map((m) => m.payload as View)
+        .at(-1);
+    await waitFor(() => view()?.targets.find((t) => t.id === ogre)?.attack?.dice);
+    expect(view()?.can.inspire).toBe(true);
+    expect(view()?.targets.find((t) => t.id === ogre)?.attack?.dice?.[0]?.sides).toBe(20);
+    await cmd(anna.room, "cast.inspire", { castId, targetId: ogre, die: 0 });
+    // Rolled again: marked so on her card, nothing more to spend there.
+    await waitFor(() => view()?.targets.find((t) => t.id === ogre)?.attack?.inspired);
+    expect(view()?.can.inspire).toBeUndefined();
+    expect(view()?.targets.find((t) => t.id === ogre)?.attack?.dice).toBeUndefined();
+    const second = row()?.attack;
+    expect(second?.inspired).toBe(true);
+    expect(second?.rollId).not.toBe(first?.rollId);
+    // Judged anew against its AC (12): a hit is 12 or more (a 20 always, a 1 never).
+    const nat = second?.natural ?? 0;
+    expect(second?.hit).toBe(nat === 20 ? true : nat === 1 ? false : (second?.total ?? 0) >= 12);
+    expect(inspired()).toBe(false);
+    // Once: it's spent, and this roll was the second.
+    await expect(cmd(anna.room, "cast.inspire", { castId, targetId: ogre, die: 0 })).rejects.toThrow(
+      /no attack roll|no Heroic/,
+    );
+    await cmd(dm, "cast.close", { castId });
+    // "Immediately after rolling it": once the DM has called the attack, or its damage is rolled, it's too late —
+    // and the card no longer offers it.
+    await cmd(dm, "actor.change", { actorId, changes: [{ path: ["core", "inspiration"], after: true }] });
+    const late = async () => {
+      await sleep(260);
+      const { castId: id } = await cmd<{ castId: string }>(anna.room, "attack.start", {
+        tokenId: sera,
+        attack: 0,
+        targets: [ogre],
+      });
+      await cmd(anna.room, "cast.roll", { castId: id, what: "attack", targetId: ogre });
+      return id;
+    };
+    const called = await late();
+    await cmd(dm, "cast.set", { castId: called, targetId: ogre, hit: true });
+    await expect(cmd(anna.room, "cast.inspire", { castId: called, targetId: ogre, die: 0 })).rejects.toThrow(
+      /DM has called/,
+    );
+    expect(room().model.get("cast", called)?.data.targets[0]?.attack).toMatchObject({
+      hit: true,
+      ruled: true,
+    });
+    await cmd(dm, "cast.close", { castId: called });
+    const damaged = await late();
+    const damagedRow = room().model.get("cast", damaged)?.data.targets[0];
+    await cmd(anna.room, "cast.roll", { castId: damaged, what: "damage", targetId: damagedRow?.key });
+    await expect(cmd(anna.room, "cast.inspire", { castId: damaged, targetId: ogre, die: 0 })).rejects.toThrow(
+      /damage is rolled/,
+    );
+    // Refused both times: nothing spent.
+    expect(inspired()).toBe(true);
+    await cmd(dm, "cast.close", { castId: damaged });
+    await closeAll();
+    await place(ogre, { x: 30, y: 30 });
+  });
+
   it("I11: a choice lands one of its group (Blindness/Deafness: Blinded); a later stage waits (Sleep: Incapacitated, not yet Unconscious); what the DM judges waits for them (Divine Word)", async () => {
     await fresh();
     await place(ogre, { x: 30, y: 30 });

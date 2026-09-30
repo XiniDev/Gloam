@@ -457,6 +457,15 @@ export const RequestCreate = z.strictObject({
   adv: z.enum(["none", "adv", "dis"]).default("none"),
   visibility: z.enum(["public", "dm", "blind"]).default("public"),
 });
+/**
+ * `request.keep` (the roller): a held roll kept as it fell — or, with `reroll`, Heroic Inspiration spent to roll that
+ * die (its index among the roll's dice) again, the new roll the one that counts (rules audit C4).
+ */
+export const RequestKeep = z.strictObject({
+  requestId: Id,
+  target: Id,
+  reroll: z.number().int().min(0).max(99).optional(),
+});
 /** A target's controller answers: the server rolls, or a physical roll is entered, or it's skipped. */
 export const RequestRespond = z.strictObject({
   requestId: Id,
@@ -466,6 +475,8 @@ export const RequestRespond = z.strictObject({
   total: z.number().int().min(-1000).max(1000).optional(),
   /** The roller sets aside the advantage or disadvantage their conditions suggest (AC-DICE-11). */
   ignoreHints: z.boolean().optional(),
+  /** SRD 5.1: Inspiration spent on this roll — Advantage (rules audit C4). */
+  inspire: z.boolean().optional(),
 });
 /** The DM answers for a target: rolls with its modifiers, sets the result, or skips it. */
 export const RequestAnswer = z.strictObject({

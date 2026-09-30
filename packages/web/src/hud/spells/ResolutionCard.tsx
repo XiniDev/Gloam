@@ -2,10 +2,12 @@ import type { CastTargetView, CastView } from "@gloam/shared/protocol";
 import { Check, ChevronDown, ChevronUp, EyeOff, X } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { D20Icon } from "../../icons/dice.tsx";
+import { StatusIcon } from "../../icons/status.tsx";
 import {
   castApply,
   castCancel,
   castClose,
+  castInspire,
   castNpcSaves,
   castRevealDc,
   castRoll,
@@ -419,6 +421,11 @@ function TargetRow({
         {atk.hit !== undefined && atk.hit !== null ? (atk.hit ? " hit" : " miss") : ""}
         {atk.crit ? " crit" : ""}
         {dm && atk.entered ? <span className="font-normal text-muted"> (entered)</span> : null}
+        {atk.inspired ? (
+          <span className="ml-1 inline-flex align-middle" data-testid="attack-inspired">
+            <StatusIcon id="inspiration" size={13} label="Rolled again with Heroic Inspiration" />
+          </span>
+        ) : null}
       </span>
     ) : c.can.roll && t.state === "in" ? (
       <AttackRoll c={c} t={t} mode={mode} />
@@ -509,6 +516,25 @@ function TargetRow({
           </IconButton>
         ) : null}
       </div>
+      {c.can.inspire && atk?.dice && t.state === "in" ? (
+        // Heroic Inspiration (SRD 5.2.1 p. 183): one of its dice rolled again, the new roll the one that counts — named
+        // on its own line, as on a request card (a bare glyph beside the result said nothing of what it would do).
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 pl-0.5" data-testid="attack-inspiration">
+          <span className="text-12 text-muted">Heroic Inspiration:</span>
+          {atk.dice.slice(0, 2).map((die, i) => (
+            <Button
+              // (Its dice in the order they fell: their places are their keys.)
+              key={i}
+              size="S"
+              variant="secondary"
+              icon={<StatusIcon id="inspiration" size={15} label="" />}
+              onClick={() => act(castInspire(c.id, t.key, i), "Couldn't roll it again")}
+            >
+              {`Reroll the d${die.sides} (${die.value})`}
+            </Button>
+          ))}
+        </div>
+      ) : null}
       {hints && !atk && c.can.roll && t.state === "in" ? (
         <AttackHintLine
           hints={hints}

@@ -811,4 +811,154 @@ describe("P7 — HP, conditions and death on the server (§8.11)", () => {
     expect(p.items[0]?.label).toBe("Mark dead? (three failed death saves)");
     expect(p.items[0]?.choices?.map((c) => c.label)).toEqual(["Dead", "Keep dying"]);
   });
+
+  it("Heroic Inspiration (SRD 5.2.1 p. 183; rules audit C4): a roll it could change waits — keep it, or spend it to roll a die again, the new roll the one that counts; nothing follows until then, once", async () => {
+    await reset();
+    const inspire = (on: boolean) =>
+      rq(dm, "actor.change", { actorId: ilseActor, changes: [{ path: ["core", "inspiration"], after: on }] });
+    const inspired = () =>
+      (room().model.get("actor", ilseActor)?.sheet as { core: { inspiration: boolean } } | undefined)?.core
+        .inspiration;
+    const ask = async (type: "save" | "check") => {
+      const n = cardsOf("Anna").length;
+      await sleep(260);
+      const { requestId } = await rq<{ requestId: string }>(dm, "request.create", {
+        targets: [ilse],
+        type,
+        ...(type === "save" ? { ability: "dex" } : { skill: "perception" }),
+        dc: 12,
+        showDc: true,
+      });
+      return (await waitFor(() =>
+        cardsOf("Anna")
+          .slice(n)
+          .find((c) => c.requestId === requestId),
+      )) as RequestCard;
+    };
+    const response = (requestId: string) => room().requests.get(requestId)?.responses[ilse];
+    // Without it: the roll counts at once.
+    await inspire(false);
+    const c0 = await ask("save");
+    const r0 = await rq<RequestCard>(anna().room, "request.respond", {
+      requestId: c0.requestId,
+      target: ilse,
+      action: "roll",
+    });
+    expect(r0.held).toBeUndefined();
+    expect(response(c0.requestId)?.held).toBeUndefined();
+    // With it: the roll waits (the card offers its d20); kept, it counts as it fell and the Inspiration stays.
+    await inspire(true);
+    const c1 = await ask("save");
+    const r1 = await rq<RequestCard>(anna().room, "request.respond", {
+      requestId: c1.requestId,
+      target: ilse,
+      action: "roll",
+    });
+    expect(r1.held?.dice).toEqual([{ sides: 20, value: expect.any(Number), kept: true }]);
+    expect(room().requests.get(c1.requestId)?.status).toBe("open");
+    const kept = await rq<RequestCard>(anna().room, "request.keep", {
+      requestId: c1.requestId,
+      target: ilse,
+    });
+    expect(kept.held).toBeUndefined();
+    expect(kept.total).toBe(r1.total);
+    expect(inspired()).toBe(true);
+    // Spent on the d20: a new roll, the one that counts; the Inspiration gone; nothing to spend twice.
+    const c2 = await ask("check");
+    await rq<RequestCard>(anna().room, "request.respond", {
+      requestId: c2.requestId,
+      target: ilse,
+      action: "roll",
+    });
+    const first = response(c2.requestId)?.rollId;
+    const again = await rq<RequestCard>(anna().room, "request.keep", {
+      requestId: c2.requestId,
+      target: ilse,
+      reroll: 0,
+    });
+    expect(response(c2.requestId)?.rollId).not.toBe(first);
+    expect(again.total).toBe(response(c2.requestId)?.total);
+    expect(again.held).toBeUndefined();
+    expect(inspired()).toBe(false);
+    await expect(
+      rq(anna().room, "request.keep", { requestId: c2.requestId, target: ilse, reroll: 0 }),
+    ).rejects.toThrow(/isn't waiting|closed|no longer/);
+    // A death save held: its result lands once — when it's kept.
+    await inspire(true);
+    await hpApply(dm, {
+      targets: [ilse],
+      kind: "damage",
+      amount: 25,
+      decide: { [ilse]: { keep: ["down"] } },
+    });
+    const n = cardsOf("Anna").length;
+    await sleep(520);
+    // (With a dying cultist on the same request: the DM answers for it while hers waits.)
+    const cultist = await npc("Held-roll cultist", 6);
+    await hpApply(dm, {
+      targets: [cultist],
+      kind: "damage",
+      amount: 8,
+      decide: { [cultist]: { keep: ["npcAtZero"], choices: { npcAtZero: "dying" } } },
+    });
+    await sleep(260);
+    await rq(dm, "death.request", { targets: [ilse, cultist] });
+    const ds = (await waitFor(() =>
+      cardsOf("Anna")
+        .slice(n)
+        .find((c) => c.label === "Death saving throw"),
+    )) as RequestCard;
+    const before = { ...(state(ilse).status.deathSaves ?? {}) };
+    const held = await rq<RequestCard>(anna().room, "request.respond", {
+      requestId: ds.requestId,
+      target: ilse,
+      action: "roll",
+    });
+    expect(held.held).toBeDefined();
+    expect(state(ilse).status.deathSaves).toMatchObject(before);
+    // Every other target answered: the request still waits on hers (it closes when she keeps it, not before).
+    await rq(dm, "request.answer", { requestId: ds.requestId, target: cultist, action: "roll" });
+    expect(room().requests.get(ds.requestId)?.status).toBe("open");
+    expect(state(ilse).status.deathSaves).toMatchObject(before);
+    await rq(anna().room, "request.keep", { requestId: ds.requestId, target: ilse });
+    expect(room().requests.get(ds.requestId)?.status).toBe("closed");
+    const after = state(ilse).status.deathSaves;
+    const moved =
+      (after?.successes ?? 0) + (after?.failures ?? 0) - ((before.successes ?? 0) + (before.failures ?? 0));
+    // One result, once (a 1 counts two failures; a 20 brings her round — no counts left then).
+    expect(after === undefined || moved === 1 || moved === 2).toBe(true);
+    // SRD 5.1's Inspiration is Advantage, taken before the roll: offered on the card, spent with it.
+    await reset();
+    const campaign = room().model.campaign;
+    const was = campaign.rulesPack;
+    campaign.rulesPack = "srd-5.1";
+    try {
+      await inspire(true);
+      const c3 = await ask("check");
+      expect(c3.inspiration).toBe("advantage");
+      const r3 = await rq<RequestCard>(anna().room, "request.respond", {
+        requestId: c3.requestId,
+        target: ilse,
+        action: "roll",
+        inspire: true,
+      });
+      expect(r3.held).toBeUndefined();
+      expect(r3.formula).toMatch(/2d20kh1/);
+      expect(inspired()).toBe(false);
+      // Nothing left to spend: refused.
+      const c4 = await ask("check");
+      expect(c4.inspiration).toBeUndefined();
+      await expect(
+        rq(anna().room, "request.respond", {
+          requestId: c4.requestId,
+          target: ilse,
+          action: "roll",
+          inspire: true,
+        }),
+      ).rejects.toThrow(/no Inspiration/);
+    } finally {
+      campaign.rulesPack = was;
+    }
+    await inspire(false);
+  });
 });

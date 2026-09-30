@@ -113,7 +113,20 @@ export interface CastTargetData {
     /** The DM's own verdict on it (cast.set): a later DC leaves it be. */
     byHand?: boolean;
   };
-  attack?: { total: number; natural: number | null; crit: boolean; hit?: boolean | null; entered?: boolean };
+  /** `rollId`: the app's roll (a die of it can be rolled again — Heroic Inspiration); `inspired`: it was. */
+  attack?: {
+    total: number;
+    natural: number | null;
+    crit: boolean;
+    hit?: boolean | null;
+    entered?: boolean;
+    rollId?: string;
+    inspired?: boolean;
+    /** Its dice as they fell (the app's roll): which one Heroic Inspiration rolls again. */
+    dice?: { sides: number; value: number; kept: boolean }[];
+    /** The DM has called it (hit, miss, critical): Heroic Inspiration's moment — just after the roll — has passed. */
+    ruled?: boolean;
+  };
   /** Its own damage (a spell attack's hit, a dart): rolled for it. */
   roll?: DamageRoll;
   /** The DM's override of full / half / none. */

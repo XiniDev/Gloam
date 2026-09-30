@@ -79,6 +79,10 @@ interface Item {
  * the creatures on it — the ones the cards are about above all — decided as cards come and go, never while they're
  * read. A phone with a panel open takes them into the panel instead (RequestCards, PromptCards).
  */
+/** A scrolling stack's edges: the content (and the cards' shadows) fading out over its 12-px margin on every side. */
+const EDGE_FADE =
+  "linear-gradient(to bottom, transparent 0, black 12px, black calc(100% - 12px), transparent 100%), linear-gradient(to right, transparent 0, black 12px, black calc(100% - 12px), transparent 100%)";
+
 export function FloatingCards() {
   const groups = useRequestGroups();
   const prompts = usePromptList();
@@ -151,6 +155,26 @@ export function FloatingCards() {
     if (items.length <= 1) setAll(false);
   }, [keys]);
   pageKey.current = items[page]?.key ?? null;
+
+  // The stack clips only while it scrolls. A float shadow reaches ~48 px round a card and 66 below it: cut at the
+  // list's 12-px margin, it read as a hard-edged dark box round every card (found in the C4 held-roll capture). A stack
+  // that fits leaves its shadows whole; one that scrolls fades its edges instead (EDGE_FADE), so neither a shadow nor
+  // a card passing under an edge is ever sliced through.
+  const [scrolls, setScrolls] = useState(false);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: measured again as the cards shown change
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || !shown || phone) {
+      setScrolls(false);
+      return;
+    }
+    const measure = () => setScrolls(el.scrollHeight > el.clientHeight + 1);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    for (const c of el.children) ro.observe(c);
+    return () => ro.disconnect();
+  }, [keys, shown, phone, all]);
 
   // Where on the free board: its top or its foot, centred or against either side — the place that covers least of the
   // creatures on the board (the ones the cards are about ten times over), the top centred when it's a tie. The foot
@@ -306,8 +330,9 @@ export function FloatingCards() {
       <ol
         ref={ref}
         aria-label="Waiting for you"
-        // (Room round the cards for their shadows, which a scrolling list would otherwise cut: the cards stay 380 wide.)
-        className="pointer-events-none -m-3 flex w-[calc(100%+1.5rem)] max-w-[404px] flex-col gap-2 overflow-y-auto overscroll-contain p-3"
+        // (A margin round the cards, the scrolling stack's fade: the cards stay 380 wide.)
+        className={`pointer-events-none -m-3 flex w-[calc(100%+1.5rem)] max-w-[404px] flex-col gap-2 p-3 ${scrolls ? "overflow-y-auto overscroll-contain" : "overflow-visible"}`}
+        data-scrolls={scrolls}
         // Never past the screen's free height (critic P9 r2 #17: three cards ran under the dice button and off the
         // foot): the stack scrolls instead, between the top HUD and the bottom band.
         style={
@@ -322,6 +347,14 @@ export function FloatingCards() {
                     (foot ? top + banner + tracker + 16 : 16) +
                     24,
                 ),
+                ...(scrolls
+                  ? {
+                      maskImage: EDGE_FADE,
+                      WebkitMaskImage: EDGE_FADE,
+                      maskComposite: "intersect",
+                      WebkitMaskComposite: "source-in",
+                    }
+                  : {}),
               }
         }
         data-testid="card-stack"

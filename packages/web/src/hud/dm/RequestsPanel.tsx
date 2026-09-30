@@ -3,6 +3,7 @@ import type { RollRequestView } from "@gloam/shared/protocol";
 import { Check, Pencil, SkipForward, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { D20Icon } from "../../icons/dice.tsx";
+import { StatusIcon } from "../../icons/status.tsx";
 import {
   answerRequest,
   closeRequest,
@@ -339,7 +340,7 @@ function Row({ r, t }: { r: RollRequestView; t: RollRequestView["targets"][numbe
     <li
       className="flex flex-col gap-1 border-t border-line/60 py-1.5"
       data-target={t.id}
-      data-state={res.state}
+      data-state={res.held ? "held" : res.state}
       data-testid="request-row"
     >
       <div className="flex items-center gap-2">
@@ -354,7 +355,18 @@ function Row({ r, t }: { r: RollRequestView; t: RollRequestView["targets"][numbe
           <span className="caps text-12 text-fog">{STATE_WORD.pending}</span>
         ) : (
           <span className="flex items-center gap-1.5">
-            <span className="caps text-12 text-fog">{STATE_WORD[res.state]}</span>
+            {res.held ? (
+              // Rolled, its roller choosing: keep it, or spend Heroic Inspiration on a die (closing keeps it).
+              <span
+                className="caps flex items-center gap-1 text-12 text-brass"
+                data-testid="request-held-row"
+              >
+                <StatusIcon id="inspiration" size={13} label="" />
+                deciding
+              </span>
+            ) : (
+              <span className="caps text-12 text-fog">{STATE_WORD[res.state]}</span>
+            )}
             {res.total !== undefined ? (
               <span className={`tabular text-18 font-bold ${outcome}`} data-testid="request-total">
                 {res.total}
@@ -417,7 +429,9 @@ function Row({ r, t }: { r: RollRequestView; t: RollRequestView["targets"][numbe
 /** One open request on the live board: each creature's state and result against the DC. */
 function Board({ r }: { r: RollRequestView }) {
   const [busy, setBusy] = useState(false);
-  const answered = r.targets.filter((t) => (r.responses[t.id]?.state ?? "pending") !== "pending").length;
+  const answered = r.targets.filter(
+    (t) => (r.responses[t.id]?.state ?? "pending") !== "pending" && !r.responses[t.id]?.held,
+  ).length;
   const passed = r.targets.filter((t) => r.responses[t.id]?.success === true).length;
   const npcs = r.targets.filter(
     (t) => !t.controllers.length && (r.responses[t.id]?.state ?? "pending") === "pending",

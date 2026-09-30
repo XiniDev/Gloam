@@ -155,6 +155,7 @@ export const MESSAGE_RATES = {
   "request.close": rate(2, 4),
   "request.answer": rate(5, 10),
   "request.respond": rate(5, 8),
+  "request.keep": rate(5, 8),
   "request.list": rate(1, 3),
   // Health (§8.11): the DM's prompts, death saves asked for outside combat.
   "prompt.list": rate(1, 3),
@@ -166,6 +167,7 @@ export const MESSAGE_RATES = {
   "combat.rollRemaining": rate(2, 4),
   // Spells (§8.13): rolls from a card (a few attacks in a row), the NPCs' saves, the homebrew list.
   "cast.roll": rate(4, 8),
+  "cast.inspire": rate(2, 4),
   "cast.npcSaves": rate(1, 3),
   "content.spells": rate(1, 3),
 } as const satisfies Record<string, RateSpec>;

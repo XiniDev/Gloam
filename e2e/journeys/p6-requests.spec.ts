@@ -372,4 +372,78 @@ test.describe("P6 — roll requests (DICE-06)", () => {
       .toBe(true);
     await dave.screenshot({ path: `${SHOTS}/cards-moved.png` });
   });
+
+  test("Heroic Inspiration (SRD 5.2.1 p. 183; rules audit C4): a roll it could change waits on its card — Keep, or Reroll the d20, the new roll the one that counts; the DM's row says it's being decided; spent, the next roll counts at once", async ({
+    admin,
+    browser,
+    gloam,
+    guardLog,
+  }) => {
+    const code = await adminAtTable(admin);
+    await introDone(admin);
+    const sceneId = await createScene(admin, {
+      name: "Toll gate",
+      mapKind: "procedural",
+      floorStyle: "stone",
+      widthFt: 40,
+      heightFt: 30,
+    });
+    await boardSettled(admin, sceneId);
+    const dave = await admitPlayer(admin, browser, gloam, guardLog, code, "Dave", { viewport: VIEWPORT });
+    const { userId } = await hook<{ userId: string }>(dave, "me");
+    const { actorId } = await req<{ actorId: string }>(admin, "actor.quickCreate", {
+      name: "Thorin",
+      classLevel: "Rogue 3",
+      hpMax: 20,
+      ac: 14,
+      ownerUserId: userId,
+    });
+    await req(admin, "actor.change", { actorId, changes: [{ path: ["core", "inspiration"], after: true }] });
+    await expect.poll(async () => (await tokens(admin)).some((t) => t.actorId === actorId)).toBe(true);
+    const thorin = ((await tokens(admin)).find((t) => t.actorId === actorId) as Token).id;
+    await boardSettled(dave, sceneId);
+    await admin.getByRole("button", { name: /^DM panel/ }).click();
+    const panel = admin.getByRole("region", { name: "DM panel", exact: true });
+    await panel.getByRole("tab", { name: "Requests" }).click();
+    const ask = () =>
+      req(admin, "request.create", {
+        targets: [thorin],
+        type: "check",
+        skill: "perception",
+        dc: 12,
+        showDc: true,
+      });
+    const card = dave.getByTestId("request-card");
+    const row = panel.locator(`[data-testid="request-row"][data-target="${thorin}"]`);
+
+    // Rolled with Inspiration in hand: the roll waits — Keep, or Reroll the d20 (its value shown).
+    await ask();
+    await card.getByRole("button", { name: "Roll", exact: true }).click();
+    const held = card.getByTestId("request-held");
+    await expect(held).toBeVisible();
+    await expect(held.getByRole("button", { name: "Keep", exact: true })).toBeVisible();
+    const reroll = held.getByRole("button", { name: /^Reroll the d20 \(\d+\)$/ });
+    await expect(reroll).toHaveCount(1);
+    // The DM sees it being decided, not yet in.
+    await expect(row).toHaveAttribute("data-state", "held");
+    await expect(row.getByTestId("request-held-row")).toContainText("deciding");
+    await expect(panel.getByTestId("request-board")).toContainText("0 of 1 in");
+    // (Captured once the throw has landed: the feed shows the roll's total too.)
+    await expect(dave.getByTestId("roll-total").first()).toBeVisible();
+    await dave.screenshot({ path: `${SHOTS}/request-held.png` });
+    await reroll.click();
+    // The new roll counts: the card shows it as rolled, the DM's row has it in.
+    await expect(held).toHaveCount(0);
+    await expect(row).toHaveAttribute("data-state", "rolled");
+    await expect(row.getByTestId("request-total")).toHaveText(/^\d+$/);
+
+    // Spent: the next roll counts at once, nothing to keep (the first card stays up, answered, till the DM closes it).
+    await ask();
+    const fresh = card.filter({ has: dave.getByRole("button", { name: "Roll", exact: true }) });
+    await fresh.getByRole("button", { name: "Roll", exact: true }).click();
+    await expect(dave.getByTestId("request-held")).toHaveCount(0);
+    await expect(
+      panel.locator(`[data-testid="request-row"][data-target="${thorin}"][data-state="rolled"]`),
+    ).toHaveCount(2);
+  });
 });

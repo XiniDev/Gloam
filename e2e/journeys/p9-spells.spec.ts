@@ -475,7 +475,7 @@ test.describe("P9 — spells (SPL)", () => {
     gloam,
     guardLog,
   }) => {
-    const { dave, goblin, sceneId } = await wizardScene(admin, browser, gloam, guardLog);
+    const { dave, goblin, sceneId, actorId } = await wizardScene(admin, browser, gloam, guardLog);
     const g1 = await goblin("Goblin", { x: 30, y: 30 });
     // Goblin 2 stands just past the end of a wall across Mira's line to it: part of it covered. Goblin 3 is behind
     // it altogether.
@@ -501,8 +501,16 @@ test.describe("P9 — spells (SPL)", () => {
     const his = dave.getByTestId("resolution-card").filter({ hasText: "Dagger" });
     await expect(his).toBeVisible();
     const hisRow = his.locator(`[data-testid="cast-target"][data-token="${g1}"]`);
+    // Mira holds Heroic Inspiration (rules audit C4): the d20 on the card can be rolled again, once, before it's applied.
+    await req(admin, "actor.change", { actorId, changes: [{ path: ["core", "inspiration"], after: true }] });
     await hisRow.getByRole("button", { name: "Attack" }).click();
     await expect(hisRow.getByTestId("attack-result")).toBeVisible();
+    const again = hisRow.getByRole("button", { name: /^Reroll the d20 \(\d+\)$/ });
+    await expect(again).toHaveCount(1);
+    await dave.screenshot({ path: `${SHOTS}/attack-inspiration.png` });
+    await again.click();
+    await expect(again).toHaveCount(0);
+    await expect(hisRow.getByTestId("attack-inspired")).toBeVisible();
     // The DM calls it a hit (whatever the die said), and Dave rolls its damage.
     const card = admin.getByTestId("resolution-card").filter({ hasText: "Dagger" });
     const row = card.locator(`[data-testid="cast-target"][data-token="${g1}"]`);

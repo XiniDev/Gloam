@@ -59,6 +59,13 @@ export interface RequestCard {
   hint?: RollHint;
   /** Conditions that fail this save outright (Paralyzed, Stunned, Unconscious… — the DM may still let it roll). */
   autoFail?: string[];
+  /**
+   * Rolled, and waiting on its roller (rules audit C4): the creature holds Heroic Inspiration — keep the roll, or
+   * spend it to roll one of these dice again (SRD 5.2.1 p. 183). Nothing follows from the roll until then.
+   */
+  held?: { dice: { sides: number; value: number; kept: boolean }[] };
+  /** SRD 5.1: its creature has Inspiration to spend on this roll — Advantage, chosen before it's rolled (C4). */
+  inspiration?: "advantage";
 }
 
 /** Advantage or disadvantage a creature's conditions suggest for a roll, and which conditions. */
@@ -90,9 +97,17 @@ export interface RollRequestView {
     hint?: RollHint;
     autoFail?: string[];
   }[];
+  /** `held`: rolled, its roller still choosing to keep it or spend Heroic Inspiration on a die (rules audit C4). */
   responses: Record<
     string,
-    { state: RequestState; rollId?: string; total?: number; success?: boolean; by?: string }
+    {
+      state: RequestState;
+      rollId?: string;
+      total?: number;
+      success?: boolean;
+      by?: string;
+      held?: { dice: { sides: number; value: number; kept: boolean }[] };
+    }
   >;
   status: "open" | "closed";
   closedAt: number | null;

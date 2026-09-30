@@ -128,6 +128,9 @@ export const castClose = (castId: string) => request("cast.close", { castId });
 /** The DM sets (or changes) a card's save DC: saves already rolled are judged again against it. */
 export const castSetDc = (castId: string, dc: number) => request("cast.setDc", { castId, dc });
 /** A roll on the card: an attack at a row, or the damage (the card's, or a row's) — or a number entered. */
+/** Heroic Inspiration spent on the attack rolled at a row: that die rolled again (rules audit C4). */
+export const castInspire = (castId: string, targetId: string, die: number) =>
+  request<{ total: number }>("cast.inspire", { castId, targetId, die });
 export const castRoll = (
   castId: string,
   what: "attack" | "damage",

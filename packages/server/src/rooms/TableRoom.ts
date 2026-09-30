@@ -10,6 +10,7 @@ import {
   AdminBan,
   AdminUnban,
   CameraSpotlight,
+  CastInspire,
   CastNpcSaves,
   CastRoll,
   ClockSync,
@@ -36,8 +37,10 @@ import {
   PromptResolve,
   ProposalDecide,
   RequestAnswer,
+  type RequestCard,
   RequestClose,
   RequestCreate,
+  RequestKeep,
   RequestRespond,
   SceneRef,
   TableKick,
@@ -79,6 +82,7 @@ import {
   DiceService,
   type DiceSkin,
   type RollRecord,
+  rerollableDice,
   viewOfRoll,
 } from "../dice/service.ts";
 import type { ActorEntity } from "../engine/codecs.ts";
@@ -486,8 +490,21 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
         if (p.action === "skip") res = { state: "skipped", by: auth.userId };
         else {
           const x = this.requestTarget(target.id);
+          // SRD 5.1's Inspiration: Advantage on this roll, spent (rules audit C4).
+          if (p.inspire) {
+            const actorId = x.token ? x.token.actorId : target.id;
+            if (this.model.campaign.rulesPack !== "srd-5.1" || !actorId || !x.sheet?.core.inspiration)
+              throw new GloamError("CONFLICT", `${target.name} has no Inspiration to spend on this.`);
+            this.bus.execute(
+              "actor.change",
+              { actorId, changes: [{ path: ["core", "inspiration"], after: false }] },
+              this.actorOfUser(auth.userId),
+            );
+          }
           const opts = {
-            formula: hinted(target, p.ignoreHints),
+            formula: p.inspire
+              ? withHint(hinted(target, p.ignoreHints), "adv")
+              : hinted(target, p.ignoreHints),
             visibility: r.visibility,
             label: `${target.name} · ${r.label}`,
           };
@@ -514,12 +531,67 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
             by: auth.userId,
             ...(r.dc !== undefined ? { success: roll.total >= r.dc } : {}),
           };
+          // Its creature holds Heroic Inspiration: the roll waits on its roller — keep it, or roll a die again.
+          const held = p.action === "roll" ? this.heldFor(r, x.sheet, roll) : null;
+          if (held) res.held = held;
         }
         r.responses[target.id] = res;
-        this.answeredForRules(r, target, res, roll);
+        if (!res.held) this.answeredForRules(r, target, res, roll);
         this.requests.save(r);
         this.sendRequest(r);
-        return cardFor(r, target, this.health.cardExtra(r, target));
+        return cardFor(r, target, this.cardExtra(r, target));
+      }),
+      // A held roll kept, or Heroic Inspiration spent on one of its dice (rules audit C4).
+      "request.keep": def(RequestKeep, MESSAGE_RATES["request.keep"], ({ auth }, p) => {
+        const { r, target } = this.openTarget(p.requestId, p.target);
+        if (!target.controllers.includes(auth.userId))
+          throw new GloamError("FORBIDDEN", "That card isn't yours.");
+        const res = r.responses[target.id];
+        if (!res?.held || !res.rollId) throw new GloamError("CONFLICT", "That roll isn't waiting on you.");
+        const original = this.dice.get(this.campaignId, res.rollId);
+        if (!original) throw new GloamError("NOT_FOUND", "That roll is gone.");
+        const { held: _held, ...kept } = res;
+        let next: RequestResponse = kept;
+        let roll: RollRecord = original;
+        if (p.reroll !== undefined) {
+          const x = this.requestTarget(target.id);
+          const actorId = x.token ? x.token.actorId : target.id;
+          if (!actorId || !x.sheet?.core.inspiration)
+            throw new GloamError("CONFLICT", `${target.name} has no Heroic Inspiration to spend.`);
+          // Spent: its sheet says so (one step the DM can undo with the rest).
+          this.bus.execute(
+            "actor.change",
+            { actorId, changes: [{ path: ["core", "inspiration"], after: false }] },
+            this.actorOfUser(auth.userId),
+          );
+          roll = this.dice.reroll(
+            this.campaignId,
+            this.projector.activeSceneId || null,
+            this.rollerOf(auth),
+            original,
+            p.reroll,
+            {
+              label: `${target.name} · ${r.label} · Heroic Inspiration`,
+              visibility: r.visibility,
+              purpose: "request",
+              ...(x.token ? { token: x.token } : {}),
+            },
+          );
+          this.deliverRoll(roll, false);
+          next = {
+            state: "rolled",
+            rollId: roll.id,
+            formula: roll.normalized || roll.formula,
+            total: roll.total,
+            by: auth.userId,
+            ...(r.dc !== undefined ? { success: roll.total >= r.dc } : {}),
+          };
+        }
+        r.responses[target.id] = next;
+        this.answeredForRules(r, target, next, roll);
+        this.requests.save(r);
+        this.sendRequest(r);
+        return cardFor(r, target, this.cardExtra(r, target));
       }),
       // The DM answers for a target: rolls with its modifiers, sets its result, or skips it.
       "request.answer": def(RequestAnswer, MESSAGE_RATES["request.answer"], ({ auth }, p) => {
@@ -572,6 +644,14 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
         if (!r || r.campaignId !== this.campaignId)
           throw new GloamError("NOT_FOUND", "That request no longer exists.");
         if (r.status === "closed") return { status: "closed" };
+        // A roll still waiting on its roller (Heroic Inspiration) counts as it fell.
+        for (const t of r.targets) {
+          const res = r.responses[t.id];
+          if (!res?.held) continue;
+          const { held: _held, ...kept } = res;
+          r.responses[t.id] = kept;
+          this.answeredForRules(r, t, kept, res.rollId ? this.dice.get(this.campaignId, res.rollId) : null);
+        }
         r.status = "closed";
         r.closedAt = Date.now();
         this.requests.save(r);
@@ -618,6 +698,9 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
       // Resolution cards (§8.13): a roll from a card (an attack, the damage), the NPCs' saves on one click.
       "cast.roll": def(CastRoll, MESSAGE_RATES["cast.roll"], ({ auth }, p) =>
         this.casts.roll(this.actorFor(auth), p),
+      ),
+      "cast.inspire": def(CastInspire, MESSAGE_RATES["cast.inspire"], ({ auth }, p) =>
+        this.casts.inspire(this.actorFor(auth), p),
       ),
       "cast.npcSaves": def(CastNpcSaves, MESSAGE_RATES["cast.npcSaves"], ({ auth }, p) =>
         this.casts.npcSaves(this.actorFor(auth), p.castId),
@@ -963,6 +1046,27 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
         this.sendRequest(r);
       },
       roll: (userId, p) => this.rollFromCard(userId, p, null),
+      reroll: (userId, rollId, die, p) => {
+        const original = this.dice.get(this.campaignId, rollId);
+        if (!original) throw new GloamError("NOT_FOUND", "That roll is gone.");
+        const roller = this.rollerFor(userId);
+        const token = p.tokenId ? this.model.get("token", p.tokenId) : undefined;
+        const r = this.dice.reroll(
+          this.campaignId,
+          this.projector.activeSceneId || null,
+          roller,
+          original,
+          die,
+          {
+            label: p.label,
+            visibility: original.visibility,
+            purpose: "cast",
+            ...(token ? { token } : {}),
+          },
+        );
+        this.deliverRoll(r, roller.dm);
+        return r;
+      },
       manual: (userId, p) =>
         this.rollFromCard(userId, p, p.values ? { values: p.values } : { total: p.total ?? 0 }),
     });
@@ -1156,10 +1260,34 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
     } catch (err) {
       roomCtx().log.error({ err }, "health follow-up of a roll failed");
     }
-    if (r.targets.every((x) => r.responses[x.id]?.state !== "pending")) {
+    // Answered by all — a roll still waiting on its roller (Heroic Inspiration) isn't, yet.
+    if (r.targets.every((x) => r.responses[x.id]?.state !== "pending" && !r.responses[x.id]?.held)) {
       r.status = "closed";
       r.closedAt = Date.now();
     }
+  }
+
+  /**
+   * Whether a roll waits on its roller (rules audit C4): its creature holds Heroic Inspiration (SRD 5.2.1's reroll —
+   * 5.1's Inspiration is Advantage, taken before the roll), the request isn't blind (they'd reroll what they can't
+   * see), and its dice can be rolled again one by one. Then the choice: keep it, or roll a die again.
+   */
+  private heldFor(
+    r: RollRequest,
+    sheet: Sheet | undefined,
+    roll: RollRecord,
+  ): RequestResponse["held"] | null {
+    if (!sheet?.core.inspiration || r.visibility === "blind") return null;
+    if (this.model.campaign.rulesPack === "srd-5.1") return null;
+    const dice = rerollableDice(roll);
+    return dice ? { dice } : null;
+  }
+
+  /** What a card adds for its roller: death saves so far, and (SRD 5.1) Inspiration to spend on it. */
+  private cardExtra(r: RollRequest, t: RequestTarget): Partial<RequestCard> {
+    const extra = this.health.cardExtra(r, t);
+    if (this.model.campaign.rulesPack !== "srd-5.1" || r.responses[t.id]?.state !== "pending") return extra;
+    return this.requestTarget(t.id).sheet?.core.inspiration ? { ...extra, inspiration: "advantage" } : extra;
   }
 
   /** Whether one creature sees another now (the vision service's answer; null where it can't say). */
@@ -1229,8 +1357,7 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
   /** A request as it stands: each controller its targets' cards, DMs the whole board. */
   private sendRequest(r: RollRequest): void {
     for (const t of r.targets)
-      for (const u of t.controllers)
-        this.toUser(u, "request.card", cardFor(r, t, this.health.cardExtra(r, t)));
+      for (const u of t.controllers) this.toUser(u, "request.card", cardFor(r, t, this.cardExtra(r, t)));
     this.toDms("request.status", r);
   }
 
@@ -1244,7 +1371,7 @@ export class TableRoom extends Room<{ state: TableState }> implements TableRoomA
     for (const r of open)
       for (const t of r.targets)
         if (t.controllers.includes(auth.userId))
-          client.send("request.card", cardFor(r, t, this.health.cardExtra(r, t)));
+          client.send("request.card", cardFor(r, t, this.cardExtra(r, t)));
   }
 
   /** A proposal as it's shown: what approving it would change on the sheet now. */

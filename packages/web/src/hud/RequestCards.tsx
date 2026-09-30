@@ -4,7 +4,8 @@ import { ArrowDown, ArrowUp, ChevronUp, SkipForward, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { create } from "zustand";
 import { D20Icon, HandDieIcon } from "../icons/dice.tsx";
-import { respondRequest, useSheets } from "../net/sheets.ts";
+import { StatusIcon } from "../icons/status.tsx";
+import { keepRequest, respondRequest, useSheets } from "../net/sheets.ts";
 import { Button, IconButton } from "../ui/Button.tsx";
 import { DeathPip } from "../ui/DeathPip.tsx";
 import { toast } from "../ui/Toast.tsx";
@@ -21,6 +22,8 @@ function Row({ c, onAnswered }: { c: RequestCard; onAnswered: () => void }) {
   const [busy, setBusy] = useState<"roll" | "manual" | "skip" | null>(null);
   // Its conditions' advantage or disadvantage: on unless the roller sets it aside (AC-DICE-11).
   const [useHint, setUseHint] = useState(true);
+  // SRD 5.1's Inspiration: Advantage on this roll, the roller's to spend (rules audit C4).
+  const [inspire, setInspire] = useState(false);
   const answer = async (action: "roll" | "manual" | "skip") => {
     const n = Number(total);
     if (action === "manual" && (!total.trim() || !Number.isInteger(n))) return;
@@ -33,6 +36,7 @@ function Row({ c, onAnswered }: { c: RequestCard; onAnswered: () => void }) {
         action,
         action === "manual" ? n : undefined,
         Boolean(c.hint) && !useHint,
+        inspire && action !== "skip",
       );
       setManual(false);
     } catch (e) {
@@ -42,27 +46,44 @@ function Row({ c, onAnswered }: { c: RequestCard; onAnswered: () => void }) {
     }
   };
   const pending = c.state === "pending";
+  // Rolled, and its creature holds Heroic Inspiration: keep it, or spend it on a die (nothing follows until then).
+  const held = c.held;
+  const keep = async (reroll?: number) => {
+    setBusy(reroll === undefined ? "roll" : "manual");
+    try {
+      await keepRequest(c.requestId, c.targetId, reroll);
+    } catch (e) {
+      toast.danger(
+        reroll === undefined ? "Couldn't keep it" : "Couldn't roll it again",
+        (e as Error).message,
+      );
+    } finally {
+      setBusy(null);
+    }
+  };
   // Answered: it steps aside ANSWERED_MS after the answer was first seen — counted once, not again each time the card
   // re-renders or moves (between the board and a phone's panel).
   const answered = useRef(onAnswered);
   answered.current = onAnswered;
   const key = `${c.requestId}|${c.targetId}`;
   useEffect(() => {
-    if (pending) return;
+    if (pending || held) return;
     const at = answeredAt(key);
     const t = window.setTimeout(() => answered.current(), Math.max(0, at + ANSWERED_MS - Date.now()));
     return () => window.clearTimeout(t);
-  }, [pending, key]);
+  }, [pending, held, key]);
   const outcome = c.success === undefined ? "text-bone" : c.success ? "text-success" : "text-danger-text";
   // The formula as it will roll: with its conditions' advantage or disadvantage unless set aside ("2d20kl1 - 4").
   const formula = useMemo(() => {
-    if (!pending || !c.hint || !useHint) return c.formula;
+    if (!pending) return c.formula;
     try {
-      return normalizeFormula(withHint(c.formula, c.hint.mode));
+      const hinted = c.hint && useHint ? withHint(c.formula, c.hint.mode) : c.formula;
+      if (!inspire && hinted === c.formula) return c.formula;
+      return normalizeFormula(inspire ? withHint(hinted, "adv") : hinted);
     } catch {
       return c.formula;
     }
-  }, [pending, c.formula, c.hint, useHint]);
+  }, [pending, c.formula, c.hint, useHint, inspire]);
   return (
     <li
       className="flex flex-col gap-1.5 border-line/60 pt-2 first:pt-0 [&+&]:border-t"
@@ -102,6 +123,18 @@ function Row({ c, onAnswered }: { c: RequestCard; onAnswered: () => void }) {
             {useHint ? "Set aside" : "Use it"}
           </button>
         </div>
+      ) : null}
+      {pending && c.inspiration === "advantage" ? (
+        <label className="flex min-h-[var(--touch-min)] cursor-pointer items-center gap-2 text-13 text-bone">
+          <input
+            type="checkbox"
+            checked={inspire}
+            onChange={(e) => setInspire(e.target.checked)}
+            className="h-4 w-4 accent-[var(--brass-500)]"
+          />
+          <StatusIcon id="inspiration" size={15} label="" />
+          Spend Inspiration: Advantage on this roll
+        </label>
       ) : null}
       {pending && c.autoFail?.length ? (
         <p className="text-12 text-danger-text">
@@ -170,6 +203,33 @@ function Row({ c, onAnswered }: { c: RequestCard; onAnswered: () => void }) {
             </Button>
           </div>
         )
+      ) : held && c.total !== undefined ? (
+        // Heroic Inspiration (SRD 5.2.1 p. 183): roll one die again and use the new roll — or keep this one.
+        <div className="flex flex-col gap-1.5" data-testid="request-held">
+          <p className="flex items-baseline gap-2 text-14" role="status">
+            <span className="text-muted">You rolled</span>
+            <span className="tabular text-22 font-bold text-bone">{c.total}</span>
+            <span className="text-12 text-muted">— keep it, or spend Heroic Inspiration on a die?</span>
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            <Button size="S" variant="primary" loading={busy === "roll"} onClick={() => void keep()}>
+              Keep
+            </Button>
+            {held.dice.slice(0, 4).map((d, i) => (
+              <Button
+                // (A roll's dice, in the order they fell: their places are their keys.)
+                key={i}
+                size="S"
+                variant="secondary"
+                icon={<StatusIcon id="inspiration" size={15} label="" />}
+                loading={busy === "manual"}
+                onClick={() => void keep(i)}
+              >
+                {`Reroll the d${d.sides} (${d.value})`}
+              </Button>
+            ))}
+          </div>
+        </div>
       ) : (
         <p className="flex items-baseline gap-2 text-14" role="status">
           {c.state === "skipped" ? (

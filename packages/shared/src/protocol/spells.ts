@@ -97,6 +97,15 @@ export const CastTarget = z.strictObject({ ...CastRef, targetId: RowKey, include
 export const CastNpcSaves = z.strictObject({ ...CastRef });
 
 /** A roll on the card: an attack against a target, or the damage (or healing) — rolled, or a number entered. */
+/**
+ * `cast.inspire` (the caster's player): Heroic Inspiration spent on the attack rolled at a row — one of its dice (by
+ * its index) rolled again, the new roll the one that counts, while the card is still to be applied (rules audit C4).
+ */
+export const CastInspire = z.strictObject({
+  ...CastRef,
+  targetId: RowKey,
+  die: z.number().int().min(0).max(9),
+});
 export const CastRoll = z.strictObject({
   ...CastRef,
   what: z.enum(["attack", "damage"]),
@@ -218,6 +227,10 @@ export interface CastTargetView {
     ac?: number;
     /** Entered by hand (its dice or, the DM's, a total). */
     entered?: boolean;
+    /** The app's roll, not yet rolled again: its dice (Heroic Inspiration's choice, rules audit C4). */
+    dice?: { sides: number; value: number; kept: boolean }[];
+    /** Rolled again with Heroic Inspiration: this is the new roll. */
+    inspired?: boolean;
   };
   /**
    * Before its attack is rolled: what the attack gets and why (the attacker's and the target's conditions, Exhaustion's
@@ -286,7 +299,8 @@ export interface CastView {
   effectId: string | null;
   status: "open" | "done" | "cancelled";
   /** What the reader may do on it. */
-  can: { edit: boolean; roll: boolean; cancel: boolean };
+  /** `inspire`: the viewer's creature holds Heroic Inspiration for an attack rolled here (rules audit C4). */
+  can: { edit: boolean; roll: boolean; cancel: boolean; inspire?: boolean };
   createdAt: number;
 }
 

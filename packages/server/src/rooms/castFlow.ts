@@ -26,7 +26,7 @@ import {
 } from "@gloam/shared/rules";
 import type { TokenEntity } from "@gloam/shared/schemas";
 import type { RequestResponse, RequestTarget, RollRequest } from "../dice/requests.ts";
-import type { RollRecord } from "../dice/service.ts";
+import { type RollRecord, rerollableDice } from "../dice/service.ts";
 import type { CastEntity } from "../engine/codecs.ts";
 import type { CommandActor, CommandBus, CommandCtx } from "../engine/commandBus.ts";
 import type { CastData, CastTargetData } from "../engine/commands/castData.ts";
@@ -92,6 +92,8 @@ export interface CastHost {
     userId: string,
     p: { formula: string; label: string; visibility: "public" | "dm"; tokenId?: string },
   ): RollRecord;
+  /** One die of a roll made from a card rolled again (Heroic Inspiration), seen as the roller's rolls are. */
+  reroll(userId: string, rollId: string, die: number, p: { label: string; tokenId?: string }): RollRecord;
   /** A physical roll: by its dice (one value a die), or its total. */
   manual(
     userId: string,
@@ -217,7 +219,12 @@ export class CastFlow {
       vfx: d.vfx,
       effectId: d.effectId,
       status: c.status,
-      can: { edit: v.dm, roll: v.dm || caster, cancel: v.dm || (caster && !applied) },
+      can: {
+        edit: v.dm,
+        roll: v.dm || caster,
+        cancel: v.dm || (caster && !applied),
+        ...(caster && d.attack && this.inspirationHolder(d) ? { inspire: true } : {}),
+      },
       createdAt: c.createdAt,
     };
   }
@@ -243,6 +250,8 @@ export class CastFlow {
               crit: t.attack.crit,
               ...(t.attack.hit !== undefined ? { hit: t.attack.hit } : {}),
               ...(t.attack.entered ? { entered: true } : {}),
+              ...(rerollableAttack(d, t) ? { dice: t.attack.dice } : {}),
+              ...(t.attack.inspired ? { inspired: true } : {}),
               ...(h ? { ac: h.stats.ac } : {}),
             },
           }
@@ -457,6 +466,9 @@ export class CastFlow {
               ...(t.attack.natural !== null ? { natural: t.attack.natural } : {}),
               crit: t.attack.crit,
               ...(typeof t.attack.hit === "boolean" ? { hit: t.attack.hit } : {}),
+              // Their own roll's dice (Heroic Inspiration's choice: which to roll again), till it's rolled again.
+              ...(rerollableAttack(d, t) ? { dice: t.attack.dice } : {}),
+              ...(t.attack.inspired ? { inspired: true } : {}),
             },
           }
         : d.attack && t.state === "in"
@@ -671,6 +683,69 @@ export class CastFlow {
    * doubled), or a number entered instead. Rolled where the table sees it: public for a player's creature, the DM's
    * own rolls as the DM's are.
    */
+  /**
+   * Heroic Inspiration on an attack rolled at a row (SRD 5.2.1 p. 183; rules audit C4): the caster's player, while the
+   * card is to be applied and the attack was the app's roll; its creature holds Heroic Inspiration (5.2.1's). One die
+   * rolled again, the new roll judged as the first was (its AC and cover, a 20 or a 1, a critical); Inspiration spent.
+   */
+  inspire(actor: CommandActor, p: { castId: string; targetId: string; die: number }): { total: number } {
+    const c = this.cast(p.castId);
+    if (c?.status !== "open") throw new GloamError("NOT_FOUND", "That card is closed.");
+    const d = c.data;
+    if (!this.casterUsers(d).includes(actor.userId))
+      throw new GloamError("FORBIDDEN", "Only the caster's player spends their Inspiration here.");
+    const row = d.targets.find((t) => t.key === p.targetId);
+    if (row?.state !== "in") throw new GloamError("CONFLICT", "That attack is settled.");
+    const a = row.attack;
+    if (!a?.rollId || a.inspired)
+      throw new GloamError("CONFLICT", "There's no attack roll here to roll again.");
+    if (!rerollableAttack(d, row))
+      throw new GloamError(
+        "CONFLICT",
+        a.ruled ? "Too late: the DM has called that attack." : "Too late: its damage is rolled.",
+      );
+    const holder = this.inspirationHolder(d);
+    if (!holder) throw new GloamError("CONFLICT", `${d.caster.name} has no Heroic Inspiration to spend.`);
+    this.host
+      .bus()
+      .execute(
+        "actor.change",
+        { actorId: holder, changes: [{ path: ["core", "inspiration"], after: false }] },
+        this.host.actorOf(actor.userId),
+      );
+    const roll = this.host.reroll(actor.userId, a.rollId, p.die, {
+      label: `${d.name} · attack · Heroic Inspiration`,
+      ...(d.caster.tokenId ? { tokenId: d.caster.tokenId } : {}),
+    });
+    const natural = roll.natural ?? null;
+    const hints = this.hintsFor(this.ctx(), d, row);
+    const target = holderOf(this.ctx(), { tokenId: row.id });
+    const ac = target.stats.ac + (COVER_BONUS[row.cover] ?? 0);
+    const hit = natural === 20 ? true : natural === 1 ? false : roll.total >= ac;
+    const crit = natural === 20 || (hit && hints.critOnHit !== null);
+    this.host.bus().execute(
+      "cast.record",
+      {
+        castId: c.id,
+        targetId: row.key,
+        attack: { total: roll.total, natural, crit, hit, rollId: roll.id, inspired: true, ...diceOf(roll) },
+      },
+      SYSTEM_ACTOR,
+    );
+    return { total: roll.total };
+  }
+
+  /** The caster's character holding Heroic Inspiration to spend (SRD 5.2.1's; 5.1's is Advantage before a roll). */
+  private inspirationHolder(d: CastData): string | null {
+    if (this.host.model().campaign.rulesPack === "srd-5.1") return null;
+    const actorId =
+      d.caster.actorId ??
+      (d.caster.tokenId ? (this.host.model().get("token", d.caster.tokenId)?.actorId ?? null) : null);
+    const actor = actorId ? this.host.model().get("actor", actorId) : undefined;
+    const sheet = actor?.sheet as { core?: { inspiration?: boolean } } | undefined;
+    return actor && actor.deletedAt === null && sheet?.core?.inspiration ? actor.id : null;
+  }
+
   roll(
     actor: CommandActor,
     p: {
@@ -731,7 +806,13 @@ export class CastFlow {
         {
           castId: c.id,
           targetId: row.key,
-          attack: { total: roll.total, natural, crit, hit, ...(entered ? { entered: true } : {}) },
+          attack: {
+            total: roll.total,
+            natural,
+            crit,
+            hit,
+            ...(entered ? { entered: true } : { rollId: roll.id, ...diceOf(roll) }),
+          },
         },
         SYSTEM_ACTOR,
       );
@@ -843,6 +924,24 @@ function splitByAverage(
   const rest = total - out.reduce((s, x) => s + x.amount, 0);
   if (out[0]) out[0].amount += rest;
   return out.filter((x) => x.amount > 0);
+}
+
+/**
+ * Whether a row's attack can still be rolled again with Heroic Inspiration — "immediately after rolling it" (SRD 5.2.1
+ * p. 183): the app's roll, not rolled again yet, its dice known; neither called by the DM nor followed by its damage.
+ */
+function rerollableAttack(
+  d: CastData,
+  t: CastTargetData,
+): t is CastTargetData & { attack: { dice: { sides: number; value: number; kept: boolean }[] } } {
+  const a = t.attack;
+  return Boolean(a?.rollId && a.dice && !a.inspired && !a.ruled && !t.roll && !d.damage?.roll);
+}
+
+/** A roll's dice for the card (Heroic Inspiration's choice), where they can be taken one by one. */
+function diceOf(r: RollRecord): { dice?: { sides: number; value: number; kept: boolean }[] } {
+  const dice = rerollableDice(r);
+  return dice && dice.length <= 10 ? { dice } : {};
 }
 
 /** The card's cover hint (§17.5, AC-SPL-13): the first creature behind cover, and what it's worth. */

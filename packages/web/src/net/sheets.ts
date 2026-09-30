@@ -237,6 +237,8 @@ export const respondRequest = (
   total?: number,
   /** The roller sets aside the advantage or disadvantage their conditions suggest (AC-DICE-11). */
   ignoreHints?: boolean,
+  /** SRD 5.1: Inspiration spent on it — Advantage (rules audit C4). */
+  inspire?: boolean,
 ) =>
   request<RequestCard>("request.respond", {
     requestId,
@@ -244,7 +246,11 @@ export const respondRequest = (
     action,
     ...(total !== undefined ? { total } : {}),
     ...(ignoreHints ? { ignoreHints: true } : {}),
+    ...(inspire ? { inspire: true } : {}),
   });
+/** A held roll kept — or, with `reroll`, Heroic Inspiration spent on that die (rules audit C4). */
+export const keepRequest = (requestId: string, target: string, reroll?: number) =>
+  request<RequestCard>("request.keep", { requestId, target, ...(reroll !== undefined ? { reroll } : {}) });
 export const answerRequest = (
   requestId: string,
   target: string,
