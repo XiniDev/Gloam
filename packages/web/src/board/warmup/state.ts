@@ -26,6 +26,8 @@ export interface WarmupState {
   steps?: Record<string, number>;
   /** When each step ended (performance.now()). */
   ends?: Record<string, number>;
+  /** When it was done and the board could show (performance.now()). */
+  doneAt?: number;
   /** When (ms from its start) the other tiers' programs were ready too (compiled in idle moments after). */
   allTiersMs?: number;
 }

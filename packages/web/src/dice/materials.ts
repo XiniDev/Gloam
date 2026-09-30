@@ -17,7 +17,9 @@ import {
   SRGBColorSpace,
   type Texture,
   type WebGLRenderer,
+  type WebGLRenderTarget,
 } from "three";
+import { keepDrawn } from "../board/gpu.ts";
 import { type FaceSet, faceAtlas, faceMask, faceRoughness, outlinedNumerals } from "./atlas.ts";
 import type { Solid } from "./solids.ts";
 
@@ -31,10 +33,18 @@ import type { Solid } from "./solids.ts";
 
 const envByRenderer = new WeakMap<object, Texture>();
 
-/** The reflection room, made once per renderer. */
+/** The reflection room, made once per renderer (and drawn again if its context is lost and given back, gpu.ts). */
 export function diceEnvironment(gl: WebGLRenderer): Texture {
   const hit = envByRenderer.get(gl);
   if (hit) return hit;
+  const rt = drawRoom(gl);
+  keepDrawn(gl, rt, () => drawRoom(gl));
+  envByRenderer.set(gl, rt.texture);
+  return rt.texture;
+}
+
+/** The room drawn into a new environment map. */
+function drawRoom(gl: WebGLRenderer): WebGLRenderTarget {
   const scene = new Scene();
   const room = new Mesh(
     new SphereGeometry(20, 32, 16),
@@ -72,7 +82,7 @@ export function diceEnvironment(gl: WebGLRenderer): Texture {
   panel(9, 6, new Color(1.0, 0.82, 0.56).multiplyScalar(3.5), -5, 15, 8);
   panel(6, 10, new Color(0.55, 0.62, 0.8).multiplyScalar(0.9), 15, 6, -6);
   const pmrem = new PMREMGenerator(gl);
-  const env = pmrem.fromScene(scene, 0.02).texture;
+  const rt = pmrem.fromScene(scene, 0.02);
   pmrem.dispose();
   scene.traverse((o) => {
     if (o instanceof Mesh) {
@@ -80,8 +90,7 @@ export function diceEnvironment(gl: WebGLRenderer): Texture {
       (o.material as Material).dispose();
     }
   });
-  envByRenderer.set(gl, env);
-  return env;
+  return rt;
 }
 
 const materialCache = new Map<string, Material>();

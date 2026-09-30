@@ -4,17 +4,20 @@ import {
   Box3,
   Color,
   Mesh,
-  type MeshStandardMaterial,
+  MeshStandardMaterial,
   type Object3D,
   OrthographicCamera,
+  PerspectiveCamera,
   PlaneGeometry,
   Raycaster,
   Scene,
+  SphereGeometry,
   SRGBColorSpace,
   Vector2,
   Vector3,
   WebGLRenderTarget,
 } from "three";
+import { diceEnvironment } from "../dice/materials.ts";
 import { boardData, useEntities } from "../state/entities.ts";
 import { useFog } from "../state/fog.ts";
 import { useSettings } from "../state/settings.ts";
@@ -25,6 +28,7 @@ import { boardApi } from "./boardApi.ts";
 import { cameraRig, rigDiag } from "./CameraRig.tsx";
 import { boardDiag, useLoading } from "./diag.ts";
 import { again, setAnimating, wake } from "./frames.ts";
+import { useGpu } from "./gpu.ts";
 import { cutaway, doorLeafAngles, doorSwing } from "./map/Walls3D.tsx";
 import { animatingTokens, movedLog } from "./move/anims.ts";
 import { moveDiag, useMove } from "./move/drag.ts";
@@ -236,6 +240,41 @@ export function TestProbe() {
       }
       const n = d.length / 4;
       return { r: R / n / 255, g: G / n / 255, b: B / n / 255 };
+    });
+    // The board's WebGL context (SPEC §40): its state, and losing and restoring it as a phone or a driver reset would.
+    provideTestHook("gpu", () => ({ ...useGpu.getState(), contextLost: gl.getContext().isContextLost() }));
+    provideTestHook("loseContext", () => gl.forceContextLoss());
+    provideTestHook("restoreContext", () => gl.forceContextRestore());
+    /**
+     * What an environment map gives: a metal ball lit by it alone (no lights), drawn into a small target and averaged
+     * (0–255 per channel) — black if the map is blank. "board": the scene's room; "dice": the dice's.
+     */
+    provideTestHook("envLight", (which: "board" | "dice") => {
+      const env = which === "board" ? scene.environment : diceEnvironment(gl);
+      if (!env) return null;
+      const probe = new Scene();
+      const geo = new SphereGeometry(1, 24, 16);
+      const mat = new MeshStandardMaterial({ color: 0xffffff, metalness: 1, roughness: 0.35, envMap: env });
+      probe.add(new Mesh(geo, mat));
+      const cam = new PerspectiveCamera(30, 1, 0.1, 10);
+      cam.position.set(0, 0, 4);
+      cam.lookAt(0, 0, 0);
+      const N = 16;
+      const rt = new WebGLRenderTarget(N, N);
+      const prev = gl.getRenderTarget();
+      gl.setRenderTarget(rt);
+      gl.clear();
+      gl.render(probe, cam);
+      const buf = new Uint8Array(N * N * 4);
+      gl.readRenderTargetPixels(rt, 0, 0, N, N, buf);
+      gl.setRenderTarget(prev);
+      rt.dispose();
+      geo.dispose();
+      mat.dispose();
+      const sum = [0, 0, 0];
+      for (let i = 0; i < N * N; i++)
+        for (let c = 0; c < 3; c++) sum[c] = (sum[c] as number) + (buf[i * 4 + c] as number);
+      return sum.map((v) => Math.round(v / (N * N)));
     });
     // The composite's inputs (SPEC §15.7).
     provideTestHook("vision", () => ({

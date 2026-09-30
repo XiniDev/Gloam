@@ -19,6 +19,7 @@ import { ASSET_DRAG_TYPE, type AssetDragPayload } from "../state/library.ts";
 import { useSettings } from "../state/settings.ts";
 import { useUi } from "../state/ui.ts";
 import { toast } from "../ui/Toast.tsx";
+import { BoardRestoring, useRestoring } from "./BoardRestoring.tsx";
 import { boardApi } from "./boardApi.ts";
 import { CameraRig, cameraRig } from "./CameraRig.tsx";
 import { targetDown, targetKey, targetMove, targetWheel } from "./cast/input.ts";
@@ -35,6 +36,7 @@ import {
   wake,
   wantsNextFrame,
 } from "./frames.ts";
+import { watchContext } from "./gpu.ts";
 import { Lighting } from "./Lighting.tsx";
 import { DoorsLayer } from "./map/DoorsLayer.tsx";
 import { MapAlignGizmo } from "./map/MapAlignGizmo.tsx";
@@ -48,7 +50,7 @@ import { RangeOverlay } from "./move/RangeOverlay.tsx";
 import { PingLayer } from "./PingLayer.tsx";
 import { PostFX, postfx } from "./PostFX.tsx";
 import { frameStarted, measureTask } from "./perf.ts";
-import { anchorShaders, pinPrograms, primeLights } from "./programs.ts";
+import { anchorShaders, forgetAnchors, pinPrograms, primeLights } from "./programs.ts";
 import { setMaxAnisotropy } from "./resources.ts";
 import { boundsFromJson } from "./scene.ts";
 import { TableSurface } from "./TableSurface.tsx";
@@ -85,6 +87,7 @@ import { VfxLayer } from "./vfx/VfxLayer.tsx";
 import { fogUniforms } from "./vision/fogMaterial.ts";
 import { SensedLayer } from "./vision/SensedLayer.tsx";
 import { VisionLayer } from "./vision/VisionLayer.tsx";
+import { forgetPrepared } from "./warmup/precompile.ts";
 import { useWarmup } from "./warmup/state.ts";
 import { Warmup } from "./warmup/Warmup.tsx";
 
@@ -177,6 +180,8 @@ export default function Board() {
   // (Decided at mount: the intro, while it plays, covers the board itself.)
   const [remounted] = useState(() => useIntro.getState().phase === "done");
   const hiddenForWarmup = remounted && introOver && !warmed;
+  // Its graphics lost and given back (gpu.ts): hidden under "Restoring board…" until drawn and compiled again.
+  const restoring = useRestoring();
   const tier = TIERS[tierName];
   const boundsJson = scene?.boundsJson;
   const bounds = useMemo(() => boundsFromJson(boundsJson), [boundsJson]);
@@ -563,7 +568,7 @@ export default function Board() {
           background: C.ink950,
           // Mounted again after the intro (back from the Admin console): hidden until the shader warm-up is done,
           // then faded in — the intro's candle covers only the first load (§24.7).
-          opacity: hiddenForWarmup ? 0 : 1,
+          opacity: hiddenForWarmup || restoring ? 0 : 1,
           transition: "opacity var(--dur-scene) var(--ease-out)",
         }}
         onCreated={({ gl }) => {
@@ -578,6 +583,7 @@ export default function Board() {
       >
         <color attach="background" args={[C.ink950]} />
         <TierSetup />
+        <GpuWatch />
         <CameraRig bounds={bounds} sceneId={scene?.id ?? "none"} />
         {/*
           Nothing draws until the device is read and the tier chosen (one effect after mount): a first frame at the
@@ -678,6 +684,7 @@ export default function Board() {
         }}
         aria-hidden
       />
+      <BoardRestoring />
       {wallBox ? (
         <div
           data-testid="wall-box"
@@ -712,6 +719,27 @@ export default function Board() {
  */
 function Contained({ children }: { children: ReactNode }) {
   return <Suspense fallback={null}>{children}</Suspense>;
+}
+
+/**
+ * The board's context lost and given back (gpu.ts): what the restored renderer no longer has — each shader's anchor,
+ * the other tiers' prepared programs — is forgotten (the warm-up makes them again), the fog's fixed noise goes up
+ * again, and a frame is asked for.
+ */
+function GpuWatch() {
+  const gl = useThree((s) => s.gl);
+  const invalidate = useThree((s) => s.invalidate);
+  useEffect(
+    () =>
+      watchContext(gl, () => {
+        forgetAnchors();
+        forgetPrepared();
+        gl.initTexture(fogUniforms.gNoise.value);
+        invalidate();
+      }),
+    [gl, invalidate],
+  );
+  return null;
 }
 
 /**

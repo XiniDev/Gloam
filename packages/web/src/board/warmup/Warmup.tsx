@@ -19,6 +19,7 @@ import { boardApi } from "../boardApi.ts";
 import { cameraRig } from "../CameraRig.tsx";
 import { DustMotes } from "../DustMotes.tsx";
 import { setAnimating } from "../frames.ts";
+import { useGpu } from "../gpu.ts";
 import { imageMapMaterial } from "../map/MapLayer.tsx";
 import { ProceduralFloor } from "../map/ProceduralFloor.tsx";
 import { PathLine } from "../move/MoveLayer.tsx";
@@ -188,11 +189,27 @@ export function Warmup({ bounds }: { bounds: Bounds }) {
     };
   }, [gl, scene, camera]);
 
-  // Once per renderer. (Read, not subscribed: its own progress mustn't restart it.)
+  // Its graphics lost (gpu.ts): nothing can compile until they're given back, and then everything must again.
+  const gpuLost = useGpu((s) => s.lost);
+  const restores = useGpu((s) => s.restores);
+
+  // Once per renderer, and again each time its lost context comes back. (Read, not subscribed: its own progress
+  // mustn't restart it.)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a restored context (restores) warms up again
   useEffect(() => {
+    if (gpuLost) {
+      // (A run under way was stopped by the cleanup; a finished one no longer holds.)
+      useWarmup.setState({ phase: "waiting" });
+      return;
+    }
     if (useWarmup.getState().phase !== "waiting") return;
     if (!warmupWanted()) {
-      useWarmup.setState({ phase: "done", tier: useTier.getState().name, skipped: true });
+      useWarmup.setState({
+        phase: "done",
+        tier: useTier.getState().name,
+        skipped: true,
+        doneAt: performance.now(),
+      });
       return;
     }
     const tier = useTier.getState().name;
@@ -268,6 +285,7 @@ export function Warmup({ bounds }: { bounds: Bounds }) {
         ms: Math.round(performance.now() - t0),
         steps,
         ends,
+        doneAt: performance.now(),
       });
       // After the board shows, in parallel and in idle moments: the dice (the first throw waits for them), then the
       // other tiers — their post chains, and their render state's programs for everything the warm-up saw. A tier
@@ -315,7 +333,7 @@ export function Warmup({ bounds }: { bounds: Bounds }) {
       tierSwitch.apply = (name, patch) => useTier.getState().set({ ...patch, name });
       for (const r of made) r.traverse((o) => disposeObject(o));
     };
-  }, [gl, scene, camera, setFrameloop]);
+  }, [gl, scene, camera, setFrameloop, gpuLost, restores]);
 
   if (!roots) return null;
   return (

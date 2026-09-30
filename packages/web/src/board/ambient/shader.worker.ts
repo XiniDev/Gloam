@@ -49,7 +49,11 @@ let scheduled = false;
 function ensureGl(): MultiShaderGl | null {
   if (gl !== undefined) return gl;
   canvas = new OffscreenCanvas(1, 1);
-  gl = createMultiShaderGl(canvas);
+  // A lost context given back: every view drawn again (a still one too).
+  gl = createMultiShaderGl(canvas, () => {
+    for (const v of views.values()) v.dirty = true;
+    wake();
+  });
   return gl;
 }
 
@@ -67,7 +71,8 @@ function wake(): void {
 function frame(now: number): void {
   scheduled = false;
   const g = gl;
-  if (!g || !canvas || !visible) return;
+  // (Lost: nothing drawn — a blank frame would replace the last good one — until it's given back and wakes the loop.)
+  if (!g || !canvas || !visible || g.lost()) return;
   let animating = false;
   for (const [id, v] of views) {
     if (v.w < 1 || v.h < 1) continue;

@@ -109,6 +109,9 @@ or Claude Code, with this folder's path filled in. Tokens work only from this co
   and check the phone's silent switch.
 - **Slow on a phone or an old laptop** — Settings (the cog) → Graphics → **Graphics quality → Low**. Gloam also lowers
   the quality on its own when frames get slow.
+- **The board goes blank for a moment ("Restoring board…")** — the device took the graphics memory back (a phone
+  short of memory, a graphics driver resetting). Gloam draws the board again by itself when the browser gives it back;
+  if the browser doesn't, the board offers **Reload the page**.
 
 ## 10. Checking on real phones
 

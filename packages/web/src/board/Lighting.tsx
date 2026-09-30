@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { type DirectionalLight, type Object3D, PMREMGenerator } from "three";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { C } from "./colors.ts";
+import { keepDrawn } from "./gpu.ts";
 import { type Bounds, boundsCenter, boundsSize } from "./scene.ts";
 import type { TierSpec } from "./tiers.ts";
 
@@ -32,16 +33,23 @@ export function Lighting({ bounds, ambient, tier }: { bounds: Bounds; ambient: s
   const target = useRef<Object3D>(null);
 
   useEffect(() => {
-    const pmrem = new PMREMGenerator(gl);
-    const room = new RoomEnvironment();
-    const env = pmrem.fromScene(room, 0.04).texture;
-    scene.environment = env;
-    scene.environmentIntensity = 0.3;
-    return () => {
-      scene.environment = null;
-      env.dispose();
+    const make = () => {
+      const pmrem = new PMREMGenerator(gl);
+      const room = new RoomEnvironment();
+      const rt = pmrem.fromScene(room, 0.04);
       pmrem.dispose();
       room.dispose();
+      return rt;
+    };
+    const env = make();
+    scene.environment = env.texture;
+    scene.environmentIntensity = 0.3;
+    // Drawn on the GPU only: drawn again into the same texture if the context is lost and given back (gpu.ts).
+    const stop = keepDrawn(gl, env, make);
+    return () => {
+      stop();
+      scene.environment = null;
+      env.dispose();
     };
   }, [gl, scene]);
 

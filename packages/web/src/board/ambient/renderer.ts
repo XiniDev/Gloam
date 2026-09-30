@@ -25,41 +25,56 @@ export function createShaderRenderer(
   canvas: HTMLCanvasElement | OffscreenCanvas,
   frag: string,
   preserve: boolean,
+  onRestored?: () => void,
 ): ShaderRenderer | null {
   const gl = canvas.getContext("webgl", CONTEXT_ATTRIBUTES(preserve)) as WebGLRenderingContext | null;
   if (!gl) return null;
   // Fetched now, while the command queue is idle — getExtension is a synchronous GPU-process round trip.
   const lose = gl.getExtension("WEBGL_lose_context");
-  const sh = (type: number, src: string) => {
-    const s = gl.createShader(type) as WebGLShader;
-    gl.shaderSource(s, src);
-    gl.compileShader(s);
-    return s;
+  // Everything the context holds — made again when a lost context is given back (a phone short of graphics memory, a
+  // driver reset): the shader, the triangle, the uniform locations. Returns the uniform lookup, or null.
+  const setup = () => {
+    const sh = (type: number, src: string) => {
+      const s = gl.createShader(type) as WebGLShader;
+      gl.shaderSource(s, src);
+      gl.compileShader(s);
+      return s;
+    };
+    const prog = gl.createProgram() as WebGLProgram;
+    gl.attachShader(prog, sh(gl.VERTEX_SHADER, VERT));
+    gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, `precision mediump float;\n${frag}`));
+    gl.linkProgram(prog);
+    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) return null;
+    // biome-ignore lint/correctness/useHookAtTopLevel: WebGL's useProgram, not a React hook
+    gl.useProgram(prog);
+    const buf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+    const loc = gl.getAttribLocation(prog, "p");
+    gl.enableVertexAttribArray(loc);
+    gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+    // Uniform locations are looked up once (each lookup is a synchronous round trip).
+    const locations = new Map<string, WebGLUniformLocation | null>();
+    return (name: string) => {
+      if (!locations.has(name)) locations.set(name, gl.getUniformLocation(prog, name));
+      return locations.get(name) ?? null;
+    };
   };
-  const prog = gl.createProgram() as WebGLProgram;
-  gl.attachShader(prog, sh(gl.VERTEX_SHADER, VERT));
-  gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, `precision mediump float;\n${frag}`));
-  gl.linkProgram(prog);
-  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+  let at = setup();
+  if (!at) {
     lose?.loseContext();
     return null;
   }
-  // biome-ignore lint/correctness/useHookAtTopLevel: WebGL's useProgram, not a React hook
-  gl.useProgram(prog);
-  const buf = gl.createBuffer();
-  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
-  const loc = gl.getAttribLocation(prog, "p");
-  gl.enableVertexAttribArray(loc);
-  gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
-  // Uniform locations are looked up once (each lookup is a synchronous round trip).
-  const locations = new Map<string, WebGLUniformLocation | null>();
-  const at = (name: string) => {
-    if (!locations.has(name)) locations.set(name, gl.getUniformLocation(prog, name));
-    return locations.get(name) ?? null;
-  };
+  let disposed = false;
+  onContextRestored(canvas, () => {
+    if (disposed) return;
+    at = setup();
+    onRestored?.();
+  });
   return {
     draw(timeSec, w, h, uniforms) {
+      // (Lost: nothing to draw with until it's given back.)
+      if (!at || gl.isContextLost()) return;
       if (canvas.width !== w || canvas.height !== h) {
         canvas.width = w;
         canvas.height = h;
@@ -76,9 +91,31 @@ export function createShaderRenderer(
       gl.drawArrays(gl.TRIANGLES, 0, 3);
     },
     dispose() {
+      disposed = true;
       lose?.loseContext();
     },
   };
+}
+
+/**
+ * A lost WebGL context given back: `fn` runs once it's usable again. (The loss is accepted — preventDefault — or the
+ * browser never gives it back.) WebGL names the events alike on a canvas element and an OffscreenCanvas; the plain
+ * `contextlost`/`contextrestored` pair is listened to as well, and each loss is answered once.
+ */
+function onContextRestored(canvas: HTMLCanvasElement | OffscreenCanvas, fn: () => void): void {
+  const target = canvas as EventTarget;
+  let lost = false;
+  const onLost = (e: Event) => {
+    e.preventDefault();
+    lost = true;
+  };
+  const onBack = () => {
+    if (!lost) return;
+    lost = false;
+    fn();
+  };
+  for (const t of ["webglcontextlost", "contextlost"]) target.addEventListener(t, onLost);
+  for (const t of ["webglcontextrestored", "contextrestored"]) target.addEventListener(t, onBack);
 }
 
 /**
@@ -89,24 +126,38 @@ export function createShaderRenderer(
 export interface MultiShaderGl {
   /** Draws `frag` into a `w × h` buffer; false when the shader didn't compile. */
   draw(frag: string, timeSec: number, w: number, h: number, uniforms: Uniforms): boolean;
+  /** The context is lost: nothing draws (and nothing fails) until it's given back. */
+  lost(): boolean;
 }
 
-export function createMultiShaderGl(canvas: OffscreenCanvas): MultiShaderGl | null {
+export function createMultiShaderGl(canvas: OffscreenCanvas, onRestored?: () => void): MultiShaderGl | null {
   const gl = canvas.getContext("webgl", CONTEXT_ATTRIBUTES(false)) as WebGLRenderingContext | null;
   if (!gl) return null;
-  const buf = gl.createBuffer();
-  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
-  const vert = gl.createShader(gl.VERTEX_SHADER) as WebGLShader;
-  gl.shaderSource(vert, VERT);
-  gl.compileShader(vert);
   interface Prog {
     prog: WebGLProgram;
     loc: number;
     locations: Map<string, WebGLUniformLocation | null>;
   }
-  const programs = new Map<string, Prog | null>();
+  let vert = null as unknown as WebGLShader;
+  let programs = new Map<string, Prog | null>();
   let current: Prog | null = null;
+  // The triangle and the vertex shader — made again, and each fragment shader compiled again as it's next drawn, when
+  // a lost context is given back.
+  const setup = () => {
+    const buf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+    vert = gl.createShader(gl.VERTEX_SHADER) as WebGLShader;
+    gl.shaderSource(vert, VERT);
+    gl.compileShader(vert);
+    programs = new Map();
+    current = null;
+  };
+  setup();
+  onContextRestored(canvas, () => {
+    setup();
+    onRestored?.();
+  });
   const program = (frag: string): Prog | null => {
     if (programs.has(frag)) return programs.get(frag) ?? null;
     const fs = gl.createShader(gl.FRAGMENT_SHADER) as WebGLShader;
@@ -122,6 +173,7 @@ export function createMultiShaderGl(canvas: OffscreenCanvas): MultiShaderGl | nu
     return p;
   };
   return {
+    lost: () => gl.isContextLost(),
     draw(frag, timeSec, w, h, uniforms) {
       const p = program(frag);
       if (!p) return false;

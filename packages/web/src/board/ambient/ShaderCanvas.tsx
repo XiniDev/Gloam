@@ -127,7 +127,8 @@ export function ShaderCanvas({
     }
 
     function startOnPage(canvas: HTMLCanvasElement, still: boolean): (() => void) | null {
-      const renderer = createShaderRenderer(canvas, frag, __GLOAM_TEST__);
+      // (A lost context given back draws again at once — a still frame under reduced motion too.)
+      const renderer = createShaderRenderer(canvas, frag, __GLOAM_TEST__, () => loop.resume());
       if (!renderer) return null;
       consumed = true;
       let size = { w: 0, h: 0 };

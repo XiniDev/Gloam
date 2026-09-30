@@ -71,6 +71,8 @@ export function anchorShaders(
   lightsFrom: Scene,
   target: WebGLRenderTarget | null,
 ): void {
+  // (A lost context compiles nothing — three's compile throws on one; the restored board anchors afresh.)
+  if (gl.getContext().isContextLost()) return;
   const fresh = new Scene();
   root.traverse((o) => {
     for (const m of ([] as Material[]).concat((o as Mesh).material ?? [])) {
@@ -109,5 +111,16 @@ const NOTHING = new Scene();
  * lights change, it makes that frame like every other (whose programs the warm-up has made).
  */
 export function primeLights(gl: WebGLRenderer, camera: Camera, scene: Scene): void {
+  if (gl.getContext().isContextLost()) return;
   gl.compile(NOTHING, camera, scene);
+}
+
+/**
+ * Forgets the anchors after the context was lost and given back (gpu.ts): the restored renderer has a new shader-code
+ * cache and no programs, so each code is anchored again as the board first draws it.
+ */
+export function forgetAnchors(): void {
+  anchored.clear();
+  for (const a of anchors) a.dispose();
+  anchors.length = 0;
 }

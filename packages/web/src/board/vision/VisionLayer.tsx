@@ -36,6 +36,7 @@ import { useFog } from "../../state/fog.ts";
 import { prefersReducedMotion } from "../../state/settings.ts";
 import { useViewAs } from "../../state/viewAs.ts";
 import { again, setAmbient, setAnimating } from "../frames.ts";
+import { useGpu } from "../gpu.ts";
 import { moveAnimAt } from "../move/anims.ts";
 import { pinPrograms } from "../programs.ts";
 import type { Bounds } from "../scene.ts";
@@ -455,6 +456,15 @@ export function VisionLayer({ bounds }: { bounds: Bounds }) {
     state.current.lightKey = "";
     again();
   }, [bounds, targets]);
+
+  // A lost context given back (gpu.ts): the targets are blank — every pass drawn again (at once, not blended in).
+  const restores = useGpu((s) => s.restores);
+  useEffect(() => {
+    if (!restores) return;
+    state.current.visKey = "";
+    state.current.lightKey = "";
+    again();
+  }, [restores]);
 
   useEffect(() => {
     fogUniforms.gMode.value = mode;

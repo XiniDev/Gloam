@@ -31,6 +31,7 @@ import {
   type WebGLRenderer,
   WebGLRenderTarget,
 } from "three";
+import { contextLost } from "../gpu.ts";
 import { postfx } from "../PostFX.tsx";
 import { hasChain, type PostChain } from "../postChain.ts";
 import { pinPrograms } from "../programs.ts";
@@ -40,10 +41,17 @@ let bound: { gl: WebGLRenderer; scene: Scene; camera: () => Camera } | null = nu
 
 /**
  * three's compileAsync, its new programs recorded at once as the warm-up's (programs.ts) — a frame drawn before they
- * are ready mustn't count them as its own — and its failure (a lost context) swallowed.
+ * are ready mustn't count them as its own. On a lost context it compiles nothing (three's compile throws there; the
+ * restored board warms up again): a background step caught mid-way just ends.
  */
 export function compileNow(gl: WebGLRenderer, root: Object3D, camera: Camera, target: Scene | null = null) {
-  const ready = gl.compileAsync(root, camera, target).catch(() => {});
+  if (contextLost(gl)) return Promise.resolve();
+  let ready: Promise<unknown>;
+  try {
+    ready = gl.compileAsync(root, camera, target).catch(() => {});
+  } catch {
+    return Promise.resolve();
+  }
   pinPrograms(gl, "warm");
   return ready;
 }
@@ -153,6 +161,11 @@ const keyOf = (s: RenderState) => `${s.chain ? "chain" : "screen"}|${s.shadows ?
 let snapshot: Object3D[] = [];
 /** Render states whose programs are compiled (or being compiled). */
 const prepared = new Map<string, Promise<void>>();
+
+/** After the context was lost and given back: no render state's programs exist any more. */
+export function forgetPrepared(): void {
+  prepared.clear();
+}
 
 /** Whether a state's programs are known to be compiled (the warm-up's own, or prepared since). */
 export function markPrepared(s: RenderState): void {
