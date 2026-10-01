@@ -13,7 +13,10 @@ export default defineConfig({
   timeout: 120_000,
   expect: { timeout: 10_000 },
   fullyParallel: false,
-  workers: 2,
+  // One at a time by default: two WebGL journeys side by side starve each other's GPU on a gaming PC with its own
+  // programs open — a lost WebGL context, frame-timed checks missed by a second (the full run of 2026-10-01; each passed
+  // alone). E2E_WORKERS raises it on a host with room to spare. No retries either way: a failure is a failure.
+  workers: Number(process.env.E2E_WORKERS) > 0 ? Number(process.env.E2E_WORKERS) : 1,
   retries: 0,
   reporter: [
     ["list"],

@@ -398,3 +398,4 @@ One line per decision: date · decision · reason · alternatives rejected.
   - **Not done, with reasons:**
     - Fitting a landscape map to a portrait screen leaves room above and below; that's the board shown whole, not wasted layout.
     - §27.3 isn't rewritten: the spec is the owner's. The exception above is the record.
+- 2026-10-01 · The e2e suite's main part runs one worker by default (`E2E_WORKERS` raises it). On this host, a gaming PC with its own programs open, two WebGL journeys side by side starve each other's GPU. The full run of 2026-10-01 lost a WebGL context (p14-mobile) and missed four frame-timed checks by a second or so (an emote's 2.5 s, a pinch's zoom, a fog mode's 500 ms, a toast). Each passed when run alone. The timing journeys already ran alone for this reason. No test, bound or retry changed: the run is serial so its numbers mean what they say. It takes about twice as long.
