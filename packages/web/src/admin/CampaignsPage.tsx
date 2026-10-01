@@ -91,8 +91,12 @@ export function CampaignsPage() {
       {/* Who it is takes the row's width on a phone, its menu at its top right and "Use at the table" below (squeezed
           beside the actions, the name went; the menu on a row of its own left a gap — critic RSP-01 r2). */}
       <span className="flex min-w-0 flex-[1_1_16rem] flex-col max-sm:flex-[1_1_0]">
-        <span className="flex min-w-0 items-center gap-2">
-          <span className="min-w-0 truncate text-16 font-bold text-bone">{c.name}</span>
+        {/* A phone keeps the whole name, wrapping, its "At the table" under it when there's no room beside it — cut
+            beside the menu, "The Lantern C…" lost what it was. */}
+        <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
+          <span className="min-w-0 text-16 font-bold text-bone [overflow-wrap:anywhere] sm:truncate">
+            {c.name}
+          </span>
           {c.selected ? (
             <span className="caps inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-12 text-brass">
               <Star size={12} aria-hidden /> At the table

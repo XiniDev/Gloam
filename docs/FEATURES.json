@@ -2054,10 +2054,10 @@
       "code": "RSP",
       "phase": "P14",
       "text": "Layouts work at 360×740, 390×844, 844×390, 768×1024, 1024×768, 1440×900 and 1920×1080 with no horizontal scrolling and no overlapping controls (screenshot review).",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "e2e/journeys/p14-layouts.spec.ts passes at all seven sizes (360x740, 390x844, 844x390, 768x1024, 1024x768, 1440x900, 1920x1080): each screen's audit finds no sideways scroll and no overlapping controls (25 screens each: Admin console, table as DM with panels, dice tray, settings beside a panel and under its gear, join, waiting room, player table/sheet/tray). Captures in artifacts/screens/rsp01/<size>/. Visual critic rounds 1-2: every finding fixed and re-checked on the recaptures (DECISIONS 2026-10-01).",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-10-01T01:42:54.103Z"
     },
     {
       "id": "AC-RSP-02",
@@ -2417,10 +2417,10 @@
       "code": "DS",
       "phase": "P15",
       "text": "None of the banned patterns in §27.6 appear in the final screenshots (visual-critic check).",
-      "passes": false,
-      "evidence": null,
+      "passes": true,
+      "evidence": "Visual critic round 2 (final) on the seven-layout captures: none of the §27.6 banned patterns (no purple/blue gradients, neon, glassmorphism, cream app background, pill buttons, SaaS white cards, banned fonts, emoji icons, 01/02 labels); game concepts in own glyphs (dice, conditions, health, effects, spells, walls, lights, zones, fog: icons/table.tsx, icons/lights.tsx). Captures: artifacts/screens/rsp01/<size>/; DECISIONS 2026-10-01.",
       "disputed": null,
-      "updatedAt": null
+      "updatedAt": "2026-10-01T01:42:54.366Z"
     },
     {
       "id": "AC-DS-03",

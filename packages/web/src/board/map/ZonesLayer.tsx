@@ -248,7 +248,14 @@ function labelSpots(shape: WorldZoneShape, kind: string, label: string): { at: P
           at(-shape.r - size * 0.9),
           at(shape.r + size * 0.9),
         ]
-      : [at(0), at(-shape.r / 2), at(shape.r / 2)];
+      : [
+          at(0),
+          at(-shape.r / 2),
+          at(shape.r / 2),
+          // Left and right halves too: a panel over one side leaves the other to read it on (critic RSP-01 r2).
+          { at: { x: shape.x - shape.r / 2, y: shape.y }, size: fit(shape.r * 0.8) },
+          { at: { x: shape.x + shape.r / 2, y: shape.y }, size: fit(shape.r * 0.8) },
+        ];
   }
   if (shape.kind === "rect") {
     const size = fit(shape.w * 0.9);
@@ -260,7 +267,15 @@ function labelSpots(shape: WorldZoneShape, kind: string, label: string): { at: P
           at(shape.y - size * 0.9),
           at(shape.y + shape.h + size * 0.9),
         ]
-      : [at(shape.y + shape.h / 2), at(shape.y + shape.h / 4), at(shape.y + (shape.h * 3) / 4)];
+      : [
+          at(shape.y + shape.h / 2),
+          at(shape.y + shape.h / 4),
+          at(shape.y + (shape.h * 3) / 4),
+          // Left and right halves too, sized for them: a panel over one side leaves the other (critic RSP-01 r2:
+          // "BLACK WA" under the dock's panel).
+          { at: { x: shape.x + shape.w * 0.25, y: shape.y + shape.h / 2 }, size: fit(shape.w * 0.45) },
+          { at: { x: shape.x + shape.w * 0.75, y: shape.y + shape.h / 2 }, size: fit(shape.w * 0.45) },
+        ];
   }
   const { p, r } = interiorPoint(shape.points);
   const size = fit(r * 2);
@@ -268,6 +283,11 @@ function labelSpots(shape: WorldZoneShape, kind: string, label: string): { at: P
   for (const dy of [-r * 0.6, r * 0.6]) {
     const q = { x: p.x, y: p.y + dy };
     if (inPolygon(q, shape.points)) out.push({ at: q, size });
+  }
+  // Left and right of it too, where they're inside: a panel over one side leaves the other (critic RSP-01 r2).
+  for (const dx of [-r * 0.8, r * 0.8]) {
+    const q = { x: p.x + dx, y: p.y };
+    if (inPolygon(q, shape.points)) out.push({ at: q, size: fit(r) });
   }
   return out;
 }

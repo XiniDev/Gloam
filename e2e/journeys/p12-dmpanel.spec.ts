@@ -128,7 +128,14 @@ test.describe("P12 — the DM control panel (DMP)", () => {
 
     // ── AC-DMP-02: the goblin's DM settings, from Tokens & Units; every override shown on its hover card ──
     await dmSection(admin, "Tokens & Units");
-    await panel.getByRole("button", { name: "Goblin: DM settings" }).click();
+    // (A wide panel has the row's three actions at hand; the panel's default 380 px folds them into its menu — critic
+    // RSP-01 r2: three buttons cut the disposition to "Ho…".)
+    const direct = panel.getByRole("button", { name: "Goblin: DM settings" });
+    if (await direct.isVisible().catch(() => false)) await direct.click();
+    else {
+      await panel.getByRole("button", { name: "Goblin: actions" }).first().click();
+      await admin.getByRole("menuitem", { name: "DM settings" }).click();
+    }
     const settings = admin.getByTestId("token-settings");
     await expect(settings).toBeVisible();
     const speed = settings.getByLabel("Speed override");
