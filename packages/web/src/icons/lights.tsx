@@ -4,7 +4,8 @@ import type { SVGProps } from "react";
  * Light-source icons (SPEC §30.1 grammar: 24 × 24, 1.75 strokes, round caps and joins, currentColor), one silhouette
  * each so they tell apart by shape alone: a torch (a flame on a slanted haft), a candle (a stub with its flame), an oil
  * lamp (a low boat with a flame at its spout), a hooded lantern (a caged lantern under its hood), a bullseye lantern
- * (a lantern throwing a cone).
+ * (a lantern throwing a cone). And what's done with a light: lit (a lantern with its flame and rays), put out (the
+ * lantern shuttered, no flame), placed (a lantern over the mark where it stands).
  */
 type P = SVGProps<SVGSVGElement> & { size?: number };
 
@@ -80,6 +81,55 @@ export function BullseyeLanternIcon(p: P) {
       <circle cx="10" cy="12.5" r="2" />
       <path d="M12 12.5 21 7M12 12.5l9 5.5" />
       <path d="M21 7v11" strokeDasharray="1.5 2" />
+    </Svg>
+  );
+}
+
+/** Light it: a lantern with its flame burning and its light thrown out. */
+export function LanternLitIcon(p: P) {
+  return (
+    <Svg {...p}>
+      <path d="M12 2.5v1.5" />
+      <path d="M8.2 7.5 9.3 4.5h5.4l1.1 3Z" />
+      <path d="M8.7 7.5h6.6v10H8.7z" />
+      <path
+        d="M12 15.4c-1.2-.5-1.5-1.8-.1-3.6.4 1.1 1.5 1.7 1.1 2.8-.2.5-.5.8-1 .8Z"
+        fill="currentColor"
+        stroke="none"
+      />
+      <path d="M7 20.5h10" />
+      <path d="M5 11.5H3M21 11.5h-2M5.6 7 4.2 5.6M18.4 7l1.4-1.4" />
+    </Svg>
+  );
+}
+
+/** Put it out: the lantern shuttered, its slats closed, no flame. */
+export function LanternOutIcon(p: P) {
+  return (
+    <Svg {...p}>
+      <path d="M12 2.5v1.5" />
+      <path d="M8.2 7.5 9.3 4.5h5.4l1.1 3Z" />
+      <path d="M8.7 7.5h6.6v10H8.7z" />
+      <path d="M8.7 10.8h6.6M8.7 14.1h6.6" />
+      <path d="M7 20.5h10" />
+    </Svg>
+  );
+}
+
+/** Place a light on the board: a lantern standing over the mark on the ground where it goes. */
+export function PlaceLightIcon(p: P) {
+  return (
+    <Svg {...p}>
+      <path d="M12 2v1.3" />
+      <path d="M9.2 6.3l.9-2.6h3.8l.9 2.6Z" />
+      <path d="M9.6 6.3h4.8v7.2H9.6z" />
+      <path
+        d="M12 11.8c-.9-.4-1.1-1.3-.1-2.6.3.8 1.1 1.2.8 2-.1.4-.4.6-.7.6Z"
+        fill="currentColor"
+        stroke="none"
+      />
+      <ellipse cx="12" cy="19" rx="7.5" ry="2.4" strokeDasharray="2 1.8" />
+      <path d="M12 13.5V19" strokeWidth={1.2} />
     </Svg>
   );
 }

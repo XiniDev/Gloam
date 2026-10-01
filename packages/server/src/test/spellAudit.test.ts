@@ -852,6 +852,26 @@ describe("P9 — the rules audit's fixes on the card", () => {
     await cmd(dm, "combat.next", {});
     await waitFor(() => !lethargic());
     await waitFor(() => own(ogre)?.stuck === "");
+    // A creature outside the fight, Hasted while it goes on: no turns of its own to count — no lethargy.
+    const { tokenId: bystander } = await cmd<{ tokenId: string }>(dm, "token.create", {
+      sceneId,
+      name: "Bystander",
+      pos: { x: 45, y: 35 },
+      disposition: "neutral",
+      stats: { hp: 10, hpMax: 10, ac: 10 },
+    });
+    await cmd(dm, "spell.cast", {
+      casterTokenId: mage,
+      spellId: "haste",
+      mode: "free",
+      level: 3,
+      targets: [bystander],
+    });
+    expect(marks(bystander)).toContain("hasted");
+    await endConcentration();
+    await waitFor(() => !marks(bystander).includes("hasted"));
+    expect(statusOf(bystander).status.conditions.map((c) => c.id)).not.toContain("incapacitated");
+    await cmd(dm, "token.delete", { tokenIds: [bystander] });
     await cmd(dm, "combat.stop", {});
 
     // Slow: Slowed on a failed Wisdom save — Speed halved, AC −2 (an 11 that missed its 12 now hits its 10), Dex

@@ -1,7 +1,7 @@
 import { Callbacks, type Room } from "@colyseus/sdk";
 import type { KnockCard } from "@gloam/shared/protocol";
 import { LobbyState, type LobbyStateT } from "@gloam/shared/state";
-import { colyseus } from "./colyseus.ts";
+import { colyseus, rejectionMessage } from "./colyseus.ts";
 
 export interface KnockView {
   sessionId: string;
@@ -60,4 +60,19 @@ export async function joinLobby(h: LobbyHandlers): Promise<Room<unknown, LobbySt
   room.onDrop(() => h.onDrop?.());
   room.onReconnect(() => h.onReconnect?.());
   return room;
+}
+
+/** A request in the waiting room (its own dice skin: SPEC §8.2 "Choose your dice"), answered or refused with why. */
+export async function lobbyRequest<T = unknown>(
+  room: Room | null,
+  type: string,
+  payload: unknown,
+): Promise<T> {
+  if (!room) throw new Error("Not connected to the waiting room.");
+  try {
+    return (await room.request(type, payload, { timeout: 8000 })) as T;
+  } catch (err) {
+    const r = rejectionMessage(err);
+    throw Object.assign(new Error(r.message), { code: r.code });
+  }
 }

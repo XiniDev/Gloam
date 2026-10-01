@@ -701,3 +701,58 @@ PASSING 221/224 · DISPUTED 0 · FAILING 3
 ```
 PASSING 222/224 · DISPUTED 0 · FAILING 2
 ```
+
+## 2026-09-30 — Final reviews: security (c13878c), rules audit (87077c2, d1b34c6, 39a75bb, 967595c, 4b4cba8), RSP-01 critic round 1 (d1b34c6)
+- Security review: H1–H2, M1–M5 and L1–L4 fixed. No path reaches Object.prototype (`--disable-proto=throw`); claims are
+  confirmed only on admission; assets and playlists are served only where a player has a reason; per-viewer combat
+  summaries; waiting-room limits by address.
+- Rules audit A1–A13 fixed. Coverage gaps C1–C7 and Q1–Q6 closed:
+  - movement modes (C1);
+  - SRD 5.1's conditions and Exhaustion (C2);
+  - opportunity hints and Disengage/Dodge (C3);
+  - Heroic Inspiration's reroll on request cards and card attacks, and 5.1's Advantage (C4);
+  - monster Initiative (C5);
+  - ranged attacks in close combat and at long range (C6);
+  - grappler and fear-source hints (C7);
+  - Spirit Guardians' halved Speed as a cap (Q1);
+  - Bloodied, temp-HP and NPC death-save fixes (Q2–Q5);
+  - Bless, Bane, Haste and Slow with their rules on rolls, AC, Speed and reactions, ending with concentration, and
+    Haste's lethargy (Q6).
+- Found on the way:
+  - A request with every other target in closed over a Heroic Inspiration roll still being decided, losing its death
+    save. Now the request waits for it.
+  - `cast.set`'s hit and critical undid each other when sent together.
+  - The floating cards' 12-px list margin cut their float shadow into a hard dark box round every card. Now the stack
+    clips only while it scrolls, and fades its edges then.
+- RSP-01 critic round 1: the settings popover, token rows, the dice tray in the panel's place, short-landscape layouts,
+  and the admin section picker on phones. DS-02: own glyphs for combat, health, effects, spells, lights and walls.
+  Round 2 is under review.
+- Next: act on critic round 2 (RSP-01, DS-02); the full gate — `features:status --verify`, `check`, `test:e2e`,
+  `bench`.
+
+```
+PASSING 222/224 · DISPUTED 0 · FAILING 2
+```
+
+## 2026-10-01 — RSP-01/DS-02 critic round 2 (7.5/10; DS-02 passing): every finding fixed; waiting-room activities
+- MAJOR:
+  - Token rows keep their disposition and HP whole; under 400 px their actions fold into a menu, and the panel widens
+    on large screens.
+  - About's URLs break only at their joints.
+  - The 844 × 390 dice tray puts its formula first.
+- MINOR/NICE:
+  - Settings: beside a panel only in two columns, else in its place with a header; the gear pressed while open.
+  - Scroll cues: the sheet and Journal fade at their edges; the tool rail shows chevrons.
+  - Alignment: aligned field actions with one Save weight; centred empty-state actions; the phone campaign card's
+    menu at its top right.
+  - Zone labels avoid the HUD; no dangling middots; Journal title icon.
+  - Monospace rule recorded.
+- DS-02 consistency: own glyphs for Zones and Fog, and lantern glyphs for light actions.
+- SPEC §8.2 step 3 (found by the critic): Draw your character (art for the DM, from the waiting room's budget) and
+  Choose your dice (saved through the lobby) beside Test sound.
+- The full e2e run (the C4/Q6 bundle) turned up two journeys asserting superseded behaviour, now updated to the
+  corrected rules: an NPC kept Unconscious is Stable and Bloodied at 0 (p7), and phone sheets are shares of the room
+  under the top bar (p4).
+- It also turned up a real UI flaw: card ticks sprang back until the server answered; they now show at once.
+- Next: rerun the failed journeys and p14-layouts on the new bundle, review the captures, flip RSP-01/DS-02; the full
+  gate.

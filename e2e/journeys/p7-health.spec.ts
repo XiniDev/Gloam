@@ -165,7 +165,11 @@ test.describe("P7 — HP, conditions and death (§8.11)", () => {
         .toEqual({ tokenId: goblin, kind: "hit" });
     // It falls (unconscious: it lies down, animated), its icon under the plate (AC-TOK-04).
     await expect.poll(async () => (await tokenState(dave, goblin))?.lie).toBeCloseTo(1, 2);
-    await expect.poll(() => statusIcons(dave, goblin)).toEqual(["unconscious", "prone"]);
+    // An NPC left Unconscious at 0 is Stable (it makes no death saves unless the DM says so), and at 0 it's Bloodied
+    // ("half your Hit Points or fewer", SRD 5.2.1 p. 16) — rules audit Q2, Q4.
+    await expect
+      .poll(() => statusIcons(dave, goblin))
+      .toEqual(["unconscious", "prone", "stable", "bloodied"]);
     // A hit of two types: its two numbers side by side and apart, never run together ("−3−2"; critic P7 r1).
     await dave.bringToFront();
     await req(admin, "hp.apply", {
@@ -228,7 +232,9 @@ test.describe("P7 — HP, conditions and death (§8.11)", () => {
     await expect
       .poll(async () => (await tokenOf(admin, goblin))?.conditions)
       .toEqual(["unconscious", "prone", "poisoned"]);
-    await expect.poll(async () => (await tokenOf(admin, goblin))?.markers).toEqual(["blessed"]);
+    await expect
+      .poll(async () => (await tokenOf(admin, goblin))?.markers)
+      .toEqual(["stable", "bloodied", "blessed"]);
     // Search narrows the grid.
     await picker.getByLabel("Search conditions and markers").fill("speed");
     await expect(picker.getByRole("button", { name: "Grappled", exact: true })).toBeVisible();
@@ -239,7 +245,7 @@ test.describe("P7 — HP, conditions and death (§8.11)", () => {
     await admin.getByRole("dialog").getByRole("button", { name: "Done" }).click();
     await expect
       .poll(() => statusIcons(dave, goblin))
-      .toEqual(["unconscious", "prone", "poisoned", "blessed"]);
+      .toEqual(["unconscious", "prone", "poisoned", "stable", "bloodied", "blessed"]);
     // Six at most under the plate, then "+n" (AC-TOK-04).
     await req(admin, "status.change", {
       tokenId: goblin,
@@ -254,10 +260,11 @@ test.describe("P7 — HP, conditions and death (§8.11)", () => {
       "charmed",
       "deafened",
     ]);
-    expect((await statusIcons(dave, goblin)).at(-1)).toBe("+3");
+    expect((await statusIcons(dave, goblin)).at(-1)).toBe("+5");
+    // (Blessed put away too: with Stable and Bloodied the custom marker below is the sixth under the plate, not "+1".)
     await req(admin, "status.change", {
       tokenId: goblin,
-      remove: ["blinded", "charmed", "deafened", "frightened", "grappled"],
+      remove: ["blinded", "charmed", "deafened", "frightened", "grappled", "blessed"],
     });
     // A custom marker from the picker (§8.11): its own glyph on its own colour — on the board too, in a cell of its
     // own; on a light colour (Citrine) its glyph takes ink, as bone wouldn't read.

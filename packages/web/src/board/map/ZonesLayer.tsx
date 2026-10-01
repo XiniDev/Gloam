@@ -5,6 +5,7 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useMemo, useRef } from "react";
 import {
   BufferGeometry,
+  type Camera,
   CircleGeometry,
   Color,
   DoubleSide,
@@ -17,6 +18,7 @@ import {
   ShapeGeometry,
   Vector3,
 } from "three";
+import { useBoardCovers, useHudObstacles } from "../../hud/insets.ts";
 import { useTable } from "../../net/table.ts";
 import { useBoard } from "../../state/entities.ts";
 import { knownAt } from "../../state/fog.ts";
@@ -308,6 +310,45 @@ function coveredArea(
 }
 
 const LABEL_PX = { min: 12, max: 20 };
+const hud3 = new Vector3();
+const hudSide3 = new Vector3();
+
+/**
+ * How much of a label at a spot the HUD hides on screen (0–1): its box as drawn — its clamped size, its letters' width —
+ * against each cover's rectangle.
+ */
+function hudHidden(
+  at: P,
+  chars: number,
+  size: number,
+  camera: Camera,
+  viewport: { width: number; height: number },
+  covers: readonly { left: number; top: number; right: number; bottom: number }[],
+): number {
+  if (!covers.length) return 0;
+  hud3.set(at.x, 0, at.y).project(camera);
+  if (hud3.z > 1) return 0;
+  hudSide3
+    .set(1, 0, 0)
+    .applyQuaternion(camera.quaternion)
+    .add(hud3.set(at.x, 0, at.y))
+    .project(camera);
+  hud3.set(at.x, 0, at.y).project(camera);
+  const ppf = (Math.hypot(hudSide3.x - hud3.x, hudSide3.y - hud3.y) * viewport.width) / 2;
+  const px = Math.min(LABEL_PX.max, Math.max(LABEL_PX.min, size * ppf));
+  const w = px * Math.max(3, chars) * 0.62;
+  const h = px * 1.2;
+  const cx = ((hud3.x + 1) / 2) * viewport.width;
+  const cy = ((1 - hud3.y) / 2) * viewport.height;
+  const box = { x0: cx - w / 2, y0: cy - h / 2, x1: cx + w / 2, y1: cy + h / 2 };
+  let hidden = 0;
+  for (const r of covers) {
+    const ox = Math.min(box.x1, r.right) - Math.max(box.x0, r.left);
+    const oy = Math.min(box.y1, r.bottom) - Math.max(box.y0, r.top);
+    if (ox > 0 && oy > 0) hidden += ox * oy;
+  }
+  return Math.min(1, hidden / (w * h));
+}
 const at3 = new Vector3();
 const side3 = new Vector3();
 const back3 = new Vector3();
@@ -345,8 +386,18 @@ function ClampedLabel({
     const away = flat > 1e-3 ? { x: -back3.x / flat, y: -back3.z / flat } : { x: 0, y: 0 };
     const slope = flat > 1e-3 ? back3.y / flat : 0;
     const w = size * Math.max(3, chars) * 0.62;
+    // The HUD over the board (the dock's panel, the rails, cards): a spot it hides loses to any it doesn't, as a
+    // plate's does (critic RSP-01 r2: "BLACK WA" cut by the panel at 1440 × 900).
+    const covers = [
+      ...Object.values(useHudObstacles.getState().rects),
+      ...Object.values(useBoardCovers.getState().rects),
+    ];
     const costs = spots.map(
-      (sp, i) => coveredArea(sp.at, w, size * 1.2, tokens, away, slope) + (wallCost[i] ?? 0) + i * 0.01,
+      (sp, i) =>
+        coveredArea(sp.at, w, size * 1.2, tokens, away, slope) +
+        (wallCost[i] ?? 0) +
+        hudHidden(sp.at, chars, size, camera, viewport, covers) * 1e4 +
+        i * 0.01,
     );
     let best = chosen.current < spots.length ? chosen.current : 0;
     for (let i = 0; i < costs.length; i++) if ((costs[i] as number) < (costs[best] as number) - 0.5) best = i;

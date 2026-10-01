@@ -2616,12 +2616,16 @@ export const concentrationCleanup: CommandDef<z.infer<typeof ConcentrationCleanu
         if (!lost) continue;
         removed += lost;
         // Haste ends: "the target is Incapacitated and has a Speed of 0 until the end of its next turn, as a wave of
-        // lethargy washes over it" (SRD 5.2.1 p. 139) — where there are turns to count (a fight under way).
+        // lethargy washes over it" (SRD 5.2.1 p. 139) — where there are turns to count: a fight under way that it's in
+        // (one that never takes a turn would stay lethargic).
         const active = activeTurnOf(ctx);
+        const fight = activeCombat(ctx);
+        const fighting = fight ? dataOf(fight).combatants.some((e) => e.tokenId === t.id) : false;
         const hasteEnded = h.status.markers.some((x) => x.id === "hasted" && x.castId === p.castId);
         if (
           hasteEnded &&
           active !== undefined &&
+          fighting &&
           !immuneToCondition(
             h.stats.conditionImmune,
             keep.map((x) => x.id as string),

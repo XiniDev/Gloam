@@ -24,11 +24,17 @@ export function DrawingPad({
   open,
   onClose,
   onUse,
+  lobby,
 }: {
   open: boolean;
   onClose: () => void;
   /** The drawing, saved: usable now, or (a player's) once the DM approves it. */
   onUse: (assetId: string, as: DrawingUse, approved: boolean) => void;
+  /**
+   * In the waiting room (SPEC §8.2 "Draw your character", J2), the drawing's name ("Dave's character"): no character to
+   * put it on yet — one Save, as art for the DM to use (a standee, the portrait) once they let you in.
+   */
+  lobby?: string | undefined;
 }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const base = useRef<HTMLCanvasElement | null>(null);
@@ -147,12 +153,16 @@ export function DrawingPad({
       if (!blob) throw new Error("The drawing couldn't be saved.");
       const asset = await uploadAsset(
         new File([blob], "drawing.png", { type: "image/png" }),
-        as === "portrait" ? "portrait" : "token",
+        // (The waiting room's uploads are art — what the server takes from someone not yet let in.)
+        lobby !== undefined ? "art" : as === "portrait" ? "portrait" : "token",
         {
-          name: "Drawing",
+          name: lobby ?? "Drawing",
         },
       );
-      if (asset.status === "approved") {
+      if (lobby !== undefined) {
+        onUse(asset.id, as, asset.status === "approved");
+        toast.success("Drawing saved", "Your DM can put it on your character once you're in.");
+      } else if (asset.status === "approved") {
         onUse(asset.id, as, true);
         toast.success(
           as === "portrait" ? "Your new portrait" : as === "standee" ? "Your new standee" : "Your new coin",
@@ -178,7 +188,16 @@ export function DrawingPad({
       title="Drawing pad"
       width={760}
       footer={
-        phone ? (
+        lobby !== undefined ? (
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button variant="ghost" onClick={onClose}>
+              Close
+            </Button>
+            <Button variant="primary" loading={busy} onClick={() => void use("standee")}>
+              Save my drawing
+            </Button>
+          </div>
+        ) : phone ? (
           // A phone's room goes to the canvas: the three uses under one main button, Close under it.
           <div className="flex items-center justify-end gap-2">
             <Button variant="ghost" onClick={onClose}>

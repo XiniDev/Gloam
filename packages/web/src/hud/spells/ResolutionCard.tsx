@@ -724,6 +724,31 @@ function FinalInput({
 /** A row's details (DM): full / half / none, its resistances (each toggleable), conditions, its save by hand, Skip. */
 function Details({ c, t }: { c: CastView; t: CastTargetView }) {
   const set = (p: Parameters<typeof castSet>[2]) => act(castSet(c.id, t.key, p), "Couldn't change it");
+  // What the DM just ticked shows at once, until the card comes back with it — a box that sprang back until the server
+  // answered read as a click that didn't take (found by the Q6 journey under load). A refusal puts it back.
+  const [ticked, setTicked] = useState<Record<string, boolean> | null>(null);
+  const shown = ticked
+    ? t.conditions.map((x) => (x.id in ticked ? { ...x, on: Boolean(ticked[x.id]) } : x))
+    : t.conditions;
+  const sig = t.conditions.map((x) => `${x.id}:${x.on}`).join(",");
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the card's own answer (its ticks) settles what was shown
+  useEffect(() => setTicked(null), [sig]);
+  const tick = (x: (typeof shown)[number], on: boolean) => {
+    // A spell's marker (Bane's Baned — rules audit Q6) with the others of its kind; a condition with its. One of a
+    // choice's group: ticking it unticks the rest of its group.
+    const kind = shown.filter((y) => Boolean(y.marker) === Boolean(x.marker));
+    const next = kind.map((y) => ({
+      id: y.id,
+      on: y.id === x.id ? on : y.on && !(on && x.group && y.group === x.group),
+    }));
+    setTicked((prev) => ({ ...(prev ?? {}), ...Object.fromEntries(next.map((y) => [y.id, y.on])) }));
+    castSet(c.id, t.key, {
+      [x.marker ? "markers" : "conditions"]: next.filter((y) => y.on).map((y) => y.id),
+    }).catch((e: Error) => {
+      setTicked(null);
+      toast.danger("Couldn't change it", e.message);
+    });
+  };
   return (
     <div
       className="flex flex-col gap-2 rounded-[var(--radius-control)] bg-raised/60 p-2 text-13"
@@ -774,29 +799,14 @@ function Details({ c, t }: { c: CastView; t: CastTargetView }) {
             ))}
         </div>
       ) : null}
-      {t.conditions.length ? (
+      {shown.length ? (
         <div className="flex flex-wrap items-center gap-3">
-          {t.conditions.map((x) => (
+          {shown.map((x) => (
             <label key={x.id} className="inline-flex min-h-[var(--touch-min)] items-center gap-1.5 text-bone">
               <input
                 type="checkbox"
                 checked={x.on}
-                onChange={(e) =>
-                  set(
-                    // A spell's marker (Bane's Baned — rules audit Q6) with the others of its kind; a condition with its.
-                    // One of a choice's group: ticking it unticks the rest of its group.
-                    {
-                      [x.marker ? "markers" : "conditions"]: t.conditions
-                        .filter((y) => Boolean(y.marker) === Boolean(x.marker))
-                        .filter((y) =>
-                          y.id === x.id
-                            ? e.target.checked
-                            : y.on && !(e.target.checked && x.group && y.group === x.group),
-                        )
-                        .map((y) => y.id),
-                    },
-                  )
-                }
+                onChange={(e) => tick(x, e.target.checked)}
                 className="h-4 w-4 accent-[var(--brass-400)]"
               />
               {x.id.charAt(0).toUpperCase() + x.id.slice(1)}

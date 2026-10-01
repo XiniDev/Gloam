@@ -1,5 +1,6 @@
 import { ChevronRight, Scale } from "lucide-react";
 import { get } from "../net/http.ts";
+import { WithBreakableUrls } from "../ui/Breakable.tsx";
 import { LoadPanel, useLoad } from "../ui/Loadable.tsx";
 import { Sparkle } from "../ui/ornaments.tsx";
 
@@ -39,11 +40,11 @@ export function AboutPage() {
               <Scale size={20} aria-hidden /> Rules content
             </h2>
             <blockquote
-              // (Its URLs break anywhere rather than run off a phone: the words stay exactly as the licence has them.)
+              // (Its URLs break only after a slash, never mid-word; the words stay exactly as the licence has them.)
               className="rounded-[var(--radius-control)] border-l-4 border-brass-deep bg-ink-900 px-4 py-3 text-16 leading-[var(--leading-body)] text-bone [overflow-wrap:anywhere]"
               data-testid="srd-attribution"
             >
-              {a.srd.attribution}
+              <WithBreakableUrls text={a.srd.attribution} />
             </blockquote>
             <p className="text-14 text-muted">{a.trademarks}</p>
             <ul className="flex flex-col gap-2">
@@ -51,7 +52,7 @@ export function AboutPage() {
                 <li key={s.name} className="text-14 [overflow-wrap:anywhere]">
                   <span className="font-bold text-bone">{s.name}</span>{" "}
                   <span className="text-muted">
-                    — {s.note} {s.license}.
+                    — <WithBreakableUrls text={`${s.note} ${s.license}.`} />
                   </span>
                 </li>
               ))}

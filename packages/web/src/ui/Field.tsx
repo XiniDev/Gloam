@@ -61,7 +61,9 @@ export const TextInput = forwardRef<HTMLInputElement, TextInputProps>(function T
       {action ? (
         <div className="flex flex-wrap items-center gap-2">
           {input}
-          <div className="flex shrink-0 grow-0 gap-2 max-[480px]:grow">{action}</div>
+          {/* Its actions at least 128 px: a column of fields ends in line, whatever each button says (critic RSP-01 r2:
+              "Save port" and "Save hostname" left the inputs ragged). */}
+          <div className="flex min-w-32 shrink-0 grow-0 gap-2 max-[480px]:grow">{action}</div>
         </div>
       ) : (
         input

@@ -378,3 +378,23 @@ One line per decision: date · decision · reason · alternatives rejected.
   - **Speed** (`effectiveSpeed(…, markers)`): doubling and halving come after Exhaustion, as Dash multiplies Speed after its modifiers. Every Speed on the server and the sheet's Speed tile pass markers.
   - **Haste's end:** when its concentration ends during a fight, the target is Incapacitated and held at Speed 0 until the end of its next turn — a condition with a `speed0` rider, turn-bound like "until the end of its next turn". Outside a fight there are no turns to count, so nothing lands; the DM sets it if wanted.
   - **Not automated** (the DM's to run): Haste's extra action; Slow's one action or Bonus Action, one attack, and 25% Somatic failure. Their summaries say so.
+- 2026-10-01 · RSP-01/DS-02 critic round 2 (the last): every finding fixed except two, noted below.
+  - **Token rows:** the disposition and HP are never truncated, and the DM's override badges give way first (three icons, then "+n"). Under 400 px the row's three actions fold into one menu; the panel is 380 px by default and 24 % of a large screen up to 460 px (§28 allows 320–520).
+  - **URLs and paths:** attribution and licence URLs on About go through `Breakable` (`WithBreakableUrls`), breaking only at their joints, with the words unchanged (Appendix I). `breakPoints` never breaks inside "//", and keeps a scheme or drive ("https://", "D:/") with what follows.
+  - **844 × 390 dice tray:** on a short screen on its side, the formula comes first and the seven dice keep to one row.
+  - **Settings popover:** standing beside an open panel only in two columns; otherwise it takes the panel's place, now with the panel's header ("Settings", Close). The gear shows pressed while it's open.
+  - **Scroll cues:** the sheet's foot fades while more is below; the Journal's log fades above the pen; the tool rail marks hidden tools with chevrons — marks, not 20-px buttons under a finger's size.
+  - **Alignment:** field actions are at least 128 px, so a column of fields ends in line, and every field's Save has one weight. The sheet's empty-state buttons are centred under its words. The phone campaign card's menu sits at its top right.
+  - **Board labels:** a zone label avoids the HUD as plates do — a spot the HUD hides loses to any it doesn't. A scene's middot that would begin a line isn't drawn.
+  - **Small fixes:** the Journal has its title icon; the Journal pen can't be resized.
+  - **Monospace:** standalone, copy-exact values (code blocks, tokens, copy fields, scope ids) stay mono. Anything named inside a sentence — a path or URL in prose — is UI type. So the API page's inline paths are UI type, and so is the Settings page's URL, which sits in a sentence. The join hint's sample invite code is mono, as §27.3 has invite codes. §27.3's "dice formulas and invite codes only" stands, with this exception for copy-exact values (0/O, l/1, JSON indentation) recorded here.
+  - **DS-02 consistency:** own glyphs for Zones (dashed bound, hatched ground) and Fog (a map corner under mist) on the tool rail. The Lights section and a token's light ring use lantern glyphs: lit, shuttered, placed over its mark; the torch for "Light", the hooded lantern for its hood.
+  - **Waiting room** (SPEC §8.2 step 3, §29.2 — a spec gap the critic found): Draw your character and Choose your dice beside Test sound.
+    - The drawing uploads as art, the one upload the server takes from someone not yet let in, within the waiting room's shared budget (security review M4). It's named "<name>'s character" for the DM to find in Approvals and use as a standee (J2).
+    - The dice are saved to the profile through the lobby room (`profile.diceSkin`, its own rate) and carried to the table.
+    - Nothing about the table is sent either way.
+  - **Card ticks:** what the DM ticks on a card (conditions, markers) shows at once until the card's answer comes back. A box springing back until then read as a click that didn't take.
+  - **Phone bottom sheets:** their 30/60/95 % are shares of the room under the top bar (c13878c). The p4 journey now measures that room instead of the whole screen.
+  - **Not done, with reasons:**
+    - Fitting a landscape map to a portrait screen leaves room above and below; that's the board shown whole, not wasted layout.
+    - §27.3 isn't rewritten: the spec is the owner's. The exception above is the record.

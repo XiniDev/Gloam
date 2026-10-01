@@ -77,27 +77,30 @@ function Row({
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="truncate text-14 text-bone">{t.name}</span>
           {/* Clipped at its own edge: never under the buttons beside it (critic RSP-01 r1: "45/45" under the eye). */}
+          {/* Its disposition and HP whole, always (critic RSP-01 r2: "Ho…" beside the badges); the DM's overrides after
+              them, three at most and a count — those are what give way. */}
           <span className="flex min-w-0 items-center gap-1.5 overflow-hidden whitespace-nowrap text-12 text-muted">
-            <span className="truncate capitalize">{t.disposition}</span>
+            <span className="shrink-0 capitalize">{t.disposition}</span>
             {hp ? <span className="tabular shrink-0">· {hp}</span> : null}
             {badges.length ? (
               <span className="ml-1 flex min-w-0 items-center gap-1 overflow-hidden text-brass">
-                {badges.slice(0, 5).map((b) => (
+                {badges.slice(0, 3).map((b) => (
                   <Tooltip key={b.key} label={b.title}>
-                    <span className="inline-flex" role="img" aria-label={b.title}>
+                    <span className="inline-flex shrink-0" role="img" aria-label={b.title}>
                       <b.icon size={13} aria-hidden />
                     </span>
                   </Tooltip>
                 ))}
-                {badges.length > 5 ? <span>+{badges.length - 5}</span> : null}
+                {badges.length > 3 ? <span className="shrink-0">+{badges.length - 3}</span> : null}
               </span>
             ) : null}
           </span>
         </span>
       </button>
-      {/* A mouse and room for them: its three actions at hand. A touch screen (each button a finger wide) or a narrow
-          list: one menu of them — three buttons left the name "Cry…" (critic RSP-01 r1, a 768-px tablet). */}
-      <span className="contents pointer-coarse:hidden @max-[280px]:hidden">
+      {/* A mouse and room for them: its three actions at hand. A touch screen (each button a finger wide) or a list under
+          400 px (the panel's 380 by default): one menu of them — three buttons left the name "Cry…" at 768 px (critic
+          RSP-01 r1) and the disposition "Ho…" in the 380-px panel (r2). */}
+      <span className="contents pointer-coarse:hidden @max-[400px]:hidden">
         <IconButton label={t.dm?.dmHidden ? `Reveal ${t.name}` : `Hide ${t.name}`} onClick={hide}>
           {t.dm?.dmHidden ? <Eye size={15} /> : <EyeOff size={15} />}
         </IconButton>
@@ -106,7 +109,7 @@ function Row({
           <SlidersHorizontal size={15} />
         </IconButton>
       </span>
-      <span className="hidden pointer-coarse:inline-flex @max-[280px]:inline-flex">
+      <span className="hidden pointer-coarse:inline-flex @max-[400px]:inline-flex">
         <Menu
           label={`${t.name}: actions`}
           items={[

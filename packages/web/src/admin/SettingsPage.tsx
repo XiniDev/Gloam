@@ -113,9 +113,9 @@ export function SettingsPage() {
           help="Stored encrypted on this PC; never shown in full again."
           action={
             <>
+              {/* (A field's Save as every field's: one weight for them all — critic RSP-01 r2.) */}
               <Button
                 className="flex-1"
-                variant="primary"
                 disabled={hostOnly || token.length < 20}
                 onClick={async () => (await save({ tunnelToken: token }, "Token saved")) && setToken("")}
               >

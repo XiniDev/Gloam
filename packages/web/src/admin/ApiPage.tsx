@@ -206,14 +206,15 @@ export function ApiPage() {
           <Plug size={20} aria-hidden /> Connect Claude
         </h2>
         <p className="text-14 text-muted">
+          {/* Named in the sentence in its own type (the copyable block below has them in mono, character-exact). */}
           Gloam's MCP server is in this copy of Gloam, at{" "}
-          <code className="mono text-bone [overflow-wrap:anywhere]">
+          <span className="text-bone [overflow-wrap:anywhere]">
             <Breakable text={info.mcpEntry} />
-          </code>
+          </span>
           . Claude starts it and it talks to Gloam at{" "}
-          <code className="mono text-bone [overflow-wrap:anywhere]">
+          <span className="text-bone [overflow-wrap:anywhere]">
             <Breakable text={info.url} />
-          </code>{" "}
+          </span>{" "}
           with your token.
           {fresh ? null : " Make a token above and it's filled in here."}
         </p>

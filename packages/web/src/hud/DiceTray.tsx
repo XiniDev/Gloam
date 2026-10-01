@@ -341,9 +341,15 @@ function TrayBody({
 
   return (
     // Laid out by its own width (a panel's column, a phone, the board's free part): below 330 px the dice go four to a
-    // row and the steppers one above the other — squeezed side by side, a stepper's + ran into the next one's −.
+    // row and the steppers one above the other — squeezed side by side, a stepper's + ran into the next one's −. On a
+    // short screen on its side the formula — what Roll throws — comes first and the dice keep to one row (critic RSP-01
+    // r2: at 844 × 390 the formula sat under the fold).
     <div className="@container flex flex-col gap-3">
-      <div className="grid grid-cols-4 gap-1 @[330px]:grid-cols-7" role="group" aria-label="Quick dice">
+      <div
+        className="grid grid-cols-4 gap-1 @[330px]:grid-cols-7 short:grid-cols-7"
+        role="group"
+        aria-label="Quick dice"
+      >
         {QUICK.map((s) => (
           <button
             key={s}
@@ -391,7 +397,7 @@ function TrayBody({
         ]}
       />
 
-      <div className="relative flex flex-col gap-1">
+      <div className="relative flex flex-col gap-1 short:order-first">
         <label className="sr-only" htmlFor="dice-formula">
           Formula
         </label>

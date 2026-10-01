@@ -118,18 +118,24 @@ export function SheetPanel() {
         </LoadGate>
       ) : (
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
-          <EmptyState title="No character yet. Make one in a minute — a name, a class, HP, AC and speed are enough to play — or bring one from another sheet." />
-          <div className="mt-3 flex flex-wrap gap-2">
-            <Button variant="primary" icon={<Plus size={16} />} onClick={() => setCreating(true)}>
-              Quick create
-            </Button>
-            <Button variant="secondary" icon={<FileUp size={16} />} onClick={() => setImporting("json")}>
-              Import JSON…
-            </Button>
-            <Button variant="ghost" icon={<Sparkles size={16} />} onClick={() => setImporting("ai")}>
-              Import with AI…
-            </Button>
-          </div>
+          {/* Its ways in centred under its words, as the words are (critic RSP-01 r2: the words centred, the buttons
+              flush left). */}
+          <EmptyState
+            title="No character yet. Make one in a minute — a name, a class, HP, AC and speed are enough to play — or bring one from another sheet."
+            action={
+              <div className="flex flex-wrap justify-center gap-2">
+                <Button variant="primary" icon={<Plus size={16} />} onClick={() => setCreating(true)}>
+                  Quick create
+                </Button>
+                <Button variant="secondary" icon={<FileUp size={16} />} onClick={() => setImporting("json")}>
+                  Import JSON…
+                </Button>
+                <Button variant="secondary" icon={<Sparkles size={16} />} onClick={() => setImporting("ai")}>
+                  Import with AI…
+                </Button>
+              </div>
+            }
+          />
         </div>
       )}
       <QuickCreateDialog open={creating} onClose={() => setCreating(false)} />
@@ -255,9 +261,28 @@ function SheetPage({ actor, onImport }: { actor: ActorView; onImport: (m: "json"
       el.scrollTo({ top: at, behavior: prefersReducedMotion() ? "auto" : "smooth" });
     opened.current = true;
   }, [tab]);
+  // More of the page below: its foot fades out rather than a row ending sliced at the panel's edge (critic RSP-01 r2:
+  // "0 / Damage / Heal" cut in half at 844 × 390).
+  const [more, setMore] = useState(false);
+  useLayoutEffect(() => {
+    const el = page.current;
+    if (!el) return;
+    const update = () => setMore(el.scrollTop + el.clientHeight < el.scrollHeight - 1);
+    update();
+    el.addEventListener("scroll", update, { passive: true });
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    for (const c of el.children) ro.observe(c);
+    return () => {
+      el.removeEventListener("scroll", update);
+      ro.disconnect();
+    };
+  }, []);
   return (
     <article
       ref={page}
+      style={more ? { maskImage: SHEET_FADE, WebkitMaskImage: SHEET_FADE } : undefined}
+      data-more={more}
       // One scrolling page: the header scrolls away and the tabs stay on top (a phone has room for the section,
       // not only for the header). Never scrollable sideways (a wide child would slide the page left and cut its edge).
       className="parchment m-2 flex min-h-0 min-w-0 flex-1 scroll-pt-12 flex-col overflow-y-auto overflow-x-clip"
@@ -286,6 +311,9 @@ function SheetPage({ actor, onImport }: { actor: ActorView; onImport: (m: "json"
     </article>
   );
 }
+
+/** The sheet's foot while more of it is below: the page fading over its last 20 px. */
+const SHEET_FADE = "linear-gradient(to bottom, black calc(100% - 20px), transparent 100%)";
 
 /** "Dwarf · Fighter 5 / Wizard 1 · Soldier". */
 function subtitle(ctx: SheetCtx): string {

@@ -37,6 +37,21 @@ export function parseSkin(json: string | undefined): DiceSkin {
 export function DiceSkinPicker() {
   const me = useTable((s) => s.me?.userId ?? "");
   const stored = useTable((s) => s.presence.find((p) => p.userId === me)?.diceSkin);
+  return <DiceSkinChooser stored={stored} send={(next) => request("profile.diceSkin", next)} />;
+}
+
+/**
+ * The choosing itself — at the table (through the table room) or in the waiting room (through the lobby, SPEC §8.2
+ * "Choose your dice"): the skin as last stored, each choice shown at once and sent; a refusal says so.
+ */
+export function DiceSkinChooser({
+  stored,
+  send,
+}: {
+  /** The profile's skin as stored (JSON), as it last came back. */
+  stored: string | undefined;
+  send: (skin: DiceSkin) => Promise<unknown>;
+}) {
   const [skin, setSkin] = useState<DiceSkin>(() => parseSkin(stored));
   const dirty = useRef(false);
   useEffect(() => {
@@ -45,7 +60,7 @@ export function DiceSkinPicker() {
   const save = (next: DiceSkin) => {
     setSkin(next);
     dirty.current = true;
-    void request("profile.diceSkin", next)
+    void send(next)
       .catch((e) => toast.danger("Couldn't save your dice", (e as Error).message))
       .finally(() => {
         dirty.current = false;

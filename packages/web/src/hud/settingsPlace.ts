@@ -23,8 +23,9 @@ export interface SettingsPlace {
  * 1. Under its gear, its right edge in line with the gear's, inside the screen with a 12-px gutter, as tall as the
  *    screen leaves; two columns from 1024 px (nothing to scroll), else one.
  * 2. Half over the dock's rail: clear to the rail's left.
- * 3. Half over an open dock panel: clear to the panel's left — in two columns or one — where that doesn't lie across
- *    the board's tool column; else it takes the panel's place, exactly over it.
+ * 3. Half over an open dock panel: clear to the panel's left in two columns, where that doesn't lie across the board's
+ *    tool column; else it takes the panel's place, exactly over it (one column beside the panel stood far from its
+ *    gear and gained nothing its place doesn't give — critic RSP-01 r2).
  */
 export function placeSettings(
   gear: { right: number },
@@ -40,7 +41,9 @@ export function placeSettings(
     const width = Math.min(columns * COLUMN, screen.w - 2 * EDGE);
     let right = Math.min(gear.right, screen.w - EDGE);
     if (overlaps(right - width, right, covers.rail)) right = (covers.rail as Box).left - GAP;
-    if (overlaps(right - width, right, covers.panel)) right = (covers.panel as Box).left - GAP;
+    const beside = overlaps(right - width, right, covers.panel);
+    if (beside && columns === 1) break;
+    if (beside) right = (covers.panel as Box).left - GAP;
     const left = Math.max(EDGE, right - width);
     if (
       fits(left) &&

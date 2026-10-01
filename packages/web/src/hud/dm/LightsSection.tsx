@@ -1,7 +1,8 @@
 import { LIGHT_PRESETS } from "@gloam/shared";
-import { Flame, Lightbulb, LightbulbOff, Trash2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import { cameraRig } from "../../board/CameraRig.tsx";
 import { useLightTool } from "../../board/tools/lights.ts";
+import { LanternLitIcon, LanternOutIcon, PlaceLightIcon } from "../../icons/lights.tsx";
 import { request } from "../../net/table.ts";
 import { useBoard } from "../../state/entities.ts";
 import { useUi } from "../../state/ui.ts";
@@ -69,7 +70,7 @@ export function LightsSection() {
           <Button
             size="S"
             variant="secondary"
-            icon={<Flame size={15} />}
+            icon={<PlaceLightIcon size={15} />}
             onClick={() => useUi.getState().set({ tool: "lights", dock: null })}
           >
             Place on the board
@@ -122,7 +123,7 @@ export function LightsSection() {
                       act(request("light.toggle", { lightId: l.id, enabled: !l.on }), "Couldn't change it")
                     }
                   >
-                    {l.on ? <LightbulbOff size={15} /> : <Lightbulb size={15} />}
+                    {l.on ? <LanternOutIcon size={15} /> : <LanternLitIcon size={15} />}
                   </IconButton>
                   {carrier ? null : (
                     <IconButton

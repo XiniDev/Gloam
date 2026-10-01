@@ -193,10 +193,18 @@ export function ScenesPanel() {
                         Prep
                       </span>
                     ) : null}
-                    {/* Wrapped at its middot rather than cut ("Procedural floor · 5 t…", critic RSP-01 r1). */}
-                    <span className="whitespace-nowrap">{KIND_LABEL[s.mapKind]} ·</span>
-                    <span className="whitespace-nowrap">
-                      {s.tokenCount} token{s.tokenCount === 1 ? "" : "s"}
+                    {/* Wrapped at its middot rather than cut ("Procedural floor · 5 t…", critic RSP-01 r1) — and a middot
+                        that would begin or end a line isn't drawn (r2: "Procedural floor ·" left hanging). Each part leads
+                        with its own; the row starts a middot's width left, in a box that clips it. */}
+                    <span className="min-w-0 overflow-hidden">
+                      <span className="-ml-3 flex flex-wrap">
+                        <span className="whitespace-nowrap before:inline-block before:w-3 before:text-center before:content-['·']">
+                          {KIND_LABEL[s.mapKind]}
+                        </span>
+                        <span className="whitespace-nowrap before:inline-block before:w-3 before:text-center before:content-['·']">
+                          {s.tokenCount} token{s.tokenCount === 1 ? "" : "s"}
+                        </span>
+                      </span>
                     </span>
                   </p>
                 </div>

@@ -114,6 +114,16 @@ test.describe("P14 — the seven layouts (RSP)", () => {
         await expect(dm.getByRole("dialog")).toBeVisible();
       });
       await dm.keyboard.press("Escape");
+      // …and with no panel open: under its gear (critic RSP-01 r2 — every capture had a panel beside it).
+      await step(dm, "table DM settings under its gear", async () => {
+        const region = dm.getByRole("region", { name: "DM panel", exact: true });
+        if (await region.isVisible().catch(() => false))
+          await dm.getByRole("button", { name: /^DM panel/ }).click();
+        await expect(region).toBeHidden();
+        await dm.getByRole("button", { name: "Settings" }).click();
+        await expect(dm.getByRole("dialog")).toBeVisible();
+      });
+      await dm.keyboard.press("Escape");
 
       // ── A new player: the door, the waiting room, the table ──
       const player = await (await context()).newPage();

@@ -1,3 +1,4 @@
+import { ChevronDown, ChevronUp } from "lucide-react";
 import { type HTMLAttributes, type ReactNode, useLayoutEffect, useRef, useState } from "react";
 
 /**
@@ -11,6 +12,7 @@ export function ScrollFade({
   testId,
   outerClassName = "flex-1",
   scrollerProps,
+  chevrons = false,
 }: {
   children: ReactNode;
   /** The scroller's own classes (its padding). */
@@ -20,6 +22,11 @@ export function ScrollFade({
   outerClassName?: string;
   /** The scroller's attributes (a rail's tablist role and its keys). */
   scrollerProps?: HTMLAttributes<HTMLDivElement>;
+  /**
+   * A chevron at an edge with more beyond it — where a fade alone is too faint to be seen (a narrow rail of icons: critic
+   * RSP-01 r2, the DM's Lights, Fog and Quick unit out of sight at 844 × 390).
+   */
+  chevrons?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [more, setMore] = useState({ up: false, down: false });
@@ -53,6 +60,25 @@ export function ScrollFade({
         <span className="block h-px bg-[var(--border)]" />
         <span className="block h-4 bg-gradient-to-b from-[var(--surface)] to-transparent" />
       </span>
+      {/* (Marks, not controls: a wheel, a finger or the keys scroll it — a 20-px button would be under a finger's size.) */}
+      {chevrons && more.up ? (
+        <span
+          aria-hidden
+          data-testid="scroll-more-up"
+          className="pointer-events-none absolute inset-x-0 top-0 z-10 flex h-5 items-center justify-center bg-[var(--surface)] text-brass"
+        >
+          <ChevronUp size={14} />
+        </span>
+      ) : null}
+      {chevrons && more.down ? (
+        <span
+          aria-hidden
+          data-testid="scroll-more-down"
+          className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex h-5 items-center justify-center bg-[var(--surface)] text-brass"
+        >
+          <ChevronDown size={14} />
+        </span>
+      ) : null}
       <span
         aria-hidden
         data-testid={testId}

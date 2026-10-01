@@ -37,12 +37,22 @@ const RAIL_ROOM = 84;
 /** A phone's right inset: its gutter (the rail is a row in the corner). */
 const PHONE_RIGHT = () => 12;
 
+/**
+ * The panel's width until it's resized here: 380 px, and on a large screen a quarter of its width up to 460 (§28 allows
+ * 320–520; critic RSP-01 r2: a 1920-px screen gave the DM's lists the same 380 px as a laptop).
+ */
+function defaultWidth(): number {
+  const w = globalThis.innerWidth ?? 1280;
+  return Math.max(380, Math.min(460, Math.round(w * 0.24)));
+}
+
 function loadWidth(): number {
   try {
-    const n = Number(globalThis.localStorage?.getItem(WIDTH_KEY));
-    return Number.isFinite(n) && n >= MIN_W && n <= MAX_W ? n : 380;
+    const raw = globalThis.localStorage?.getItem(WIDTH_KEY);
+    const n = raw == null ? Number.NaN : Number(raw);
+    return Number.isFinite(n) && n >= MIN_W && n <= MAX_W ? n : defaultWidth();
   } catch {
-    return 380;
+    return defaultWidth();
   }
 }
 

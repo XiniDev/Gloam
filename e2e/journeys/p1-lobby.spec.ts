@@ -1,3 +1,4 @@
+import { dmSection, hook } from "../fixtures/board.ts";
 import {
   expect,
   knockAsNew,
@@ -47,6 +48,77 @@ test.describe("P1 — joining, the waiting room and admission (AUTH)", () => {
     await expect
       .poll(() => dave.evaluate(() => window.__gloam?.sounds.some((s) => s.name === "admitted")))
       .toBe(true);
+  });
+
+  test("SPEC §8.2 step 3, §29.2: while waiting — Draw your character (saved as art the DM finds in Approvals), Choose your dice (saved to the profile: the table shows them), Test sound; nothing about the table", async ({
+    admin,
+    browser,
+    gloam,
+    guardLog,
+  }) => {
+    const code = await openTableAs(admin, "Local only");
+    const { page: dave } = await newPlayerContext(browser, gloam.url, guardLog);
+    await knockAsNew(dave, gloam.url, code, "Dave");
+    const activities = dave.getByTestId("waiting-activities");
+    for (const name of ["Draw your character", "Choose your dice", "Test sound"])
+      await expect(activities.getByRole("button", { name, exact: true })).toBeVisible();
+    // (Captured with its candle lit: the flame fades in once its first frame is drawn.)
+    await expect(dave.locator('canvas[aria-label="A candle flame"][data-lit="true"]')).toBeAttached({
+      timeout: 15_000,
+    });
+    await dave.screenshot({ path: "artifacts/screens/p1/waiting-room-activities.png" });
+
+    // Choose your dice: metal, saved to the profile as it's picked.
+    await activities.getByRole("button", { name: "Choose your dice", exact: true }).click();
+    const diceDialog = dave.getByRole("dialog", { name: "Choose your dice" });
+    await expect(diceDialog).toBeVisible();
+    await diceDialog
+      .getByRole("radiogroup", { name: "Dice material" })
+      .getByRole("radio", { name: "Metal" })
+      .click();
+    await expect(diceDialog.locator("[data-material]")).toHaveAttribute("data-material", "metal");
+    await dave.screenshot({ path: "artifacts/screens/p1/waiting-room-dice.png" });
+    await diceDialog.getByRole("button", { name: "Done" }).click();
+    await expect(diceDialog).toHaveCount(0);
+
+    // Draw your character: a stroke, saved — as art, for the DM.
+    await activities.getByRole("button", { name: "Draw your character", exact: true }).click();
+    const pad = dave.getByTestId("drawing-pad");
+    await expect(pad).toBeVisible();
+    const canvas = pad.locator("canvas").first();
+    const box = (await canvas.boundingBox()) as { x: number; y: number; width: number; height: number };
+    await dave.mouse.move(box.x + box.width * 0.3, box.y + box.height * 0.3);
+    await dave.mouse.down();
+    await dave.mouse.move(box.x + box.width * 0.6, box.y + box.height * 0.5, { steps: 8 });
+    await dave.mouse.move(box.x + box.width * 0.4, box.y + box.height * 0.7, { steps: 8 });
+    await dave.mouse.up();
+    await dave.getByRole("button", { name: "Save my drawing" }).click();
+    await expect(dave.getByText("Drawing saved")).toBeVisible();
+    await expect(pad).toHaveCount(0);
+    // Still waiting: nothing about the table reached the page.
+    await expect(dave.getByRole("heading", { name: "Waiting for the DM to let you in…" })).toBeVisible();
+
+    // Let in: the table shows his dice as chosen; the DM finds his drawing in Approvals, from Dave.
+    await admin
+      .getByRole("alert")
+      .filter({ hasText: "Dave is knocking" })
+      .getByRole("button", { name: "Admit" })
+      .click();
+    await expect(dave).toHaveURL(/\/table$/);
+    await expect
+      .poll(
+        async () =>
+          (await hook<{ name: string; diceSkin?: string }[]>(dave, "presenceList")).find(
+            (p) => p.name === "Dave",
+          )?.diceSkin ?? "",
+      )
+      .toContain('"material":"metal"');
+    await admin.goto(`${gloam.url}/table`);
+    await expect(admin.getByRole("heading", { name: "Test Campaign" })).toBeVisible();
+    await dmSection(admin, "Approvals");
+    const drawing = admin.locator('[data-pending="Dave\'s character"]');
+    await expect(drawing).toBeVisible();
+    await expect(drawing).toContainText("from Dave");
   });
 
   test("AC-AUTH-03: Deny shows the friendly message; Ban blocks future knocks", async ({

@@ -4,7 +4,8 @@ import type { SVGProps } from "react";
  * The table's own glyphs for its game concepts where the DM finds them — the DM panel's sections and the board's tools
  * (SPEC §27.6: no stock icon for a game concept; §30.1 grammar: 24 × 24, 1.75 strokes, round caps and joins,
  * currentColor): health (a heart, its lower part filled like a gauge), an effect (a spark over its patch of ground), a
- * spellbook (a book with a star on its cover), and walls (a wall in plan with its door swung open).
+ * spellbook (a book with a star on its cover), walls (a wall in plan with its door swung open), zones (a patch of
+ * hatched ground inside a dashed bound) and fog (a corner of the map under drifting mist).
  */
 type P = SVGProps<SVGSVGElement> & { size?: number };
 
@@ -71,6 +72,29 @@ export function WallsIcon(p: P) {
       <path d="M2.5 14.5h6.2M15.3 14.5h6.2" strokeWidth={3.2} strokeLinecap="square" />
       <path d="M15.3 14.5V7.9" strokeWidth={2.4} />
       <path d="M15.3 7.9a6.6 6.6 0 0 0-6.6 6.6" strokeWidth={1.1} strokeDasharray="1.4 1.6" />
+    </Svg>
+  );
+}
+
+/** Zones (§8.7: difficult ground, water, hazards, names): a patch of hatched ground inside its dashed bound. */
+export function ZonesIcon(p: P) {
+  return (
+    <Svg {...p}>
+      <path d="M4 7.5 11 4l9 3-1.5 10.5-9 3L3 15Z" strokeDasharray="2.2 2" />
+      <path d="M7.5 14 12 9.5M9.5 17l6-6M13.5 17.5l3-3" strokeWidth={1.2} opacity={0.75} />
+    </Svg>
+  );
+}
+
+/** Fog of war (§12): a corner of the map, its grid, under bands of drifting mist. */
+export function FogIcon(p: P) {
+  return (
+    <Svg {...p}>
+      <path d="M3.5 3.5h9v8" />
+      <path d="M3.5 3.5v8M3.5 7.5h9M8 3.5v8" strokeWidth={1.1} opacity={0.7} />
+      <path d="M6 15c1.8-1.3 3.6-1.3 5.4 0s3.6 1.3 5.4 0c1.2-.9 2.5-1 3.7-.4" />
+      <path d="M3 19.2c1.8-1.3 3.6-1.3 5.4 0s3.6 1.3 5.4 0c1.2-.9 2.5-1 3.7-.4" />
+      <path d="M12.5 11.2c1.4-1 2.8-1 4.2 0 1.1.8 2.3.9 3.6.3" />
     </Svg>
   );
 }

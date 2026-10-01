@@ -31,7 +31,7 @@ describe("the settings popover's place (critic RSP-01 r1–r2)", () => {
     expect(p.left + p.width).toBeLessThanOrEqual(1440 - 62);
   });
 
-  it("never half over an open panel: clear to its left, in two columns or one — or in its place, exactly over it", () => {
+  it("never half over an open panel: clear to its left in two columns — or in its place, exactly over it", () => {
     // 1440: room for both columns left of the panel.
     const wide = placeSettings(
       { right: 1300 },
@@ -40,17 +40,11 @@ describe("the settings popover's place (critic RSP-01 r1–r2)", () => {
     );
     expect(wide).toMatchObject({ columns: 2, inPanel: false });
     expect(wide.left + wide.width).toBeLessThanOrEqual(1440 - 70 - 380);
-    // 1024: one column fits left of it, clear of the tool column.
-    const mid = placeSettings(
-      { right: 890 },
-      { rail: railAt(1024), panel: panelAt(1024, 380, 768), tools: 76 },
-      { w: 1024, h: 768 },
-    );
-    expect(mid).toMatchObject({ columns: 1, inPanel: false });
-    expect(mid.left).toBeGreaterThanOrEqual(76);
-    expect(mid.left + mid.width).toBeLessThanOrEqual(1024 - 70 - 380);
-    // 844 × 390 and 768: no room clear of both the panel and the tool column — the panel's place, exactly.
+    // 1024, 844 × 390 and 768: no room for two columns clear of the panel and the tool column — the panel's place,
+    // exactly. (At 1024 one column fitted left of it, 306 px from its gear and sliced at the foot: critic RSP-01 r2 —
+    // one column beside the panel gains nothing its place doesn't give.)
     for (const [w, h] of [
+      [1024, 768],
       [844, 390],
       [768, 1024],
     ] as const) {

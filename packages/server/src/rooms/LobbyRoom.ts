@@ -1,6 +1,12 @@
 import { type AuthContext, type Client, Room, ServerError } from "@colyseus/core";
 import { StateView } from "@colyseus/schema";
-import { GloamError, type KnockCard, LobbyDecide, MESSAGE_RATES } from "@gloam/shared/protocol";
+import {
+  GloamError,
+  type KnockCard,
+  LobbyDecide,
+  MESSAGE_RATES,
+  ProfileDiceSkin,
+} from "@gloam/shared/protocol";
 import { Knock, LobbyState, type LobbyStateT } from "@gloam/shared/state";
 import { buildHandlers, type ClientAuth, def, isSameOrigin, parseCookies } from "./dispatch.ts";
 import { CLOSE, type LobbyRoomApi } from "./registry.ts";
@@ -52,6 +58,13 @@ export class LobbyRoom extends Room<{ state: LobbyStateT }> implements LobbyRoom
       "lobby.decide": def(LobbyDecide, MESSAGE_RATES["lobby.decide"], ({ auth }, p) => {
         if (!auth.watcher) throw new GloamError("FORBIDDEN");
         roomCtx().people.decide({ userId: auth.userId, role: auth.role, ip: auth.ip }, p);
+      }),
+      // Choose your dice while waiting (SPEC §8.2 step 3): your own profile's, carried to the table — nothing of it
+      // about the table, nothing of the table back.
+      "profile.diceSkin": def(ProfileDiceSkin, MESSAGE_RATES["profile.diceSkin"], ({ auth }, p) => {
+        if (auth.watcher) throw new GloamError("FORBIDDEN", "Your dice are chosen at the table.");
+        const json = JSON.stringify({ body: p.body, number: p.number, material: p.material });
+        roomCtx().profiles.update(auth.userId, { diceSkinJson: json });
       }),
     },
     roomCtx().log,

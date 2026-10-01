@@ -259,6 +259,8 @@ export function SettingsPopover() {
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-controls={open ? id : undefined}
+        // Pressed while open, wherever the popover stands (critic RSP-01 r2: not in the panel's place at 768 and 844).
+        active={open}
         onClick={() => setOpen((o) => !o)}
       >
         <Settings size={18} />
@@ -300,6 +302,16 @@ export function SettingsPopover() {
                 : { left: EDGE, top: TOP, width: COLUMN }
             }
           >
+            {/* In the panel's place, titled as the panels there are (critic RSP-01 r2: the only one without a name). */}
+            {place?.inPanel ? (
+              <header className="flex shrink-0 items-center gap-2 border-b border-line px-4 py-3">
+                <Settings size={18} className="shrink-0 text-brass" aria-hidden />
+                <h2 className="flex-1 text-18 text-bone">Settings</h2>
+                <IconButton label="Close settings" onClick={() => setOpen(false)}>
+                  <X size={18} />
+                </IconButton>
+              </header>
+            ) : null}
             {/* Taller than the screen: its edges fade where there's more (never a toggle sliced in half). */}
             <ScrollFade testId="settings-more-below">
               {place?.columns === 2 ? twoColumns : content}

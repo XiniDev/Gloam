@@ -118,10 +118,15 @@ test.describe("P4 — the HUD on a phone", () => {
       await admin.keyboard.press("ArrowDown");
       await admin.keyboard.press("ArrowDown");
       await expect(sheet).toHaveAttribute("data-snap", "0.3");
+      // Its heights are shares of the room under the top bar (a 95 % sheet stopped short of the top bar's buttons).
+      const room =
+        PHONE.height -
+        (await admin
+          .getByRole("banner")
+          .first()
+          .evaluate((e) => e.getBoundingClientRect().bottom));
       // Dragged up 200 px it settles at the next height, not wherever it was let go.
-      await expect
-        .poll(async () => Math.round((await boxOf(sheet)).height))
-        .toBe(Math.round(0.3 * PHONE.height));
+      await expect.poll(async () => Math.round((await boxOf(sheet)).height)).toBe(Math.round(0.3 * room));
       await admin.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2);
       await admin.mouse.down();
       await admin.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2 - 200, { steps: 5 });
@@ -129,15 +134,13 @@ test.describe("P4 — the HUD on a phone", () => {
       await expect(sheet).toHaveAttribute("data-snap", /^0\.(6|95)$/);
       await expect
         .poll(async () => Math.round((await boxOf(sheet)).height))
-        .toBe(Math.round(Number(await sheet.getAttribute("data-snap")) * PHONE.height));
+        .toBe(Math.round(Number(await sheet.getAttribute("data-snap")) * room));
       await handle.focus();
       await admin.keyboard.press("ArrowDown");
       await admin.keyboard.press("ArrowDown");
       await expect(sheet).toHaveAttribute("data-snap", "0.3");
       // (Its height eases to the new snap.)
-      await expect
-        .poll(async () => Math.round((await boxOf(sheet)).height))
-        .toBe(Math.round(0.3 * PHONE.height));
+      await expect.poll(async () => Math.round((await boxOf(sheet)).height)).toBe(Math.round(0.3 * room));
       const sb = await boxOf(sheet);
       expect(sb.x).toBeGreaterThanOrEqual(0);
       expect(sb.x + sb.width).toBeLessThanOrEqual(PHONE.width);

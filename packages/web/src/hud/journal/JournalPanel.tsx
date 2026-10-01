@@ -1,11 +1,12 @@
 import type { LogEntryView } from "@gloam/shared/protocol";
-import { Download, Search } from "lucide-react";
+import { BookOpen, Download, Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { addLogEntry, logMarkdown, useFun, useFunLists } from "../../net/fun.ts";
 import { useTable } from "../../net/table.ts";
 import { Button } from "../../ui/Button.tsx";
 import { EmptyState } from "../../ui/EmptyState.tsx";
 import { LoadGate } from "../../ui/Loadable.tsx";
+import { ScrollFade } from "../../ui/ScrollFade.tsx";
 import { Tabs } from "../../ui/Tabs.tsx";
 import { toast } from "../../ui/Toast.tsx";
 import { HandoutCard } from "./HandoutCard.tsx";
@@ -101,7 +102,8 @@ function Log() {
           Markdown
         </Button>
       </div>
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 py-3">
+      {/* The log fades at its edges above the pen, never sliced by it (critic RSP-01 r2). */}
+      <ScrollFade outerClassName="flex-1" className="flex flex-col px-4 py-3">
         {lists.status !== "ready" ? (
           <LoadGate load={lists} what="the log">
             {() => null}
@@ -164,7 +166,7 @@ function Log() {
             }
           />
         )}
-      </div>
+      </ScrollFade>
       {canWrite ? (
         // A short screen on its side: the pen on one line beside its button, the log the height (critic RSP-01 r1: at
         // 844 × 390 the log was a 12-px sliver over a two-line composer).
@@ -185,7 +187,7 @@ function Log() {
             onKeyDown={(e) => {
               if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) void add();
             }}
-            className="min-h-[60px] resize-y rounded-[var(--radius-control)] border border-line bg-ink-950 px-3 py-2 text-14 text-bone placeholder:text-fog focus:border-brass focus:outline-none short:h-11 short:min-h-0 short:min-w-0 short:flex-1 short:resize-none"
+            className="min-h-[60px] resize-none rounded-[var(--radius-control)] border border-line bg-ink-950 px-3 py-2 text-14 text-bone placeholder:text-fog focus:border-brass focus:outline-none short:h-11 short:min-h-0 short:min-w-0 short:flex-1"
           />
           <Button
             type="submit"
@@ -237,6 +239,8 @@ export function JournalPanel() {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <header className="flex items-center gap-2 border-b border-line px-4 pb-0 pt-3">
+        {/* Titled like the other panels, its icon beside its name (critic RSP-01 r2). */}
+        <BookOpen size={18} className="mb-2 shrink-0 text-brass" aria-hidden />
         <h2 className="pb-2 text-18 text-bone">Journal</h2>
       </header>
       <Tabs

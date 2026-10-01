@@ -1,18 +1,22 @@
 import type { Room } from "@colyseus/sdk";
 import { PLAYER_COLORS } from "@gloam/shared";
-import { Volume2 } from "lucide-react";
+import { PenLine, Volume2 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { audio } from "../audio/engine.ts";
 import { ShaderCanvas } from "../board/ambient/ShaderCanvas.tsx";
 import { CANDLE_FLAME, FLAME_UNIFORMS } from "../board/ambient/shaders.ts";
+import { DiceSkinChooser } from "../hud/DiceSkinPicker.tsx";
+import { DrawingPad } from "../hud/sheet/DrawingPad.tsx";
+import { D20Icon } from "../icons/dice.tsx";
 import { joinErrorCode, leaveRoom } from "../net/colyseus.ts";
 import { post } from "../net/http.ts";
-import { joinLobby, type KnockView } from "../net/lobby.ts";
+import { joinLobby, type KnockView, lobbyRequest } from "../net/lobby.ts";
 import { tableReady } from "../net/table.ts";
 import { useSession } from "../state/session.ts";
 import { Button } from "../ui/Button.tsx";
+import { Dialog } from "../ui/Dialog.tsx";
 import { FullScreenLoader } from "../ui/FullScreenLoader.tsx";
 import { SoundChip } from "../ui/SoundChip.tsx";
 import { toast } from "../ui/Toast.tsx";
@@ -46,6 +50,11 @@ export default function Wait() {
   const [outcome, setOutcome] = useState<Outcome>(null);
   const [connection, setConnection] = useState<"connecting" | "open" | "dropped">("connecting");
   const [entering, setEntering] = useState(false);
+  // The two things to do while waiting besides a sound check (SPEC §8.2 step 3, §29.2): draw your character, choose
+  // your dice — both yours alone; nothing about the table.
+  const [drawing, setDrawing] = useState(false);
+  const [choosingDice, setChoosingDice] = useState(false);
+  const [skinJson, setSkinJson] = useState<string | undefined>(undefined);
   const roomRef = useRef<Room | null>(null);
   const enterRef = useRef<() => Promise<void>>(async () => {});
 
@@ -133,6 +142,7 @@ export default function Wait() {
 
   if (!me) return <FullScreenLoader />;
   const name = me.user?.name ?? knock?.name ?? "";
+  const storedSkin = skinJson ?? (me.user?.diceSkin ? JSON.stringify(me.user.diceSkin) : undefined);
   const color = me.user?.color ?? knock?.color ?? "";
 
   return (
@@ -190,7 +200,16 @@ export default function Wait() {
             {connection === "dropped" ? (
               <p className="mt-3 text-14 text-[var(--ember-400)]">Connection lost — reconnecting…</p>
             ) : null}
-            <div className="mt-8 flex flex-wrap justify-center gap-2 short:mt-5">
+            <div
+              className="mt-8 flex flex-wrap justify-center gap-2 short:mt-5"
+              data-testid="waiting-activities"
+            >
+              <Button variant="secondary" icon={<PenLine size={16} />} onClick={() => setDrawing(true)}>
+                Draw your character
+              </Button>
+              <Button variant="secondary" icon={<D20Icon size={16} />} onClick={() => setChoosingDice(true)}>
+                Choose your dice
+              </Button>
               <Button
                 variant="secondary"
                 icon={<Volume2 size={16} />}
@@ -213,6 +232,33 @@ export default function Wait() {
           </div>
         )}
       </div>
+      <DrawingPad
+        open={drawing}
+        onClose={() => setDrawing(false)}
+        onUse={() => {}}
+        lobby={name ? `${name}'s character` : "My character"}
+      />
+      <Dialog
+        open={choosingDice}
+        onClose={() => setChoosingDice(false)}
+        title="Choose your dice"
+        description="Everyone at the table sees your rolls in them."
+        footer={
+          <div className="flex justify-end">
+            <Button variant="primary" onClick={() => setChoosingDice(false)}>
+              Done
+            </Button>
+          </div>
+        }
+      >
+        <DiceSkinChooser
+          stored={storedSkin}
+          send={async (skin) => {
+            await lobbyRequest(roomRef.current, "profile.diceSkin", skin);
+            setSkinJson(JSON.stringify(skin));
+          }}
+        />
+      </Dialog>
     </main>
   );
 }

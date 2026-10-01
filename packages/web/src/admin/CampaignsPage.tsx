@@ -88,8 +88,9 @@ export function CampaignsPage() {
       data-testid="campaign-row"
       data-campaign={c.id}
     >
-      {/* Who it is takes the row's width on a phone, its actions below (squeezed beside them, the name went). */}
-      <span className="flex min-w-0 flex-[1_1_16rem] flex-col">
+      {/* Who it is takes the row's width on a phone, its menu at its top right and "Use at the table" below (squeezed
+          beside the actions, the name went; the menu on a row of its own left a gap — critic RSP-01 r2). */}
+      <span className="flex min-w-0 flex-[1_1_16rem] flex-col max-sm:flex-[1_1_0]">
         <span className="flex min-w-0 items-center gap-2">
           <span className="min-w-0 truncate text-16 font-bold text-bone">{c.name}</span>
           {c.selected ? (
@@ -103,7 +104,23 @@ export function CampaignsPage() {
           made <span className="whitespace-nowrap">{day(c.createdAt)}</span>
         </span>
       </span>
-      <span className="flex flex-wrap items-center gap-1">
+      <span className="shrink-0 self-start sm:hidden">
+        <Menu
+          label={`${c.name}: more`}
+          items={[
+            { label: "Rename", icon: <Pencil size={15} />, onSelect: () => rename(c) },
+            {
+              label: c.archived ? "Bring back" : "Archive",
+              icon: c.archived ? <ArchiveRestore size={15} /> : <Archive size={15} />,
+              onSelect: () => archive(c),
+            },
+            { label: "Delete…", icon: <Trash2 size={15} />, danger: true, onSelect: () => remove(c) },
+          ]}
+        />
+      </span>
+      <span
+        className={`flex flex-wrap items-center gap-1 max-sm:basis-full ${c.selected || c.archived ? "max-sm:hidden" : ""}`}
+      >
         {!c.selected && !c.archived ? (
           <Button
             size="S"
@@ -138,20 +155,6 @@ export function CampaignsPage() {
           <Button size="S" variant="danger" icon={<Trash2 size={14} />} onClick={() => remove(c)}>
             Delete
           </Button>
-        </span>
-        <span className="sm:hidden">
-          <Menu
-            label={`${c.name}: more`}
-            items={[
-              { label: "Rename", icon: <Pencil size={15} />, onSelect: () => rename(c) },
-              {
-                label: c.archived ? "Bring back" : "Archive",
-                icon: c.archived ? <ArchiveRestore size={15} /> : <Archive size={15} />,
-                onSelect: () => archive(c),
-              },
-              { label: "Delete…", icon: <Trash2 size={15} />, danger: true, onSelect: () => remove(c) },
-            ]}
-          />
         </span>
       </span>
     </li>

@@ -225,6 +225,25 @@ describe("F02 joining, identity, lobby and approval (AUTH)", () => {
     await b.lobby.leave();
   });
 
+  it("SPEC §8.2 step 3: a pending player chooses their dice in the waiting room — saved to their profile (the table's presence starts with it); bad skins refused, nothing of the table sent back", async () => {
+    const p = await joinAsNew(t, code, "Dara");
+    const skin = { body: "#3a3f47", number: "#e8d9b5", material: "metal" };
+    const res = await p.lobby.request("profile.diceSkin", skin, { timeout: 4000 });
+    expect(res).toEqual({ ok: true });
+    const me = await p.agent.get("/api/me");
+    expect((me.json.data as { user: { diceSkin: unknown } }).user.diceSkin).toEqual(skin);
+    // The schema still holds in the waiting room: an unknown material, an extra field.
+    await expect(
+      p.lobby.request("profile.diceSkin", { ...skin, material: "plasma" }, { timeout: 4000 }),
+    ).rejects.toBeTruthy();
+    await expect(
+      p.lobby.request("profile.diceSkin", { ...skin, campaignId: "x" }, { timeout: 4000 }),
+    ).rejects.toBeTruthy();
+    // Nothing but its own knock came back.
+    expect(p.messages.map((m) => m.type).filter((x) => x !== "__playground_message_types")).toEqual([]);
+    await p.lobby.leave();
+  });
+
   it("AC-AUTH-08 rotating the invite code kills the old one immediately; people inside are unaffected", async () => {
     const inside = await admitted("Iris");
     let left = false;

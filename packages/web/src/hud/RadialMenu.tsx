@@ -6,12 +6,9 @@ import {
   Copy,
   Eye,
   EyeOff,
-  Flame,
-  FlameKindling,
   Heart,
   HeartCrack,
   HeartPulse,
-  Lamp,
   Lock,
   Palette,
   RotateCcw,
@@ -27,7 +24,13 @@ import {
 import { AnimatePresence, motion } from "motion/react";
 import { type ReactElement, useEffect, useMemo, useRef, useState } from "react";
 import { D20Icon } from "../icons/dice.tsx";
-import { LightPresetIcon } from "../icons/lights.tsx";
+import {
+  HoodedLanternIcon,
+  LanternLitIcon,
+  LanternOutIcon,
+  LightPresetIcon,
+  TorchIcon,
+} from "../icons/lights.tsx";
 import { StatusIcon } from "../icons/status.tsx";
 import { actAs, useActAs } from "../net/actAs.ts";
 import { request, useTable } from "../net/table.ts";
@@ -173,14 +176,14 @@ export function RadialMenu() {
         lightRing.unshift({
           id: "light-toggle",
           label: carried.on ? "Put out" : "Light it",
-          icon: carried.on ? <FlameKindling size={18} /> : <Flame size={18} />,
+          icon: carried.on ? <LanternOutIcon size={18} /> : <LanternLitIcon size={18} />,
           run: () => send("change the light", "light.toggle", { lightId: carried.id, enabled: !carried.on }),
         });
         if (carried.preset === "hooded-lantern")
           lightRing.splice(1, 0, {
             id: "light-hood",
             label: carried.shuttered ? "Raise the hood" : "Lower the hood",
-            icon: <Lamp size={18} />,
+            icon: <HoodedLanternIcon size={18} />,
             run: () =>
               send("change the hood", "light.toggle", { lightId: carried.id, shuttered: !carried.shuttered }),
           });
@@ -193,7 +196,7 @@ export function RadialMenu() {
       }
       // A token's light is one of its controls: not for its owners while the DM has locked it.
       if (dm || !token.locked)
-        out.push({ id: "light", label: "Light", icon: <Flame size={18} />, ring: lightRing.slice(0, 8) });
+        out.push({ id: "light", label: "Light", icon: <TorchIcon size={18} />, ring: lightRing.slice(0, 8) });
     }
     // HP (§8.11): damage, healing and temporary HP — for this token, or the selection it's part of. Anyone at the table
     // may aim damage (a player's at others goes to the DM first).

@@ -125,7 +125,7 @@ export default function Join() {
               </Button>
               <p className="mt-3 text-center text-13 text-faint">
                 Got the code from your DM? It looks like{" "}
-                <span className="whitespace-nowrap">7K2QH-9XM4D</span>.
+                <span className="mono whitespace-nowrap">7K2QH-9XM4D</span>.
               </p>
             </motion.form>
           ) : info ? (

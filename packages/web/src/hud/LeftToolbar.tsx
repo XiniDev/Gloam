@@ -1,10 +1,10 @@
-import { CloudFog, Hand, LandPlot, MousePointer2, Radar, Ruler, X } from "lucide-react";
+import { Hand, MousePointer2, Radar, Ruler, X } from "lucide-react";
 import { type ReactElement, useEffect, useRef, useState } from "react";
 import { boardApi } from "../board/boardApi.ts";
 import { setFogShape } from "../board/tools/fog.ts";
 import { setWallMode, useWallTool } from "../board/tools/walls.ts";
 import { HoodedLanternIcon } from "../icons/lights.tsx";
-import { WallsIcon } from "../icons/table.tsx";
+import { FogIcon, WallsIcon, ZonesIcon } from "../icons/table.tsx";
 import { request, useTable } from "../net/table.ts";
 import { type Tool, useUi } from "../state/ui.ts";
 import { IconButton } from "../ui/Button.tsx";
@@ -48,9 +48,9 @@ const TOOLS: { id: Tool; label: string; key?: string; icon: ReactElement; dm?: b
   { id: "measure", label: "Measure", key: "M", icon: <Ruler size={19} /> },
   { id: "ping", label: "Ping (or Alt+click)", icon: <Radar size={19} /> },
   { id: "walls", label: "Walls", key: "W", icon: <WallsIcon size={19} />, dm: true },
-  { id: "zones", label: "Zones", key: "Z", icon: <LandPlot size={19} />, dm: true },
+  { id: "zones", label: "Zones", key: "Z", icon: <ZonesIcon size={19} />, dm: true },
   { id: "lights", label: "Lights", key: "I", icon: <HoodedLanternIcon size={19} />, dm: true },
-  { id: "fog", label: "Fog", key: "B", icon: <CloudFog size={19} />, dm: true },
+  { id: "fog", label: "Fog", key: "B", icon: <FogIcon size={19} />, dm: true },
 ];
 
 /** Tools whose options open as a bar along the bottom (a sheet on phones). */
@@ -139,6 +139,7 @@ function Rail({ tool, dm }: { tool: Tool; dm: boolean }) {
         <ScrollFade
           outerClassName="min-h-0"
           className="flex flex-col items-center gap-1 [scrollbar-width:none]"
+          chevrons
         >
           <ToolButtons tool={tool} dm={dm} />
         </ScrollFade>
