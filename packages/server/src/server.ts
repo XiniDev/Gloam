@@ -66,9 +66,19 @@ function makeHttpControl(server: HttpServer, initialHost: string, port: () => nu
     async rebind(nextHost: string) {
       if (nextHost === host) return;
       const p = this.address().port;
-      // close() stops accepting new connections; established ones (players' sockets) stay open.
+      // Stops accepting on the old address and listens on the new one; every connection already made stays open —
+      // players' sockets, and the browsers' kept-alive ones too. (Since Node 19 http.Server.close() first closes idle
+      // kept-alive connections, through the instance's own closeIdleConnections: a browser's next request on one was
+      // reset — ERR_CONNECTION_RESET in the Admin console, found by the p1-doorway journey. Not here: the server stays
+      // the same, only its listening address changes.)
       await new Promise<void>((resolve, reject) => {
-        server.close();
+        const closeIdle = server.closeIdleConnections;
+        server.closeIdleConnections = () => {};
+        try {
+          server.close();
+        } finally {
+          server.closeIdleConnections = closeIdle;
+        }
         server.once("error", reject);
         server.listen(p, nextHost, () => {
           server.off("error", reject);

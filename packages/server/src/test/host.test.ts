@@ -1,5 +1,6 @@
 import { type ChildProcess, fork } from "node:child_process";
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import http from "node:http";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -120,6 +121,31 @@ describe("F01 table lifecycle and the doorway (HOST)", () => {
     expect(String(status.publicUrl)).toMatch(/^http:\/\/.+:\d+$/);
     await admin.post("/api/admin/table/close");
     expect((t.server.ctx.http.server.address() as { address: string }).address).toBe("127.0.0.1");
+  });
+
+  it("a rebind (LAN on, then off) keeps every connection already made: a browser's kept-alive socket serves its next request, never reset", async () => {
+    const t = await server();
+    const port = t.server.ctx.http.address().port;
+    const agent = new http.Agent({ keepAlive: true, maxSockets: 1 });
+    const get = () =>
+      new Promise<{ status: number; reused: boolean }>((resolveGet, rejectGet) => {
+        const req = http.get({ host: "127.0.0.1", port, path: "/api/health", agent }, (res) => {
+          res.resume();
+          res.on("end", () => resolveGet({ status: res.statusCode ?? 0, reused: req.reusedSocket }));
+        });
+        req.on("error", rejectGet);
+      });
+    try {
+      expect((await get()).status).toBe(200);
+      await t.server.ctx.http.rebind("0.0.0.0");
+      expect((t.server.ctx.http.server.address() as { address: string }).address).toBe("0.0.0.0");
+      // The same socket, idle across the rebind, answers.
+      expect(await get()).toEqual({ status: 200, reused: true });
+      await t.server.ctx.http.rebind("127.0.0.1");
+      expect(await get()).toEqual({ status: 200, reused: true });
+    } finally {
+      agent.destroy();
+    }
   });
 
   it("AC-HOST-03 quick tunnel: spawns cloudflared, gets the trycloudflare hostname, Open only after /ready", async () => {
