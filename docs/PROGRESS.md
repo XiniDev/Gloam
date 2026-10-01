@@ -756,3 +756,25 @@ PASSING 222/224 · DISPUTED 0 · FAILING 2
 - It also turned up a real UI flaw: card ticks sprang back until the server answered; they now show at once.
 - Next: rerun the failed journeys and p14-layouts on the new bundle, review the captures, flip RSP-01/DS-02; the full
   gate.
+
+## 2026-10-01 — The full gate: green
+`pnpm features:status --verify && pnpm check && pnpm test:e2e && pnpm bench` exited 0 (artifacts/logs/gate.log):
+- **Features:** 224/224 passing, verify OK.
+- **Check:** 108 test files, 752 tests.
+- **E2E:** 89/89 main journeys (one worker, 1.3 h) and 12/12 timing journeys.
+- **Bench, every budget met:**
+  - vision p95 4.6 ms (budget 10);
+  - range p95 8.3 ms (budget 30);
+  - commands p95 3.1 ms (budget 5);
+  - bundle 1.11 MB gzip (budget 1.2);
+  - client, High 1080p: median 200 fps, p95 9.2 ms;
+  - client, play: no shader compiles after the board shows;
+  - client, Low under a 4× CPU throttle: median 75 fps;
+  - client, join on 20 Mbps: 2.7 s.
+- Found on the way:
+  - Turning LAN on reset the browser's kept-alive connections (`78a8d20`).
+  - Two parallel WebGL journeys starved this host's GPU, so the main part now runs one worker by default (`1522286`).
+
+```
+PASSING 224/224 · DISPUTED 0 · FAILING 0
+```
