@@ -42,8 +42,8 @@ Run it on your own PC, send your friends a link, and play in the browser — no 
 You need **Node.js 24** (22.18 or later works) and **Git**.
 
 ```sh
-git clone https://github.com/<you>/gloam.git
-cd gloam
+git clone https://github.com/XiniDev/Gloam.git
+cd Gloam
 corepack enable        # gives you the right pnpm
 pnpm install
 pnpm build
@@ -90,6 +90,10 @@ pnpm bench        # performance budgets on this machine
 | `packages/mcp` | the MCP server for Claude |
 
 The design lives in [docs/SPEC.md](docs/SPEC.md), with decisions in [docs/DECISIONS.md](docs/DECISIONS.md).
+
+## Licence
+
+Gloam's code is under the [MIT licence](LICENSE). The SRD content keeps its own licence, below.
 
 ## Credits
 
